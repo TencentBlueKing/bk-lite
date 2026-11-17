@@ -10,7 +10,7 @@ import type { BarItem } from '../../../shared/widgets';
 import { buildSearchParams, topLabelBars } from '../../../shared/utils';
 import { asRangeQueryResult } from '../../../shared/utils/metric-series';
 import styles from '../index.module.scss';
-import { mssqlCardFace } from './card-face';
+import { mssqlCardFace, mssqlDeferEmpty } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE, MSSQL_PRO_WAIT_CATEGORY_QUERY } from './queries';
 import type { MssqlMetricMap } from './series';
@@ -21,6 +21,7 @@ const WAIT_BODY = '各类等待消耗的时间，区分为总等待、信号等�
 export default function WaitsPane({
   metricMap,
   pendingMetricNames,
+  batchLoading = false,
   instanceId,
   monitorObjectId,
   idValues,
@@ -31,6 +32,7 @@ export default function WaitsPane({
 }: {
   metricMap: MssqlMetricMap;
   pendingMetricNames: ReadonlySet<string>;
+  batchLoading?: boolean;
   instanceId: Key;
   monitorObjectId: Key;
   idValues: string[];
@@ -42,7 +44,10 @@ export default function WaitsPane({
   const { getInstanceQuery } = useViewApi();
   const [categories, setCategories] = useState<BarItem[]>([]);
   const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
-  const categoryFace = mssqlCardFace(phase === 'loading', categories.length > 0);
+  const categoryFace = mssqlCardFace(
+    mssqlDeferEmpty(categories.length > 0, phase === 'loading', batchLoading),
+    categories.length > 0
+  );
   const identity = `${idValues.join('\u0001')}|${instanceIdKeys.join('\u0001')}|${reloadKey}`;
 
   useEffect(() => {
@@ -116,6 +121,7 @@ export default function WaitsPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <div id="mssql-wait-top" className="min-w-0 scroll-mt-3" data-mssql-chart="wait-top">
             <HorizontalBarPanel
@@ -162,6 +168,7 @@ export default function WaitsPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="deadlocks"
@@ -176,6 +183,7 @@ export default function WaitsPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -202,6 +210,7 @@ export default function WaitsPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="requests"
@@ -229,6 +238,7 @@ export default function WaitsPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>

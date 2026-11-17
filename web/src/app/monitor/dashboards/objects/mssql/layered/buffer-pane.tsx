@@ -5,6 +5,7 @@ import { ProSection, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
+import { mssqlDeferEmpty } from './card-face';
 import { clerkChart, type MssqlMetricMap } from './series';
 import { MssqlSeriesReadout, MssqlTrend } from './trend';
 
@@ -12,15 +13,21 @@ const HIT_BODY = '缓冲池满足的数据页读取占比。偏低说明热点�
 
 export default function BufferPane({
   metricMap,
-  pendingMetricNames
+  pendingMetricNames,
+  batchLoading = false
 }: {
   metricMap: MssqlMetricMap;
   pendingMetricNames: ReadonlySet<string>;
+  batchLoading?: boolean;
 }) {
   const { t } = useTranslation();
   const memoryTitle = t('monitor.dashboards.text.mssqlInstanceMemory', '实例内存');
   const clerks = clerkChart(metricMap);
-  const clerkPending = pendingMetricNames.has(MSSQL_PRO_NAMES.clerks) && clerks.data.length === 0;
+  const clerkPending = mssqlDeferEmpty(
+    clerks.data.length > 0,
+    pendingMetricNames.has(MSSQL_PRO_NAMES.clerks),
+    batchLoading
+  );
   return (
     <div data-mssql-pane="buffer_memory" className="contents">
       <ProSection title="缓冲池">
@@ -38,6 +45,7 @@ export default function BufferPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="ple"
@@ -51,6 +59,7 @@ export default function BufferPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -79,6 +88,7 @@ export default function BufferPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="checkpoint"
@@ -100,6 +110,7 @@ export default function BufferPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -126,6 +137,7 @@ export default function BufferPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="compile"
@@ -147,6 +159,7 @@ export default function BufferPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>

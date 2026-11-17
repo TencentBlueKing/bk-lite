@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { describe, expect, it } from 'vitest';
 import { HorizontalBarPanel } from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
-import { mssqlCardFace } from '../card-face';
+import { mssqlCardFace, mssqlDeferEmpty } from '../card-face';
 import { MssqlSeriesReadout } from '../trend';
 
 function mount(node: ReactNode) {
@@ -16,6 +16,16 @@ describe('mssql card face', () => {
     expect(mssqlCardFace(true, true)).toBe('loading');
     expect(mssqlCardFace(false, false)).toBe('empty');
     expect(mssqlCardFace(false, true)).toBe('ready');
+  });
+
+  it('整批未结束时，没有点的卡继续加载；有点（含 0）不再空等', () => {
+    expect(mssqlDeferEmpty(false, false, true)).toBe(true);
+    expect(mssqlDeferEmpty(false, true, false)).toBe(true);
+    expect(mssqlDeferEmpty(false, false, false)).toBe(false);
+    expect(mssqlDeferEmpty(true, false, true)).toBe(false);
+    expect(mssqlCardFace(mssqlDeferEmpty(false, false, true), false)).toBe('loading');
+    expect(mssqlCardFace(mssqlDeferEmpty(false, false, false), false)).toBe('empty');
+    expect(mssqlCardFace(mssqlDeferEmpty(true, true, true), true)).toBe('ready');
   });
 
   it('占位不走空态组件，加载中和暂无数据不会叠在同一张卡', () => {

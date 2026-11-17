@@ -14,6 +14,7 @@ import {
   mssqlSamplesAreFlatZero,
   type MssqlMetricMap
 } from './series';
+import { mssqlDeferEmpty } from './card-face';
 
 export interface MssqlSeriesSpec {
   name: string;
@@ -74,7 +75,8 @@ export function MssqlTrend({
   counts = false,
   dualAxis = false,
   data,
-  loading = false
+  loading = false,
+  batchLoading = false
 }: {
   anchor: string;
   title: string;
@@ -89,12 +91,18 @@ export function MssqlTrend({
   data?: ChartData[];
   /** 本卡相关查询仍在进行，且还没有点时只显示加载中。 */
   loading?: boolean;
+  /** 同一批指标还没全部返回。没有点的卡先保持加载中。 */
+  batchLoading?: boolean;
 }) {
   const items = series.map((item) => ({ name: item.name, label: item.label }));
   const plotted = data ?? (counts ? mssqlCountMerged(metricMap, items) : mssqlMerged(metricMap, items));
   const mixedUnits = new Set(series.map((item) => item.unit)).size > 1 || dualAxis;
   const multi = series.length > 1;
-  const awaiting = (loading || series.some((item) => pending.has(item.name))) && plotted.length === 0;
+  const awaiting = mssqlDeferEmpty(
+    plotted.length > 0,
+    loading || series.some((item) => pending.has(item.name)),
+    batchLoading
+  );
   const samples = seriesSampleValues(plotted);
   const countBounds = counts ? mssqlCountAxisBounds(samples) : null;
   const percentZero = Boolean(percent && series.some((_, index) => {
@@ -116,7 +124,12 @@ export function MssqlTrend({
     };
   });
   return (
-    <div id={`mssql-${anchor}`} className="min-w-0 scroll-mt-3" data-mssql-chart={anchor}>
+    <div
+      id={`mssql-${anchor}`}
+      className="min-w-0 scroll-mt-3"
+      data-mssql-chart={anchor}
+      data-mssql-face={awaiting ? 'loading' : plotted.length > 0 ? 'ready' : 'empty'}
+    >
       <ThinTimeSeries
         title={title}
         hintNode={<MssqlHint kind={`mssql-${anchor}`} title={title} body={body} />}

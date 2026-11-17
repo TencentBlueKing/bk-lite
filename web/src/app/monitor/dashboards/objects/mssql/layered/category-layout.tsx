@@ -175,6 +175,7 @@ export default function MssqlCategoryLayout({
               metricMap={metricMap}
               pendingMetricNames={pendingMetricNames}
               booting={loading && pendingMetricNames.size === 0}
+              batchLoading={loading}
               alertCount={alertCount}
               alertsOpen={alertDrawerOpen}
               alertEvents={alertEvents}
@@ -188,12 +189,17 @@ export default function MssqlCategoryLayout({
             />
           ) : null}
           {tab === 'buffer_memory' ? (
-            <BufferPane metricMap={metricMap} pendingMetricNames={pendingMetricNames} />
+            <BufferPane
+              metricMap={metricMap}
+              pendingMetricNames={pendingMetricNames}
+              batchLoading={loading}
+            />
           ) : null}
           {tab === 'io_storage' ? (
             <IoPane
               metricMap={metricMap}
               pendingMetricNames={pendingMetricNames}
+              batchLoading={loading}
               instanceId={instanceId}
               monitorObjectId={monitorObjectId}
               idValues={idValues}
@@ -207,6 +213,7 @@ export default function MssqlCategoryLayout({
             <WaitsPane
               metricMap={metricMap}
               pendingMetricNames={pendingMetricNames}
+              batchLoading={loading}
               instanceId={instanceId}
               monitorObjectId={monitorObjectId}
               idValues={idValues}

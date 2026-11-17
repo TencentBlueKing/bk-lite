@@ -28,6 +28,8 @@ export interface KpiCardModel {
   alertLevel?: TabAlertLevel;
   /** 默认实心折角。与折角同色、需要描边时才传 outline。 */
   fold?: CardAlertFold;
+  /** 本卡还没有读数，且查询批次未结束。只替换主值，不把整行打回加载。 */
+  busy?: boolean;
 }
 
 const KpiLabel = ({ item }: { item: KpiCardModel }) => {
@@ -56,8 +58,8 @@ const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
   <>
     <KpiLabel item={item} />
     <div className={item.subtitle ? styles.kpiValueRow : undefined}>
-      <div className={styles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
-        {item.value}
+      <div className={styles.kpiValue} style={item.busy || !item.tone ? undefined : { color: item.tone }}>
+        {item.busy ? <ProDashLoading size="small" /> : item.value}
       </div>
       {item.subtitle ? <div className={styles.kpiAside}>{item.subtitle}</div> : null}
     </div>

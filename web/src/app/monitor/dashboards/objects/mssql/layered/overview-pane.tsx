@@ -35,6 +35,7 @@ import {
   mssqlWindowCount,
   type MssqlMetricMap
 } from './series';
+import { mssqlDeferEmpty } from './card-face';
 import { MssqlTrend } from './trend';
 
 const EMPTY = '—';
@@ -46,6 +47,8 @@ interface OverviewPaneProps {
   metricMap: MssqlMetricMap;
   pendingMetricNames: ReadonlySet<string>;
   booting: boolean;
+  /** 同一批指标查询还没结束。没有读数的卡先保持加载中。 */
+  batchLoading?: boolean;
   alertCount: number | null;
   alertsOpen: boolean;
   alertEvents: HostAlertRailEvent[];
@@ -72,6 +75,7 @@ export default function OverviewPane({
   metricMap,
   pendingMetricNames,
   booting,
+  batchLoading = false,
   alertCount,
   alertsOpen,
   alertEvents,
@@ -99,6 +103,11 @@ export default function OverviewPane({
   const cpu = mssqlLatest(metricMap, MSSQL_PRO_NAMES.processCpu);
   const uptime = formatMssqlUptime(mssqlLatest(metricMap, MSSQL_PRO_NAMES.uptime));
 
+  const holdEmpty = (name: string, present: boolean) => mssqlDeferEmpty(
+    present,
+    pendingMetricNames.has(name),
+    batchLoading
+  );
   const cards = useMemo<KpiTileModel[]>(() => {
     const jump = (key: string) => {
       const target = mssqlKpiJump(key);
@@ -111,6 +120,7 @@ export default function OverviewPane({
         key: 'connections',
         label: '用户连接数',
         value: connections == null ? EMPTY : formatCount(connections, '个'),
+        busy: holdEmpty(MSSQL_PRO_NAMES.connections, connections != null),
         tone: connections == null ? undefined : MSSQL_PRO_PALETTE.indigo,
         info: <MssqlHint kind="mssql-kpi-connections" title="用户连接数" body="当前连到本实例的用户会话个数。" />,
         ...jump('connections')
@@ -119,6 +129,7 @@ export default function OverviewPane({
         key: 'batch',
         label: '批处理请求速率',
         value: batch == null ? EMPTY : joinMetric(batch, 'cps'),
+        busy: holdEmpty(MSSQL_PRO_NAMES.batch, batch != null),
         tone: batch == null ? undefined : MSSQL_PRO_PALETTE.emerald,
         info: <MssqlHint kind="mssql-kpi-batch" title="批处理请求速率" body="每秒完成的批处理请求数，反映实例的请求繁忙程度。" />,
         ...jump('batch')
@@ -127,6 +138,7 @@ export default function OverviewPane({
         key: 'hit',
         label: '缓冲池命中率',
         value: hit == null ? EMPTY : formatPercentPoint(hit),
+        busy: holdEmpty(MSSQL_PRO_NAMES.hit, hit != null),
         tone: hit == null ? undefined : MSSQL_PRO_PALETTE.emerald,
         info: <MssqlHint kind="mssql-kpi-hit" title="缓冲池命中率" body={HIT_BODY} />,
         ...jump('hit')
@@ -135,6 +147,7 @@ export default function OverviewPane({
         key: 'cpu',
         label: '进程 CPU',
         value: cpu == null ? EMPTY : formatPercentPoint(cpu),
+        busy: holdEmpty(MSSQL_PRO_NAMES.processCpu, cpu != null),
         tone: cpu == null ? undefined : MSSQL_PRO_PALETTE.blue,
         info: <MssqlHint kind="mssql-kpi-cpu" title="进程 CPU" body="SQL Server 进程自身占用的计算资源比例，按近 5 分钟平均。与整机 CPU 不是同一口径。" />,
         ...jump('cpu')
@@ -143,6 +156,7 @@ export default function OverviewPane({
         key: 'uptime',
         label: '运行时间',
         value: uptime ?? EMPTY,
+        busy: holdEmpty(MSSQL_PRO_NAMES.uptime, uptime != null),
         tone: uptime == null ? undefined : MSSQL_PRO_PALETTE.indigo,
         info: <MssqlHint kind="mssql-kpi-uptime" title="运行时间" body="实例自上次启动以来已持续运行的时间。" />
       },
@@ -157,7 +171,7 @@ export default function OverviewPane({
       }
     ];
     return metricCards;
-  }, [alertCount, alertsOpen, batch, connections, cpu, hit, onOpenAlerts, onOpenFocus, uptime]);
+  }, [alertCount, alertsOpen, batch, batchLoading, connections, cpu, hit, onOpenAlerts, onOpenFocus, pendingMetricNames, uptime]);
 
   const loadingTiles: KpiTileModel[] = [
     { key: 'connections', label: '用户连接数', value: '' },
@@ -190,6 +204,7 @@ export default function OverviewPane({
             cta="查看读写延迟"
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             onOpen={onOpenFocus}
           />
           <FocusCard
@@ -202,6 +217,7 @@ export default function OverviewPane({
             cta="查看页寿命"
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             onOpen={onOpenFocus}
           />
           <CountFocusCard
@@ -215,6 +231,7 @@ export default function OverviewPane({
             windowTotal={false}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             onOpen={onOpenFocus}
           />
           <CountFocusCard
@@ -228,6 +245,7 @@ export default function OverviewPane({
             windowTotal
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             onOpen={onOpenFocus}
           />
         </div>
@@ -246,6 +264,7 @@ export default function OverviewPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             counts
           />
           <MssqlTrend
@@ -260,6 +279,7 @@ export default function OverviewPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="cpu"
@@ -283,6 +303,7 @@ export default function OverviewPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -300,6 +321,7 @@ function FocusCard({
   cta,
   metricMap,
   pending,
+  batchLoading,
   onOpen
 }: {
   cardKey: string;
@@ -311,17 +333,26 @@ function FocusCard({
   cta: string;
   metricMap: MssqlMetricMap;
   pending: ReadonlySet<string>;
+  batchLoading: boolean;
   onOpen: (anchor: string) => void;
 }) {
   const plotted = mssqlMerged(metricMap, [{ name: metric, label }]);
   const latest = mssqlLatest(metricMap, metric);
   const samples = seriesSampleValues(plotted);
-  const loading = pending.has(metric) && plotted.length === 0 && latest == null;
+  const loading = mssqlDeferEmpty(
+    plotted.length > 0 || latest != null,
+    pending.has(metric),
+    batchLoading
+  );
   const axis = describeFocusAxis(unit, samples);
   const target = mssqlFocusJump(cardKey);
   return (
     <ProFocusCard>
-      <div className={proChromeClass.shortcutCopy} data-mssql-focus={cardKey}>
+      <div
+        className={proChromeClass.shortcutCopy}
+        data-mssql-focus={cardKey}
+        data-mssql-face={loading ? 'loading' : latest == null ? 'empty' : 'ready'}
+      >
         <FocusShortcutTitle
           label={label}
           unit={axis.unitLabel}
@@ -367,6 +398,7 @@ function CountFocusCard({
   windowTotal,
   metricMap,
   pending,
+  batchLoading,
   onOpen
 }: {
   cardKey: string;
@@ -379,6 +411,7 @@ function CountFocusCard({
   windowTotal: boolean;
   metricMap: MssqlMetricMap;
   pending: ReadonlySet<string>;
+  batchLoading: boolean;
   onOpen: (anchor: string) => void;
 }) {
   const plotted = mssqlCountMerged(metricMap, [{ name: metric, label }]);
@@ -390,11 +423,16 @@ function CountFocusCard({
   const samples = seriesSampleValues(shown);
   const countBounds = mssqlCountAxisBounds(samples);
   const softened = quiet(windowTotal ? (samples.every((value) => value === 0) ? 0 : latest) : latest, samples);
-  const loading = pending.has(metric) && !hasPoints;
+  const loading = mssqlDeferEmpty(hasPoints, pending.has(metric), batchLoading);
   const target = mssqlFocusJump(cardKey);
   return (
     <ProFocusCard>
-      <div className={proChromeClass.shortcutCopy} data-mssql-focus={cardKey} data-mssql-focus-weight={softened ? 'quiet' : 'normal'}>
+      <div
+        className={proChromeClass.shortcutCopy}
+        data-mssql-focus={cardKey}
+        data-mssql-focus-weight={softened ? 'quiet' : 'normal'}
+        data-mssql-face={loading ? 'loading' : latest == null ? 'empty' : 'ready'}
+      >
         <FocusShortcutTitle
           label={label}
           unit={unitWord}

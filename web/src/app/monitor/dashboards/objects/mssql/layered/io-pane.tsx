@@ -13,7 +13,7 @@ import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
 import { MSSQL_TOP_DB_QUERIES } from '../queries';
 import { topDbBars } from '../parse';
 import styles from '../index.module.scss';
-import { mssqlCardFace } from './card-face';
+import { mssqlCardFace, mssqlDeferEmpty } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
 import {
@@ -38,6 +38,7 @@ type RankKey = keyof typeof RANK_LABEL;
 export default function IoPane({
   metricMap,
   pendingMetricNames,
+  batchLoading = false,
   instanceId,
   monitorObjectId,
   idValues,
@@ -48,6 +49,7 @@ export default function IoPane({
 }: {
   metricMap: MssqlMetricMap;
   pendingMetricNames: ReadonlySet<string>;
+  batchLoading?: boolean;
   instanceId: Key;
   monitorObjectId: Key;
   idValues: string[];
@@ -62,10 +64,12 @@ export default function IoPane({
   const [rankPhase, setRankPhase] = useState<'loading' | 'ready'>('loading');
   const usage = readVolumeUsage(metricMap);
   const usagePoints = volumeUsagePoints(metricMap);
-  const volumePending = (
+  const volumePending = mssqlDeferEmpty(
+    usage.state !== 'empty',
     pendingMetricNames.has(MSSQL_PRO_NAMES.volumeUsed)
-    || pendingMetricNames.has(MSSQL_PRO_NAMES.volumeTotal)
-  ) && usage.state === 'empty';
+      || pendingMetricNames.has(MSSQL_PRO_NAMES.volumeTotal),
+    batchLoading
+  );
   const volumeFace = mssqlCardFace(volumePending, usage.state !== 'empty');
   const identity = `${idValues.join('\u0001')}|${instanceIdKeys.join('\u0001')}|${reloadKey}`;
 
@@ -112,7 +116,10 @@ export default function IoPane({
 
   const selected = MSSQL_TOP_DB_QUERIES.find((item) => item.key === rankKey) || MSSQL_TOP_DB_QUERIES[0];
   const rankItems = bars[selected.key] || [];
-  const rankFace = mssqlCardFace(rankPhase === 'loading', rankItems.length > 0);
+  const rankFace = mssqlCardFace(
+    mssqlDeferEmpty(rankItems.length > 0, rankPhase === 'loading', batchLoading),
+    rankItems.length > 0
+  );
   const usedText = usage.used == null ? '' : joinMetric(usage.used, 'bytes');
   const totalText = usage.total == null ? '' : joinMetric(usage.total, 'bytes');
   const note = usedText && totalText ? `已用 ${usedText} / 总量 ${totalText}` : '';
@@ -141,6 +148,7 @@ export default function IoPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="throughput"
@@ -162,6 +170,7 @@ export default function IoPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -179,6 +188,7 @@ export default function IoPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
           <MssqlTrend
             anchor="tempdb"
@@ -201,6 +211,7 @@ export default function IoPane({
             ]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
           />
         </div>
       </ProSection>
@@ -258,6 +269,7 @@ export default function IoPane({
             }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
+            batchLoading={batchLoading}
             loading={volumeFace === 'loading'}
           />
         </div>
