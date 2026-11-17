@@ -201,7 +201,7 @@ const ScreenDataConfig = memo(
     previewSingleStyle?: SingleValueStyleConfig;
     previewHost?: HTMLElement | null;
     onDirtyChange?: (dirty: boolean) => void;
-    onConfirm?: (values: WidgetConfig) => void;
+    onConfirm?: (values: WidgetConfig) => void | false;
     onClose?: () => void;
   }) {
     return (
@@ -886,9 +886,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         setDataFormDirty(false);
         setSelectedItemId(created?.id ?? null);
         setInspectorTab("style");
+        return;
       } catch (error) {
         console.error("Failed to add screen widget:", error);
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
+        return false;
       }
     },
     [commitDocument, projectDocument, t],
@@ -1317,7 +1319,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
 
       if (!isScreenWidgetChartType(nextChartType)) {
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
-        return;
+        return false;
       }
 
       const nextItem = {
@@ -1345,17 +1347,17 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       );
       setDataFormDirty(false);
       message.success(t("opsAnalysis.screen.dataApplied"));
+      return;
     },
     [commitDocument, projectDocument, t],
   );
 
   const handleDataConfigClose = useCallback(() => {
+    // 选中还在时，右侧栏会立刻再打开，未应用表单也还挂着。退出配置必须同时取消选中。
     setDataFormDirty(false);
-    setPendingConfigItem((current) => {
-      if (!current) return current;
-      setInspectorTab("style");
-      return null;
-    });
+    setPendingConfigItem(null);
+    setSelectedItemId(null);
+    setInspectorCollapsed(true);
   }, []);
 
   const handleTopologyLayoutChange = useCallback(

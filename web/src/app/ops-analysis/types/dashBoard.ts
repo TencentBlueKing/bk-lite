@@ -302,7 +302,8 @@ export interface ViewConfigProps {
   open: boolean;
   /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
   item?: ViewConfigItem | null;
-  onConfirm?: (values: WidgetConfig) => void;
+  /** 同步返回 false 表示调用方拒绝了这份配置，表单保持未应用状态。异步确认不参与这次拒绝。 */
+  onConfirm?: (values: WidgetConfig) => void | false | Promise<void>;
   onClose?: () => void;
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
