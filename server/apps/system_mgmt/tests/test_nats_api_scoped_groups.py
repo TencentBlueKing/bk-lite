@@ -322,6 +322,62 @@ def test_get_assignable_groups_expands_persisted_root_to_unlisted_descendant():
     assert set(result["data"]) == {root.id, child.id}
 
 
+@pytest.mark.django_db
+def test_auditor_authorized_groups_include_unjoined_current_team():
+    from apps.system_mgmt.models import Group, User
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    own = Group.objects.create(name="auditor-own", parent_id=0)
+    foreign = Group.objects.create(name="auditor-foreign", parent_id=0)
+    auditor_role = ensure_platform_auditor_role()
+    User.objects.create(
+        username="platform-auditor",
+        password="x",
+        display_name="auditor",
+        email="platform-auditor@example.com",
+        domain="domain.com",
+        group_list=[own.id],
+        role_list=[auditor_role.id],
+    )
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "platform-auditor",
+            "domain": "domain.com",
+            "current_team": foreign.id,
+            "is_superuser": True,
+        }
+    )
+
+    assert result["result"] is True
+    assert result["is_superuser"] is False
+    assert foreign.id in result["data"]
+
+
+@pytest.mark.django_db
+def test_auditor_assignable_groups_include_unjoined_orgs():
+    from apps.system_mgmt.models import Group, User
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    own = Group.objects.create(name="auditor-assign-own", parent_id=0)
+    foreign = Group.objects.create(name="auditor-assign-foreign", parent_id=0)
+    auditor_role = ensure_platform_auditor_role()
+    User.objects.create(
+        username="assign-auditor",
+        password="x",
+        display_name="auditor",
+        email="assign-auditor@example.com",
+        domain="domain.com",
+        group_list=[own.id],
+        role_list=[auditor_role.id],
+    )
+
+    result = get_assignable_groups({"username": "assign-auditor", "domain": "domain.com", "is_superuser": True})
+
+    assert result["result"] is True
+    assert set(result["data"]) >= {own.id, foreign.id}
+
+
 USER_DIRECTORY_SENSITIVE_SENTINELS = (
     "email",
     "phone",

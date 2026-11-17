@@ -76,6 +76,7 @@ interface UserDetailPayload {
   manager_username?: string;
   manager_display_name?: string;
   is_superuser?: boolean;
+  is_auditor?: boolean;
   custom_fields?: DetailCustomField[];
   groups?: DetailGroup[];
   effective_roles?: DetailRole[];
@@ -664,6 +665,10 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
               {detail.is_superuser ? (
                 <span className={`inline-block px-2.5 py-1 ${PRIMARY_CHIP}`}>
                   {t('system.user.form.superuser')}
+                </span>
+              ) : detail.is_auditor ? (
+                <span className={`inline-block px-2.5 py-1 ${PRIMARY_CHIP}`}>
+                  {t('system.user.form.auditor')}
                 </span>
               ) : (detail.effective_roles || []).length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />

@@ -42,6 +42,8 @@ interface ModalConfig {
   groupTreeData?: TreeSelectNode[];
 }
 
+export type UserKind = 'normal' | 'superuser' | 'auditor';
+
 interface UseUserModalDataReturn {
   formRef: React.RefObject<FormInstance | null>;
   visible: boolean;
@@ -56,15 +58,16 @@ interface UseUserModalDataReturn {
   groupRules: GroupRules;
   organizationRoleIds: number[];
   organizationRoleSourceMap: Record<string, string>;
+  userKind: UserKind;
   isSuperuser: boolean;
+  isAuditor: boolean;
   isSyncedUser: boolean;
   currentUserId: string;
   setSelectedGroups: (groups: React.Key[]) => void;
   setSelectedRoles: (roles: number[]) => void;
   handleRoleChange: (newRoleIds: React.Key[]) => void;
-  handleSuperuserChange: (value: boolean) => void;
+  handleUserKindChange: (value: UserKind) => void;
   setGroupRules: (rules: GroupRules) => void;
-  setIsSuperuser: (value: boolean) => void;
   showModal: (config: ModalConfig) => void;
   handleCancel: () => void;
   handleConfirm: (onSuccess: () => void) => Promise<void>;
@@ -91,11 +94,14 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [groupRules, setGroupRules] = useState<GroupRules>({});
   const [organizationRoleIds, setOrganizationRoleIds] = useState<number[]>([]);
   const [organizationRoleSourceMap, setOrganizationRoleSourceMap] = useState<Record<string, string>>({});
-  const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
+  const [userKind, setUserKind] = useState<UserKind>('normal');
   const [isSyncedUser, setIsSyncedUser] = useState(false);
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
-  // 普通→超级管理员切换时缓存个人角色；切回普通时恢复，避免来回切换清空
+  // 普通→特权身份切换时缓存个人角色；切回普通时恢复，避免来回切换清空
   const cachedPersonalRoleIds = useRef<number[]>([]);
+  const isSuperuser = userKind === 'superuser';
+  const isAuditor = userKind === 'auditor';
+  const privileged = isSuperuser || isAuditor;
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
   const { batchGetGroupDetailWithRoles } = useGroupApi();
@@ -183,7 +189,7 @@ export function useUserModalData(): UseUserModalDataReturn {
 
           setPersonalRoleIds(personalRoles);
           setSelectedRoles(allRoles);
-          setIsSuperuser(userDetail?.is_superuser || false);
+          setUserKind(userDetail?.is_superuser ? 'superuser' : userDetail?.is_auditor ? 'auditor' : 'normal');
           setIsSyncedUser(userDetail.sync_source != null);
 
           const formValues = buildFormValuesFromUserDetail(userDetail, allRoles, userGroupIds);
@@ -209,7 +215,7 @@ export function useUserModalData(): UseUserModalDataReturn {
       setType(modalType);
       setGroupTreeData(nextGroupTreeData);
       formRef.current?.resetFields();
-      setIsSuperuser(false);
+      setUserKind('normal');
       setIsSyncedUser(false);
 
       if (modalType === 'edit' && userId) {
@@ -240,6 +246,7 @@ export function useUserModalData(): UseUserModalDataReturn {
             zoneinfo: 'Asia/Shanghai',
             locale: 'zh-Hans',
             is_superuser: false,
+            user_kind: 'normal',
           });
         }, 0);
       }
@@ -262,17 +269,17 @@ export function useUserModalData(): UseUserModalDataReturn {
         setIsSubmitting(true);
         const formData = await formRef.current?.validateFields();
 
-        if (!isSuperuser && selectedGroups.length === 0) {
+        if (!privileged && selectedGroups.length === 0) {
           message.error(t('system.user.form.groupSelectionRequired'));
           return;
         }
 
-        if (!isSuperuser && !hasNormalGroupSelection(selectedGroups, groupTreeData)) {
+        if (!privileged && !hasNormalGroupSelection(selectedGroups, groupTreeData)) {
           message.error(t('system.user.form.normalGroupRequired'));
           return;
         }
 
-        if (type === 'edit' && !isSuperuser && selectedRoles.length === 0) {
+        if (type === 'edit' && !privileged && selectedRoles.length === 0) {
           message.error(t('common.inputRequired'));
           return;
         }
@@ -283,10 +290,12 @@ export function useUserModalData(): UseUserModalDataReturn {
             groups: selectedGroups,
             roles: selectedRoles,
             is_superuser: isSuperuser,
+            is_auditor: isAuditor,
           },
           personalRoleIds,
           groupRules,
-          isSuperuser
+          isSuperuser,
+          isAuditor
         );
 
         if (type === 'edit') {
@@ -333,7 +342,9 @@ export function useUserModalData(): UseUserModalDataReturn {
       editUser,
       groupRules,
       isAnyFieldEditing,
+      isAuditor,
       isSuperuser,
+      privileged,
       personalRoleIds,
       selectedGroups,
       selectedRoles,
@@ -354,18 +365,20 @@ export function useUserModalData(): UseUserModalDataReturn {
     [organizationRoleIds]
   );
 
-  const handleSuperuserChange = useCallback(
-    (value: boolean) => {
-      setIsSuperuser(value);
+  const handleUserKindChange = useCallback(
+    (value: UserKind) => {
+      const nextPrivileged = value === 'superuser' || value === 'auditor';
+      const wasPrivileged = userKind === 'superuser' || userKind === 'auditor';
+      setUserKind(value);
 
       let nextSelectedRoles: number[];
-      if (value) {
-        // 普通→超级管理员：备份个人角色后清空
-        cachedPersonalRoleIds.current = personalRoleIds;
+      if (nextPrivileged) {
+        if (!wasPrivileged) {
+          cachedPersonalRoleIds.current = personalRoleIds;
+        }
         setPersonalRoleIds([]);
         nextSelectedRoles = [];
       } else {
-        // 超级管理员→普通：恢复之前备份的个人角色，并合并到 selectedRoles
         const restoredPersonalRoleIds = cachedPersonalRoleIds.current;
         setPersonalRoleIds(restoredPersonalRoleIds);
         nextSelectedRoles = mergeRoles(restoredPersonalRoleIds, organizationRoleIds);
@@ -374,11 +387,12 @@ export function useUserModalData(): UseUserModalDataReturn {
       setSelectedRoles(nextSelectedRoles);
 
       formRef.current?.setFieldsValue({
-        is_superuser: value,
+        user_kind: value,
+        is_superuser: value === 'superuser',
         roles: nextSelectedRoles,
       });
     },
-    [personalRoleIds, organizationRoleIds]
+    [personalRoleIds, organizationRoleIds, userKind]
   );
 
   const handleGroupChange = useCallback(
@@ -420,15 +434,16 @@ export function useUserModalData(): UseUserModalDataReturn {
     groupRules,
     organizationRoleIds,
     organizationRoleSourceMap,
+    userKind,
     isSuperuser,
+    isAuditor,
     isSyncedUser,
     currentUserId,
     setSelectedGroups,
     setSelectedRoles,
     handleRoleChange,
-    handleSuperuserChange,
+    handleUserKindChange,
     setGroupRules,
-    setIsSuperuser,
     showModal,
     handleCancel,
     handleConfirm,
