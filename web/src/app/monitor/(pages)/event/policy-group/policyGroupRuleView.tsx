@@ -47,6 +47,103 @@ const PLUGIN_TAG: Record<string, { color: string; label: string }> = {
   'Windows WMI': { color: 'purple', label: 'Windows WMI' },
 };
 
+export const templateIdsFromRules = (
+  rules: Array<{ source_template_id?: number | null }>
+): number[] => {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const rule of rules) {
+    const id = Number(rule.source_template_id);
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+};
+
+export const diffGroupTemplates = (existingIds: number[], selectedIds: number[]) => {
+  const existing = new Set(existingIds);
+  const selected = new Set(selectedIds);
+  return {
+    addedIds: selectedIds.filter((id) => !existing.has(id)),
+    removedIds: existingIds.filter((id) => !selected.has(id)),
+  };
+};
+
+export const rulesForTemplateIds = (rules: PolicyGroupRule[], templateIds: number[]) => {
+  const wanted = new Set(templateIds);
+  return rules.filter((rule) => wanted.has(Number(rule.source_template_id)));
+};
+
+export interface PolicyGroupMemberPlugin {
+  id: number;
+  name: string;
+}
+
+export interface PolicyGroupMemberTemplate {
+  id?: number | null;
+  rule_id: number;
+  name: string;
+  plugin_name: string;
+}
+
+export interface PolicyGroupMember {
+  instance_id: string;
+  name: string;
+  plugins?: PolicyGroupMemberPlugin[];
+  templates?: PolicyGroupMemberTemplate[];
+}
+
+export const memberTemplateFilterOptions = (rules: PolicyGroupRule[]) => {
+  const groups = new Map<string, PolicyGroupRule[]>();
+  for (const rule of rules) {
+    const plugin = rule.plugin_name || '其他';
+    const list = groups.get(plugin) || [];
+    list.push(rule);
+    groups.set(plugin, list);
+  }
+  return Array.from(groups.entries()).map(([plugin, items]) => {
+    const pluginLabel = PLUGIN_TAG[plugin]?.label || plugin;
+    return {
+      label: pluginLabel,
+      options: [
+        { label: `${pluginLabel} 全部对象`, value: `plugin:${plugin}` },
+        ...items.map((item) => ({
+          label: item.name,
+          value: item.source_template_id
+            ? `template:${item.source_template_id}`
+            : `rule:${item.id}`,
+        })),
+      ],
+    };
+  });
+};
+
+export const filterPolicyGroupMembers = (
+  members: PolicyGroupMember[],
+  opts: { keyword: string; filter: string | null }
+) => {
+  const keyword = opts.keyword.trim().toLowerCase();
+  const filter = opts.filter || '';
+  return members.filter((item) => {
+    if (keyword && !String(item.name || '').toLowerCase().includes(keyword)) return false;
+    if (!filter) return true;
+    if (filter.startsWith('plugin:')) {
+      const name = filter.slice('plugin:'.length);
+      return (item.plugins || []).some((plugin) => plugin.name === name);
+    }
+    if (filter.startsWith('template:')) {
+      const id = Number(filter.slice('template:'.length));
+      return (item.templates || []).some((template) => Number(template.id) === id);
+    }
+    if (filter.startsWith('rule:')) {
+      const id = Number(filter.slice('rule:'.length));
+      return (item.templates || []).some((template) => Number(template.rule_id) === id);
+    }
+    return true;
+  });
+};
+
 export const pluginCounts = (rules: Array<{ plugin_name?: string }>) => {
   const counts: Record<string, number> = {};
   rules.forEach((item) => {

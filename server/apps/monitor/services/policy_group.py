@@ -403,36 +403,40 @@ class PolicyGroupService:
             return group
 
     @staticmethod
-    def add_templates(group, templates, operator="system"):
-        """往已有组追加模板规则，覆盖判定复用 sync_coverage。"""
-        if not templates:
-            raise BaseAppException("至少选择一条策略模板")
+    def set_templates(group, templates, operator="system"):
+        """按目标模板集合同步组内规则。新增走 _create_rule 和 sync_coverage，移除走 _retire_policy。"""
         existing_rules = list(group.rules.select_related("policy", "plugin"))
-        already = {rule.source_template_id for rule in existing_rules if rule.source_template_id}
-        incoming = []
+        desired = []
         seen = set()
         for template in templates:
             if template.monitor_object_id != group.monitor_object_id:
                 raise BaseAppException("模板不属于该监控对象")
-            if template.id in already or template.id in seen:
+            if template.id in seen:
                 continue
             seen.add(template.id)
-            incoming.append(template)
-        skipped = len(templates) - len(incoming)
-        if not incoming:
-            return {"added": 0, "skipped": skipped, "rule_ids": []}
+            desired.append(template)
+        desired_ids = {template.id for template in desired}
+        already = {rule.source_template_id for rule in existing_rules if rule.source_template_id}
+        incoming = [template for template in desired if template.id not in already]
+        removing = [rule for rule in existing_rules if rule.source_template_id and rule.source_template_id not in desired_ids]
+        if not incoming and not removing:
+            return {"added": 0, "removed": 0, "rule_ids": []}
         detection = group_detection_state(existing_rules)
         sibling = existing_rules[0].policy if existing_rules else None
         with transaction.atomic():
             created = [PolicyGroupService._create_rule(group, template, operator) for template in incoming]
-            if sibling is not None:
+            if created and sibling is not None:
                 PolicyGroupService._stamp_new_rules_from_group(created, sibling, operator)
                 if detection.get("schedule_uniform") and detection.get("schedule"):
                     PolicyGroupService._apply_group_schedule(created, detection["schedule"], operator)
-                if detection.get("no_data_uniform"):
-                    PolicyGroupService._apply_group_no_data(existing_rules + created, detection["no_data"], operator)
-            PolicyGroupService.sync_coverage(group)
-        return {"added": len(created), "skipped": skipped, "rule_ids": [rule.id for rule in created]}
+            for rule in removing:
+                PolicyGroupService._retire_policy(rule.policy, operator)
+            remaining = list(group.rules.select_related("policy", "plugin"))
+            if remaining and detection.get("no_data_uniform") and (created or removing):
+                PolicyGroupService._apply_group_no_data(remaining, detection["no_data"], operator)
+            if created:
+                PolicyGroupService.sync_coverage(group)
+        return {"added": len(created), "removed": len(removing), "rule_ids": [rule.id for rule in created]}
 
     @staticmethod
     def _stamp_new_rules_from_group(rules, sibling, operator):
@@ -519,6 +523,47 @@ class PolicyGroupService:
             policy_group__isnull=False,
         ).select_related("policy_group")
         return {row.monitor_instance_id: {"id": row.policy_group_id, "name": row.policy_group.name} for row in rows}
+
+    @staticmethod
+    def list_members(group):
+        """组成员，并带上当前覆盖下实际生效的插件和策略模板。"""
+        memberships = list(group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).select_related("monitor_instance"))
+        rules = list(group.rules.select_related("policy", "plugin"))
+        alias_to_id = {}
+        plugins_by_instance = {}
+        templates_by_instance = {}
+        for membership in memberships:
+            instance_id = membership.monitor_instance.id
+            plugins_by_instance[instance_id] = {}
+            templates_by_instance[instance_id] = []
+            for alias in PolicyGroupService.instance_id_aliases(instance_id):
+                alias_to_id[alias] = instance_id
+        for rule in rules:
+            values = (rule.policy.source or {}).get("values") or []
+            hit_ids = set()
+            for value in values:
+                for alias in PolicyGroupService.instance_id_aliases(value):
+                    instance_id = alias_to_id.get(alias)
+                    if instance_id:
+                        hit_ids.add(instance_id)
+            template = {
+                "id": rule.source_template_id,
+                "rule_id": rule.id,
+                "name": rule.name,
+                "plugin_name": rule.plugin.name,
+            }
+            for instance_id in hit_ids:
+                plugins_by_instance[instance_id][rule.plugin_id] = rule.plugin.name
+                templates_by_instance[instance_id].append(template)
+        return [
+            {
+                "instance_id": membership.monitor_instance.id,
+                "name": membership.monitor_instance.name,
+                "plugins": [{"id": plugin_id, "name": name} for plugin_id, name in plugins_by_instance[membership.monitor_instance.id].items()],
+                "templates": templates_by_instance[membership.monitor_instance.id],
+            }
+            for membership in memberships
+        ]
 
     @staticmethod
     def sync_coverage(group):

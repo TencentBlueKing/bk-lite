@@ -19,6 +19,7 @@ from apps.monitor.models import (
     MonitorPolicy,
     PolicyGroupDefault,
     PolicyGroupMembership,
+    PolicyGroupRule,
     PolicyInstanceBaseline,
     PolicyTemplate,
 )
@@ -358,7 +359,32 @@ def test_join_covers_only_the_matching_plugin_and_one_group():
     assert MonitorPolicy.objects.filter(group_rule__group=group).count() == 2
 
 
-def test_add_templates_covers_matching_plugin_and_skips_existing():
+def test_list_members_returns_effective_templates_per_plugin():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    windows = _instance(monitor_object, "win-01", 1)
+    linux = _instance(monitor_object, "web-01", 1)
+    _collect(windows, wmi)
+    _collect(linux, ssh)
+    PolicyGroupService.join(instance=windows, group=group)
+    PolicyGroupService.join(instance=linux, group=group)
+
+    rows = {item["name"]: item for item in PolicyGroupService.list_members(group)}
+
+    assert [item["name"] for item in rows["win-01"]["plugins"]] == ["WMI"]
+    assert [item["name"] for item in rows["win-01"]["templates"]] == ["WMI CPU"]
+    assert [item["name"] for item in rows["web-01"]["plugins"]] == ["SSH"]
+    assert [item["name"] for item in rows["web-01"]["templates"]] == ["SSH CPU"]
+
+
+def test_set_templates_covers_matching_plugin_and_is_idempotent():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")
     ssh = _plugin(monitor_object, "SSH")
@@ -384,12 +410,13 @@ def test_add_templates_covers_matching_plugin_and_skips_existing():
     ssh_template = _template(monitor_object, ssh, "SSH CPU")
     disk = _template(monitor_object, wmi, "WMI 磁盘")
 
-    first = PolicyGroupService.add_templates(group, [ssh_template, disk, cpu])
-    second = PolicyGroupService.add_templates(group, [ssh_template])
+    first = PolicyGroupService.set_templates(group, [ssh_template, disk, cpu])
+    second = PolicyGroupService.set_templates(group, [ssh_template, disk, cpu])
 
     assert first["added"] == 2
-    assert first["skipped"] == 1
+    assert first["removed"] == 0
     assert second["added"] == 0
+    assert second["removed"] == 0
     assert group.rules.count() == 3
     cpu_policy = group.rules.select_related("policy").get(name="WMI CPU").policy
     disk_policy = group.rules.select_related("policy").get(name="WMI 磁盘").policy
@@ -403,6 +430,63 @@ def test_add_templates_covers_matching_plugin_and_skips_existing():
     assert PeriodicTask.objects.get(name=f"scan_policy_task_{cpu_policy.id}").enabled is True
     assert PeriodicTask.objects.get(name=f"scan_policy_task_{disk_policy.id}").enabled is True
     assert PeriodicTask.objects.get(name=f"scan_policy_task_{ssh_policy.id}").enabled is False
+
+
+def test_set_templates_removes_unchecked_and_keeps_orphan():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    cpu = _template(monitor_object, wmi, "WMI CPU")
+    disk = _template(monitor_object, wmi, "WMI 磁盘")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[cpu, disk],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    cpu_rule = group.rules.select_related("policy").get(name="WMI CPU")
+    cpu_policy_id = cpu_rule.policy_id
+    alert = MonitorAlert.objects.create(
+        policy_id=cpu_policy_id,
+        monitor_instance_id=host.id,
+        status="new",
+        alert_type="alert",
+    )
+    orphan_policy = MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="手工规则",
+        organizations=[1],
+        source={"type": "instance", "values": [host.id]},
+        enable=True,
+    )
+    PolicyGroupRule.objects.create(
+        group=group,
+        plugin=wmi,
+        source_template=None,
+        policy=orphan_policy,
+        name="手工规则",
+    )
+
+    result = PolicyGroupService.set_templates(group, [disk])
+
+    assert result["added"] == 0
+    assert result["removed"] == 1
+    assert set(group.rules.values_list("name", flat=True)) == {"WMI 磁盘", "手工规则"}
+    assert not MonitorPolicy.objects.filter(id=cpu_policy_id).exists()
+    assert not PeriodicTask.objects.filter(name=f"scan_policy_task_{cpu_policy_id}").exists()
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    disk_policy = group.rules.select_related("policy").get(name="WMI 磁盘").policy
+    assert disk_policy.source["values"] == [host.id]
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{disk_policy.id}").enabled is True
+    orphan_policy.refresh_from_db()
+    assert orphan_policy.source["values"] == [host.id]
+
+    emptied = PolicyGroupService.set_templates(group, [])
+    assert emptied["removed"] == 1
+    assert list(group.rules.values_list("name", flat=True)) == ["手工规则"]
 
 
 def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():

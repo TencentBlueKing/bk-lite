@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Pagination as AntPagination, Popconfirm, Segmented, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Pagination as AntPagination, Popconfirm, Popover, Segmented, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -13,14 +14,14 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
-import { ColumnItem, ObjectItem, Pagination, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
+import { ColumnItem, ObjectItem, Pagination, TreeItem, UserItem } from '@/app/monitor/types';
 import { findLabelById } from '@/app/monitor/utils/common';
 import CustomTable from '@/components/custom-table';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
-import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
+import { MODULE_OBJECT_QUERY_PARAM, resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
 import assetStyle from '../strategy/index.module.scss';
 import SelectCard from '../strategy/detail/selectCard';
@@ -42,8 +43,16 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
   VIEW_MODE_OPTIONS,
   buildPolicyGroupRuleColumns,
+  diffGroupTemplates,
   filterAndSortRules,
+  filterPolicyGroupMembers,
+  memberTemplateFilterOptions,
   pluginCounts,
+  renderPluginTag,
+  rulesForTemplateIds,
+  templateIdsFromRules,
+  type PolicyGroupMember,
+  type PolicyGroupMemberTemplate,
   type PolicyGroupRule,
 } from './policyGroupRuleView';
 
@@ -163,7 +172,7 @@ const PolicyGroupPage: React.FC = () => {
     setDefaultPolicyGroup,
     deletePolicyGroup,
     createPolicyGroup,
-    addPolicyGroupTemplates,
+    setPolicyGroupTemplates,
   } = useIntegrationApi();
   const { getPolicyTemplate, getSystemChannelList } = useEventApi();
   const currentGroupId = useUserInfoContext()?.selectedGroup?.id;
@@ -187,13 +196,14 @@ const PolicyGroupPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
-  const [addingToGroup, setAddingToGroup] = useState<PolicyGroupRow | null>(null);
+  const [adjustingGroup, setAdjustingGroup] = useState<PolicyGroupRow | null>(null);
   const [enableSavingId, setEnableSavingId] = useState<number | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
   const [memberGroup, setMemberGroup] = useState<PolicyGroupRow | null>(null);
-  const [members, setMembers] = useState<TableDataItem[]>([]);
+  const [members, setMembers] = useState<PolicyGroupMember[]>([]);
+  const [memberTemplateFilter, setMemberTemplateFilter] = useState<string | null>(null);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberKeyword, setMemberKeyword] = useState('');
   const [memberPagination, setMemberPagination] = useState<Pagination>({
@@ -341,6 +351,7 @@ const PolicyGroupPage: React.FC = () => {
   const openMembers = async (group: PolicyGroupRow) => {
     setMemberGroup(group);
     setMemberKeyword('');
+    setMemberTemplateFilter(null);
     setMemberPagination((prev) => ({ ...prev, current: 1 }));
     setMemberLoading(true);
     try {
@@ -348,7 +359,7 @@ const PolicyGroupPage: React.FC = () => {
         getPolicyGroupMembers(group.id),
         getPolicyGroups({ monitor_object_id: objectId, create_default: false }),
       ]);
-      setMembers(Array.isArray(memberRows) ? memberRows : []);
+      setMembers(Array.isArray(memberRows) ? (memberRows as PolicyGroupMember[]) : []);
       setSwitchGroups(Array.isArray(allGroups) ? allGroups : []);
     } finally {
       setMemberLoading(false);
@@ -443,51 +454,95 @@ const PolicyGroupPage: React.FC = () => {
   };
 
   const openCreate = async () => {
-    setAddingToGroup(null);
+    setAdjustingGroup(null);
     setCreateOpen(true);
     setCreateName('新建策略组');
     setSelectedTemplateIds([]);
     await loadTemplateOptions();
   };
 
-  const openAddRules = async (group: PolicyGroupRow) => {
-    setAddingToGroup(group);
+  const openAdjustRules = async (group: PolicyGroupRow) => {
+    setAdjustingGroup(group);
     setCreateOpen(true);
     setCreateName(group.name);
-    setSelectedTemplateIds([]);
+    setSelectedTemplateIds(templateIdsFromRules(group.rules || []));
     await loadTemplateOptions();
   };
 
-  const submitCreate = async () => {
-    const name = createName.trim();
-    if (selectedTemplateIds.length === 0) return;
+  const saveAdjust = async () => {
+    if (!adjustingGroup) return;
+    const targetId = adjustingGroup.id;
     setCreateSaving(true);
     try {
-      if (addingToGroup) {
-        const targetId = addingToGroup.id;
-        const result = await addPolicyGroupTemplates({
-          group_id: targetId,
-          template_ids: selectedTemplateIds,
-        });
-        const added = Number(result?.added || 0);
-        const skipped = Number(result?.skipped || 0);
-        if (added > 0) {
-          message.success(
-            skipped > 0
-              ? `已追加 ${added} 条规则，组内已有模板已跳过`
-              : `已追加 ${added} 条规则，按接入插件匹配到的实例开始扫描`
-          );
-        } else {
-          message.info('所选模板都已在组内');
-        }
+      const result = await setPolicyGroupTemplates({
+        group_id: targetId,
+        template_ids: selectedTemplateIds,
+      });
+      const added = Number(result?.added || 0);
+      const removed = Number(result?.removed || 0);
+      if (added > 0 && removed > 0) {
+        message.success(`已调整策略：新增 ${added} 条，移除 ${removed} 条`);
+      } else if (added > 0) {
+        message.success(`已新增 ${added} 条策略，按接入插件匹配到的实例开始扫描`);
+      } else if (removed > 0) {
+        message.success(`已从策略组移除 ${removed} 条策略`);
+      } else {
+        message.info('策略没有变化');
+      }
+      setCreateOpen(false);
+      setAdjustingGroup(null);
+      const items = await loadGroups(objectId);
+      const next = (items || []).find((item) => item.id === targetId);
+      if (next && ruleGroup?.id === targetId) setRuleGroup(next);
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  const submitCreate = async () => {
+    if (adjustingGroup) {
+      const existingIds = templateIdsFromRules(adjustingGroup.rules || []);
+      const { addedIds, removedIds } = diffGroupTemplates(existingIds, selectedTemplateIds);
+      if (addedIds.length === 0 && removedIds.length === 0) {
+        message.info('策略没有变化');
         setCreateOpen(false);
-        setAddingToGroup(null);
-        const items = await loadGroups(objectId);
-        const next = (items || []).find((item) => item.id === targetId);
-        if (next && ruleGroup?.id === targetId) setRuleGroup(next);
+        setAdjustingGroup(null);
         return;
       }
-      if (!name) return;
+      if (removedIds.length > 0) {
+        const removedRules = rulesForTemplateIds(adjustingGroup.rules || [], removedIds);
+        const alertCount = removedRules.reduce((sum, rule) => sum + (rule.open_alert_count || 0), 0);
+        Modal.confirm({
+          title: '确认移除策略',
+          zIndex: 1100,
+          content: (
+            <div>
+              <p>将从本策略组移除以下策略。对应扫描会停止，未恢复告警会结束。策略模板本身不会删除。</p>
+              <ul className="mb-0 mt-2 pl-5">
+                {removedRules.map((rule) => (
+                  <li key={rule.id}>
+                    {rule.name}
+                    {rule.open_alert_count ? `（${rule.open_alert_count} 条未恢复告警）` : ''}
+                  </li>
+                ))}
+              </ul>
+              {alertCount > 0 ? <p className="mb-0 mt-2">合计结束 {alertCount} 条未恢复告警。</p> : null}
+            </div>
+          ),
+          okText: '确认移除并保存',
+          cancelText: '返回修改',
+          okButtonProps: { danger: true },
+          onOk: () => saveAdjust(),
+        });
+        return;
+      }
+      await saveAdjust();
+      return;
+    }
+    const name = createName.trim();
+    if (!name || selectedTemplateIds.length === 0) return;
+    setCreateSaving(true);
+    try {
       await createPolicyGroup({ name, template_ids: selectedTemplateIds });
       message.success('已创建策略组。实例尚未加入');
       setCreateOpen(false);
@@ -701,22 +756,6 @@ const PolicyGroupPage: React.FC = () => {
           pluginCounts[name] = (pluginCounts[name] || 0) + 1;
         });
         const pluginEntries = Object.entries(pluginCounts);
-        const tooltip = pluginEntries.length > 1 ? (
-          <div className="max-w-xs space-y-1.5 p-1 text-[12px]">
-            <div className="font-medium text-[var(--color-text-1)]">涵盖监控模板分布：</div>
-            <div className="space-y-1 text-[var(--color-text-2)]">
-              {pluginEntries.map(([name, count]) => (
-                <div key={name} className="flex justify-between gap-4">
-                  <span>{name}</span>
-                  <span className="font-mono">{count} 条</span>
-                </div>
-              ))}
-            </div>
-            <div className="pt-1 text-[11px] text-[var(--color-text-3)] border-t border-[var(--color-border-1)]">
-              主机接入时按其对应协议匹配生效，其余规则静默
-            </div>
-          </div>
-        ) : null;
         const content = (
           <div className="inline-flex flex-col">
             <Button
@@ -735,9 +774,34 @@ const PolicyGroupPage: React.FC = () => {
         );
         if (pluginEntries.length <= 1) return content;
         return (
-          <Tooltip title={tooltip}>
+          <Popover
+            trigger="hover"
+            placement="topLeft"
+            mouseEnterDelay={0.12}
+            mouseLeaveDelay={0.1}
+            getPopupContainer={() => document.body}
+            styles={{ body: { padding: 0, borderRadius: 8 } }}
+            content={
+              <div className="w-[240px]">
+                <div className="border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-xs font-medium text-[var(--color-text-1)]">
+                  涵盖监控模板分布
+                </div>
+                <div className="space-y-1.5 px-3 py-2">
+                  {pluginEntries.map(([name, count]) => (
+                    <div key={name} className="flex items-center justify-between gap-4 text-xs">
+                      <span className="min-w-0 truncate text-[var(--color-text-1)]">{name}</span>
+                      <span className="shrink-0 font-mono tabular-nums text-[var(--color-text-2)]">{count} 条</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-[var(--color-border-1)] px-3 py-2 text-[11px] leading-4 text-[var(--color-text-3)]">
+                  主机接入时按其对应协议匹配生效，其余规则静默
+                </div>
+              </div>
+            }
+          >
             {content}
-          </Tooltip>
+          </Popover>
         );
       },
     },
@@ -817,10 +881,9 @@ const PolicyGroupPage: React.FC = () => {
     },
   ];
 
-  const memberKeywordText = memberKeyword.trim().toLowerCase();
-  const filteredMembers = members.filter((item) => {
-    if (!memberKeywordText) return true;
-    return String(item.name || '').toLowerCase().includes(memberKeywordText);
+  const filteredMembers = filterPolicyGroupMembers(members, {
+    keyword: memberKeyword,
+    filter: memberTemplateFilter,
   });
   const visibleMembers = filteredMembers.slice(
     (memberPagination.current - 1) * memberPagination.pageSize,
@@ -980,8 +1043,8 @@ const PolicyGroupPage: React.FC = () => {
                     配置
                   </Button>
                   <Permission requiredPermissions={['Edit']}>
-                    <Button onClick={() => void openAddRules(currentGroup)}>
-                      新增策略
+                    <Button onClick={() => void openAdjustRules(currentGroup)}>
+                      调整策略
                     </Button>
                   </Permission>
                   <Button
@@ -1175,11 +1238,12 @@ const PolicyGroupPage: React.FC = () => {
       <Drawer
         title={joinOpen ? '加入实例' : memberGroup ? `${memberGroup.name} 的实例` : '实例'}
         open={Boolean(memberGroup)}
-        width={600}
+        width={joinOpen ? 600 : 760}
         closable={false}
         onClose={() => {
           setMemberGroup(null);
           setMemberKeyword('');
+          setMemberTemplateFilter(null);
           setJoinOpen(false);
         }}
         footer={
@@ -1293,6 +1357,21 @@ const PolicyGroupPage: React.FC = () => {
               setMemberPagination((prev) => ({ ...prev, current: 1 }));
             },
           }}
+          filters={
+            <Select
+              allowClear
+              showSearch
+              placeholder="按策略模板筛选对象"
+              optionFilterProp="label"
+              className="w-56"
+              value={memberTemplateFilter || undefined}
+              options={memberTemplateFilterOptions(memberGroup?.rules || [])}
+              onChange={(value) => {
+                setMemberTemplateFilter(value || null);
+                setMemberPagination((prev) => ({ ...prev, current: 1 }));
+              }}
+            />
+          }
           actions={
             <Permission requiredPermissions={['Edit']}>
               <Button type="primary" disabled={!memberGroup} onClick={openJoin}>
@@ -1315,7 +1394,47 @@ const PolicyGroupPage: React.FC = () => {
           dataSource={visibleMembers}
           scroll={{ y: 'auto' }}
           columns={[
-            { title: t('common.name'), dataIndex: 'name', key: 'name' },
+            { title: t('common.name'), dataIndex: 'name', key: 'name', width: 180 },
+            {
+              title: '生效模板',
+              dataIndex: 'templates',
+              key: 'templates',
+              render: (_, record) => {
+                const plugins = record.plugins || [];
+                const templates = record.templates || [];
+                if (!plugins.length) {
+                  return <span className="text-[var(--color-text-3)]">未匹配</span>;
+                }
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {plugins.map((plugin) => {
+                      const names = templates.filter((item) => item.plugin_name === plugin.name);
+                      const tag = renderPluginTag(plugin.name);
+                      if (!names.length) return <span key={plugin.id}>{tag}</span>;
+                      return (
+                        <Popover
+                          key={plugin.id}
+                          trigger="hover"
+                          placement="bottomLeft"
+                          styles={{ body: { padding: 0, borderRadius: 8 } }}
+                          content={
+                            <div className="max-h-60 w-56 overflow-auto py-1">
+                              {names.map((item: PolicyGroupMemberTemplate) => (
+                                <div key={item.rule_id} className="px-3 py-1 text-xs text-[var(--color-text-1)]">
+                                  {item.name}
+                                </div>
+                              ))}
+                            </div>
+                          }
+                        >
+                          <span className="inline-flex cursor-default">{tag}</span>
+                        </Popover>
+                      );
+                    })}
+                  </div>
+                );
+              },
+            },
             {
               title: t('common.action'),
               dataIndex: 'action',
@@ -1428,7 +1547,7 @@ const PolicyGroupPage: React.FC = () => {
           actions={
             ruleGroup ? (
               <Permission requiredPermissions={['Edit']}>
-                <Button onClick={() => void openAddRules(ruleGroup)}>新增策略</Button>
+                <Button onClick={() => void openAdjustRules(ruleGroup)}>调整策略</Button>
               </Permission>
             ) : null
           }
@@ -1616,30 +1735,30 @@ const PolicyGroupPage: React.FC = () => {
         })()}
       </Drawer>
       <Drawer
-        title={addingToGroup ? `给 ${addingToGroup.name} 新增策略` : '新建策略组'}
+        title={adjustingGroup ? `调整 ${adjustingGroup.name} 的策略` : '新建策略组'}
         open={createOpen}
         width={760}
         closable={false}
         onClose={() => {
           if (createSaving) return;
           setCreateOpen(false);
-          setAddingToGroup(null);
+          setAdjustingGroup(null);
         }}
         footer={
           <div className="flex justify-end gap-2">
             <Button
               type="primary"
               loading={createSaving}
-              disabled={(!addingToGroup && !createName.trim()) || selectedTemplateIds.length === 0}
+              disabled={!adjustingGroup && (!createName.trim() || selectedTemplateIds.length === 0)}
               onClick={() => void submitCreate()}
             >
-              确认
+              {adjustingGroup ? '保存' : '确认'}
             </Button>
             <Button
               disabled={createSaving}
               onClick={() => {
                 setCreateOpen(false);
-                setAddingToGroup(null);
+                setAdjustingGroup(null);
               }}
             >
               取消
@@ -1647,9 +1766,18 @@ const PolicyGroupPage: React.FC = () => {
           </div>
         }
       >
-        {addingToGroup ? (
+        <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
+          选项来自策略模板页，按当前监控对象列出。可先去模板页新增或修改模板，再回到这里勾选。{' '}
+          <Link
+            href={`/monitor/event/template?${MODULE_OBJECT_QUERY_PARAM}=${String(objectId || '')}`}
+            className="text-[var(--color-primary)]"
+          >
+            去策略模板
+          </Link>
+        </div>
+        {adjustingGroup ? (
           <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
-            按模板追加规则。主机已接入对应插件的才会写入覆盖并开始扫描，没有该插件数据源的规则保持静默。
+            已勾选的是组内当前策略。取消勾选会从本策略组移除，不会删除模板。已接入对应插件的实例才会写入覆盖并开始扫描。
           </div>
         ) : (
           <div className="mb-3">
@@ -1664,51 +1792,37 @@ const PolicyGroupPage: React.FC = () => {
               <span className="text-[var(--color-text-3)]">当前对象没有策略模板</span>
             ) : (
               templateGroups.map((group) => {
-                const existingIds = new Set(
-                  (addingToGroup?.rules || [])
-                    .map((item) => Number(item.source_template_id))
-                    .filter((id) => Number.isFinite(id) && id > 0)
-                );
-                const ids = group.items.map((item) => item.id).filter((id) => !existingIds.has(id));
+                const ids = group.items.map((item) => item.id);
                 const selectedCount = ids.filter((id) => selectedTemplateIds.includes(id)).length;
                 return (
                   <div key={group.name} className="mb-3">
-                    {ids.length > 0 ? (
-                      <Checkbox
-                        checked={selectedCount === ids.length && ids.length > 0}
-                        indeterminate={selectedCount > 0 && selectedCount < ids.length}
-                        onChange={(event) => {
-                          setSelectedTemplateIds((prev) =>
-                            event.target.checked
-                              ? Array.from(new Set([...prev, ...ids]))
-                              : prev.filter((id) => !ids.includes(id))
-                          );
-                        }}
-                      >
-                        {group.name}
-                      </Checkbox>
-                    ) : (
-                      <span className="text-[var(--color-text-3)]">{group.name}</span>
-                    )}
-                    <div className="mt-1 flex flex-col gap-1 pl-6">
-                      {group.items.map((item) => {
-                        const alreadyInGroup = existingIds.has(item.id);
-                        return (
-                          <Checkbox
-                            key={item.id}
-                            disabled={alreadyInGroup}
-                            checked={alreadyInGroup || selectedTemplateIds.includes(item.id)}
-                            onChange={(event) => {
-                              if (alreadyInGroup) return;
-                              setSelectedTemplateIds((prev) =>
-                                event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-                              );
-                            }}
-                          >
-                            {alreadyInGroup ? `${item.name}（已在组内）` : item.name}
-                          </Checkbox>
+                    <Checkbox
+                      checked={selectedCount === ids.length && ids.length > 0}
+                      indeterminate={selectedCount > 0 && selectedCount < ids.length}
+                      onChange={(event) => {
+                        setSelectedTemplateIds((prev) =>
+                          event.target.checked
+                            ? Array.from(new Set([...prev, ...ids]))
+                            : prev.filter((id) => !ids.includes(id))
                         );
-                      })}
+                      }}
+                    >
+                      {group.name}
+                    </Checkbox>
+                    <div className="mt-1 flex flex-col gap-1 pl-6">
+                      {group.items.map((item) => (
+                        <Checkbox
+                          key={item.id}
+                          checked={selectedTemplateIds.includes(item.id)}
+                          onChange={(event) => {
+                            setSelectedTemplateIds((prev) =>
+                              event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                            );
+                          }}
+                        >
+                          {item.name}
+                        </Checkbox>
+                      ))}
                     </div>
                   </div>
                 );
