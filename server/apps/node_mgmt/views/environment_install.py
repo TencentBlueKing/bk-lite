@@ -20,7 +20,8 @@ from apps.node_mgmt.serializers.environment_install import (
     EnvironmentGrantListSerializer,
     EnvironmentResultListSerializer,
 )
-from apps.node_mgmt.services.environment_bundle import export_environment_bundle
+from apps.node_mgmt.services.environment_bundle import classify_export_error, export_environment_bundle
+from apps.node_mgmt.services.environment_install import EnvironmentInstallService
 from apps.node_mgmt.views.installer import _validate_install_target_organizations
 from apps.system_mgmt.models import SystemAPIToken
 
@@ -50,9 +51,12 @@ class EnvironmentInstallViewSet(ViewSet):
                 domain=request.user.domain,
                 **data,
             )
-        except (ValueError, ObjectDoesNotExist, OSError):
+        except (ValueError, ObjectDoesNotExist, OSError) as exc:
             # Release files and configuration can contain credentials; never return their errors verbatim.
-            return WebUtils.response_error("环境安装包导出预检失败，请核对发布文件、固定素材、CA 及云区域下载配置")
+            return WebUtils.response_error(
+                {"error_code": classify_export_error(exc)},
+                "环境安装包导出预检失败，请核对发布文件、固定素材、CA 及云区域下载配置",
+            )
         response = WebUtils.response_file(artifact, f"install-controller-{grant.id}.run")
         response["Cache-Control"] = "no-store"
         response["X-Environment-Grant-ID"] = str(grant.id)
@@ -62,8 +66,6 @@ class EnvironmentInstallViewSet(ViewSet):
     @action(detail=False, methods=["get"])
     @HasPermission("cloud_region_node-Edit")
     def components(self, request):
-        from apps.node_mgmt.services.environment_install import EnvironmentInstallService
-
         serializer = EnvironmentComponentOptionsSerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         return WebUtils.response_success(EnvironmentInstallService.component_options(serializer.validated_data["cloud_region_id"]))
@@ -137,6 +139,6 @@ class EnvironmentInstallViewSet(ViewSet):
                     "last_reported_at",
                 )[offset : offset + query["page_size"]]
             )
-            return WebUtils.response_success({"count": total, "items": rows})
+            return WebUtils.response_success({"count": total, "items": EnvironmentInstallService.describe_attempts(grant, rows)})
         except (BaseAppException, ObjectDoesNotExist):
             return WebUtils.response_403("安装授权范围不可访问")

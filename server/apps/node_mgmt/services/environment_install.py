@@ -49,13 +49,15 @@ class EnvironmentInstallService:
             required_components=[options[item] for item in selected],
         )
         key = SystemAPIToken.generate_secret()
+        # The token column is shorter than a username. Authorization uses grant.owner.
+        created_by_limit = SystemAPIToken._meta.get_field("created_by").max_length
         grant.token = SystemAPIToken.objects.create(
             system_id="node-environment-install",
             name=str(grant.id),
             secret_hash=SystemAPIToken.hash_secret(key),
             scope={"mode": "allowlist", "endpoints": INSTALL_ENDPOINTS},
             expires_at=expires_at,
-            created_by=owner,
+            created_by=owner[:created_by_limit],
             created_by_domain=domain,
         )
         grant.save()
@@ -217,6 +219,78 @@ class EnvironmentInstallService:
         result.update(components=components, components_healthy=all(item["status"] == "healthy" for item in components))
         result.update(failure_stage=attempt.failure_stage, error_code=attempt.error_code)
         return result
+
+    @staticmethod
+    def describe_attempts(grant, rows):
+        """Attach heartbeat component health and executor RPC readiness to one result page."""
+        node_ids = [row["node_id"] for row in rows]
+        nodes = {node.id: node for node in Node.objects.filter(pk__in=node_ids, cloud_region_id=grant.cloud_region_id)}
+        described = []
+        rpc_targets = []
+        for row in rows:
+            item = dict(row)
+            registered = bool(row.get("registered_at"))
+            components = EnvironmentInstallService._component_rows(grant, nodes.get(row["node_id"]), registered)
+            item["components"] = components
+            item["components_healthy"] = all(component["status"] == "healthy" for component in components)
+            executor = next((component for component in components if component.get("name") == "NATS-Executor"), None)
+            if executor is None:
+                item["executor_rpc_ready"] = None
+            elif executor["status"] != "healthy":
+                item["executor_rpc_ready"] = False
+            else:
+                item["executor_rpc_ready"] = False
+                rpc_targets.append(item)
+            described.append(item)
+        EnvironmentInstallService._fill_executor_rpc(rpc_targets)
+        return described
+
+    @staticmethod
+    def _component_rows(grant, node, registered):
+        reported = (node.status or {}).get("collectors", []) if node and isinstance(getattr(node, "status", None), dict) else []
+        if not isinstance(reported, list):
+            reported = []
+        components = []
+        for required in grant.required_components or []:
+            if not isinstance(required, dict):
+                continue
+            matches = [item for item in reported if isinstance(item, dict) and item.get("collector_id") == required.get("id")]
+            healthy = registered and len(matches) == 1 and type(matches[0].get("status")) is int and matches[0]["status"] == 0
+            components.append({**required, "status": "healthy" if healthy else "unhealthy"})
+        return components
+
+    @staticmethod
+    def _fill_executor_rpc(items):
+        if not items:
+            return
+        from concurrent.futures import ThreadPoolExecutor
+
+        from nats.errors import Error as NatsError
+
+        from apps.rpc.exceptions import RpcTimeoutError
+        from apps.rpc.executor import Executor
+
+        def probe(node_id):
+            try:
+                health = Executor(node_id).health_check(timeout=3)
+            except (NatsError, RpcTimeoutError, TimeoutError, OSError):
+                return False
+            return isinstance(health, dict) and health.get("success") is True and health.get("instance_id") == node_id
+
+        with ThreadPoolExecutor(max_workers=min(4, len(items))) as pool:
+            futures = {pool.submit(probe, item["node_id"]): item for item in items}
+            for future, item in futures.items():
+                try:
+                    ready = future.result()
+                except Exception:
+                    ready = False
+                item["executor_rpc_ready"] = ready
+                if ready:
+                    continue
+                for component in item["components"]:
+                    if component.get("name") == "NATS-Executor":
+                        component["status"] = "unhealthy"
+                item["components_healthy"] = all(component["status"] == "healthy" for component in item["components"])
 
     @staticmethod
     @transaction.atomic

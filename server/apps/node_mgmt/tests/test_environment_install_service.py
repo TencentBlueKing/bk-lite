@@ -11,6 +11,32 @@ from apps.node_mgmt.services.environment_install import EnvironmentInstallServic
 pytestmark = pytest.mark.django_db
 
 
+def test_long_owner_is_stored_on_the_grant_and_truncated_on_the_token():
+    region = CloudRegion.objects.create(name="environment-long-owner")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture="x86_64",
+        object="Controller",
+        version="test-v1",
+        name="test.tar.gz",
+        sha256="c" * 64,
+    )
+    owner = "u" * 100
+    grant, _ = EnvironmentInstallService.create(
+        owner=owner,
+        domain="test",
+        team=1,
+        cloud_region_id=region.pk,
+        package_id=package.pk,
+        expires_at=timezone.now() + timedelta(hours=1),
+        max_nodes=1,
+    )
+    assert grant.owner == owner
+    assert grant.token.created_by == owner[:32]
+    assert len(grant.token.created_by) <= 32
+
+
 def test_environment_request_retry_keeps_node_and_consumes_one_slot():
     region = CloudRegion.objects.create(name="environment-test")
     package = PackageVersion.objects.create(
@@ -607,3 +633,33 @@ def test_executor_heartbeat_cannot_replace_rpc_readiness(environment_request, mo
     result = EnvironmentInstallService.status(**identity, install_id=attempt["install_id"])
     assert result["components_healthy"] is True
     assert result["executor_rpc_ready"] is True
+
+
+def test_result_rows_report_component_health_and_executor_rpc(environment_request, monkeypatch):
+    from apps.node_mgmt.models import EnvironmentInstallAttempt, Node
+    from apps.rpc.executor import Executor
+
+    grant, request = environment_request
+    grant.required_components = [{"id": "natsexecutor_linux", "name": "NATS-Executor"}]
+    grant.save(update_fields=["required_components"])
+    pending = EnvironmentInstallService.reserve(**request)
+    registered_request = {**request, "request_id": str(uuid4()), "node_id": str(uuid4()), "ip": "192.0.2.21", "node_name": "host-c"}
+    registered = EnvironmentInstallService.reserve(**registered_request)
+    Node.objects.create(
+        id=registered_request["node_id"],
+        name="host-c",
+        ip="192.0.2.21",
+        operating_system="linux",
+        cloud_region=grant.cloud_region,
+        collector_configuration_directory="/opt/fusion-collectors/generated",
+        status={"collectors": [{"collector_id": "natsexecutor_linux", "status": 0}]},
+    )
+    EnvironmentInstallAttempt.objects.filter(pk=registered["install_id"]).update(registered_at=timezone.now())
+    monkeypatch.setattr(Executor, "health_check", lambda self, timeout: {"success": True, "instance_id": self.instance_id})
+    rows = list(grant.attempts.order_by("node_name").values("id", "node_id", "node_name", "registered_at", "failure_stage", "error_code"))
+    described = {item["node_name"]: item for item in EnvironmentInstallService.describe_attempts(grant, rows)}
+    assert described["host-b"]["components_healthy"] is False
+    assert described["host-b"]["executor_rpc_ready"] is False
+    assert described["host-c"]["components_healthy"] is True
+    assert described["host-c"]["executor_rpc_ready"] is True
+    assert pending["install_id"]

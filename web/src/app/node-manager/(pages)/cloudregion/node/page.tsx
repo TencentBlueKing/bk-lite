@@ -867,7 +867,7 @@ const Node = () => {
                         </Space>
                       </Button>
                     </Dropdown>
-                    <PermissionWrapper requiredPermissions={['Edit']}>
+                    <PermissionWrapper requiredPermissions={['InstallController']}>
                       <Button className="mr-[8px]" onClick={() => setEnvironmentOpen(true)}>{t('node-manager.environmentBundle.title')}</Button>
                     </PermissionWrapper>
                     <PermissionWrapper

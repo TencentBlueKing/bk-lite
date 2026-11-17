@@ -21,8 +21,8 @@ export const environmentPreviewPost = (url: string): unknown => {
   if (url.endsWith('/export/')) throw new Error('Preview does not generate installation credentials');
   if (url.endsWith('/revoke/')) { enabled = false; return {}; }
   if (url.endsWith('/results/')) return { count: 2, items: [
-    { id: '1', node_id: '8d3205cf-b44c-40c0-8cfe-08ff8a9d7104', node_name: 'preview-host-01', ip: '192.0.2.10', registered_at: '2026-11-12T13:15:00Z', failure_stage: '', error_code: 0 },
-    { id: '2', node_id: '2e015eb6-9574-4e8b-b98c-087eb97f7679', node_name: 'preview-host-02', ip: '192.0.2.11', registered_at: null, failure_stage: 'download', error_code: 30 }
+    { id: '1', node_id: '8d3205cf-b44c-40c0-8cfe-08ff8a9d7104', node_name: 'preview-host-01', ip: '192.0.2.10', registered_at: '2026-11-12T13:15:00Z', failure_stage: '', error_code: 0, components_healthy: true, executor_rpc_ready: true },
+    { id: '2', node_id: '2e015eb6-9574-4e8b-b98c-087eb97f7679', node_name: 'preview-host-02', ip: '192.0.2.11', registered_at: null, failure_stage: 'download', error_code: 30, components_healthy: false, executor_rpc_ready: false }
   ] };
   return {};
 };

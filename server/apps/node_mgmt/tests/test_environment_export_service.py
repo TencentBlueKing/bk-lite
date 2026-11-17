@@ -115,6 +115,34 @@ def test_export_refuses_legacy_admin_download_credentials(export_inputs):
     assert not EnvironmentInstallGrant.objects.exists()
 
 
+def test_export_precheck_failure_returns_a_stable_error_code(monkeypatch):
+    from types import SimpleNamespace
+
+    from apps.node_mgmt.views import environment_install
+
+    def reject(**_kwargs):
+        raise ValueError("package digest required")
+
+    monkeypatch.setattr(environment_install, "export_environment_bundle", reject)
+    monkeypatch.setattr(environment_install, "_validate_install_target_organizations", lambda *_args, **_kwargs: None)
+    request = SimpleNamespace(
+        user=SimpleNamespace(username="installer", domain="test", locale="en", permission={"node": {"cloud_region_node-Edit"}}, is_superuser=False),
+        data={
+            "organization": 1,
+            "cloud_region_id": 1,
+            "package_id": 1,
+            "valid_days": 7,
+            "max_nodes": 1,
+            "required_free_bytes": 128 * 1024 * 1024,
+            "timeout_seconds": 60,
+        },
+    )
+    payload = json.loads(environment_install.EnvironmentInstallViewSet().export(request).content)
+    assert payload["result"] is False
+    assert payload["data"]["error_code"] == "package_digest_missing"
+    assert "package digest" not in payload["message"]
+
+
 def test_admin_without_edit_permission_cannot_export():
     from types import SimpleNamespace
 

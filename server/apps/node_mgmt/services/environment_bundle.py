@@ -6,6 +6,19 @@ import zipfile
 
 MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
 MAX_MANIFEST_BYTES = 256 * 1024
+EXPORT_ERROR_CODES = {
+    "package digest required": "package_digest_missing",
+    "invalid platform ca": "ca_invalid",
+    "Platform CA exceeds the supported size": "ca_invalid",
+    "Controller package does not support environment installation": "install_script_invalid",
+}
+
+
+def classify_export_error(exc):
+    """Stable precheck code. Callers must not return the original exception text."""
+    if isinstance(exc, OSError):
+        return "release_artifact_unreadable"
+    return EXPORT_ERROR_CODES.get(str(exc), "export_precheck_failed")
 
 
 def assemble_run(launcher, installer, manifest, signing_key):
@@ -99,7 +112,10 @@ def export_environment_bundle(
     if len(platform_ca.encode()) > 65536:
         raise ValueError("Platform CA exceeds the supported size")
     if platform_ca:
-        x509.load_pem_x509_certificate(platform_ca.encode())
+        try:
+            x509.load_pem_x509_certificate(platform_ca.encode())
+        except ValueError as error:
+            raise ValueError("invalid platform ca") from error
     platform_url = env.get("NODE_SERVER_URL", "").rstrip("/")
     parsed = urlsplit(platform_url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
