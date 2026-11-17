@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
-import apps.monitor.models  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
+import apps.monitor.models  # noqa: F401  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
 from apps.alerts.action.exceptions import TargetError
 from apps.alerts.action.handlers.job import JobActionHandler
 
@@ -77,8 +77,8 @@ def test_execute_success_builds_node_mgmt_payload(mock_target, mock_job):
     assert payload["target_list"] == [{"node_id": "n1", "name": "h", "ip": "10.0.0.5", "os": "linux", "cloud_region_id": 1}]
     assert payload["script_content"] == "echo {{service}}"
     assert payload["params"] == [{"name": "service", "value": "nginx"}]
-    # 测试环境未设 SELF_BASE_URL → callback_url 字段为 None；行为见 test_callback_url_uses_self_base_url_when_set。
-    assert payload["callback_url"] is None
+    assert payload["callback_url"] == JobActionHandler()._callback_url()
+    assert payload["callback_url"].endswith("/api/v1/alerts/api/action_callback/")
     assert execution.job_task_id == 4821
     assert execution.status == "running"
     execution.save.assert_called()
@@ -260,10 +260,9 @@ def test_execution_result_records_target_ip_when_mode_fixed(mock_target, mock_jo
 
 @patch("apps.alerts.action.handlers.job.JobMgmt")
 @patch("apps.alerts.action.handlers.job.resolve_node_target")
-def test_callback_url_returns_none_when_self_base_url_unset(mock_target, mock_job, settings):
-    """SELF_BASE_URL 未设置时 _callback_url 必须返回 None（不再默认到 localhost，
-    否则会被 job_mgmt SSRFValidator 的"禁止 localhost"拦截）。
-    返回 None 等价于不传 callback，作业可执行但不回调，ActionExecution.status 停在 running。"""
+def test_callback_url_defaults_when_self_base_url_unset(mock_target, mock_job, settings):
+    """SELF_BASE_URL 未设置或为空时，回落到集群内 server:8000（K8s/Docker 同名），
+    不回落到 localhost（会被 job_mgmt SSRFValidator 拦截）。"""
     mock_target.return_value = {"node_id": "n1", "name": "h", "ip": "10.0.0.5", "os": "linux", "cloud_region_id": 1}
     mock_job.return_value.get_script.return_value = SCRIPT
     mock_job.return_value.job_script_execute.return_value = {"result": True, "data": {"task_id": 1}}
@@ -271,7 +270,13 @@ def test_callback_url_returns_none_when_self_base_url_unset(mock_target, mock_jo
     handler = JobActionHandler()
     if hasattr(settings, "SELF_BASE_URL"):
         delattr(settings, "SELF_BASE_URL")
-    assert handler._callback_url() is None
+    assert handler._callback_url() == "http://server:8000/api/v1/alerts/api/action_callback/"
+
+    settings.SELF_BASE_URL = ""
+    assert handler._callback_url() == "http://server:8000/api/v1/alerts/api/action_callback/"
+
+    settings.SELF_BASE_URL = "   "
+    assert handler._callback_url() == "http://server:8000/api/v1/alerts/api/action_callback/"
 
 
 @patch("apps.alerts.action.handlers.job.JobMgmt")
