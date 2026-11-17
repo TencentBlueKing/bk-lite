@@ -20,15 +20,18 @@ class CurrentTeamDataScope:
     username: str
     domain: str
     is_superuser: bool
+    is_auditor: bool = False
 
 
 def _get_actor_context(request):
     user = request.user
+    is_superuser = bool(getattr(user, "is_superuser", False))
     return {
         "username": user.username,
         "domain": getattr(user, "domain", "domain.com"),
         "group_list": list(getattr(user, "group_list", []) or []),
-        "is_superuser": bool(getattr(user, "is_superuser", False)),
+        "is_superuser": is_superuser,
+        "is_auditor": bool(getattr(user, "is_auditor", False)) and not is_superuser,
     }
 
 
@@ -108,6 +111,7 @@ def resolve_current_team_data_scope(request):
         username=actor_context["username"],
         domain=actor_context["domain"],
         is_superuser=actor_context["is_superuser"],
+        is_auditor=bool(actor_context.get("is_auditor", False)) and not actor_context["is_superuser"],
     )
 
 
@@ -143,6 +147,7 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
             "current_team": int(scope.current_team),
             "include_children": bool(scope.include_children),
             "is_superuser": bool(scope.is_superuser),
+            "is_auditor": bool(scope.is_auditor) and not bool(scope.is_superuser),
             "group_list": list(actor_context.get("group_list") or []),
             "data_team_ids": sorted(int(x) for x in scope.data_team_ids),
         }
@@ -164,6 +169,7 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
         "current_team": team,
         "include_children": bool(actor_context.get("include_children", False)),
         "is_superuser": bool(actor_context.get("is_superuser", False)),
+        "is_auditor": bool(actor_context.get("is_auditor", False)) and not bool(actor_context.get("is_superuser", False)),
         "group_list": list(actor_context.get("group_list") or []),
         "data_team_ids": team_ids,
     }
@@ -190,6 +196,7 @@ def hydrate_actor_context_data_scope(actor_context: dict | None) -> CurrentTeamD
             username=str(actor_context.get("username") or ""),
             domain=str(actor_context.get("domain") or "domain.com"),
             is_superuser=bool(actor_context.get("is_superuser", False)),
+            is_auditor=bool(actor_context.get("is_auditor", False)) and not bool(actor_context.get("is_superuser", False)),
         )
     except (TypeError, ValueError):
         return None

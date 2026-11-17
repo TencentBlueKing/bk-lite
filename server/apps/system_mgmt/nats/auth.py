@@ -1,6 +1,11 @@
 # flake8: noqa
 from django.db import InterfaceError, OperationalError
 
+from apps.system_mgmt.services.platform_roles import (
+    is_platform_admin,
+    is_platform_auditor,
+    view_permission_map,
+)
 from apps.system_mgmt.services.user_access import is_account_expired, is_user_access_disabled
 
 from .common import *  # noqa: F401,F403
@@ -12,9 +17,11 @@ def build_user_authorization_context(user):
     all_role_ids = get_user_all_roles(user)
     role_list = Role.objects.filter(id__in=all_role_ids)
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
-    is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+    is_superuser = is_platform_admin(role_names)
+    is_auditor = (not is_superuser) and is_platform_auditor(role_names)
+    unrestricted_scope = is_superuser or is_auditor
 
-    if is_superuser:
+    if unrestricted_scope:
         queryset = list(GroupUtils.active_queryset().prefetch_related("roles").order_by("id"))
         groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
     else:
@@ -23,9 +30,11 @@ def build_user_authorization_context(user):
         direct_group_ids = set(user.group_list)
         groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset if group.id in direct_group_ids]
 
-    group_tree = GroupUtils.build_group_tree(queryset, is_superuser, [group["id"] for group in groups])
+    group_tree = GroupUtils.build_group_tree(queryset, unrestricted_scope, [group["id"] for group in groups])
     permissions = {}
-    if not is_superuser:
+    if is_auditor:
+        permissions = view_permission_map()
+    elif not is_superuser:
         menu_ids = {menu_id for menu_list in role_list.values_list("menu_list", flat=True) for menu_id in menu_list}
         for app, name in Menu.objects.filter(id__in=menu_ids).values_list("app", "name"):
             permissions.setdefault(app, []).append(name)
@@ -36,6 +45,7 @@ def build_user_authorization_context(user):
         "domain": user.domain,
         "email": user.email,
         "is_superuser": is_superuser,
+        "is_auditor": is_auditor,
         "group_list": groups,
         "group_tree": group_tree,
         "roles": role_names,

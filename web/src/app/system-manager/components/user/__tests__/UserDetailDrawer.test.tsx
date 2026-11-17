@@ -168,4 +168,50 @@ describe('UserDetailDrawer', () => {
     expect(screen.queryByText('admin')).not.toBeNull();
     expect(screen.queryByText('Inherited from Default')).not.toBeNull();
   });
+
+  it('shows an auditor chip instead of the role table', async () => {
+    mockGetUserDetail.mockResolvedValue({
+      ...mockPayload,
+      is_superuser: false,
+      is_auditor: true,
+      effective_roles: [],
+    });
+
+    render(
+      <UserDetailDrawer
+        open={true}
+        userId="1"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Daniel Wu').length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByText('system.user.form.auditor')).not.toBeNull();
+    expect(screen.queryByText('system.user.form.superuser')).toBeNull();
+    expect(screen.queryByText('admin')).toBeNull();
+  });
+
+  it('prefers the superuser chip when both flags are set', async () => {
+    mockGetUserDetail.mockResolvedValue({
+      ...mockPayload,
+      is_superuser: true,
+      is_auditor: true,
+    });
+
+    render(
+      <UserDetailDrawer
+        open={true}
+        userId="1"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Daniel Wu').length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByText('system.user.form.superuser')).not.toBeNull();
+    expect(screen.queryByText('system.user.form.auditor')).toBeNull();
+  });
 });

@@ -334,6 +334,26 @@ class TestLoginInfoView:
         assert data["data"]["username"] == "alice"
         assert data["data"]["is_superuser"] is True
 
+    def test_returns_auditor_flag_without_superuser(self):
+        user = MagicMock(
+            username="auditor",
+            display_name="Auditor",
+            is_superuser=False,
+            is_auditor=True,
+            group_list=[],
+            roles=["auditor"],
+            group_tree=[],
+            locale="en",
+            timezone="UTC",
+        )
+        req = self._get(user)
+        with patch.object(index_view, "_safe_get_user_id_by_username", return_value=7):
+            resp = index_view.login_info(req)
+        data = json.loads(resp.content)
+        assert data["result"] is True
+        assert data["data"]["is_superuser"] is False
+        assert data["data"]["is_auditor"] is True
+
     def test_user_not_found_returns_error(self):
         user = MagicMock(username="ghost", group_list=[])
         req = self._get(user)
@@ -450,6 +470,17 @@ class TestClientViews:
         # is_superuser 应被推断为 True（monitor--admin 在 roles 中）
         _, kwargs = mock_client.return_value.get_user_menus.call_args
         assert kwargs["is_superuser"] is True
+
+    def test_get_user_menus_auditor_is_not_superuser(self):
+        factory = RequestFactory()
+        req = factory.get("/api/user_menus/?name=cmdb")
+        req.user = MagicMock(is_superuser=False, is_auditor=True, roles=["auditor"], role_ids=[1], username="aud")
+        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.get_user_menus.return_value = {"result": True, "data": []}
+            index_view.get_user_menus(req)
+        _, kwargs = mock_client.return_value.get_user_menus.call_args
+        assert kwargs["is_superuser"] is False
+        assert kwargs["is_auditor"] is True
 
     def test_get_all_groups_non_superuser_denied(self):
         req = _post({}, user=MagicMock(is_superuser=False))

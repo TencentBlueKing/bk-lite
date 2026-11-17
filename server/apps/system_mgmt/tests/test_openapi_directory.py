@@ -592,6 +592,48 @@ def test_user_directory_inherited_group_admin_is_superuser(tenants):
     assert by_id[str(tenants.b.member.id)]["is_superuser"] is False
 
 
+def test_auditor_reads_all_users_but_is_not_marked_superuser(tenants):
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    role_ids = list(tenants.a.system_user.role_list or [])
+    if auditor_role.id not in role_ids:
+        tenants.a.system_user.role_list = role_ids + [auditor_role.id]
+        tenants.a.system_user.save(update_fields=["role_list"])
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    ids = set(_user_ids(response.json()))
+    assert str(tenants.a.member.id) in ids
+    assert str(tenants.b.member.id) in ids
+    actor = next(item for item in response.json()["data"]["results"] if item["id"] == str(tenants.a.system_user.id))
+    assert actor["is_superuser"] is False
+
+
+def test_auditor_cannot_send_notification(tenants):
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    role_ids = list(tenants.a.system_user.role_list or [])
+    if auditor_role.id not in role_ids:
+        tenants.a.system_user.role_list = role_ids + [auditor_role.id]
+        tenants.a.system_user.save(update_fields=["role_list"])
+
+    response = APIClient().post(
+        "/openapi/v1/system-mgmt/notification-channels/send",
+        {
+            "channel_id": 1,
+            "content": "x",
+            "receivers": ["a"],
+            "channel_type": "email",
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+    assert response.status_code == 403
+
+
 def test_superuser_search_finds_user_outside_acting_team(tenants):
     _grant_role(tenants.a.system_user, name="admin", app="")
 

@@ -32,6 +32,7 @@ USER_PUBLIC_FIELDS = [
     "status",
     "group_role_list",
     "is_superuser",
+    "is_auditor",
     "sync_source",
 ]
 
@@ -39,15 +40,18 @@ USER_PUBLIC_FIELDS = [
 class UserSerializer(serializers.ModelSerializer):
     group_role_list = serializers.SerializerMethodField()
     is_superuser = serializers.SerializerMethodField()
+    is_auditor = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
 
     # 类级别缓存，避免每次实例化都查询数据库
     _super_role_id_cache = None
+    _auditor_role_id_cache = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._group_roles_map = None
         self.super_role_id = self._get_super_role_id()
+        self.auditor_role_id = self._get_auditor_role_id()
         self._status_now = timezone.now()
         self._password_validity_days = get_password_validity_days()
 
@@ -66,6 +70,16 @@ class UserSerializer(serializers.ModelSerializer):
             except Role.DoesNotExist:
                 cls._super_role_id_cache = -1  # 使用不存在的 ID 作为默认值
         return cls._super_role_id_cache
+
+    @classmethod
+    def _get_auditor_role_id(cls):
+        """获取 auditor 角色 ID（使用类级别缓存）"""
+        if cls._auditor_role_id_cache in (None, -1):
+            try:
+                cls._auditor_role_id_cache = Role.objects.get(app="", name="auditor").id
+            except Role.DoesNotExist:
+                return -1
+        return cls._auditor_role_id_cache
 
     def _collect_group_ids(self, instance):
         """从用户实例中收集所有组 ID"""
@@ -100,6 +114,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_is_superuser(self, obj):
         return self.super_role_id in obj.role_list
+
+    def get_is_auditor(self, obj):
+        return self.auditor_role_id in obj.role_list
 
     def get_group_role_list(self, obj):
         """获取用户所属组织的角色名称列表"""

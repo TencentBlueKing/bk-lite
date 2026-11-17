@@ -69,11 +69,12 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_first_login, user_id, display_name, username } = data;
+      const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_auditor, is_first_login, user_id, display_name, username } = data;
       const currentUserId = String(user_id || expectedSessionIdentity);
       setGroups(groupList || []);
       const shouldSkipFilter = username === 'kayla';
-      setGroupTree(is_superuser || shouldSkipFilter ? (groupTreeData || []) : filterOpsPilotGuest(groupTreeData || []));
+      const unrestricted = !!is_superuser || !!is_auditor;
+      setGroupTree(unrestricted || shouldSkipFilter ? (groupTreeData || []) : filterOpsPilotGuest(groupTreeData || []));
       setRoles(roles || []);
       setIsSuperUser(!!is_superuser);
       setIsFirstLogin(!!is_first_login);
@@ -85,7 +86,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const flattenedGroups = convertTreeDataToGroupOptions(groupList);
         setFlatGroups(flattenedGroups);
 
-        const filteredGroups = is_superuser || shouldSkipFilter
+        const filteredGroups = unrestricted || shouldSkipFilter
           ? [...flattenedGroups]
           : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
         const initialGroup = resolveInitialGroup({
