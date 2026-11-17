@@ -73,6 +73,7 @@
     "updateFailed": "Failed to update",
     "addFailed": "Failed to add",
     "deleteFailed": "Failed to delete",
+    "noContentToCopy": "No content to copy",
     "deleteSuccess": "Deleted successfully",
     "all": "All",
     "action": "Actions",

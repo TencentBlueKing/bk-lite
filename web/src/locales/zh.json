@@ -73,6 +73,7 @@
     "updateFailed": "更新失败",
     "addFailed": "新增失败",
     "deleteFailed": "删除失败",
+    "noContentToCopy": "暂无可复制内容",
     "deleteSuccess": "删除成功",
     "all": "全部",
     "action": "操作",
