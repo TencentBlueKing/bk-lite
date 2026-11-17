@@ -9,6 +9,7 @@ import {Button, Form, Input, message, Select, Spin, Alert} from 'antd';
 import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { MEMORY_PREVIEW_CONTENT_LIMIT, formatMemoryContentSize } from '@/app/opspilot/utils/memoryContent';
+import { withBoundUnavailableModels } from '@/app/opspilot/utils/modelOption';
 import { useIntl } from 'react-intl';
 
 const { TextArea } = Input;
@@ -20,6 +21,7 @@ export default function MemoryConfigPage() {
   const { fetchMemorySpace, updateMemorySpace, fetchMemories, fetchMemory, testMemoryWrite } = useMemoryApi();
   const { fetchLlmModels } = useSkillApi();
   const [form] = Form.useForm();
+  const defaultModelId = Form.useWatch('default_model', form);
   
   const idStr = searchParams.get('id');
   const id = idStr ? parseInt(idStr, 10) : 0;
@@ -242,8 +244,10 @@ export default function MemoryConfigPage() {
                       showSearch
                       optionFilterProp="children"
                     >
-                      {models.map((model: any) => (
-                        <Select.Option key={model.id} value={model.id}>{model.name}</Select.Option>
+                      {withBoundUnavailableModels(models, defaultModelId).map(({ model, disabled }) => (
+                        <Select.Option key={model.id} value={model.id} disabled={disabled}>
+                          {disabled ? `${model.name}（${t('modelOption.unavailable', '已停用')}）` : model.name}
+                        </Select.Option>
                       ))}
                     </Select>
                   </Form.Item>

@@ -1,6 +1,6 @@
 # 系统管理 Teams 集成产品决策记忆
 
-- 最近更新：2026-09-14
+- 最近更新：2026-11-13
 - 当前规格：`specs/changes/teams-im-notification-provider/spec.md`
 
 ## 产品定位
@@ -12,7 +12,7 @@
 
 ## 已确认范围
 
-- 首期只交付 `im_notification`：集成实例、连接测试、外部用户同步映射、按已映射用户发送。
+- 首期只交付 `im_notification`：集成实例、连接测试、账号关联，以及按关联结果发送。关联规则见 `specs/capabilities/im-account-association.md`。
 - 发送形态对齐 WeOps 通知：一个委托工作账号对多个收件人分别建立 1:1 私聊（多次一对一，不是群发）。
 - 登录认证、用户同步、`im_group` 拉群、Bot、Tab SSO 均不在首期。
 
@@ -24,7 +24,7 @@
 - 外部稳定身份与接收标识使用 Graph 用户 `id`；邮箱可用于匹配，不作为主键。
 - 仅声明 `im_notification` capability（形态对齐微信「只做 login_auth」的单能力 pack），不预留未实现的登录/同步/建群开关。
 - Entra 应用（租户 ID、客户端 ID、客户端密钥）放在基础连接；委托工作账号 UPN 与密码放在 IM 应用通知连接配置。应用令牌仍用于拉用户和建 chat，委托账号只用于发消息。
-- 通知渠道同步拉人对齐飞书 `page_size`：第一页自报 `$top=999` 且 `$filter=userType eq 'Member'`，跟 `@odata.nextLink`，100 页帽，超限失败不截断。不靠 Graph `@odata.count` 驱动分页。两到三万工作账号约 21–31 页。
+- 账号关联更新拉人对齐飞书 `page_size`：第一页自报 `$top=999` 且 `$filter=userType eq 'Member'`，跟 `@odata.nextLink`，100 页帽，超限失败不截断。不靠 Graph `@odata.count` 驱动分页。两到三万工作账号约 21–31 页。通知渠道不再自己同步映射。
 
 ## 明确后置
 

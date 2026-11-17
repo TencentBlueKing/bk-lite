@@ -1,7 +1,10 @@
-import type {
-  ExtractorCondition,
-  ExtractorConditionItem,
-  ExtractorType
+import {
+  GROK_PATTERN_CATEGORIES,
+  type ExtractorCondition,
+  type ExtractorConditionItem,
+  type ExtractorType,
+  type GrokPatternCatalogItem,
+  type GrokPatternCategory
 } from '@/app/log/types/extractor';
 
 export const TYPE_SCOPED_COLLECT_TYPES = ['syslog', 'snmp_trap'] as const;
@@ -242,7 +245,8 @@ const EXTRACTOR_TYPE_LABEL_KEYS: Record<ExtractorType, string> = {
   kv: 'log.extractor.typeKv',
   regex: 'log.extractor.typeRegex',
   regex_replace: 'log.extractor.typeRegexReplace',
-  json: 'log.extractor.typeJson'
+  json: 'log.extractor.typeJson',
+  grok: 'log.extractor.typeGrok'
 };
 
 export const extractorTypeLabelKey = (type: ExtractorType): string =>
@@ -348,6 +352,134 @@ export const extractorUsesSingleTargetField = (
 
 export const extractorRequiresTargetField = (type?: ExtractorType | null) =>
   type === 'copy' || type === 'split';
+
+const GROK_PATTERN_CATEGORY_SET = new Set<string>(GROK_PATTERN_CATEGORIES);
+
+const clampCursor = (value: number, max: number) => {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(max, Math.max(0, value));
+};
+
+export interface CursorTextInsertion {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+export const insertTextAtCursor = (
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  insertion: string,
+  cursorOffset = insertion.length
+): CursorTextInsertion => {
+  const current = value ?? '';
+  const start = clampCursor(selectionStart, current.length);
+  const end = Math.max(start, clampCursor(selectionEnd, current.length));
+  const next = `${current.slice(0, start)}${insertion}${current.slice(end)}`;
+  const cursor = clampCursor(start + cursorOffset, next.length);
+  return { value: next, selectionStart: cursor, selectionEnd: cursor };
+};
+
+export const insertGrokPatternAtCursor = (
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  pattern: { name: string; composite: boolean }
+): CursorTextInsertion => {
+  const token = pattern.composite
+    ? `%{${pattern.name}}`
+    : `%{${pattern.name}:}`;
+  return insertTextAtCursor(
+    value,
+    selectionStart,
+    selectionEnd,
+    token,
+    pattern.composite ? token.length : token.length - 1
+  );
+};
+
+export interface SerializedGrokExtractorFields {
+  config: { pattern: string };
+  target_field: null;
+}
+
+export const serializeGrokExtractorFields = (
+  pattern: string
+): SerializedGrokExtractorFields => ({
+  config: { pattern },
+  target_field: null
+});
+
+const GROK_LIST_PATTERN_LIMIT = 80;
+
+export const extractorRuleTargetSummary = (
+  rule: {
+    extractor_type: ExtractorType;
+    target_field?: string | null;
+    config?: Record<string, unknown> | null;
+  },
+  rootOrSourceLabel: string
+): string => {
+  if (rule.extractor_type === 'grok') {
+    const pattern =
+      typeof rule.config?.pattern === 'string' ? rule.config.pattern.trim() : '';
+    if (!pattern) return rootOrSourceLabel;
+    return pattern.length > GROK_LIST_PATTERN_LIMIT
+      ? `${pattern.slice(0, GROK_LIST_PATTERN_LIMIT)}…`
+      : pattern;
+  }
+  const mapping =
+    rule.extractor_type === 'kv'
+      ? rule.config?.field_mapping
+      : rule.extractor_type === 'regex'
+        ? rule.config?.group_mapping
+        : null;
+  if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+    const targets = Object.values(mapping).filter(
+      (value): value is string => typeof value === 'string'
+    );
+    if (targets.length) return targets.join(', ');
+  }
+  return rule.target_field || rootOrSourceLabel;
+};
+
+export const normalizeGrokPatternCatalog = (
+  payload: unknown
+): GrokPatternCatalogItem[] | null => {
+  if (!isPlainObject(payload) || !Array.isArray(payload.items)) return null;
+  const items: GrokPatternCatalogItem[] = [];
+  for (const item of payload.items) {
+    if (!isPlainObject(item)) continue;
+    const category = item.category;
+    if (
+      typeof item.name !== 'string' ||
+      !item.name ||
+      typeof category !== 'string' ||
+      !GROK_PATTERN_CATEGORY_SET.has(category) ||
+      typeof item.composite !== 'boolean'
+    ) {
+      continue;
+    }
+    items.push({
+      name: item.name,
+      category: category as GrokPatternCategory,
+      description: typeof item.description === 'string' ? item.description : '',
+      example: typeof item.example === 'string' ? item.example : '',
+      composite: item.composite,
+      outputs: Array.isArray(item.outputs)
+        ? item.outputs.filter((output): output is string => typeof output === 'string')
+        : []
+    });
+  }
+  return items;
+};
+
+export const groupGrokPatternsByCategory = (items: GrokPatternCatalogItem[]) =>
+  GROK_PATTERN_CATEGORIES.flatMap((category) => {
+    const grouped = items.filter((item) => item.category === category);
+    return grouped.length ? [{ category, items: grouped }] : [];
+  });
 
 export const flattenExtractorLeafValues = (
   value: unknown,

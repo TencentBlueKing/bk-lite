@@ -8,12 +8,12 @@ from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceO
 from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy
 from apps.monitor.services.generic_query import (
     GenericQueryError,
-    _order_instances,
     build_metric_result,
     metric_instance_labels,
     query_alert_counts,
     query_alert_details,
     query_alert_distribution,
+    query_instance_counts,
     query_instances,
     validate_metric_request,
 )
@@ -59,8 +59,6 @@ def test_monitor_instance_detail_keeps_identity_and_the_full_count():
     detail = query_instances(
         MonitorInstance.objects.filter(monitor_object=obj),
         analysis_mode="detail",
-        order_by="id",
-        order_dir="asc",
         page=1,
         page_size=20,
     )
@@ -139,6 +137,83 @@ def test_monitor_instance_rejects_filters_distribution_and_missing_ids():
         query_instances(base, analysis_mode="detail", instance_ids=["host-1", "gone"])
 
 
+def test_instance_counts_is_one_row_and_ignores_the_list_cap(monkeypatch):
+    obj = _object()
+    _instance(obj, "host-1")
+    _instance(obj, "host-2", active=False)
+    base = MonitorInstance.objects.filter(monitor_object=obj)
+    assert query_instance_counts(base) == [{"instance_count": 2}]
+    assert query_instance_counts(base, status="inactive") == [{"instance_count": 1}]
+    monkeypatch.setattr("apps.monitor.services.generic_query.INSTANCE_LIST_MAX", 1)
+    assert query_instance_counts(base) == [{"instance_count": 2}]
+    with pytest.raises(GenericQueryError, match="实例状态不受支持"):
+        query_instance_counts(base, status="paused")
+
+
+def test_instance_count_handler_counts_one_object_inside_the_org(monkeypatch):
+    from apps.monitor.models.monitor_object import MonitorInstanceOrganization
+    from apps.monitor.nats.generic_query import query_monitor_instance_counts
+
+    host = _object()
+    other = MonitorObject.objects.create(name="db-object", level="base")
+    kept = _instance(host, "host-1", name="web")
+    stopped = _instance(host, "host-2", active=False, name="idle")
+    deleted = _instance(host, "host-3", name="gone")
+    deleted.is_deleted = True
+    deleted.save(update_fields=["is_deleted"])
+    outsider = _instance(other, "db-1", name="mysql")
+    _instance(host, "host-4", name="other-org")
+    for item in (kept, stopped, deleted, outsider):
+        MonitorInstanceOrganization.objects.create(monitor_instance=item, organization=1)
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_actor_scope",
+        lambda user_info: (user_info, 1, False, [1], True, None),
+    )
+    user_info = {"user": "ada", "team": 1}
+    counted = query_monitor_instance_counts(monitor_object_id=host.id, user_info=user_info)
+    assert counted == {"result": True, "data": [{"instance_count": 2}], "message": ""}
+    active = query_monitor_instance_counts(monitor_object_id=host.id, status="active", user_info=user_info)
+    assert active["data"] == [{"instance_count": 1}]
+    empty = query_monitor_instance_counts(monitor_object_id=other.id, status="inactive", user_info=user_info)
+    assert empty["data"] == [{"instance_count": 0}]
+    missing = query_monitor_instance_counts(monitor_object_id="", user_info=user_info)
+    assert missing["result"] is False
+    assert "不能为空" in missing["message"]
+    absent = query_monitor_instance_counts(monitor_object_id="999999", user_info=user_info)
+    assert absent["result"] is False
+    assert "不存在或无权访问" in absent["message"]
+    paged = query_monitor_instance_counts(monitor_object_id=host.id, page=1, page_size=10, user_info=user_info)
+    assert paged["result"] is False
+    assert "分页" in paged["message"]
+    ordered = query_monitor_instance_counts(monitor_object_id=host.id, order_by="name", user_info=user_info)
+    assert ordered["result"] is False
+    assert "排序" in ordered["message"]
+    ranged = query_monitor_instance_counts(monitor_object_id=host.id, instance_ids=["host-1"], user_info=user_info)
+    assert ranged["result"] is False
+    assert "实例范围" in ranged["message"]
+
+
+def test_instance_count_handler_does_not_count_without_permission(monkeypatch):
+    from apps.monitor.models.monitor_object import MonitorInstanceOrganization
+    from apps.monitor.nats.generic_query import query_monitor_instance_counts
+
+    host = _object()
+    item = _instance(host, "host-1")
+    MonitorInstanceOrganization.objects.create(monitor_instance=item, organization=1)
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_actor_scope",
+        lambda user_info: (user_info, 1, False, [1], False, None),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_monitor_instance_permission",
+        lambda monitor_object_id, user_info: ({}, None),
+    )
+    result = query_monitor_instance_counts(monitor_object_id=host.id, user_info={"user": "ada", "team": 1})
+    assert result["result"] is False
+    assert result["data"] == {"status": "forbidden"}
+    assert "无权限" in result["message"]
+
+
 def test_monitor_instance_page_size_and_statistics_group_limits():
     obj = _object()
     _instance(obj, "host-1")
@@ -197,20 +272,17 @@ def test_alert_detail_is_a_list_until_page_is_filled(monkeypatch):
     assert ALERT_DETAIL_MAX == 500
 
 
-def test_monitor_instance_orders_by_the_ip_people_see():
+def test_monitor_instance_list_stays_in_id_order_and_rejects_sort():
+    from apps.monitor.nats.generic_query import query_monitor_instances
+
     obj = _object()
-    first = _instance(obj, "host-1", name="b")
-    first.summary_facts = {"asset.ip": "10.2.0.1"}
-    first.ip = "192.168.0.1"
-    first.save(update_fields=["summary_facts", "ip"])
-    second = _instance(obj, "host-2", name="a")
-    second.ip = "10.1.0.1"
-    second.save(update_fields=["ip"])
-    queryset = MonitorInstance.objects.filter(monitor_object=obj)
-    ordered = query_instances(queryset, analysis_mode="detail", order_by="ip", order_dir="asc", page=1, page_size=20)
-    assert [item["instance_id"] for item in ordered["items"]] == ["host-2", "host-1"]
-    assert [item["ip"] for item in ordered["items"]] == ["10.1.0.1", "10.2.0.1"]
-    assert "CAST" in str(_order_instances(queryset, "ip").query)
+    _instance(obj, "host-2", name="a")
+    _instance(obj, "host-1", name="b")
+    rows = query_instances(MonitorInstance.objects.filter(monitor_object=obj), analysis_mode="detail")
+    assert [item["instance_id"] for item in rows] == ["host-1", "host-2"]
+    rejected = query_monitor_instances(monitor_object_id=obj.id, order_by="name", order_dir="asc")
+    assert rejected["result"] is False
+    assert "不支持排序" in rejected["message"]
 
 
 def test_alert_history_requires_time_and_empty_status_means_active():

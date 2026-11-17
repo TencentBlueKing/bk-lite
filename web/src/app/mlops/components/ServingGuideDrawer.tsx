@@ -25,6 +25,7 @@ interface ServingGuideDrawerProps {
   serving: {
     id: number;
     name: string;
+    is_builtin?: boolean;
     container_info?: {
       port?: number;
       state?: string;
@@ -103,6 +104,7 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
     message.success(t('common.copySuccess'));
   };
 
+  const canSendRequest = Boolean(serving?.is_builtin) || serving?.container_info?.state === 'running';
   const externalEndpoint = typeof window === 'undefined'
     ? `/api/mlops/predict/${algorithmType}/${serving?.id ?? '<servingId>'}`
     : `${window.location.origin}/api/mlops/predict/${algorithmType}/${serving?.id ?? '<servingId>'}`;
@@ -211,12 +213,12 @@ const ServingGuideDrawer = ({ open, onClose, algorithmType, serving }: ServingGu
                 icon={<SendOutlined />}
                 loading={loading}
                 onClick={handleTest}
-                disabled={serving?.container_info?.state !== 'running'}
+                disabled={!canSendRequest}
               >
                 {t('serving-guide.sendRequest')}
               </Button>
             </PermissionWrapper>
-            {serving?.container_info?.state !== 'running' && (
+            {!canSendRequest && (
               <span className="text-xs text-yellow-500">{t('serving-guide.serviceNotRunning')}</span>
             )}
           </div>

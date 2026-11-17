@@ -27,6 +27,7 @@ import { WikiKnowledgeBase } from "@/app/opspilot/types/wiki";
 import {
   getModelOptionText,
   renderModelOptionLabel,
+  withBoundUnavailableModels,
 } from "@/app/opspilot/utils/modelOption";
 
 type SectionKey = "basic" | "danger";
@@ -126,6 +127,8 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const intl = useIntl();
   const router = useRouter();
   const [form] = Form.useForm();
+  const llmModelId = Form.useWatch("llm_model", form);
+  const visionModelId = Form.useWatch("vision_model", form);
   const {
     fetchKnowledgeBase,
     updateKnowledgeBase,
@@ -299,12 +302,15 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <Select
             placeholder={t("wiki.llmModelPlaceholder")}
             optionFilterProp="title"
-            options={llmModels.map((m) => ({
-              value: m.id,
-              label: renderModelOptionLabel(m),
-              title: getModelOptionText(m),
-              disabled: !m.enabled,
-            }))}
+            options={withBoundUnavailableModels(llmModels, llmModelId).map(({ model, disabled }) => {
+              const unavailableMark = disabled ? t("modelOption.unavailable", "已停用") : undefined;
+              return {
+                value: model.id,
+                disabled,
+                label: renderModelOptionLabel(model, unavailableMark),
+                title: getModelOptionText(model, unavailableMark),
+              };
+            })}
           />
         </Form.Item>
         <Form.Item
@@ -333,12 +339,15 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             allowClear
             placeholder={t("wiki.visionModelPlaceholder")}
             optionFilterProp="title"
-            options={llmModels.map((m) => ({
-              value: m.id,
-              label: renderModelOptionLabel(m),
-              title: getModelOptionText(m),
-              disabled: !m.enabled,
-            }))}
+            options={withBoundUnavailableModels(llmModels, visionModelId).map(({ model, disabled }) => {
+              const unavailableMark = disabled ? t("modelOption.unavailable", "已停用") : undefined;
+              return {
+                value: model.id,
+                disabled,
+                label: renderModelOptionLabel(model, unavailableMark),
+                title: getModelOptionText(model, unavailableMark),
+              };
+            })}
           />
         </Form.Item>
         <Form.Item

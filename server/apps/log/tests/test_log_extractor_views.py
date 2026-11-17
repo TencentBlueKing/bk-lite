@@ -435,3 +435,116 @@ def test_type_rule_write_without_current_team_is_denied(authenticated_user, sysl
 
     assert response.status_code == 403
     assert not LogExtractor.objects.exists()
+
+
+def _grok_body(collect_instance, pattern):
+    return {
+        "name": "grok action",
+        "collect_instance": collect_instance,
+        "extractor_type": "grok",
+        "source_field": "message",
+        "target_field": None,
+        "condition": {},
+        "config": {"pattern": pattern},
+        "delete_source": False,
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_grok_rule_mutations_each_increment_one_generation(authenticated_user, collect_instance, mocker):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=("is_superuser",))
+    _allow_current_team(mocker)
+    mocker.patch("apps.log.services.log_extractor.publication._publication_task")
+    factory = APIRequestFactory()
+    created_request = factory.post("/api/v1/log/log_extractors/", _grok_body(collect_instance.id, "%{WORD:event.action}"), format="json")
+    created_request.COOKIES["current_team"] = "1"
+    force_authenticate(created_request, user=authenticated_user)
+
+    created = LogExtractorViewSet.as_view({"post": "create"})(created_request)
+
+    assert created.status_code == 201
+    rule = LogExtractor.objects.get()
+    assert rule.extractor_type == "grok"
+    assert rule.target_field in (None, "")
+    assert rule.config == {"pattern": "%{WORD:event.action}"}
+    assert SystemVectorConfigState.objects.get().desired_generation == 1
+
+    updated_request = factory.put(
+        f"/api/v1/log/log_extractors/{rule.pk}/",
+        _grok_body(collect_instance.id, "%{WORD:event.detail}"),
+        format="json",
+    )
+    updated_request.COOKIES["current_team"] = "1"
+    force_authenticate(updated_request, user=authenticated_user)
+    updated = LogExtractorViewSet.as_view({"put": "update"})(updated_request, pk=rule.pk)
+
+    assert updated.status_code == 200
+    rule.refresh_from_db()
+    assert rule.config == {"pattern": "%{WORD:event.detail}"}
+    assert SystemVectorConfigState.objects.get().desired_generation == 2
+
+    deleted_request = factory.delete(f"/api/v1/log/log_extractors/{rule.pk}/")
+    deleted_request.COOKIES["current_team"] = "1"
+    force_authenticate(deleted_request, user=authenticated_user)
+    deleted = LogExtractorViewSet.as_view({"delete": "destroy"})(deleted_request, pk=rule.pk)
+
+    assert deleted.status_code == 200
+    assert not LogExtractor.objects.exists()
+    assert SystemVectorConfigState.objects.get().desired_generation == 3
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_grok_pattern_catalog_requires_current_team(authenticated_user):
+    request = APIRequestFactory().get("/api/v1/log/log_extractors/grok_patterns/")
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogExtractorViewSet.as_view({"get": "grok_patterns"})(request)
+
+    assert response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_grok_pattern_catalog_returns_directory_for_extractor_view(authenticated_user, collect_instance, mocker):
+    from apps.log.services.log_extractor.grok_library import grok_catalog
+
+    _allow_current_team(mocker)
+    authenticated_user.permission = {"log": {"integration_list-View"}}
+    request = APIRequestFactory().get("/api/v1/log/log_extractors/grok_patterns/")
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogExtractorViewSet.as_view({"get": "grok_patterns"})(request)
+
+    assert response.status_code == 200
+    assert response.data == {"items": grok_catalog("en")}
+    ip = next(item for item in response.data["items"] if item["name"] == "IP")
+    assert set(ip) == {"name", "category", "description", "example", "composite", "outputs"}
+    assert ip["category"] == "network"
+    assert ip["composite"] is False
+    assert ip["outputs"] == []
+
+    authenticated_user.locale = "zh-Hans"
+    authenticated_user.save(update_fields=("locale",))
+    chinese = APIRequestFactory().get("/api/v1/log/log_extractors/grok_patterns/")
+    chinese.COOKIES["current_team"] = "1"
+    force_authenticate(chinese, user=authenticated_user)
+    chinese_response = LogExtractorViewSet.as_view({"get": "grok_patterns"})(chinese)
+    assert chinese_response.status_code == 200
+    assert next(item["description"] for item in chinese_response.data["items"] if item["name"] == "IP") == "IPv4 或 IPv6 地址"
+
+    authenticated_user.permission = {"log": set()}
+    _allow_view_permission(mocker, collect_instance)
+    instance_view = APIRequestFactory().get("/api/v1/log/log_extractors/grok_patterns/")
+    instance_view.COOKIES["current_team"] = "1"
+    force_authenticate(instance_view, user=authenticated_user)
+    assert LogExtractorViewSet.as_view({"get": "grok_patterns"})(instance_view).status_code == 200
+
+    mocker.patch("apps.log.views.extractor.get_permissions_rules", return_value={})
+    denied = APIRequestFactory().get("/api/v1/log/log_extractors/grok_patterns/")
+    denied.COOKIES["current_team"] = "1"
+    force_authenticate(denied, user=authenticated_user)
+    assert LogExtractorViewSet.as_view({"get": "grok_patterns"})(denied).status_code == 403

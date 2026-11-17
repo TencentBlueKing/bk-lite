@@ -361,6 +361,16 @@ class Command(BaseCommand):
         """MLOPS资源初始化"""
         self.stdout.write("MLOPS资源初始化...")
         call_command("init_algorithm_config")
+        try:
+            call_command("init_builtin_timeseries")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning(
+                "event=builtin_timeseries_init_failed failed_stage=init_builtin_timeseries error_type=%s error=%s",
+                type(error).__name__,
+                str(error),
+                exc_info=safe_exception_info(error),
+            )
+            self.stdout.write(self.style.WARNING(f"预置时序发布初始化跳过（{type(error).__name__}），可运行 init_builtin_timeseries 重试"))
 
     def _init_patch_mgmt(self):
         """补丁管理本地内置数据初始化。"""

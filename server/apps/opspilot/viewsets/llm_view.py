@@ -664,7 +664,9 @@ class ObjFilter(FilterSet):
         if not value:
             return qs
         enabled = value == "1"
-        return qs.filter(enabled=enabled)
+        if enabled:
+            return qs.filter(enabled=True, vendor__enabled=True)
+        return qs.filter(enabled=False)
 
     @action(methods=["POST"], detail=False)
     def fetch_k8s_deployment_yaml(self, request):

@@ -74,7 +74,9 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         port: formData.port || undefined // port 为 null 时设置为 undefined，让表单为空
       };
       formRef.current.setFieldsValue(editValues);
-      getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
+      if (!formData.is_builtin) {
+        getModelVersionListWithTrainJob(formData.train_job, tagName as DatasetType);
+      }
     } else {
       formRef.current.setFieldsValue({
         team: defaultTeam,
@@ -162,7 +164,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
         if (!handleUpdateMap[tagName]) {
           return;
         }
-        await handleUpdateMap[tagName]!(formData?.id, data);
+        const payload = formData?.is_builtin ? { team: data.team } : data;
+        await handleUpdateMap[tagName]!(formData?.id, payload);
         message.success(t(`common.updateSuccess`));
       }
       setModalOpen(false);
@@ -174,6 +177,8 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
       setConfirmLoading(false);
     }
   };
+
+  const organizationOnly = type === 'edit' && Boolean(formData?.is_builtin);
 
   const handleCancel = () => {
     setModalOpen(false);
@@ -198,7 +203,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             label={t(`model-release.modelName`)}
             rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
-            <Input placeholder={t(`common.inputMsg`)} />
+            <Input placeholder={t(`common.inputMsg`)} disabled={organizationOnly} />
           </Form.Item>
 
           <Form.Item
@@ -206,7 +211,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             label={t(`traintask.traintask`)}
             rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
-            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} onChange={(value) => onTrainJobChange(value, tagName)} />
+            <Select options={trainjobs} placeholder={t(`model-release.selectTraintask`)} disabled={organizationOnly} onChange={(value) => onTrainJobChange(value, tagName)} />
           </Form.Item>
 
           <Form.Item
@@ -222,7 +227,7 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             label={t(`model-release.modelVersion`)}
             rules={[{ required: true, message: t(`common.inputMsg`) }]}
           >
-            <Select placeholder={t(`mlops-common.inputVersionMsg`)} loading={versionLoading} options={versionOptions} />
+            <Select placeholder={t(`mlops-common.inputVersionMsg`)} loading={versionLoading} options={versionOptions} disabled={organizationOnly} />
           </Form.Item>
 
           <Form.Item
@@ -230,14 +235,14 @@ const ReleaseModal = forwardRef<ModalRef, ReleaseModalProps>(({ trainjobs, activ
             label={t(`mlops-common.port`)}
             tooltip={t(`mlops-common.portDesc`)}
           >
-            <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} />
+            <InputNumber className="w-full" placeholder={t(`mlops-common.portIptMsg`)} min={1} max={65535} disabled={organizationOnly} />
           </Form.Item>
 
           <Form.Item
             name='description'
             label={t(`model-release.modelDescription`)}
           >
-            <TextArea placeholder={t(`common.inputMsg`)} rows={4} />
+            <TextArea placeholder={t(`common.inputMsg`)} rows={4} disabled={organizationOnly} />
           </Form.Item>
         </Form>
       </OperateModal>

@@ -1,5 +1,6 @@
 import useApiClient from "@/utils/request";
 import { LlmModel } from "@/app/opspilot/types/skill";
+import { selectableLlmModels } from "@/app/opspilot/utils/modelOption";
 import { Model } from "@/app/opspilot/types/provider";
 import {
   BuildRecord,
@@ -118,8 +119,13 @@ export const useWikiApi = () => {
 
   // 知识库需绑定 LLM 模型用于"资料摘要"与"页面构建"。
   // 注意:/llm/ 是「LLM 技能/Bot」列表,真正的「模型」在 /llm_model/(与技能配置页一致)
-  const fetchLlmModels = (): Promise<LlmModel[]> =>
-    get("/opspilot/model_provider_mgmt/llm_model/", { params: { enabled: 1 } });
+  const fetchLlmModels = async (): Promise<LlmModel[]> => {
+    const rows = await get("/opspilot/model_provider_mgmt/llm_model/", { params: { enabled: 1 } });
+    if (!Array.isArray(rows)) {
+      return rows;
+    }
+    return selectableLlmModels(rows);
+  };
 
   // EmbedProvider 用于 Wiki 语义索引/语义检索,管理入口同模型供应商页的"向量模型"。
   const fetchEmbedProviders = (): Promise<Model[]> =>
