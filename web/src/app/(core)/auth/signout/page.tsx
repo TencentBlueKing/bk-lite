@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { redirect, useSearchParams } from 'next/navigation';
 import { signOut, useSession } from "next-auth/react";
 import { clearAuthToken } from '@/utils/crossDomainAuth';
 import { resolveThirdLoginFlag } from '@/utils/authRedirect';
@@ -9,7 +9,6 @@ import { clearUserTeamPreference } from '@/utils/userTeamPreference';
 
 export default function SignoutPage() {
   const { data: session, status } = useSession();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -68,8 +67,7 @@ export default function SignoutPage() {
   }
 
   if (!session) {
-    router.push("/api/auth/signin");
-    return null;
+    redirect(buildLoginUrl());
   }
 
   return (
