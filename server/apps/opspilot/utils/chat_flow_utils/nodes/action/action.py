@@ -17,11 +17,13 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, WorkflowAttachmentAsset
+from apps.opspilot.services.chat_service import append_reply_language
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
+from apps.opspilot.utils.flow_locale import WORKBENCH_DEFAULT_LOCALE
 from apps.rpc.system_mgmt import SystemMgmt
 
 
-def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, node_id: str) -> str:
+def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, node_id: str, locale: str | None = None) -> str:
     """使用指定大模型格式化邮件正文。"""
     llm_model = LLMModel.objects.filter(id=model_id, enabled=True).select_related("vendor").first()
     if not llm_model:
@@ -38,12 +40,13 @@ def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, 
             0.2,
             llm_model.vendor.vendor_type if llm_model.vendor_id else "",
         ),
-        system_message_prompt=(
+        system_message_prompt=append_reply_language(
             "你是邮件正文格式化助手。请将用户提供的邮件正文整理成适合直接发送的 HTML 邮件正文。"
             "要求：保留全部事实信息，不新增未提供的信息；结构清晰、语气专业；"
             "只输出 HTML 片段，不输出完整 html/head/body 包裹。"
             "允许使用 <p>、<br>、<strong>、<ul>、<ol>、<li>、<table>、<thead>、<tbody>、<tr>、<th>、<td> 等邮件客户端常见标签。"
-            "如果原始正文包含 Markdown 标记，必须转换为等价 HTML；禁止输出 Markdown 语法、代码块、解释、标题外的寒暄。"
+            "如果原始正文包含 Markdown 标记，必须转换为等价 HTML；禁止输出 Markdown 语法、代码块、解释、标题外的寒暄。",
+            locale or WORKBENCH_DEFAULT_LOCALE,
         ),
         user_message=f"邮件标题：{title or '无'}\n\n原始正文：\n{content}",
         extra_config={"show_think": False},
@@ -290,11 +293,17 @@ class NotifyNode(BaseNodeExecutor):
                 llm_optimize_model = config.get("llmOptimizeModel")
                 if llm_optimize_model:
                     try:
+                        flow_input = {}
+                        if self.variable_manager:
+                            raw_flow_input = self.variable_manager.get_variable("flow_input", {}) or {}
+                            if isinstance(raw_flow_input, dict):
+                                flow_input = raw_flow_input
                         rendered_content = optimize_email_content_with_llm(
                             model_id=int(llm_optimize_model),
                             title=rendered_title,
                             content=rendered_content,
                             node_id=node_id,
+                            locale=flow_input.get("locale"),
                         )
                         logger.info(f"通知节点 {node_id} 邮件正文已完成 LLM 优化: model_id={llm_optimize_model}")
                     except Exception as e:

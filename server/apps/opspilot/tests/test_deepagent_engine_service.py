@@ -339,6 +339,10 @@ def test_build_lightweight_system_prompt_is_short():
 
     prompt = ToolsNodes._build_lightweight_system_prompt("你是运维助手")
     assert "你是运维助手" in prompt
+    assert "直接用中文简洁回答用户" not in prompt
+    english = ToolsNodes._build_lightweight_system_prompt("Reply in English")
+    assert "Reply in English" in english
+    assert "直接用中文简洁回答用户" not in english
     assert "DeepAgent" not in prompt
     assert "write_todos" not in prompt
     assert "read_file" not in prompt
@@ -2759,6 +2763,8 @@ def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
         agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n## 输出格式\n# RCA 报告\n",
     )
     assert "必须以「# RCA 报告」" in last
+    assert "写完整 Markdown" in last
+    assert "写完整中文 Markdown" not in last
     assert "事件概述" in last
     assert "对象在当前集群不可见" in last
     assert "异常对象清单" in last

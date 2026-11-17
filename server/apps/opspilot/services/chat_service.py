@@ -696,11 +696,12 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
-        resolved_prompt = append_reply_language(
-            resolved_prompt,
-            kwargs.get("locale"),
-            match_user_message=kwargs.get("reply_language") == "match_user",
-        )
+        if not kwargs.get("omit_reply_language"):
+            resolved_prompt = append_reply_language(
+                resolved_prompt,
+                kwargs.get("locale"),
+                match_user_message=kwargs.get("reply_language") == "match_user",
+            )
         authoring = kwargs.get(AUTHORING_EXTRA_KEY)
         if isinstance(authoring, dict) and authoring.get("enabled"):
             resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"
