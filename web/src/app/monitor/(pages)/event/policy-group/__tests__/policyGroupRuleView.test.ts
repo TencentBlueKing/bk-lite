@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { filterAndSortRules, pluginCounts, type PolicyGroupRule } from '../policyGroupRuleView';
+import {
+  diffGroupTemplates,
+  filterAndSortRules,
+  filterPolicyGroupMembers,
+  memberTemplateFilterOptions,
+  pluginCounts,
+  rulesForTemplateIds,
+  templateIdsFromRules,
+  type PolicyGroupRule,
+} from '../policyGroupRuleView';
 
 const rule = (
   name: string,
@@ -11,6 +20,7 @@ const rule = (
   plugin_name,
   threshold: extras.threshold || [],
   no_data_enabled: extras.no_data_enabled,
+  ...extras,
 });
 
 describe('策略组规则展示', () => {
@@ -46,5 +56,51 @@ describe('策略组规则展示', () => {
     expect(
       filterAndSortRules(rules, { pluginFilter: 'all', noData: null, keyword: 'cpu' }).map((item) => item.name)
     ).toEqual(['CPU']);
+  });
+
+  it('按来源模板做差集，没有模板来源的规则不参与勾选', () => {
+    const rules = [
+      rule('CPU', 'Host', { source_template_id: 1 }),
+      rule('磁盘', 'Host', { source_template_id: 2 }),
+      rule('手工', 'Host', { source_template_id: null }),
+    ];
+    expect(templateIdsFromRules(rules)).toEqual([1, 2]);
+    expect(diffGroupTemplates([1, 2], [2, 3])).toEqual({ addedIds: [3], removedIds: [1] });
+    expect(rulesForTemplateIds(rules, [1]).map((item) => item.name)).toEqual(['CPU']);
+  });
+
+  it('按生效模板筛出对应对象，没有匹配插件的实例不出现', () => {
+    const members = [
+      {
+        instance_id: 'win-01',
+        name: 'win-01',
+        plugins: [{ id: 1, name: 'Windows WMI' }],
+        templates: [{ id: 11, rule_id: 1, name: 'WMI CPU', plugin_name: 'Windows WMI' }],
+      },
+      {
+        instance_id: 'web-01',
+        name: 'web-01',
+        plugins: [{ id: 2, name: 'Host' }],
+        templates: [{ id: 22, rule_id: 2, name: '磁盘读取速率过高', plugin_name: 'Host' }],
+      },
+    ];
+    expect(filterPolicyGroupMembers(members, { keyword: '', filter: 'plugin:Host' }).map((item) => item.name)).toEqual([
+      'web-01',
+    ]);
+    expect(filterPolicyGroupMembers(members, { keyword: '', filter: 'template:11' }).map((item) => item.name)).toEqual([
+      'win-01',
+    ]);
+    const options = memberTemplateFilterOptions([
+      rule('磁盘读取速率过高', 'Host', { source_template_id: 22, id: 2 }),
+    ]);
+    expect(options).toEqual([
+      {
+        label: 'Host (Linux Agent)',
+        options: [
+          { label: 'Host (Linux Agent) 全部对象', value: 'plugin:Host' },
+          { label: '磁盘读取速率过高', value: 'template:22' },
+        ],
+      },
+    ]);
   });
 });

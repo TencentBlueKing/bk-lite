@@ -272,28 +272,26 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         )
         return WebUtils.response_success({"id": group.id, "member_count": 0})
 
-    @action(methods=["post"], detail=False, url_path="add_templates")
+    @action(methods=["post"], detail=False, url_path="set_templates")
     @HasPermission("strategy_list-Edit")
-    def add_templates(self, request):
+    def set_templates(self, request):
         scope = resolve_current_team_data_scope(request)
         group = _group_in_scope(scope, request.data.get("group_id"))
-        requested_ids = request.data.get("template_ids") or []
-        if not isinstance(requested_ids, list) or not requested_ids:
-            raise BaseAppException("至少选择一条策略模板")
+        requested_ids = request.data.get("template_ids")
+        if not isinstance(requested_ids, list):
+            raise BaseAppException("template_ids 必须是列表")
         try:
             requested_ids = [int(item) for item in requested_ids]
         except (TypeError, ValueError) as exc:
-            raise BaseAppException("至少选择一条策略模板") from exc
+            raise BaseAppException("template_ids 必须是整数列表") from exc
         templates_by_id = {item.id: item for item in PolicyTemplate.objects.filter(id__in=requested_ids).select_related("plugin", "monitor_object")}
         templates = [templates_by_id[item_id] for item_id in requested_ids if item_id in templates_by_id]
-        if not templates:
-            raise BaseAppException("至少选择一条策略模板")
-        result = PolicyGroupService.add_templates(group, templates, operator=_operator(scope))
+        result = PolicyGroupService.set_templates(group, templates, operator=_operator(scope))
         log_operation(
             request,
             "update",
             "monitor",
-            "策略组追加规则",
+            "策略组调整规则",
             target_type="policy_group",
             target_id=group.id,
             detail={"group_id": group.id, **result},
@@ -351,15 +349,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
     def members(self, request):
         scope = resolve_current_team_data_scope(request)
         group = _group_in_scope(scope, request.query_params.get("group_id"))
-        memberships = list(group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).select_related("monitor_instance"))
-        rows = [
-            {
-                "instance_id": membership.monitor_instance.id,
-                "name": membership.monitor_instance.name,
-            }
-            for membership in memberships
-        ]
-        return WebUtils.response_success(rows)
+        return WebUtils.response_success(PolicyGroupService.list_members(group))
 
     @action(methods=["get"], detail=False)
     def instance_groups(self, request):
