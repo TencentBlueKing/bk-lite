@@ -1,5 +1,5 @@
-# roger 在 0068 之后先建了 CI 上下文表。社区版同一张表落在 0070_ci_context。
-# 本文件保留编号，避免已 migrate 的 roger 库丢记录；DDL 交给 0070，库里已有表则跳过。
+# 以 master 为准：CI 上下文表由 0070_ci_context 创建。
+# 本文件只保留 roger 已用过的编号，避免已 migrate 的库找不到节点。
 from django.db import migrations
 
 

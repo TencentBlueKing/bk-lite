@@ -1,5 +1,4 @@
-# roger 的 0069_ci_context 与社区版 0073_merge_ci_context_and_repair 是两条叶子。
-# 空操作节点收成一个 head，避免 migrate 报 multiple leaf nodes。
+# 以 master 的 0073 链为准，把 roger 残留的 0069_ci_context 叶子收进来。
 from django.db import migrations
 
 
