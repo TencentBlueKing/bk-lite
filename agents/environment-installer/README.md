@@ -1,4 +1,4 @@
-# 环境安装包（首版开发中）
+# 环境安装包
 
 Linux x86_64 + systemd；管理员导出一个 `.run`，目标主机执行一次。入口不依赖 Python、Go、curl、jq；素材从客户内网 NATS TLS 下载。完整素材离线模式不在此版范围。
 
@@ -20,7 +20,7 @@ SIGNING_PUBLIC_KEY='<发布验证公钥>' sh agents/environment-installer/build.
 - `ENVIRONMENT_INSTALLER_WORKER_FILE`：同次发布的 setup-worker。
 - `ENVIRONMENT_INSTALLER_SIGNING_KEY_FILE`：Ed25519 PKCS8 PEM 私钥文件，限服务账户读取。
 
-平台需要应用 node_mgmt 0049 迁移。部署和迁移须按实际测试/发布目标另行执行；本说明不是生产部署授权。
+平台需要应用 node_mgmt 0050 迁移。部署和迁移须按实际测试/发布目标另行执行；本说明不是生产部署授权。
 
 云区域必须配置 HTTPS `NODE_SERVER_URL`、`NATS_PROTOCOL=tls`、TLS `NATS_SERVERS` 和最小权限的 `NATS_INSTALLER_USERNAME/PASSWORD`，不回退管理员下载凭据。控制器 ZIP 必须使用本次更新后的 Linux install.sh；导出预检会检查脚本存在、大小和环境安装协议标记，旧 ZIP 在创建授权前被拒绝；安装器保留二次检查。包固定为已发布 Linux x86_64 Controller 版本且具有 SHA-256。
 
