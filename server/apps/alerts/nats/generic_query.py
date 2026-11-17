@@ -107,7 +107,7 @@ def _event_queryset(user_info: dict):
     return base.filter(org_query & permission_query)
 
 
-_CENTER_SPLIT = "告警中心查询已拆成明细、数量和分布三个接口"
+_CENTER_SPLIT = "当前查询不支持该参数"
 
 
 def _reject_center_mode(analysis_mode) -> None:

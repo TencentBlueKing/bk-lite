@@ -170,6 +170,7 @@ error:
   scope_exclusive: Provide either a collect instance or a collect type, but not both
   generation_published: The current generation is already published
   channel_query_failed: Failed to query notification channels
+  collect_config_child_or_base: Provide a child or base configuration
 grok_pattern:
   WORD:
     description: A word of letters, digits, or underscores

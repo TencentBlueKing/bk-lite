@@ -113,6 +113,11 @@ error:
   network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
   go_to_network_whitelist: Open Network Allowlist
   connection_target_forbidden: This target address is not allowed.
+  message_required: Message is required
+  execution_id_required: execution_id is required
+  execution_not_found: Execution not found
+  llm_timeout: Agent execution timed out (>{seconds}s). Please try again later.
+  agent_execution_failed: Agent execution failed
   no_group_id: No Group ID
   no_view_permission: User does not have permission to view this instance
   model_in_use: Cannot delete because it is still in use by {count} knowledge graph(s).

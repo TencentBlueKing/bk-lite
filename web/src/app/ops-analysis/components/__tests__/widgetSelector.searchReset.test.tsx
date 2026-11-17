@@ -155,4 +155,40 @@ describe('ComponentSelector 搜索重开', () => {
     await screen.findByText('报表列表');
     expect(screen.queryByText('过期搜索结果')).toBeNull();
   });
+
+  it('lists a source without chart types and does not open a component for it', async () => {
+    const chartless = {
+      id: 9,
+      name: 'CMDB 实例监控ID映射',
+      rest_api: 'cmdb/get_monitor_ids_by_inst_uuids',
+      chart_type: [],
+      hasAuth: true,
+    } as unknown as DatasourceItem;
+    getDataSourceBriefList.mockResolvedValue([chartless, regionSource]);
+    const onOpenConfig = vi.fn();
+    const onPickSource = vi.fn();
+    const user = userEvent.setup();
+    const view = render(
+      <ComponentSelector visible onCancel={vi.fn()} onOpenConfig={onOpenConfig} />,
+    );
+
+    await screen.findByText('CMDB 实例监控ID映射');
+    await user.click(screen.getByText('CMDB 实例监控ID映射'));
+    expect(onOpenConfig).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText('云区域资源分布'));
+    expect(onOpenConfig).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ComponentSelector
+        visible
+        hideSceneWidgets
+        onCancel={vi.fn()}
+        onPickSource={onPickSource}
+      />,
+    );
+    await user.click(screen.getByText('CMDB 实例监控ID映射'));
+    expect(onPickSource).toHaveBeenCalledWith(expect.objectContaining({ id: 9, chart_type: [] }));
+    expect(onOpenConfig).toHaveBeenCalledTimes(1);
+  });
 });

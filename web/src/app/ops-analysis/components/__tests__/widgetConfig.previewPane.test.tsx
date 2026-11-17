@@ -89,13 +89,12 @@ describe('WidgetConfigPreview pane', () => {
     expect(screen.queryByTestId('mock-preview-renderer')).toBeNull();
   });
 
-  it('renders the chart with a distinct preview widget id and live title', async () => {
+  it('renders the chart with a distinct preview widget id', async () => {
     renderPreview({
-      liveName: '草稿名',
       liveDescription: '草稿描述',
     });
 
-    expect(screen.getByText('草稿名')).toBeTruthy();
+    expect(screen.queryByText('CPU')).toBeNull();
     expect(screen.getByText('草稿描述')).toBeTruthy();
 
     await waitFor(() => {
@@ -124,7 +123,6 @@ describe('WidgetConfigPreview pane', () => {
     expect(chartCard?.className).toContain('flex-1');
     expect(chartCard?.className).toContain('min-h-0');
     expect(chartCard?.className).toContain('overflow-hidden');
-    expect(screen.getByText('草稿名').className).toContain('truncate');
     expect(screen.getByText('草稿描述').className).toContain('line-clamp-2');
   });
 

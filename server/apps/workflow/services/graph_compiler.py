@@ -91,7 +91,8 @@ def compile_canvas_graph(definition: Any, canvas_metadata: Any) -> dict[str, Any
             successors = adjacency.get(current, [])
             terminal_successors = terminal_adjacency.get(current, [])
             last = current
-            if len(successors) + len(terminal_successors) <= 1:
+            # 条件节点即使只连接一个出口，后继也必须留在对应 case 内。
+            if task.get("type") != "SWITCH" and len(successors) + len(terminal_successors) <= 1:
                 result.append(task)
                 if not successors or successors[0] == stop:
                     break
@@ -101,7 +102,7 @@ def compile_canvas_graph(definition: Any, canvas_metadata: Any) -> dict[str, Any
             if task.get("type") != "SWITCH" and terminal_successors:
                 raise DefinitionValidationError(f"节点 {current} 只有条件分支可以同时连接响应节点和后续任务")
 
-            convergence = _convergence(successors, adjacency) if successors and not terminal_successors else None
+            convergence = _convergence(successors, adjacency) if len(successors) > 1 and not terminal_successors else None
             if stop is not None and convergence is None:
                 convergence = stop
             branches: list[tuple[str, list[dict[str, Any]], str]] = []
@@ -116,7 +117,8 @@ def compile_canvas_graph(definition: Any, canvas_metadata: Any) -> dict[str, Any
                 branches.append((label, [], current))
 
             if task.get("type") == "SWITCH":
-                cases = {label: branch for label, branch, _ in branches}
+                cases = {label: [] for label in (task.get("decisionCases") or {})}
+                cases.update({label: branch for label, branch, _ in branches})
                 task["decisionCases"] = cases
                 task["defaultCase"] = []
                 result.append(task)

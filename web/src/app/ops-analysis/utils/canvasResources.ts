@@ -5,6 +5,7 @@ import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils
 import { collectNamespaceIdsFromLayout } from '@/app/ops-analysis/utils/namespaceFilter';
 import { collectNamespaceIdsFromNodes } from '@/app/ops-analysis/(pages)/view/topology/utils/namespaceUtils';
 import type { Graph } from '@antv/x6';
+import { readDataVariables } from '@/app/ops-analysis/utils/dataVariable';
 
 export const collectDashboardDataSourceIds = (items: LayoutItem[] = []) => {
   const ids = new Set<number>();
@@ -59,6 +60,9 @@ export const collectScreenDataSourceIds = (viewSets: ScreenViewSets) => {
       ids.add(normalizedId as number);
     }
   });
+  readDataVariables(viewSets.dataVariables).forEach((variable) => {
+    if (variable.dataSourceId > 0) ids.add(variable.dataSourceId);
+  });
   return Array.from(ids);
 };
 
@@ -73,6 +77,11 @@ export const collectScreenNamespaceIds = (
     const normalizedId = typeof rawId === 'string' ? parseInt(rawId, 10) : rawId;
     const dataSource = dataSources.find((source) => source.id === normalizedId);
     dataSource?.namespaces?.forEach((id) => namespaceIds.add(id));
+  });
+  readDataVariables(viewSets.dataVariables).forEach((variable) => {
+    dataSources.find((source) => source.id === variable.dataSourceId)
+      ?.namespaces
+      ?.forEach((id) => namespaceIds.add(id));
   });
   return namespaceIds;
 };

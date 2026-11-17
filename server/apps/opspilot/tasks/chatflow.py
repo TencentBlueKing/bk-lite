@@ -2,9 +2,10 @@ from celery import shared_task
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
-from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
-
 from apps.opspilot.tasks._common import _run_in_native_thread
+from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.flow_locale import locale_for_creator
+
 
 @shared_task(name="apps.opspilot.tasks.chat_flow_celery_task")
 def chat_flow_celery_task(bot_id, node_id, message):
@@ -28,6 +29,7 @@ def chat_flow_celery_task(bot_id, node_id, message):
                 "bot_id": bot_id,
                 "node_id": node_id,
                 "entry_type": "celery",
+                "locale": locale_for_creator(bot_obj.created_by, bot_obj.domain),
             }
             result = engine.execute(input_data)
             logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")

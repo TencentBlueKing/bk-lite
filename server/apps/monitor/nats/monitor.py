@@ -8,7 +8,7 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Optional
 
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Count, F, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
@@ -2901,10 +2901,15 @@ def _query_zombie_vm_metrics(matcher, window, end_ts, authorized_id_set):
 
 
 def _query_zombie_logins(hosts, rfc_range, user_info):
-    login_result = count_successful_logins(hosts, rfc_range, user_info)
-    if isinstance(login_result, dict) and isinstance(login_result.get("result"), bool) and not login_result["result"]:
-        raise ZombieHostQueryError(str(login_result.get("message") or "成功登录计数失败"))
-    return login_result
+    # 本地日志接口在旁路线程访问 ORM，外层 NATS 清理无法覆盖该线程。
+    close_old_connections()
+    try:
+        login_result = count_successful_logins(hosts, rfc_range, user_info)
+        if isinstance(login_result, dict) and isinstance(login_result.get("result"), bool) and not login_result["result"]:
+            raise ZombieHostQueryError(str(login_result.get("message") or "成功登录计数失败"))
+        return login_result
+    finally:
+        close_old_connections()
 
 
 @nats_client.register

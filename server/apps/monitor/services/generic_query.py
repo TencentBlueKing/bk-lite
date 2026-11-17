@@ -380,6 +380,7 @@ def query_alert_distribution(
     time_field: str | None = None,
     time_range=None,
     locale: str | None = None,
+    include_object_identity: bool = False,
 ) -> list[dict]:
     if not _filled(group_by):
         raise GenericQueryError("请选择按什么分布")
@@ -390,13 +391,21 @@ def query_alert_distribution(
         grouped = _annotate_monitor_object(queryset).values("_monitor_object_id").annotate(alert_count=Count("id"))
     else:
         grouped = queryset.values(group_by).annotate(alert_count=Count("id"))
-    group_count = grouped.count()
-    if group_count > STAT_GROUP_MAX:
-        raise GenericQueryError(f"分布分组超过 {STAT_GROUP_MAX} 组")
     rows = list(grouped)
     if group_by == "monitor_object_id":
+        rows = _include_zero_alert_objects(rows, instance_ids)
+    if len(rows) > STAT_GROUP_MAX:
+        raise GenericQueryError(f"分布分组超过 {STAT_GROUP_MAX} 组")
+    if group_by == "monitor_object_id":
         labels = _object_labels([row.get("_monitor_object_id") for row in rows], locale)
-        items = [{"group_value": _present_object(row.get("_monitor_object_id"), labels)[1], "alert_count": row["alert_count"]} for row in rows]
+        items = []
+        for row in rows:
+            identity, label = _present_object(row.get("_monitor_object_id"), labels)
+            item = {"group_value": label, "alert_count": row["alert_count"]}
+            if include_object_identity:
+                item["monitor_object_id"] = int(identity) if str(identity).isdigit() else identity
+                item["monitor_object_name"] = label
+            items.append(item)
     else:
         items = [{"group_value": _label_alert_choice(group_by, row.get(group_by)), "alert_count": row["alert_count"]} for row in rows]
     items.sort(key=lambda item: (-(item["alert_count"] or 0), str(item["group_value"])))
@@ -495,6 +504,27 @@ def _filter_alerts(queryset, level, status, alert_type, instance_ids, time_field
     if (end - start).total_seconds() > ALERT_RANGE_MAX_SECONDS:
         raise GenericQueryError("监控告警时间范围最长 90 天")
     return queryset.filter(**{f"{time_field}__gte": start, f"{time_field}__lt": end})
+
+
+def _include_zero_alert_objects(rows: list[dict], instance_ids) -> list[dict]:
+    """按监控对象分布时，这批实例所属、但没有告警的对象也返回 0。"""
+    ids = _id_list(instance_ids)
+    if not ids:
+        return rows
+    present = {str(row.get("_monitor_object_id")) for row in rows if row.get("_monitor_object_id") not in (None, "")}
+    missing = []
+    seen = set()
+    for object_id in MonitorInstance.objects.filter(id__in=ids).values_list("monitor_object_id", flat=True):
+        if object_id in (None, ""):
+            continue
+        text = str(object_id)
+        if text in present or text in seen:
+            continue
+        seen.add(text)
+        missing.append(object_id)
+    if not missing:
+        return rows
+    return [*rows, *({"_monitor_object_id": object_id, "alert_count": 0} for object_id in missing)]
 
 
 def _annotate_monitor_object(queryset):
