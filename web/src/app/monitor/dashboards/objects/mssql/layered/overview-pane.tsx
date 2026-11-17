@@ -89,14 +89,6 @@ export default function OverviewPane({
     () => alertEvents.filter((event) => alertEventInsideWindow(event.at, chartWindow)),
     [alertEvents, chartWindow]
   );
-  const healthPending = [
-    MSSQL_PRO_NAMES.connections,
-    MSSQL_PRO_NAMES.batch,
-    MSSQL_PRO_NAMES.hit,
-    MSSQL_PRO_NAMES.processCpu,
-    MSSQL_PRO_NAMES.uptime
-  ];
-  const healthLoading = booting || healthPending.some((name) => pendingMetricNames.has(name));
   const hit = mssqlLatest(metricMap, MSSQL_PRO_NAMES.hit);
   const connections = mssqlLatest(metricMap, MSSQL_PRO_NAMES.connections);
   const batch = mssqlLatest(metricMap, MSSQL_PRO_NAMES.batch);
@@ -105,7 +97,7 @@ export default function OverviewPane({
 
   const holdEmpty = (name: string, present: boolean) => mssqlDeferEmpty(
     present,
-    pendingMetricNames.has(name),
+    booting || pendingMetricNames.has(name),
     batchLoading
   );
   const cards = useMemo<KpiTileModel[]>(() => {
@@ -171,21 +163,12 @@ export default function OverviewPane({
       }
     ];
     return metricCards;
-  }, [alertCount, alertsOpen, batch, batchLoading, connections, cpu, hit, onOpenAlerts, onOpenFocus, pendingMetricNames, uptime]);
-
-  const loadingTiles: KpiTileModel[] = [
-    { key: 'connections', label: '用户连接数', value: '' },
-    { key: 'batch', label: '批处理请求速率', value: '' },
-    { key: 'hit', label: '缓冲池命中率', value: '' },
-    { key: 'cpu', label: '进程 CPU', value: '' },
-    { key: 'uptime', label: '运行时间', value: '' },
-    { key: 'alert-count', label: '告警数量', value: '' }
-  ];
+  }, [alertCount, alertsOpen, batch, batchLoading, booting, connections, cpu, hit, onOpenAlerts, onOpenFocus, pendingMetricNames, uptime]);
 
   return (
     <div data-mssql-pane="overview" className="contents">
       <ProSection title="健康概览">
-        <KpiTileRow items={healthLoading ? loadingTiles : cards} loading={healthLoading} columns={6} />
+        <KpiTileRow items={cards} columns={6} />
       </ProSection>
       {railEvents.length > 0 ? (
         <ProSection title="事件" hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}>

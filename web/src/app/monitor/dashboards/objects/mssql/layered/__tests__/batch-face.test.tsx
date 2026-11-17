@@ -169,4 +169,34 @@ describe('mssql batch face', () => {
     expect(settled.container.querySelector('[data-kpi="cpu"]')?.textContent).toContain('—');
     expect(settled.container.querySelector('[data-kpi="cpu"]')?.querySelector('[data-pro-dash-loading]')).toBeNull();
   });
+
+  it('健康概览在 processCpu 仍 pending 时保留已有连接数，空卡只走单卡加载', () => {
+    const connections = load(MSSQL_PRO_NAMES.connections, [[1_700_000_000, '36']]);
+    const view = mount(
+      <OverviewPane
+        metricMap={{ [connections.name]: connections }}
+        pendingMetricNames={new Set([MSSQL_PRO_NAMES.processCpu])}
+        booting={false}
+        batchLoading
+        alertCount={0}
+        alertsOpen={false}
+        alertEvents={[]}
+        onOpenAlerts={() => undefined}
+        onOpenFocus={() => undefined}
+        onFocusAlert={() => undefined}
+      />
+    );
+    const grid = view.container.querySelector('[data-kpi-columns="6"]');
+    expect(grid?.getAttribute('aria-busy')).not.toBe('true');
+    const connectionsCard = view.container.querySelector('[data-kpi="connections"]');
+    expect(connectionsCard?.textContent).toContain('用户连接数');
+    expect(connectionsCard?.textContent).toContain('36');
+    expect(connectionsCard?.textContent).not.toContain('加载中');
+    expect(connectionsCard?.querySelector('[data-pro-dash-loading]')).toBeNull();
+    const cpuCard = view.container.querySelector('[data-kpi="cpu"]');
+    expect(cpuCard?.textContent).toContain('进程 CPU');
+    expect(cpuCard?.textContent).toContain('加载中');
+    expect(cpuCard?.querySelector('[data-pro-dash-loading-size="small"]')).toBeTruthy();
+    expect(cpuCard?.textContent).not.toContain('—');
+  });
 });
