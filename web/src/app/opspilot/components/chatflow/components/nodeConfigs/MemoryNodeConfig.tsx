@@ -2,7 +2,7 @@ import React, {useEffect} from 'react';
 import {Button, Form, InputNumber, Select} from 'antd';
 import {PlusOutlined} from '@ant-design/icons';
 import Link from 'next/link';
-import {filterModelOption, getModelOptionText, renderModelOptionLabel} from '@/app/opspilot/utils/modelOption';
+import {filterModelOption, getModelOptionText, renderModelOptionLabel, withBoundUnavailableModels} from '@/app/opspilot/utils/modelOption';
 import type {MemoryNodeConfigProps} from './types';
 
 const { Option } = Select;
@@ -18,6 +18,13 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
 }) => {
   const isWriteNode = nodeType === 'memory_write';
   const selectedMemorySpaceId = Form.useWatch('memorySpace', form);
+  const llmModelId = Form.useWatch('llmModel', form);
+  const llmModelName = Form.useWatch('llmModelName', form);
+  const modelChoices = withBoundUnavailableModels(
+    llmModels,
+    llmModelId,
+    typeof llmModelName === 'string' && llmModelName ? [{ id: Number(llmModelId), name: llmModelName }] : [],
+  );
   const selectedSpace = memorySpaces.find((s) => s.id === selectedMemorySpaceId);
 
   // 当选择记忆空间时，自动设置默认模型（仅写入节点）
@@ -118,11 +125,14 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
                 form.setFieldsValue({ llmModelName: model?.name || '' });
               }}
             >
-              {llmModels.map((model) => (
-                <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
-                  {renderModelOptionLabel(model)}
-                </Option>
-              ))}
+              {modelChoices.map(({ model, disabled }) => {
+                const unavailableMark = disabled ? t('modelOption.unavailable', '已停用') : undefined;
+                return (
+                  <Option key={model.id} value={model.id} disabled={disabled} title={getModelOptionText(model, unavailableMark)}>
+                    {renderModelOptionLabel(model, unavailableMark)}
+                  </Option>
+                );
+              })}
             </Select>
           </Form.Item>
           <Form.Item name="llmModelName" className="hidden">

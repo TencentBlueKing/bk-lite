@@ -1,7 +1,12 @@
 """节点管理统一 OpenAPI 网关端点。"""
 
+from django.core.exceptions import ObjectDoesNotExist
+
 from apps.core.openapi.decorators import openapi_expose
+from apps.core.openapi.envelope import ErrorCode
 from apps.node_mgmt.openapi_serializers import (
+    EnvironmentInstallRequestSerializer,
+    EnvironmentStatusRequestSerializer,
     NodeCloudRegionQuerySerializer,
     NodeCollectorInstallSerializer,
     NodeCollectorOperateSerializer,
@@ -25,6 +30,7 @@ from apps.node_mgmt.openapi_service import (
     list_packages,
     operate_collector,
 )
+from apps.node_mgmt.services.environment_install import EnvironmentInstallService
 
 _ORG_SCOPE = "组织口径：API 令牌绑定组织精确匹配，不级联子组织"
 _CATALOG_SCOPE = "云区域是平台目录，不按组织拆分；调用仍须绑定组织"
@@ -215,3 +221,55 @@ def openapi_operate_collector(node_ids, collector_id, operation, *, team=None, u
 def openapi_bind_configuration(node_ids, collector_configuration_id, *, team=None, user_info=None):
     del user_info
     return bind_configuration(team=team, node_ids=node_ids, collector_configuration_id=collector_configuration_id)
+
+
+def _invoke_install_service(operation, **kwargs):
+    try:
+        return operation(**kwargs)
+    except (PermissionError, ObjectDoesNotExist):
+        return {"result": False, "code": ErrorCode.TEAM_OUT_OF_SCOPE, "message": "installation grant denied"}
+    except ValueError as error:
+        return {"result": False, "message": str(error)}
+
+
+@openapi_expose(
+    path="node-mgmt/environment-install-status",
+    method="POST",
+    schema=EnvironmentStatusRequestSerializer,
+    inject="team_list_with_user",
+    summary="查询环境授权范围内的安装结果",
+)
+def environment_install_status(grant_id, installation_key, install_id, report=None, *, team=None, user_info=None):
+    # Explicit capability authorization in service; grant export requires node Edit permission.
+    return _invoke_install_service(
+        EnvironmentInstallService.status,
+        grant_id=grant_id,
+        installation_key=installation_key,
+        install_id=install_id,
+        team=team,
+        user_info=user_info,
+        report=report,
+    )
+
+
+@openapi_expose(
+    path="node-mgmt/environment-install",
+    method="POST",
+    schema=EnvironmentInstallRequestSerializer,
+    inject="team_list_with_user",
+    summary="使用环境安装授权申请独立节点会话",
+)
+def environment_install(grant_id, installation_key, request_id, node_id, ip, node_name, os, cpu_architecture, *, team=None, user_info=None):
+    return _invoke_install_service(
+        EnvironmentInstallService.request,
+        grant_id=grant_id,
+        installation_key=installation_key,
+        request_id=request_id,
+        node_id=node_id,
+        ip=ip,
+        node_name=node_name,
+        os=os,
+        cpu_architecture=cpu_architecture,
+        team=team,
+        user_info=user_info,
+    )

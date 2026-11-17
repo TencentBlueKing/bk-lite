@@ -141,12 +141,25 @@ security:
     - bk.ans_exec.stream.>
 
 jetstream:
-  namespace: bk.ans_exec
+  namespace: bk.ans_exec.default
   max_deliver: 5
   ack_wait: 300
   backoff: [5, 15, 30, 60]
-  dlq_subject: bk.ans_exec.tasks.dlq
+  dlq_subject: bk.ans_exec.default.tasks.dlq
 ```
+
+手写配置时，`namespace` 和 `dlq_subject` 必须带本执行器的节点 ID，并与 `instance_id` 一致。
+平台内置模板写成 `bk.ans_exec.${node.id}`，下发时和 `instance_id: ${node.id}` 做同一次替换。
+多个执行器连同一套 NATS 时，各自的任务 subject 不再重叠，也不会共用 stream 和 consumer。
+`security.allowed_stream_subjects` 里的 `bk.ans_exec.stream.>` 是流式日志白名单，不从任务队列 namespace 派生。
+
+已下发到节点的预置配置不会随采集器定义更新自动改写。升级时：
+
+1. 选一个没有排队作业的窗口。
+2. 只重渲染 Ansible-Executor 的预置配置，把带节点 ID 的 namespace 下发到目标节点。
+3. 确认新 stream 已有对应 consumer 后，再删除旧的 `bk.ans_exec` 任务流。
+4. 不要执行 `repair_node_config`，它会重写该节点上的全部预置组件。
+5. 容器节点的 Flow 环境刷新也会调用 `create_default_config`，同样会重写全部预置配置；升级窗口内不要触发这条路径。
 
 `security.allowed_callback_subjects` 和 `security.allowed_stream_subjects` 也可分别通过
 `ANSIBLE_ALLOWED_CALLBACK_SUBJECTS`、`ANSIBLE_ALLOWED_STREAM_SUBJECTS` 以逗号分隔形式注入；仅在部署确有自定义回调或流式日志 subject 时扩展。

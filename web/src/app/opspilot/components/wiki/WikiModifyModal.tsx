@@ -11,6 +11,7 @@ import { Model } from "@/app/opspilot/types/provider";
 import {
   getModelOptionText,
   renderModelOptionLabel,
+  withBoundUnavailableModels,
 } from "@/app/opspilot/utils/modelOption";
 
 interface WikiModifyModalProps {
@@ -28,6 +29,8 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
+  const llmModelId = Form.useWatch("llm_model", form);
+  const visionModelId = Form.useWatch("vision_model", form);
   const { fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } =
     useWikiApi();
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
@@ -129,11 +132,15 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
           <Select
             placeholder={t("wiki.llmModelPlaceholder")}
             optionFilterProp="title"
-            options={llmModels.map((m) => ({
-              value: m.id,
-              label: renderModelOptionLabel(m),
-              title: getModelOptionText(m),
-            }))}
+            options={withBoundUnavailableModels(llmModels, llmModelId).map(({ model, disabled }) => {
+              const unavailableMark = disabled ? t("modelOption.unavailable", "已停用") : undefined;
+              return {
+                value: model.id,
+                disabled,
+                label: renderModelOptionLabel(model, unavailableMark),
+                title: getModelOptionText(model, unavailableMark),
+              };
+            })}
           />
         </Form.Item>
         <Form.Item
@@ -162,11 +169,15 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
             allowClear
             placeholder={t("wiki.visionModelPlaceholder")}
             optionFilterProp="title"
-            options={llmModels.map((m) => ({
-              value: m.id,
-              label: renderModelOptionLabel(m),
-              title: getModelOptionText(m),
-            }))}
+            options={withBoundUnavailableModels(llmModels, visionModelId).map(({ model, disabled }) => {
+              const unavailableMark = disabled ? t("modelOption.unavailable", "已停用") : undefined;
+              return {
+                value: model.id,
+                disabled,
+                label: renderModelOptionLabel(model, unavailableMark),
+                title: getModelOptionText(model, unavailableMark),
+              };
+            })}
           />
         </Form.Item>
         <Form.Item
