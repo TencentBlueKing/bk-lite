@@ -143,6 +143,10 @@ import {
   updateScreenViewport,
 } from "./utils/viewport";
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
+import DataVariableModal from "@/app/ops-analysis/components/dataVariableModal";
+import { DataVariableRuntimeProvider, withDatasourceNamespace } from "@/app/ops-analysis/context/dataVariableRuntime";
+import { buildDataVariableRequestParams } from "@/app/ops-analysis/utils/widgetDataTransform";
+import { readDataVariables, type DataVariable } from "@/app/ops-analysis/utils/dataVariable";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
 import { mergeScreenWidgetValueConfig } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 import { useCanvasDraft } from "@/app/ops-analysis/hooks/useCanvasDraft";
@@ -181,6 +185,8 @@ const ScreenDataConfig = memo(
     screenFrame,
     previewSingleStyle,
     previewHost,
+    dataVariables,
+    onCreateDataVariable,
     onDirtyChange,
     onConfirm,
     onClose,
@@ -200,6 +206,8 @@ const ScreenDataConfig = memo(
     screenFrame?: "panel" | "bare";
     previewSingleStyle?: SingleValueStyleConfig;
     previewHost?: HTMLElement | null;
+    dataVariables?: DataVariable[];
+    onCreateDataVariable?: (variable: DataVariable) => void;
     onDirtyChange?: (dirty: boolean) => void;
     onConfirm?: (values: WidgetConfig) => void | false;
     onClose?: () => void;
@@ -222,6 +230,8 @@ const ScreenDataConfig = memo(
         builtinNamespaceId={builtinNamespaceId}
         filterDefinitions={filterDefinitions}
         unifiedFilterValues={unifiedFilterValues}
+        dataVariables={dataVariables}
+        onCreateDataVariable={onCreateDataVariable}
         onDirtyChange={onDirtyChange}
         onConfirm={onConfirm}
         onClose={onClose}
@@ -279,6 +289,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     useState(false);
   const [displayModalVisible, setDisplayModalVisible] = useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
+  const [dataVariableOpen, setDataVariableOpen] = useState(false);
+  const [dataVariableDraft, setDataVariableDraft] = useState<DataVariable | null>(null);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -1096,7 +1108,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     if (!selectedScreen?.data_id) return;
 
     const nextDraftViewSets = {
-      ...draftViewSets,
+      ...draftViewSetsRef.current,
       filters: queryState.definitions,
     };
     setSaving(true);
@@ -1125,6 +1137,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleConfirmDataVariables = (next: DataVariable[]) => {
+    commitDocument({
+      viewSets: {
+        ...draftViewSetsRef.current,
+        dataVariables: next,
+      },
+      filters: filtersRef.current,
+    });
+    message.success(t("common.saveSuccess"));
+    setDataVariableDraft(null);
   };
 
   const handleSaveSettings = ({
@@ -1390,8 +1414,36 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     [commitDocument, editMode, shareMode],
   );
 
+  const dataVariables = useMemo(
+    () => readDataVariables(activeViewSets.dataVariables),
+    [activeViewSets],
+  );
+
+  const handleCreateDataVariable = useCallback((variable: DataVariable) => {
+    setDataVariableDraft(variable);
+    setDataVariableOpen(true);
+  }, []);
+
   const screenCanvas = useMemo(
     () => (
+      <DataVariableRuntimeProvider
+        variables={dataVariables}
+        referencedValues={activeViewSets.items}
+        filterValues={queryState.appliedFilterValues}
+        reloadKey={refreshVersion}
+        scopeKey={queryState.appliedNamespaceId}
+        prepareParams={(variable, params) => {
+          const source = dataSources.find((item) => item.id === variable.dataSourceId);
+          const shaped = buildDataVariableRequestParams({
+            variable,
+            resolvedParams: params,
+            dataSource: source,
+            filterValues: queryState.appliedFilterValues,
+            filterDefinitions: queryState.definitions,
+          });
+          return withDatasourceNamespace(shaped, source?.namespaces, queryState.appliedNamespaceId);
+        }}
+      >
       <ScreenCanvas
         viewSets={activeViewSets}
         fullscreen={isFullscreen || playbackFullscreen}
@@ -1421,9 +1473,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         }
         resolveFilterTextRef={resolveFilterTextRef}
       />
+      </DataVariableRuntimeProvider>
     ),
     [
       activeViewSets,
+      dataVariables,
+      dataSources,
       dataSourceResolver,
       editMode,
       handleDropChrome,
@@ -1483,6 +1538,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         handleSelectCanvasItem(null)
       }
       onOpenFilterConfig={() => setFilterConfigOpen(true)}
+      onOpenDataVariables={() => {
+        setDataVariableDraft(null);
+        setDataVariableOpen(true);
+      }}
       onPreview={enterFullscreen}
       onEdit={handleStartEdit}
       onCancel={() => runAfterDataGuard(handleCancelEdit)}
@@ -1568,6 +1627,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       builtinNamespaceId={queryState.namespaceDraftId}
       filterDefinitions={queryState.definitions}
       unifiedFilterValues={queryState.filterValues}
+      dataVariables={dataVariables}
+      onCreateDataVariable={handleCreateDataVariable}
       configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
       onSectionErrorsChange={handleSectionErrorsChange}
@@ -1786,6 +1847,21 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           valueConfig: item.valueConfig,
         }))}
         dataSources={dataSources}
+      />
+      <DataVariableModal
+        open={dataVariableOpen}
+        variables={dataVariableDraft ? [...dataVariables, dataVariableDraft] : dataVariables}
+        focusId={dataVariableDraft?.id}
+        dataSources={dataSources}
+        filters={queryState.definitions}
+        filterValues={queryState.filterValues}
+        namespaceId={queryState.namespaceDraftId}
+        widgetConfigs={activeViewSets.items}
+        onCancel={() => {
+          setDataVariableOpen(false);
+          setDataVariableDraft(null);
+        }}
+        onConfirm={handleConfirmDataVariables}
       />
       {selectedScreen?.data_id != null && (
         <DashboardSubscriptionModal

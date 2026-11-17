@@ -3571,7 +3571,6 @@ screens:
       type: string
       order: 0
       enabled: true
-      inputMode: select
       inputConfig:
         control: select
         optionsSource:
@@ -3732,7 +3731,6 @@ screens:
             value: cmdb/list_application_systems
           type: dynamic
           valueField: inst_uuid
-      inputMode: select
       key: application_system_id
       name: 应用系统
       order: 0
@@ -3755,7 +3753,6 @@ screens:
           - label: '5'
             value: '5'
           type: static
-      inputMode: select
       key: application_topology_depth
       name: 展开层级
       order: 1

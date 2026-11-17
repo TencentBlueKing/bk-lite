@@ -3096,7 +3096,7 @@
   {
     "key": "云区域资源分布::cmdb/get_cloud_region_resource_counts",
     "name": "云区域资源分布",
-    "desc": "统计所选云区域中的主机、沿模型关联找到的实例，以及带标签且没有主机关联的实例。按实例去重后按模型计数",
+    "desc": "统计所选云区域中的主机、沿模型关联找到的实例，以及带标签且没有主机关联的实例。按实例去重后按模型计数。每行的 inst_uuids 是计入该模型的实例，数量为 0 时为空列表",
     "rest_api": "cmdb/get_cloud_region_resource_counts",
     "tag": [
       "cmdb"
@@ -3187,6 +3187,12 @@
         "title": "实例数量",
         "value_type": "number",
         "description": "去重后的实例数量，配置过的模型为 0 也返回"
+      },
+      {
+        "key": "inst_uuids",
+        "title": "实例标识",
+        "value_type": "string",
+        "description": "计入该模型的实例 UUID。数量为 0 时为空列表"
       }
     ]
   },
@@ -3295,7 +3301,12 @@
     ],
     "chart_type": [
       "topN",
-      "table"
+      "table",
+      "bar",
+      "pie",
+      "line",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -3657,7 +3668,10 @@
       "table",
       "bar",
       "pie",
-      "topN"
+      "line",
+      "topN",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -3840,7 +3854,9 @@
       "cmdb"
     ],
     "chart_type": [
-      "table"
+      "table",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -4172,7 +4188,11 @@
     "chart_type": [
       "bar",
       "pie",
-      "topN"
+      "line",
+      "table",
+      "topN",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -4357,7 +4377,9 @@
       "cmdb"
     ],
     "chart_type": [
-      "table"
+      "table",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -4603,7 +4625,13 @@
       "cmdb"
     ],
     "chart_type": [
-      "topN"
+      "topN",
+      "bar",
+      "pie",
+      "line",
+      "table",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -4725,7 +4753,9 @@
       "monitor"
     ],
     "chart_type": [
-      "table"
+      "table",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -5173,7 +5203,9 @@
       "monitor"
     ],
     "chart_type": [
-      "table"
+      "table",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -5707,14 +5739,19 @@
   {
     "key": "监控告警分布::monitor/query_monitor_alert_distribution",
     "name": "监控告警分布",
-    "desc": "按所选字段统计当前组织权限内的告警条数，每个取值一行。分布字段必填，可以是级别、监控对象或告警类型。不选监控对象就是全部对象。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
+    "desc": "按所选字段统计当前组织权限内的告警条数，每个取值一行。分布字段必填，可以是级别、监控对象或告警类型。不选监控对象就是全部对象，也可以多选。实例可来自不同监控对象；无效、不存在、没权限或不属于所选对象的实例会跳过，全部无效时返回空结果。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
     "rest_api": "monitor/query_monitor_alert_distribution",
     "tag": [
       "monitor"
     ],
     "chart_type": [
       "pie",
-      "bar"
+      "bar",
+      "line",
+      "table",
+      "topN",
+      "multiValue",
+      "cardList"
     ],
     "params": [
       {
@@ -5725,6 +5762,7 @@
         "filterType": "params",
         "inputConfig": {
           "control": "select",
+          "multiple": true,
           "optionsSource": {
             "type": "dynamic",
             "sourceRef": {
@@ -5743,7 +5781,6 @@
         "required": true,
         "alias_name": "分布字段",
         "filterType": "params",
-        "desc": "必填。按这一列的取值拆开，每个取值一行。",
         "inputConfig": {
           "control": "select",
           "optionsSource": {
@@ -5935,6 +5972,219 @@
         "key": "alert_count",
         "title": "告警数",
         "value_type": "number"
+      }
+    ]
+  },
+  {
+    "key": "CMDB 资源告警分布::monitor/query_cmdb_alert_distribution",
+    "name": "CMDB 资源监控告警分布",
+    "desc": "查询这批 CMDB 实例对应的监控告警，按级别、监控对象或告警类型汇总。对不上监控的实例会跳过。",
+    "rest_api": "monitor/query_cmdb_alert_distribution",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [
+      "pie",
+      "bar",
+      "line",
+      "table",
+      "topN",
+      "multiValue",
+      "cardList"
+    ],
+    "params": [
+      {
+        "name": "uuids",
+        "type": "string",
+        "value": [],
+        "required": true,
+        "alias_name": "实例标识",
+        "filterType": "params",
+        "desc": "要统计的 CMDB 实例。一次最多 2000 个，超出后本次查询失败。没关联监控的实例不参与告警统计。"
+      },
+      {
+        "name": "group_by",
+        "type": "string",
+        "value": "",
+        "required": true,
+        "alias_name": "分布字段",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "级别",
+                "value": "level"
+              },
+              {
+                "label": "监控对象",
+                "value": "monitor_object_id"
+              },
+              {
+                "label": "告警类型",
+                "value": "alert_type"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "level",
+        "type": "string",
+        "value": [],
+        "alias_name": "级别",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "警告",
+                "value": "warning"
+              },
+              {
+                "label": "错误",
+                "value": "error"
+              },
+              {
+                "label": "严重",
+                "value": "critical"
+              },
+              {
+                "label": "无数据",
+                "value": "no_data"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "value": [],
+        "alias_name": "状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "未恢复",
+                "value": "new"
+              },
+              {
+                "label": "已恢复",
+                "value": "recovered"
+              },
+              {
+                "label": "已关闭",
+                "value": "closed"
+              }
+            ]
+          }
+        },
+        "desc": "不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。"
+      },
+      {
+        "name": "alert_type",
+        "type": "string",
+        "value": [],
+        "alias_name": "告警类型",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "阈值告警",
+                "value": "alert"
+              },
+              {
+                "label": "无数据告警",
+                "value": "no_data"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "time_field",
+        "type": "string",
+        "value": "",
+        "alias_name": "时间字段",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "开始时间",
+                "value": "start_event_time"
+              },
+              {
+                "label": "结束时间",
+                "value": "end_event_time"
+              },
+              {
+                "label": "创建时间",
+                "value": "created_at"
+              }
+            ]
+          }
+        },
+        "desc": "和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。"
+      },
+      {
+        "name": "time_range",
+        "type": "timeRange",
+        "value": null,
+        "alias_name": "时间范围",
+        "filterType": "params",
+        "desc": "和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。"
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
+        }
+      }
+    ],
+    "field_schema": [
+      {
+        "key": "group_value",
+        "title": "分布项",
+        "value_type": "string",
+        "description": "所选分布字段的展示名。级别和告警类型是中文，监控对象是当前语言下的对象名。"
+      },
+      {
+        "key": "alert_count",
+        "title": "告警数",
+        "value_type": "number"
+      },
+      {
+        "key": "monitor_object_id",
+        "title": "监控对象编号",
+        "value_type": "number",
+        "description": "按监控对象分布时返回。级别和告警类型分布没有这一列。"
+      },
+      {
+        "key": "monitor_object_name",
+        "title": "监控对象",
+        "value_type": "string",
+        "description": "按监控对象分布时返回，与分布项相同。"
       }
     ]
   },

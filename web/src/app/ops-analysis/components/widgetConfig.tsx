@@ -39,9 +39,19 @@ import { buildLineBarValueFieldOptions, defaultDisplayFields, normalizeLineBarFi
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
+  buildDataVariableRequestParams,
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { DataVariableRuntimeProvider, withDatasourceNamespace } from '@/app/ops-analysis/context/dataVariableRuntime';
+import {
+  collectVariableIds,
+  isDataVariableRef,
+  resolveParamRecord,
+  runDataVariables,
+  widgetQueryToDataVariable,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 import { dynamicQueryParamsOf } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import type { OptionsQueryEditorContext } from '@/app/ops-analysis/utils/optionsQueryCandidates';
 import { optionsSourceSummary } from '@/app/ops-analysis/utils/optionsSourceIdentity';
@@ -199,6 +209,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
+  dataVariables?: DataVariable[];
 }
 
 const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
@@ -209,6 +220,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   dataSourceManager,
   filterDefinitions = [],
   unifiedFilterValues = {},
+  dataVariables,
   builtinNamespaceId,
   showChartThemeMode = false,
   surface = 'dashboard',
@@ -222,6 +234,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onDirtyChange,
   previewSingleStyle,
   previewHost = null,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const canvasRawDataRegistry = useWidgetCsvExportRegistry();
@@ -650,10 +663,45 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     try {
       const formValues = form.getFieldsValue();
       const userParams = formValues?.params || {};
+      let requestUserParams = userParams;
+      const preserveArrayNames = new Set<string>();
+      if (collectVariableIds(userParams).length > 0) {
+        const run = await runDataVariables({
+          variables: dataVariables ?? [],
+          roots: collectVariableIds(userParams),
+          fetchRows: async (variable, params) => {
+            const source = dataSourceManager.dataSources.find((item) => item.id === variable.dataSourceId);
+            const shaped = buildDataVariableRequestParams({
+              variable,
+              resolvedParams: params,
+              dataSource: source,
+              filterValues: unifiedFilterValues,
+              filterDefinitions,
+            });
+            const prepared = withDatasourceNamespace(shaped, source?.namespaces, builtinNamespaceId);
+            if (!prepared) throw new Error('data-variable-request-blocked');
+            const result = await getSourceDataByApiId(variable.dataSourceId, prepared, {
+              suppressErrorNotification: true,
+            });
+            return result.data;
+          },
+        });
+        const resolved = resolveParamRecord(userParams, run.columns);
+        if (resolved.blocked) {
+          setPreviewRawData(null);
+          setPreviewLoading(false);
+          return;
+        }
+        requestUserParams = (resolved as { blocked: false; params: Record<string, unknown> }).params;
+        Object.entries(userParams).forEach(([name, value]) => {
+          if (isDataVariableRef(value)) preserveArrayNames.add(name);
+        });
+      }
       const requestParams = processDataSourceParams({
         sourceParams: canonicalSelectedDataSource.params,
         definitionParams: canonicalSelectedDataSource.params,
-        userParams,
+        userParams: requestUserParams,
+        preserveArrayNames,
         chartType,
         resolutionContext: {
           referenceNow: Date.now(),
@@ -694,6 +742,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   }, [
     canonicalSelectedDataSource,
     chartType,
+    dataVariables,
+    filterDefinitions,
+    dataSourceManager,
+    builtinNamespaceId,
+    unifiedFilterValues,
     effectiveNamespaceId,
     form,
     getSourceDataByApiId,
@@ -1110,7 +1163,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const handleEditInputConfig = (param: ParamItem) => {
     const override = widgetParamOverrides.find((o) => o.name === param.name);
-    setEditingInputConfigParam(override ?? param);
+    const base = override ?? param;
+    const current = form.getFieldValue(['params', param.name]);
+    if (isDataVariableRef(current)) {
+      setEditingInputConfigParam({
+        ...base,
+        inputConfig: { control: 'dataVariable', dataVariableId: current.dataVariableId },
+      });
+      return;
+    }
+    setEditingInputConfigParam(base);
   };
 
   const reconcileParamWithOptions = useCallback(
@@ -1147,12 +1209,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       return [...prev, { ...baseParam, inputConfig: newConfig }];
     });
     const currentParams = form.getFieldValue('params') || {};
-    const coerced = coerceValueForMultiple(
-      currentParams[editingParamName],
-      isMultipleSelectInputConfig(newConfig),
-    );
-    if (coerced !== currentParams[editingParamName]) {
-      form.setFieldValue(['params', editingParamName], coerced);
+    if (newConfig.control === 'dataVariable') {
+      form.setFieldValue(['params', editingParamName], { dataVariableId: newConfig.dataVariableId });
+    } else if (isDataVariableRef(currentParams[editingParamName])) {
+      form.setFieldValue(['params', editingParamName], undefined);
+    } else {
+      const coerced = coerceValueForMultiple(
+        currentParams[editingParamName],
+        isMultipleSelectInputConfig(newConfig),
+      );
+      if (coerced !== currentParams[editingParamName]) {
+        form.setFieldValue(['params', editingParamName], coerced);
+      }
     }
     if (resolvedOptions?.length) {
       reconcileParamWithOptions(editingParamName, resolvedOptions);
@@ -1570,6 +1638,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
   };
 
+  const openDataVariableFromQuery = () => {
+    if (!selectedDataSource || !onCreateDataVariable) return;
+    const values = hydrateWidgetFormValues(
+      form.getFieldsValue(true) as WidgetConfigFormValues,
+      { persistReconcile: false },
+    );
+    const params = Object.fromEntries(
+      (values.dataSourceParams ?? [])
+        .filter((param) => param.name)
+        .map((param) => [param.name, param.value]),
+    );
+    const paramInputs: NonNullable<DataVariable['paramInputs']> = {};
+    widgetParamOverrides.forEach((param) => {
+      if (param.name && param.inputConfig) paramInputs[param.name] = param.inputConfig;
+    });
+    onCreateDataVariable(widgetQueryToDataVariable({
+      name: String(form.getFieldValue('name') ?? '').trim(),
+      valueField: '',
+      dataSourceId: selectedDataSource.id,
+      params,
+      filterBindings,
+      paramInputs,
+    }));
+  };
+
   const previewToggleButton = (
     <Button
       data-testid="widget-config-preview-button"
@@ -1618,9 +1711,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           setPreviewRawData(data);
           setPreviewLoading(false);
         }}
-        liveName={watchedFormValues?.name}
+        onRenderStatus={(result) => {
+          if (result.status !== 'loading') {
+            setPreviewLoading(false);
+          }
+        }}
         liveDescription={watchedFormValues?.description}
         onRefresh={handlePreview}
+        onCreateDataVariable={
+          onCreateDataVariable && selectedDataSource ? openDataVariableFromQuery : undefined
+        }
       />
     </aside>
   ) : null;
@@ -1781,6 +1881,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             filterBindings={filterBindings}
             globalFilters={filterDefinitions}
             globalFilterValues={unifiedFilterValues}
+            dataVariables={dataVariables}
             onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
@@ -2018,6 +2119,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             : 'param'
         }
         value={editingInputConfigParam?.inputConfig}
+        dataVariables={dataVariables?.map((item) => ({ id: item.id, name: item.name || item.id }))}
+        onCreateDataVariable={onCreateDataVariable}
         onConfirm={handleInputConfigConfirm}
         onCancel={() => setEditingInputConfigParam(null)}
         excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}
@@ -2033,12 +2136,34 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     </>
   );
 
+  const withDataVariables = (node: React.ReactNode) => (
+    <DataVariableRuntimeProvider
+      variables={dataVariables ?? []}
+      referencedValues={watchedFormValues}
+      filterValues={unifiedFilterValues}
+      scopeKey={builtinNamespaceId}
+      prepareParams={(variable, params) => {
+        const source = dataSourceManager.dataSources.find((item) => item.id === variable.dataSourceId);
+        const shaped = buildDataVariableRequestParams({
+          variable,
+          resolvedParams: params,
+          dataSource: source,
+          filterValues: unifiedFilterValues,
+          filterDefinitions,
+        });
+        return withDatasourceNamespace(shaped, source?.namespaces, builtinNamespaceId);
+      }}
+    >
+      {node}
+    </DataVariableRuntimeProvider>
+  );
+
   const confirmLabel = variant === 'panel' && surface === 'screen'
     ? t('opsAnalysis.screen.applyConfig')
     : t('common.confirm');
 
   if (variant === 'panel') {
-    return (
+    return withDataVariables(
       <>
         {previewHost && previewAside
           ? createPortal(previewAside, previewHost)
@@ -2064,7 +2189,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     );
   }
 
-  return (
+  return withDataVariables(
     <Drawer
       title={t('dashboard.viewConfig')}
       placement="right"

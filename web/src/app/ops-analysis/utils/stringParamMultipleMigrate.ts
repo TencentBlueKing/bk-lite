@@ -77,8 +77,10 @@ export const areNormalizedInputConfigsCompatible = (
   if (left.control !== right.control) return false;
   if (left.control === 'input' || right.control === 'input'
     || left.control === 'organization' || right.control === 'organization'
-    || left.control === 'conditionFilter' || right.control === 'conditionFilter') {
-    return left.control === right.control;
+    || left.control === 'conditionFilter' || right.control === 'conditionFilter'
+    || left.control === 'dataVariable' || right.control === 'dataVariable') {
+    return left.control === right.control
+      && (left.control !== 'dataVariable' || right.control !== 'dataVariable' || left.dataVariableId === right.dataVariableId);
   }
   const leftPicker = left.picker ?? 'dropdown';
   const rightPicker = right.picker ?? 'dropdown';
@@ -102,7 +104,7 @@ export const normalizeStringListInputConfig = (
   if (normalized.control === 'organization') {
     return { inputConfig: { control: 'organization' }, warnings };
   }
-  if (normalized.control === 'conditionFilter') {
+  if (normalized.control === 'conditionFilter' || normalized.control === 'dataVariable') {
     return { inputConfig: normalized, warnings };
   }
 

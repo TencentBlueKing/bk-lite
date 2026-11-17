@@ -624,7 +624,6 @@ dashboards:
     defaultValue: []
     order: 0
     enabled: true
-    inputMode: select
     inputConfig: *id008
   - id: time__timeRange
     key: time

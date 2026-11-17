@@ -3,6 +3,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type { ConditionFilterValue, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { parseConditionGroup } from '@/app/ops-analysis/utils/conditionFilter';
+import { isDataVariableRef } from '@/app/ops-analysis/utils/dataVariable';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 export type DataSourceFormParamValue =
@@ -14,6 +15,7 @@ export type DataSourceFormParamValue =
   | [number, number]
   | DateRangeValue
   | ConditionFilterValue
+  | { dataVariableId: string }
   | null
   | undefined;
 
@@ -50,6 +52,7 @@ export const getDataSourceFormParamInitialValue = (
   param: ParamItem,
 ): DataSourceFormParamValue => {
   const { type = 'string', value } = param;
+  if (isDataVariableRef(value)) return value;
   if (type === 'conditionFilter') {
     return parseConditionGroup(value);
   }
@@ -92,16 +95,6 @@ export const processDataSourceFormParamsForSubmit = (
     );
     const value = formParams[param.name];
     if (
-      param.hidden
-      && (value === undefined || value === null || value === '')
-      && param.value !== undefined
-      && param.value !== null
-      && param.value !== ''
-    ) {
-      processedParams[param.name] = param.value as SubmittedParamValue;
-      return;
-    }
-    if (
       hasFormValue
       && param.filterType !== 'fixed'
       && (value === null || value === undefined || value === '')
@@ -111,6 +104,10 @@ export const processDataSourceFormParamsForSubmit = (
     }
     if (value === null) {
       processedParams[param.name] = null;
+      return;
+    }
+    if (isDataVariableRef(value)) {
+      processedParams[param.name] = value;
       return;
     }
     if (param.type === 'date' && value) {
