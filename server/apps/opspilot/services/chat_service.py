@@ -424,7 +424,11 @@ class ChatService:
             _agent_timeout = _resolve_agent_execute_timeout()
             logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
             loader = LanguageLoader(app="opspilot", default_lang="en")
-            message = loader.get("error.llm_timeout") or f"智能体执行超时（>{_agent_timeout}s），请稍后重试"
+            template = loader.get("error.llm_timeout") or "Agent execution timed out (>{seconds}s). Please try again later."
+            try:
+                message = str(template).format(seconds=_agent_timeout)
+            except (KeyError, ValueError):
+                message = str(template)
             return (
                 {
                     "message": message,
