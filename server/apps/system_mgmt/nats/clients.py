@@ -1,19 +1,31 @@
 # flake8: noqa
+from apps.system_mgmt.services.platform_roles import is_platform_admin, is_platform_auditor
+
 from .common import *  # noqa: F401,F403
 
 
 @nats_client.register
-def get_user_menus(client_id, roles, username, is_superuser):
+def get_user_menus(client_id, roles, username, is_superuser, is_auditor=False):
     client = RoleManage()
-    # client_id used directly below
     menus = []
-    if not is_superuser:
+    if is_auditor:
+        menus = [
+            name
+            for name in Menu.objects.filter(app=client_id).values_list("name", flat=True)
+            if name.rsplit("-", 1)[-1] == "View"
+        ]
+    elif not is_superuser:
         menu_ids = []
         role_menus = Role.objects.filter(app=client_id, id__in=roles).values_list("menu_list", flat=True)
         for i in role_menus:
             menu_ids.extend(i)
         menus = list(Menu.objects.filter(app=client_id, id__in=list(set(menu_ids))).values_list("name", flat=True))
-    user_menus = client.get_all_menus(client_id, user_menus=menus, username=username, is_superuser=is_superuser)
+    user_menus = client.get_all_menus(
+        client_id,
+        user_menus=menus,
+        username=username,
+        is_superuser=bool(is_superuser) and not is_auditor,
+    )
     from apps.core.utils.license_capacity import filter_menu_tree
 
     user_menus = filter_menu_tree(client_id, user_menus)
@@ -35,8 +47,8 @@ def get_client(client_id="", username="", domain="domain.com"):
         all_role_ids = get_user_all_roles(user)
         role_list = Role.objects.filter(id__in=all_role_ids)
         role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
-        is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-        if not is_superuser:
+        unrestricted = is_platform_admin(role_names) or is_platform_auditor(role_names)
+        if not unrestricted:
             app_name_list = list(Role.objects.filter(id__in=all_role_ids).values_list("app", flat=True).distinct())
             if "" not in app_name_list:
                 app_list = app_list.filter(name__in=app_name_list)
