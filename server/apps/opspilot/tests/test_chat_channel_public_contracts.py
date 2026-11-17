@@ -12,7 +12,7 @@ import pytest
 
 from apps.opspilot.services import dingtalk_chat_flow_utils as dingtalk
 from apps.opspilot.services import wechat_official_chat_flow_utils as wechat
-
+from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 
 pytestmark = pytest.mark.unit
 
@@ -74,9 +74,7 @@ def test_dingtalk_node_config_requires_credentials_and_exposes_node_id():
     assert error is None
     assert config["node_id"] == "ding-1"
     assert missing is None
-    assert response_json(missing_error)["message"] == (
-        "Missing config: client_secret"
-    )
+    assert response_json(missing_error)["message"] == ("Missing config: client_secret")
 
 
 def test_dingtalk_signature_and_chatflow_result_contract():
@@ -115,6 +113,7 @@ def test_dingtalk_signature_and_chatflow_result_contract():
             "node_id": "ding-1",
             "channel": "ding_talk",
             "is_third_party": True,
+            "locale": "zh-Hans",
             "wiki_material_actor": {
                 "mode": "external",
                 "username": "",
@@ -125,11 +124,27 @@ def test_dingtalk_signature_and_chatflow_result_contract():
     )
 
 
+def test_wechat_and_official_flow_input_defaults_to_zh_hans():
+    seen = []
+
+    class _Engine:
+        def execute(self, data):
+            seen.append(data)
+            return {"content": "ok"}
+
+    with patch("apps.opspilot.utils.base_chat_flow_utils.create_chat_flow_engine", return_value=_Engine()):
+        assert WechatChatFlowUtils(3).execute_chatflow_with_message(NS(), "n", "hi", "u") == "ok"
+        assert wechat.WechatOfficialChatFlowUtils(4).execute_chatflow_with_message(NS(), "n", "hi", "u") == "ok"
+
+    assert seen[0]["channel"] == "enterprise_wechat"
+    assert seen[0]["locale"] == "zh-Hans"
+    assert seen[1]["channel"] == "wechat_official_account"
+    assert seen[1]["locale"] == "zh-Hans"
+
+
 def test_dingtalk_access_token_and_message_delivery_use_official_endpoints():
     utils = dingtalk.DingTalkChatFlowUtils(bot_id=7)
-    token_response = NS(
-        json=lambda: {"errcode": 0, "access_token": "token-1"}
-    )
+    token_response = NS(json=lambda: {"errcode": 0, "access_token": "token-1"})
     message_response = NS(json=lambda: {"errcode": 0})
     with (
         patch.object(dingtalk.requests, "get", return_value=token_response) as get,
@@ -336,15 +351,18 @@ def test_wechat_official_node_config_and_url_verification():
         "timestamp",
         "nonce",
     )
-    assert utils.handle_url_verification(
-        "signature",
-        "timestamp",
-        "nonce",
-        "",
-        "token",
-        "aes",
-        "appid",
-    ).content == b"fail"
+    assert (
+        utils.handle_url_verification(
+            "signature",
+            "timestamp",
+            "nonce",
+            "",
+            "token",
+            "aes",
+            "appid",
+        ).content
+        == b"fail"
+    )
 
 
 def test_wechat_official_message_dispatches_celery_after_decrypt():
@@ -355,9 +373,7 @@ def test_wechat_official_message_dispatches_celery_after_decrypt():
             "timestamp": "1710000000",
             "nonce": "nonce",
         },
-        body=(
-            b"<xml><Encrypt><![CDATA[encrypted-message]]></Encrypt></xml>"
-        ),
+        body=(b"<xml><Encrypt><![CDATA[encrypted-message]]></Encrypt></xml>"),
     )
     message = NS(
         type="text",

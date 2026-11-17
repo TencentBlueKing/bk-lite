@@ -5,7 +5,8 @@ from unittest.mock import patch
 import pytest
 
 from apps.opspilot.models import Bot, BotWorkFlow, LLMSkill
-from apps.opspilot.nats_api import get_opspilot_module_data, get_opspilot_module_list, trigger_workflow_by_nats
+from apps.opspilot.nats_api import _resolve_participants, get_opspilot_module_data, get_opspilot_module_list, trigger_workflow_by_nats
+from apps.system_mgmt.models import User as SystemUser
 
 pytestmark = pytest.mark.django_db
 
@@ -65,3 +66,41 @@ def test_trigger_workflow_by_nats_missing_workflow_and_engine_success():
         "entry_type": "nats",
         "execution_id": "exec-1",
     }
+
+
+def _locale_user(username, locale):
+    return SystemUser.objects.create(
+        username=username,
+        domain="domain.com",
+        display_name=username,
+        email=f"{username}@example.com",
+        password="x",
+        locale=locale,
+    )
+
+
+def test_nats_flow_locale_uses_the_first_user_with_a_language():
+    blank = _locale_user("blank-locale", "")
+    english = _locale_user("english-user", "en")
+    chinese = _locale_user("chinese-user", "zh-CN")
+    bot = Bot.objects.create(name="nats-locale", team=[1])
+    BotWorkFlow.objects.create(bot=bot, flow_json={}, web_json={})
+    captured = {}
+
+    def execute(data):
+        captured["data"] = data
+        return {"success": True}
+
+    engine = SimpleNamespace(execution_id="exec-locale", execute=execute)
+    with patch("apps.opspilot.nats_api.create_chat_flow_engine", return_value=engine):
+        trigger_workflow_by_nats("hello", 1, [blank.id, english.id], bot.id, "start")
+    assert captured["data"]["locale"] == "en"
+
+    with patch("apps.opspilot.nats_api.create_chat_flow_engine", return_value=engine):
+        trigger_workflow_by_nats("hello", 1, [chinese.id, english.id], bot.id, "start")
+    assert captured["data"]["locale"] == "zh-CN"
+
+    with patch("apps.opspilot.nats_api.create_chat_flow_engine", return_value=engine):
+        trigger_workflow_by_nats("hello", 1, ["alice", 999999], bot.id, "start")
+    assert captured["data"]["locale"] == "zh-Hans"
+    assert _resolve_participants([str(english.id), "bob"]) == ["english-user", "bob"]
