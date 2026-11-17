@@ -543,7 +543,7 @@ def test_alert_center_handlers_split_detail_count_and_distribution(monkeypatch):
     user = {"is_superuser": True}
     retired = handler_module.query_alert_center(query_object="alert", analysis_mode="detail", user_info=user)
     assert retired["result"] is False
-    assert "明细、数量和分布" in retired["message"]
+    assert "不支持该参数" in retired["message"]
 
     missing_group = handler_module.query_alert_center_distribution(query_object="alert", user_info=user)
     assert missing_group["result"] is False

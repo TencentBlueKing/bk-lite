@@ -70,7 +70,7 @@ import ComponentParamSwitchControl from "@/app/ops-analysis/components/component
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { useDataVariableRuntime } from "@/app/ops-analysis/context/dataVariableRuntime";
-import { collectVariableIds, columnBlockReasonKey, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
+import { collectVariableIds, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
 import {
   areTableQueryParamsEquivalent,
   readExplicitPagePair,
@@ -660,9 +660,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }),
     [config, dataSource, requestExtraParams, variableColumns],
   );
-  const variableBlockMessage = variableBlockReason
-    ? t(columnBlockReasonKey(variableBlockReason))
-    : t("dashboard.noData");
+  const variableBlockMessage = t("dashboard.noData");
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
       return null;

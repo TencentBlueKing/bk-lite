@@ -2,32 +2,54 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from apps.monitor.services.generic_query import GenericQueryError
 from apps.monitor.services.generic_query_limits import CMDB_ALERT_UUID_MAX
 
 _UUID_CHUNK = 200
 
 
+def _uuid_v4(value) -> str | None:
+    """合法 UUIDv4 返回小写标准串。非法值直接跳过，不走会记错误日志的异常。"""
+    try:
+        parsed = UUID(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if parsed.version != 4:
+        return None
+    return str(parsed)
+
+
 def normalize_cmdb_uuids(uuids) -> list[str]:
-    """收下平铺的 uuid 列表。空列表失败，超出上限失败。"""
-    uuid_list = _text_list(uuids, "实例标识")
-    if not uuid_list:
+    """收下平铺的 uuid 列表。空列表失败，超出上限失败，没有一个合法 UUIDv4 时失败。"""
+    raw_list = _text_list(uuids, "实例标识")
+    if not raw_list:
         raise GenericQueryError("实例标识不能为空")
-    if len(uuid_list) > CMDB_ALERT_UUID_MAX:
+    if len(raw_list) > CMDB_ALERT_UUID_MAX:
         raise GenericQueryError(f"实例标识不能超过 {CMDB_ALERT_UUID_MAX} 个")
-    return uuid_list
+    valid: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_list:
+        normalized = _uuid_v4(raw)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        valid.append(normalized)
+    if not valid:
+        raise GenericQueryError("实例标识格式错误")
+    return valid
 
 
 def fetch_cmdb_monitor_mappings(uuids: list[str], user_info) -> list[dict]:
     """复用现有 CMDB 身份映射，按 uuid 返回有权看到的模型与监控实例标识。"""
     from apps.cmdb.nats import nats as cmdb_nats
     from apps.cmdb.services.instance import InstanceManage
-    from apps.cmdb.services.instance_identity import optional_inst_uuid
 
     unique: list[str] = []
     seen: set[str] = set()
     for raw in uuids:
-        normalized = optional_inst_uuid(raw) or str(raw or "").strip()
+        normalized = _uuid_v4(raw)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
@@ -51,7 +73,7 @@ def fetch_cmdb_monitor_mappings(uuids: list[str], user_info) -> list[dict]:
     for entity in entities:
         if not isinstance(entity, dict):
             continue
-        inst_uuid = optional_inst_uuid(entity.get("inst_uuid")) or str(entity.get("inst_uuid") or "").strip()
+        inst_uuid = _uuid_v4(entity.get("inst_uuid"))
         if not inst_uuid:
             continue
         if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):

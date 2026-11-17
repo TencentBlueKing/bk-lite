@@ -715,7 +715,7 @@ def test_alert_handler_keeps_object_optional_and_rejects_removed_params(monkeypa
     assert "实例参数" in legacy["message"]
     retired = query_monitor_alerts(analysis_mode="count")
     assert retired["result"] is False
-    assert "明细、计数和分布" in retired["message"]
+    assert "不支持该参数" in retired["message"]
     grouped = query_monitor_alerts(group_by="level")
     assert grouped["result"] is False
     assert "分组" in grouped["message"]
@@ -1144,18 +1144,25 @@ def test_cmdb_alert_distribution_maps_uuids_then_groups_like_alert_distribution(
     assert unmapped_without_group["result"] is False
     assert "请选择按什么分布" in unmapped_without_group["message"]
 
-    rejected_model = query_cmdb_alert_distribution(
+    with_model = query_cmdb_alert_distribution(
         model_id=["host", "mysql"],
-        uuids=mixed_uuids,
+        uuids=[*mixed_uuids, "主机"],
         group_by="level",
         user_info=user_info,
     )
-    assert rejected_model["result"] is False
-    assert "不支持模型参数" in rejected_model["message"]
+    assert with_model["result"] is True
+    assert {item["group_value"]: item["alert_count"] for item in with_model["data"]} == {"警告": 1, "严重": 1, "错误": 1}
 
     missing_group = query_cmdb_alert_distribution(uuids=mixed_uuids, user_info=user_info)
     assert missing_group["result"] is False
     assert "请选择按什么分布" in missing_group["message"]
 
+    invalid_only = query_cmdb_alert_distribution(uuids=["主机", "mysql"], group_by="level", user_info=user_info)
+    assert invalid_only["result"] is False
+    assert "实例标识格式错误" in invalid_only["message"]
+
     with pytest.raises(GenericQueryError, match="实例标识不能为空"):
         normalize_cmdb_uuids([])
+    with pytest.raises(GenericQueryError, match="实例标识格式错误"):
+        normalize_cmdb_uuids(["主机"])
+    assert normalize_cmdb_uuids([host_uuid, "主机", host_uuid.upper()]) == [host_uuid]

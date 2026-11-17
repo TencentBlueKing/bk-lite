@@ -568,7 +568,7 @@ def test_generic_query_handlers_accept_unknown_kwargs(monkeypatch):
 
     retired = query_cmdb_models(analysis_mode="distribution", user_info={"user": "demo"})
     assert retired["result"] is False
-    assert "列表和数量" in retired["message"]
+    assert "不支持该参数" in retired["message"]
 
 
 def test_one_hop_uses_fixed_order():
@@ -1605,7 +1605,7 @@ def test_instance_distribution_handler_returns_enum_names(monkeypatch):
         user_info={"user": "demo"},
     )
     assert retired["result"] is False
-    assert "明细、数值和分布" in retired["message"]
+    assert "不支持该参数" in retired["message"]
 
     assert loaded["result"] is True
     assert loaded["data"]["items"] == [{"status": "已上线", "instance_count": 8}]

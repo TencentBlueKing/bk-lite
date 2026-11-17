@@ -182,7 +182,7 @@ def _attr_types_from(attrs: list) -> dict[str, str]:
 
 def _reject_retired_model_args(kwargs) -> None:
     if kwargs.get("analysis_mode") not in (None, ""):
-        raise GenericQueryError("模型查询已拆成列表和数量两个接口")
+        raise GenericQueryError("当前查询不支持该参数")
 
 
 def _reject_split_mode(analysis_mode, message: str) -> None:
@@ -190,8 +190,8 @@ def _reject_split_mode(analysis_mode, message: str) -> None:
         raise GenericQueryError(message)
 
 
-_INSTANCE_SPLIT = "实例查询已拆成明细、数值和分布三个接口"
-_ONE_HOP_SPLIT = "一跳关联查询已拆成明细、数量和排行三个接口"
+_INSTANCE_SPLIT = "当前查询不支持该参数"
+_ONE_HOP_SPLIT = "当前查询不支持该参数"
 
 
 def _model_query_scope(user_info, classification_id, model_id, model_ids):

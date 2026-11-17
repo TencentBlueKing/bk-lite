@@ -302,7 +302,7 @@ def _reject_retired_alert_args(kwargs) -> None:
     if kwargs.get("instance_id") not in (None, "", []):
         raise GenericQueryError("当前查询不支持该实例参数")
     if str(kwargs.get("analysis_mode") or "").strip():
-        raise GenericQueryError("告警查询已拆成明细、计数和分布三个接口")
+        raise GenericQueryError("当前查询不支持该参数")
     if kwargs.get("group_by") not in (None, ""):
         raise GenericQueryError("当前查询不支持分组")
 
@@ -502,8 +502,6 @@ def query_cmdb_alert_distribution(
         raise GenericQueryError("分布不支持分页")
     if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
         raise GenericQueryError("分布不支持排序")
-    if kwargs.get("model_id") not in (None, "", []):
-        raise GenericQueryError("当前查询不支持模型参数，请传实例标识")
     if kwargs.get("monitor_object_id") not in (None, "", []):
         raise GenericQueryError("当前查询不接收监控对象，请只传实例标识")
     if kwargs.get("instance_ids") not in (None, "", []):
