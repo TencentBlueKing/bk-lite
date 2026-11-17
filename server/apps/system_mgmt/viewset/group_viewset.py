@@ -7,6 +7,7 @@ from dataclasses import asdict
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import LanguageViewSet
@@ -143,9 +144,10 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         # 构建嵌套组结构（仅活动组织）
         groups = [i["id"] for i in request.user.group_list]
         queryset = GroupUtils.active_queryset().prefetch_related("roles")
-        if not request.user.is_superuser:
+        unrestricted = has_unrestricted_org_scope(request.user)
+        if not unrestricted:
             queryset = queryset.filter(id__in=groups).exclude(name="OpsPilotGuest", parent_id=0)
-        groups_data = GroupUtils.build_group_tree(queryset, request.user.is_superuser, groups)
+        groups_data = GroupUtils.build_group_tree(queryset, unrestricted, groups)
         return JsonResponse({"result": True, "data": groups_data})
 
     @action(detail=False, methods=["GET"])

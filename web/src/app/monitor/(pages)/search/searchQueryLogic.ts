@@ -47,6 +47,52 @@ export const getMetricsMapKey = (
     ? `${String(objectId)}_${String(pluginId)}`
     : String(objectId);
 
+const uniqueNonEmptyTexts = (values: unknown[]): string[] => {
+  const seen = new Set<string>();
+  const texts: string[] = [];
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    texts.push(text);
+  }
+  return texts;
+};
+
+/** 多段身份（Pod/Node/容器）下拉展示末段，避免截断后只剩父级 UUID。 */
+export const getInstanceSelectLabel = (
+  item: Pick<InstanceItem, 'instance_id' | 'instance_name' | 'instance_id_values'>
+): string => {
+  const values = uniqueNonEmptyTexts(item.instance_id_values || []);
+  if (values.length > 1) {
+    return values[values.length - 1];
+  }
+  return String(item.instance_name || item.instance_id || '--');
+};
+
+/** 选项和已选标签的完整身份，悬停才能看清长 ID。 */
+export const getInstanceSelectTooltip = (
+  item: Pick<InstanceItem, 'instance_id' | 'instance_name' | 'instance_id_values'>
+): string =>
+  uniqueNonEmptyTexts([
+    getInstanceSelectLabel(item),
+    item.instance_name,
+    item.instance_id,
+  ]).join('\n');
+
+export const matchInstanceSelectOption = (
+  input: string,
+  option?: { label?: unknown; title?: unknown; value?: unknown }
+): boolean => {
+  const query = input.trim().toLowerCase();
+  if (!query) return true;
+  return [option?.label, option?.title, option?.value].some((value) =>
+    String(value ?? '')
+      .toLowerCase()
+      .includes(query)
+  );
+};
+
 export const normalizeMonitorEntityId = (
   value: unknown
 ): React.Key | null => {

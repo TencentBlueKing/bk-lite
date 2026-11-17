@@ -79,7 +79,9 @@ import {
   FullInfoGroupItem,
 } from '@/app/cmdb/types/assetManage';
 import { ExportModalRef } from '@/app/cmdb/types/assetData';
-import SearchFilter from './list/searchFilter';
+import SearchFilter, { SavedFiltersMenu } from './list/searchFilter';
+import RelationQuickFilters from './list/relationQuickFilters';
+import { quickFilterSlots, type QuickFilterSlot, type RelationFilter } from './list/relationQuickFilter';
 import SelectionActionBar from './list/selectionActionBar';
 import FilterBar from './list/filterBar';
 import AdvancedFilterDrawer, { AdvancedFilterChips } from './list/advancedFilterDrawer';
@@ -252,7 +254,7 @@ const AssetDataContent = () => {
   const { t } = useTranslation();
   const { selectedGroup, userId } = useUserInfoContext();
   const { clientData, loading: clientLoading } = useClientData();
-  const { getModelAssociationTypes, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
+  const { getModelAssociationTypes, getModelAssociations, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
   const {
     getInstanceProxys,
@@ -344,10 +346,16 @@ const AssetDataContent = () => {
   // 窄屏时把「数据订阅」收进更多。导入导出记录始终在更多里，新建和导出保持可见。
   const [secondaryActionsCollapsed, setSecondaryActionsCollapsed] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [relationSlots, setRelationSlots] = useState<QuickFilterSlot[]>([]);
+  const relationFiltersRef = useRef<RelationFilter[]>([]);
+  const relationFiltersDraftRef = useRef<RelationFilter[]>([]);
+  const getModelAssociationsRef = useRef(getModelAssociations);
+  getModelAssociationsRef.current = getModelAssociations;
   const [quickCreateToken, setQuickCreateToken] = useState(0);
   const searchAttr = useAssetDataStore((state) => state.searchAttr);
   const storeAdvancedFilter = useAssetDataStore((state) => state.advanced_filter);
   const urlQueryInitialized = useRef(false);
+  const suppressListFetchRef = useRef(false);
   const initialDataLoaded = useRef(false);
   const treeWrapperRef = useRef<HTMLDivElement | null>(null);
   const firstVisitTreeScrollAttemptedRef = useRef(false);
@@ -375,11 +383,12 @@ const AssetDataContent = () => {
       const shell = rowEl.firstElementChild as HTMLElement | null;
       const rowWidth = (shell ?? rowEl).clientWidth;
       const inputWidth = isMultiIpSearchAttr(searchAttr) ? 360 : 200;
-      // 刷新 32、组织 200、高级筛选约 88、属性下拉 120、搜索按钮 32、精确匹配约 108，间距 8。
-      const preferredFilterWidth = 32 + 200 + 88 + 120 + inputWidth + 32 + 108 + 8 * 6;
+      // 刷新 32、组织 200、快捷筛选每个 176、高级筛选约 88、属性下拉 120、输入框、搜索按钮 32、精确匹配约 108，间距 8。
+      const quickFilterWidth = relationSlots.length * (168 + 8);
+      const preferredFilterWidth = 32 + 200 + quickFilterWidth + 88 + 120 + inputWidth + 32 + 108 + 8 * 7;
       const fullActionsWidth = sizerEl.getBoundingClientRect().width;
       const recoveryBuffer = 30;
-      const shouldCollapse = preferredFilterWidth + fullActionsWidth > rowWidth + recoveryBuffer;
+      const shouldCollapse = preferredFilterWidth + fullActionsWidth > rowWidth - recoveryBuffer;
       setSecondaryActionsCollapsed((prev) => (prev === shouldCollapse ? prev : shouldCollapse));
     };
 
@@ -400,7 +409,31 @@ const AssetDataContent = () => {
       if (frameId) cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [searchAttr]);
+  }, [searchAttr, relationSlots.length]);
+
+  useEffect(() => {
+    relationFiltersRef.current = [];
+    relationFiltersDraftRef.current = [];
+  }, [modelId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!modelId) {
+      setRelationSlots([]);
+      return;
+    }
+    const modelName = (id: string) => originModels.find((item) => item.model_id === id)?.model_name || id;
+    getModelAssociationsRef.current(modelId)
+      .then((rows) => {
+        if (!cancelled) setRelationSlots(quickFilterSlots(modelId, rows || [], modelName));
+      })
+      .catch(() => {
+        if (!cancelled) setRelationSlots([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId, originModels]);
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
@@ -464,6 +497,7 @@ const AssetDataContent = () => {
       tableData,
       queryList: exportType === 'all' ? useAssetDataStore.getState().query_list : undefined,
       advancedFilter: exportType === 'all' ? useAssetDataStore.getState().advanced_filter : undefined,
+      relationFilters: exportType === 'all' ? relationFiltersRef.current : undefined,
     } as any);
   };
 
@@ -566,6 +600,10 @@ const AssetDataContent = () => {
   }, [modelListFromContext]);
 
   useEffect(() => {
+    if (suppressListFetchRef.current) {
+      suppressListFetchRef.current = false;
+      return;
+    }
     if (modelId && initialDataLoaded.current) {
       setSelectedTreeKeys([modelId]);
       fetchData();
@@ -613,18 +651,18 @@ const AssetDataContent = () => {
     }
   }, [modelGroup, userId]);
 
-  const fetchData = async () => {
+  const fetchData = async (page?: number) => {
     setTableLoading(true);
     try {
-      const data = await searchInstances(getTableParams());
+      const data = await searchInstances(getTableParams(undefined, page));
       setTableData(data.insts);
       setPagination(prev => ({ ...prev, total: data.count }));
     } catch (error) {
       if ((error as { name?: string })?.name === 'CanceledError') return;
-      if (useAssetDataStore.getState().advanced_filter) {
+      if (useAssetDataStore.getState().advanced_filter || relationFiltersRef.current.length) {
         const failed = error as { message?: string; response?: { data?: { message?: string } } };
         message.error(failed.response?.data?.message || failed.message || t('AdvancedFilter.queryFailed'));
-        setAdvancedOpen(true);
+        if (useAssetDataStore.getState().advanced_filter) setAdvancedOpen(true);
       }
     } finally {
       setTableLoading(false);
@@ -716,6 +754,7 @@ const AssetDataContent = () => {
       role: '',
       case_sensitive: caseSensitive,
       ...(advancedFilter ? { advanced_filter: advancedFilter } : {}),
+      ...(relationFiltersRef.current.length ? { relation_filters: relationFiltersRef.current } : {}),
     };
   };
 
@@ -910,6 +949,8 @@ const AssetDataContent = () => {
   };
 
   const handleSearch = (condition: FilterItem | null) => {
+    relationFiltersRef.current = relationFiltersDraftRef.current;
+    const before = JSON.stringify(useAssetDataStore.getState().query_list);
     const { add, remove, update, query_list: currentList } = useAssetDataStore.getState();
     const isClearCondition = !condition || !condition.type;
 
@@ -918,14 +959,22 @@ const AssetDataContent = () => {
         const index = currentList.findIndex((item) => item.field === condition.field);
         if (index !== -1) remove(index);
       }
-      return;
+    } else {
+      const existingIndex = currentList.findIndex((item) => item.field === condition.field);
+      if (existingIndex !== -1) {
+        update(existingIndex, condition);
+      } else {
+        add(condition);
+      }
     }
 
-    const existingIndex = currentList.findIndex((item) => item.field === condition.field);
-    if (existingIndex !== -1) {
-      update(existingIndex, condition);
-    } else {
-      add(condition);
+    if (before === JSON.stringify(useAssetDataStore.getState().query_list)) {
+      setPagination((prev) => {
+        const next = resetListPaginationToFirstPage(prev);
+        if (next !== prev) suppressListFetchRef.current = true;
+        return next;
+      });
+      void fetchData(1);
     }
   };
 
@@ -1153,6 +1202,8 @@ const AssetDataContent = () => {
   }, [expandedTreeKeys, filteredTreeData, loading, modelGroup, modelId]);
 
   const onSelectUnified = (selectedKeys: React.Key[]) => {
+    relationFiltersRef.current = [];
+    relationFiltersDraftRef.current = [];
     useAssetDataStore.getState().clear();
     useAssetDataStore.getState().setAdvancedFilter(null);
     useAssetDataStore.setState((state) => ({ ...state, searchAttr: '' }));
@@ -1392,7 +1443,13 @@ const AssetDataContent = () => {
 
   const moreItems: MenuProps['items'] = [
     transferMoreItem,
-    ...(secondaryActionsCollapsed ? [subscriptionMoreItem] : []),
+    ...(secondaryActionsCollapsed
+      ? [
+        subscriptionMoreItem,
+        { key: 'export', label: t('export'), children: exportItems },
+        { key: 'create', label: t('common.new'), children: addInstItems },
+      ]
+      : []),
     { type: 'divider', key: 'divider-secondary-batch' },
     ...batchOperateItems,
   ];
@@ -1489,13 +1546,13 @@ const AssetDataContent = () => {
         </div>
         {/* 右侧资产列表 */}
         <div className={assetDataStyle.assetList}>
-          <div ref={topRowRef}>
+          <div ref={topRowRef} className="overflow-x-auto">
             <ToolbarSplitShell
-              className={`!flex-nowrap${storeQueryList.length === 0 ? '' : ' !mb-0'}`}
-              trailingClassName="!w-full min-w-0 !flex-nowrap"
+              className={`!flex-nowrap !justify-start${storeQueryList.length === 0 ? '' : ' !mb-0'}`}
+              trailingClassName="!w-max min-w-full !flex-nowrap !justify-start"
               trailing={(
                 <>
-                  <div ref={leftActionsRef} className="flex min-w-0 shrink items-center gap-2">
+                  <div ref={leftActionsRef} className="flex min-w-0 shrink-0 items-center gap-2">
                     <span className="shrink-0">
                       <RefreshIconButton
                         loading={loading}
@@ -1505,6 +1562,7 @@ const AssetDataContent = () => {
                     <GroupTreeSelector
                       style={{
                         width: '200px',
+                        minWidth: '200px',
                         flexShrink: 0,
                       }}
                       placeholder={t('common.selectTip')}
@@ -1523,9 +1581,15 @@ const AssetDataContent = () => {
                         {t('IPAM.conflictFilter')}
                       </Tag>
                     )}
+                    <RelationQuickFilters
+                      key={`relation-quick-${modelId}`}
+                      slots={relationSlots}
+                      onChange={(filters) => {
+                        relationFiltersDraftRef.current = filters;
+                      }}
+                    />
                     <SearchFilter
-                      key={modelId}
-                      allowShrink
+                      key={`search-${modelId}`}
                       proxyOptions={proxyOptions}
                       userList={userList}
                       modelId={modelId}
@@ -1548,6 +1612,7 @@ const AssetDataContent = () => {
                       )}
                     />
                   </div>
+                  <SavedFiltersMenu modelId={modelId} />
                   <Dropdown
                     menu={{ items: moreItems }}
                     placement="bottom"
@@ -1559,37 +1624,39 @@ const AssetDataContent = () => {
                       </Space>
                     </Button>
                   </Dropdown>
-                  <div className="shrink-0">
-                    <Dropdown menu={{ items: exportItems }} placement="bottom">
-                      <Button>
-                        <Space>
-                          {t('export')}
-                          <DownOutlined />
-                        </Space>
-                      </Button>
-                    </Dropdown>
-                  </div>
                   {secondaryActionsCollapsed ? null : (
-                    <Button
-                      className="shrink-0"
-                      icon={<UnorderedListOutlined aria-hidden="true" />}
-                      onClick={() => openSubscription('drawer')}
-                    >
-                      {t('subscription.dataSubscription')}
-                    </Button>
+                    <>
+                      <div className="shrink-0">
+                        <Dropdown menu={{ items: exportItems }} placement="bottom">
+                          <Button>
+                            <Space>
+                              {t('export')}
+                              <DownOutlined />
+                            </Space>
+                          </Button>
+                        </Dropdown>
+                      </div>
+                      <Button
+                        className="shrink-0"
+                        icon={<UnorderedListOutlined aria-hidden="true" />}
+                        onClick={() => openSubscription('drawer')}
+                      >
+                        {t('subscription.dataSubscription')}
+                      </Button>
+                      <div className="shrink-0">
+                        <PermissionWrapper requiredPermissions={['Add']}>
+                          <Dropdown menu={{ items: addInstItems }} placement="bottom">
+                            <Button type="primary">
+                              <Space>
+                                {t('common.new')}
+                                <DownOutlined />
+                              </Space>
+                            </Button>
+                          </Dropdown>
+                        </PermissionWrapper>
+                      </div>
+                    </>
                   )}
-                  <div className="shrink-0">
-                    <PermissionWrapper requiredPermissions={['Add']}>
-                      <Dropdown menu={{ items: addInstItems }} placement="bottom">
-                        <Button type="primary">
-                          <Space>
-                            {t('common.new')}
-                            <DownOutlined />
-                          </Space>
-                        </Button>
-                      </Dropdown>
-                    </PermissionWrapper>
-                  </div>
                 </>
               )}
             />

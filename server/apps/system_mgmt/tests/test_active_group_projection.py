@@ -86,6 +86,28 @@ def test_auth_context_excludes_archived(active_and_archived, as_superuser):
         assert groups["archived"].id not in _tree_ids(ctx["group_tree"])
 
 
+@pytest.mark.django_db
+def test_auth_context_auditor_sees_all_active_groups_as_readonly(active_and_archived):
+    from apps.system_mgmt.models import Menu
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    groups = active_and_archived
+    Menu.objects.create(app="cmdb", name="asset_info-View", display_name="a-View", menu_type="t", order=1)
+    Menu.objects.create(app="cmdb", name="asset_info-Add", display_name="a-Add", menu_type="t", order=2)
+    auditor_role = ensure_platform_auditor_role()
+    user = _make_user("auth-auditor", group_list=[], role_ids=[auditor_role.id])
+
+    ctx = build_user_authorization_context(user)
+    group_ids = {g["id"] for g in ctx["group_list"]}
+
+    assert ctx["is_superuser"] is False
+    assert ctx["is_auditor"] is True
+    assert groups["active"].id in group_ids
+    assert groups["archived"].id not in group_ids
+    assert "asset_info-View" in ctx["permission"]["cmdb"]
+    assert "asset_info-Add" not in ctx["permission"]["cmdb"]
+
+
 @pytest.mark.parametrize(
     "team_id_factory",
     [

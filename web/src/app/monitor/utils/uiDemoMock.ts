@@ -214,6 +214,8 @@ export const demoPolicyGroupMembers = () => [
     instance_id: "('prod-web-01',)",
     name: 'prod-web-01',
     state: 'member',
+    plugins: [{ id: 1, name: 'Host' }],
+    templates: [{ id: 11, rule_id: 1, name: 'CPU使用率过高', plugin_name: 'Host' }],
     legacy_policies: [{ id: 900001, name: '设计走查-CPU过高', enable: true }],
   },
   {

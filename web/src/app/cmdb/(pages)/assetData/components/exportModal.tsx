@@ -40,6 +40,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
     const [tableData, setTableData] = useState<any[]>([]);
     const [queryList, setQueryList] = useState<any[]>([]);
     const [advancedFilter, setAdvancedFilter] = useState<ExportModalConfig['advancedFilter']>(null);
+    const [relationFilters, setRelationFilters] = useState<ExportModalConfig['relationFilters']>([]);
     const [total, setTotal] = useState<number | undefined>(undefined);
 
     const [availableColumns, setAvailableColumns] = useState<ColumnItem[]>([]);
@@ -60,6 +61,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         setTableData(config.tableData || []);
         setQueryList(config.queryList || []);
         setAdvancedFilter(config.advancedFilter || null);
+        setRelationFilters(config.relationFilters || []);
         setTotal(typeof config.total === 'number' ? config.total : undefined);
 
         const filteredColumns = config.columns.filter(
@@ -209,7 +211,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           inst_uuids: instUuids,
           attr_list: orderedAttrs,
           association_list: selectedRelations,
-          ...exportFilterPayload(exportType, queryList, advancedFilter),
+          ...exportFilterPayload(exportType, queryList, advancedFilter, relationFilters),
         };
 
         const content = JSON.stringify(exportData);

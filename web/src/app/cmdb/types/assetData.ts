@@ -137,6 +137,7 @@ export interface ExportModalConfig {
   tableData?: any[];
   queryList?: any[];
   advancedFilter?: { logic: 'AND' | 'OR'; conditions: any[] } | null;
+  relationFilters?: { model_asst_id: string; inst_uuids: string[] }[];
 }
 
 export interface ExportModalRef {
