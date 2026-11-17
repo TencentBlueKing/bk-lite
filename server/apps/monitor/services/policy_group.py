@@ -1233,22 +1233,28 @@ class PolicyGroupService:
         return ids[0] if ids else None
 
     @staticmethod
-    def metric_names_for_policies(policies):
+    def metric_catalog_for_policies(policies):
         ids = []
         for policy in policies:
             ids.extend(PolicyGroupService.metric_ids_for_policy(policy))
         if not ids:
-            return {}
-        return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
+            return {}, {}
+        names = {}
+        units = {}
+        for row in Metric.objects.filter(id__in=ids).values("id", "name", "unit"):
+            names[row["id"]] = row["name"]
+            units[row["id"]] = row["unit"] or ""
+        return names, units
+
+    @staticmethod
+    def metric_names_for_policies(policies):
+        names, _units = PolicyGroupService.metric_catalog_for_policies(policies)
+        return names
 
     @staticmethod
     def metric_units_for_policies(policies):
-        ids = []
-        for policy in policies:
-            ids.extend(PolicyGroupService.metric_ids_for_policy(policy))
-        if not ids:
-            return {}
-        return {row["id"]: row["unit"] or "" for row in Metric.objects.filter(id__in=ids).values("id", "unit")}
+        _names, units = PolicyGroupService.metric_catalog_for_policies(policies)
+        return units
 
     @staticmethod
     def filter_rules_for_access(rules, *, plugin_id=None, collect_type=None):

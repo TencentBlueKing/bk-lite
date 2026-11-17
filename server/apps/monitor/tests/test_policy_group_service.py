@@ -698,12 +698,12 @@ def test_serialize_rule_reads_metric_catalog_unit_when_policy_units_empty():
     policy.threshold_unit = ""
     policy.save(update_fields=["metric_unit", "calculation_unit", "threshold_unit"])
 
-    units = PolicyGroupService.metric_units_for_policies([policy])
-    payload = _serialize_rule(rule, metric_units=units)
+    names, units = PolicyGroupService.metric_catalog_for_policies([policy])
+    payload = _serialize_rule(rule, metric_names=names, metric_units=units)
+    assert names[metric.id] == "cpu_usage_total"
     assert units[metric.id] == "percent"
     assert payload["unit"] == "percent"
-    assert payload["metric_unit"] == ""
-    assert payload["threshold_unit"] == ""
+    assert "threshold_unit" not in payload
 
     policy.threshold_unit = "kibibytes"
     policy.save(update_fields=["threshold_unit"])

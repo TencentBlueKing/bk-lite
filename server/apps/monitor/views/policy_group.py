@@ -77,9 +77,6 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "condition_thresholds": condition_thresholds,
         "threshold": rule.policy.threshold,
         "unit": policy_unit or catalog_unit,
-        "threshold_unit": rule.policy.threshold_unit or "",
-        "calculation_unit": rule.policy.calculation_unit or "",
-        "metric_unit": rule.policy.metric_unit or "",
         "alert_name": rule.policy.alert_name or "",
         "trigger_count": rule.policy.trigger_count,
         "recovery_condition": rule.policy.recovery_condition,
@@ -193,8 +190,7 @@ def _group_enable(rules):
 
 def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
     policies = [rule.policy for group in groups for rule in group.rules.all()]
-    metric_names = PolicyGroupService.metric_names_for_policies(policies)
-    metric_units = PolicyGroupService.metric_units_for_policies(policies)
+    metric_names, metric_units = PolicyGroupService.metric_catalog_for_policies(policies)
     alert_counts = PolicyGroupService.open_alert_counts([policy.id for policy in policies])
     data = []
     for group in groups:

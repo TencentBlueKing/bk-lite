@@ -39,26 +39,13 @@ import { ChannelItem } from '@/app/monitor/types/event';
 import { formatUserName } from '@/utils/userDisplay';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
-
-interface PolicyGroupRule {
-  id: number;
-  name: string;
-  plugin_name: string;
-  threshold: Array<{ level?: string; method?: string; value?: number }>;
-  query_type?: string;
-  condition_thresholds?: Record<string, Array<{ level?: string; method?: string; value?: number | null }>>;
-  alert_name?: string;
-  trigger_count?: number;
-  recovery_condition?: number;
-  recovery_threshold?: { method?: string; value?: number | null };
-  no_data_enabled?: boolean;
-  policy_id?: number;
-  open_alert_count?: number;
-  unit?: string;
-  threshold_unit?: string;
-  calculation_unit?: string;
-  metric_unit?: string;
-}
+import {
+  VIEW_MODE_OPTIONS,
+  buildPolicyGroupRuleColumns,
+  filterAndSortRules,
+  pluginCounts,
+  type PolicyGroupRule,
+} from './policyGroupRuleView';
 
 interface PolicyGroupRow {
   id: number;
@@ -156,53 +143,6 @@ const CHANNEL_TYPE_KEY: Record<string, string> = {
   dingtalk_bot: 'monitor.events.channelTypeDingtalkBot',
   custom_webhook: 'monitor.events.channelTypeCustomWebhook',
   nats: 'monitor.events.channelTypeNats',
-};
-
-const METHOD_OPERATOR_MAP: Record<string, string> = {
-  gt: '>',
-  gte: '>=',
-  lt: '<',
-  lte: '<=',
-  eq: '=',
-  ne: '!=',
-  '>': '>',
-  '>=': '>=',
-  '<': '<',
-  '<=': '<=',
-  '=': '=',
-  '!=': '!=',
-};
-
-const formatRuleThreshold = (
-  record: PolicyGroupRule,
-  unitLabel: (unitId: string) => string
-): React.ReactElement => {
-  const list = record.threshold || [];
-  if (!list.length) {
-    if (record.condition_thresholds && Object.keys(record.condition_thresholds).length > 0) {
-      return <span className="font-mono text-[12px] text-[var(--color-text-3)]">多条件组合</span>;
-    }
-    return <span className="text-[var(--color-text-3)]">--</span>;
-  }
-
-  const rawUnit = record.unit || record.threshold_unit || record.calculation_unit || record.metric_unit || '';
-  const displayUnit = unitLabel(rawUnit);
-  const unitSuffix = displayUnit ? ` ${displayUnit}` : '';
-
-  const parts = list.map((item) => {
-    const op = METHOD_OPERATOR_MAP[item.method || ''] || item.method || '>';
-    const valText = item.value != null ? `${item.value}${unitSuffix}` : '--';
-    const levelLabel = item.level === 'critical' ? '致命' : item.level === 'warning' ? '警告' : item.level === 'info' ? '提醒' : '';
-    return `${levelLabel ? `${levelLabel} ` : ''}${op} ${valText}`;
-  });
-
-  const triggerSuffix = record.trigger_count && record.trigger_count > 1 ? ` (连续${record.trigger_count}次)` : '';
-
-  return (
-    <span className="inline-block rounded bg-[var(--color-fill-1)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-text-2)]">
-      {parts.join(' | ')}{triggerSuffix}
-    </span>
-  );
 };
 
 const PolicyGroupPage: React.FC = () => {
@@ -847,36 +787,16 @@ const PolicyGroupPage: React.FC = () => {
     memberPagination.current * memberPagination.pageSize
   );
   const ruleRows = ruleGroup?.rules || [];
-  const ruleKeywordText = ruleKeyword.trim().toLowerCase();
-  const availablePlugins = React.useMemo(() => {
-    if (!ruleGroup?.rules) return [];
-    const counts: Record<string, number> = {};
-    ruleGroup.rules.forEach((r) => {
-      const name = r.plugin_name || '其他';
-      counts[name] = (counts[name] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({ name, count }));
-  }, [ruleGroup]);
-
-  const filteredRules = React.useMemo(() => {
-    const list = ruleRows.filter((item) => {
-      if (rulePluginFilter !== 'all' && (item.plugin_name || '其他') !== rulePluginFilter) {
-        return false;
-      }
-      if (ruleNoData === 'on' && !item.no_data_enabled) return false;
-      if (ruleNoData === 'off' && item.no_data_enabled) return false;
-      if (!ruleKeywordText) return true;
-      const name = String(item.name || '').toLowerCase();
-      const plugin = String(item.plugin_name || '').toLowerCase();
-      return name.includes(ruleKeywordText) || plugin.includes(ruleKeywordText);
-    });
-    return list.sort((a, b) => {
-      const pA = String(a.plugin_name || '');
-      const pB = String(b.plugin_name || '');
-      if (pA !== pB) return pA.localeCompare(pB);
-      return String(a.name || '').localeCompare(String(b.name || ''));
-    });
-  }, [ruleRows, rulePluginFilter, ruleNoData, ruleKeywordText]);
+  const availablePlugins = React.useMemo(() => pluginCounts(ruleRows), [ruleRows]);
+  const filteredRules = React.useMemo(
+    () =>
+      filterAndSortRules(ruleRows, {
+        pluginFilter: rulePluginFilter,
+        noData: ruleNoData,
+        keyword: ruleKeyword,
+      }),
+    [ruleRows, rulePluginFilter, ruleNoData, ruleKeyword]
+  );
   const visibleRules = filteredRules.slice(
     (rulePagination.current - 1) * rulePagination.pageSize,
     rulePagination.current * rulePagination.pageSize
@@ -884,143 +804,59 @@ const PolicyGroupPage: React.FC = () => {
 
   const currentGroup = groups.find((g) => g.id === selectedGroupId) || groups[0] || null;
   const currentGroupRules = currentGroup?.rules || [];
-  const availableWorkbenchPlugins = React.useMemo(() => {
-    if (!currentGroupRules.length) return [];
-    const counts: Record<string, number> = {};
-    currentGroupRules.forEach((r) => {
-      const name = r.plugin_name || '其他';
-      counts[name] = (counts[name] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({ name, count }));
-  }, [currentGroupRules]);
-
-  const filteredWorkbenchRules = React.useMemo(() => {
-    const kw = workbenchKeyword.trim().toLowerCase();
-    const list = currentGroupRules.filter((item) => {
-      if (workbenchPluginFilter !== 'all' && (item.plugin_name || '其他') !== workbenchPluginFilter) {
-        return false;
-      }
-      if (workbenchNoData === 'on' && !item.no_data_enabled) return false;
-      if (workbenchNoData === 'off' && item.no_data_enabled) return false;
-      if (!kw) return true;
-      const name = String(item.name || '').toLowerCase();
-      const plugin = String(item.plugin_name || '').toLowerCase();
-      return name.includes(kw) || plugin.includes(kw);
-    });
-    return list.sort((a, b) => {
-      const pA = String(a.plugin_name || '');
-      const pB = String(b.plugin_name || '');
-      if (pA !== pB) return pA.localeCompare(pB);
-      return String(a.name || '').localeCompare(String(b.name || ''));
-    });
-  }, [currentGroupRules, workbenchKeyword, workbenchPluginFilter, workbenchNoData]);
-
+  const availableWorkbenchPlugins = React.useMemo(
+    () => pluginCounts(currentGroupRules),
+    [currentGroupRules]
+  );
+  const filteredWorkbenchRules = React.useMemo(
+    () =>
+      filterAndSortRules(currentGroupRules, {
+        pluginFilter: workbenchPluginFilter,
+        noData: workbenchNoData,
+        keyword: workbenchKeyword,
+      }),
+    [currentGroupRules, workbenchKeyword, workbenchPluginFilter, workbenchNoData]
+  );
   const visibleWorkbenchRules = React.useMemo(() => {
     const start = (workbenchPagination.current - 1) * workbenchPagination.pageSize;
     return filteredWorkbenchRules.slice(start, start + workbenchPagination.pageSize);
   }, [filteredWorkbenchRules, workbenchPagination]);
 
-  const workbenchColumns: ColumnItem[] = [
-    {
-      title: t('common.name'),
-      dataIndex: 'name',
-      key: 'name',
-      render: (_, record) => (
-        <span className="font-medium text-[var(--color-text-1)]">
-          {record.name || '--'}
-        </span>
-      ),
-    },
-    {
-      title: '模板',
-      dataIndex: 'plugin_name',
-      key: 'plugin_name',
-      width: 180,
-      render: (_, record) => {
-        const p = record.plugin_name || '--';
-        if (p === 'Host') {
-          return <Tag color="blue">{p} (Linux Agent)</Tag>;
-        }
-        if (p === 'Host Remote') {
-          return <Tag color="warning">{p} (SSH远程)</Tag>;
-        }
-        if (p === 'Windows WMI') {
-          return <Tag color="purple">{p}</Tag>;
-        }
-        return <Tag>{p}</Tag>;
-      },
-    },
-    {
-      title: '触发条件',
-      dataIndex: 'threshold',
-      key: 'threshold',
-      width: 240,
-      render: (_, record) => formatRuleThreshold(record as PolicyGroupRule, findUnitNameById),
-    },
-    {
-      title: '活动告警',
-      dataIndex: 'open_alert_count',
-      key: 'open_alert_count',
-      width: 90,
-      align: 'center',
-      render: (_, record) => {
-        const count = record.open_alert_count || 0;
-        if (count > 0) {
-          return (
-            <span className="inline-flex items-center px-1.5 py-0.2 rounded font-bold text-[11px] bg-red-50 text-red-600 border border-red-200">
-              {count} 条
-            </span>
-          );
-        }
-        return <span className="text-[var(--color-text-3)]">--</span>;
-      },
-    },
-    {
-      title: '无数据',
-      dataIndex: 'no_data_enabled',
-      key: 'no_data_enabled',
-      width: 100,
-      filters: [
-        { text: '已开启', value: 'on' },
-        { text: '未开启', value: 'off' },
-      ],
-      filterMultiple: false,
-      filteredValue: workbenchNoData ? [workbenchNoData] : null,
-      render: (_, record) => (
-        <StatusToneBadge
-          tone={record.no_data_enabled ? 'success' : 'neutral'}
-          label={record.no_data_enabled ? '已开启' : '未开启'}
-        />
-      ),
-    },
-    {
-      title: t('common.action'),
-      dataIndex: 'action',
-      key: 'action',
-      width: 80,
-      render: (_, record) => (
-        <Button
-          type="link"
-          className="px-0"
-          onClick={() => {
-            if (!currentGroup || !objectId) return;
-            router.push(
-              buildMonitorStrategyDetailUrl('groupRule', {
-                monitorObjId: String(objectId),
-                monitorName: findLabelById(treeData, String(objectId)) || '',
-                id: record.policy_id,
-                name: record.name,
-                groupId: currentGroup.id,
-                ruleId: record.id,
-              })
-            );
-          }}
-        >
-          修改
-        </Button>
-      ),
-    },
-  ];
+  const openRuleEditor = (group: PolicyGroupRow | null, record: PolicyGroupRule) => {
+    if (!group || !objectId) return;
+    router.push(
+      buildMonitorStrategyDetailUrl('groupRule', {
+        monitorObjId: String(objectId),
+        monitorName: findLabelById(treeData, String(objectId)) || '',
+        id: record.policy_id,
+        name: record.name,
+        groupId: group.id,
+        ruleId: record.id,
+      })
+    );
+  };
+
+  const workbenchColumns = React.useMemo(
+    () =>
+      buildPolicyGroupRuleColumns({
+        t,
+        unitLabel: findUnitNameById,
+        noDataFilter: workbenchNoData,
+        nameClassName: 'font-medium text-[var(--color-text-1)]',
+        onEdit: (record) => openRuleEditor(currentGroup, record),
+      }),
+    [t, findUnitNameById, workbenchNoData, currentGroup, objectId, treeData]
+  );
+  const drawerRuleColumns = React.useMemo(
+    () =>
+      buildPolicyGroupRuleColumns({
+        t,
+        unitLabel: findUnitNameById,
+        noDataFilter: ruleNoData,
+        onEdit: (record) => openRuleEditor(ruleGroup, record),
+      }),
+    [t, findUnitNameById, ruleNoData, ruleGroup, objectId, treeData]
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col">
@@ -1048,10 +884,7 @@ const PolicyGroupPage: React.FC = () => {
                   <Segmented
                     value={viewMode}
                     onChange={(val) => setViewMode(val as 'workbench' | 'groupList')}
-                    options={[
-                      { label: '工作台', value: 'workbench' },
-                      { label: '策略组列表', value: 'groupList' },
-                    ]}
+                    options={[...VIEW_MODE_OPTIONS]}
                   />
                   {groups.length > 1 ? (
                     <Select
@@ -1243,10 +1076,7 @@ const PolicyGroupPage: React.FC = () => {
                     <Segmented
                       value={viewMode}
                       onChange={(val) => setViewMode(val as 'workbench' | 'groupList')}
-                      options={[
-                        { label: '工作台', value: 'workbench' },
-                        { label: '策略组列表', value: 'groupList' },
-                      ]}
+                      options={[...VIEW_MODE_OPTIONS]}
                     />
                   ) : undefined
                 }
@@ -1442,25 +1272,6 @@ const PolicyGroupPage: React.FC = () => {
           columns={[
             { title: t('common.name'), dataIndex: 'name', key: 'name' },
             {
-              title: '生效模板类型',
-              dataIndex: 'effective_template',
-              key: 'effective_template',
-              width: 170,
-              render: (_, record) => {
-                const name = String(record.name || record.instance_id || '').toLowerCase();
-                if (name.includes('win') || name.includes('wmi') || name.includes('ad-') || name.includes('dc-')) {
-                  return <Tag color="purple">Windows WMI 规则</Tag>;
-                }
-                if (name.includes('remote') || name.includes('ssh')) {
-                  return <Tag color="warning">Host Remote 规则</Tag>;
-                }
-                if (name.includes('aix') || name.includes('hp-ux') || name.includes('unix')) {
-                  return <Tag color="gold">小型机远程规则</Tag>;
-                }
-                return <Tag color="blue">Host (Linux Agent)</Tag>;
-              },
-            },
-            {
               title: t('common.action'),
               dataIndex: 'action',
               key: 'action',
@@ -1593,102 +1404,7 @@ const PolicyGroupPage: React.FC = () => {
               pageSize: next.pageSize || prev.pageSize,
             }));
           }}
-          columns={[
-            {
-              title: t('common.name'),
-              dataIndex: 'name',
-              key: 'name',
-              render: (_, record) => record.name,
-            },
-            {
-              title: '模板',
-              dataIndex: 'plugin_name',
-              key: 'plugin_name',
-              width: 180,
-              render: (_, record) => {
-                const p = record.plugin_name || '--';
-                if (p === 'Host') {
-                  return <Tag color="blue">{p} (Linux Agent)</Tag>;
-                }
-                if (p === 'Host Remote') {
-                  return <Tag color="warning">{p} (SSH远程)</Tag>;
-                }
-                if (p === 'Windows WMI') {
-                  return <Tag color="purple">{p}</Tag>;
-                }
-                return <Tag>{p}</Tag>;
-              },
-            },
-            {
-              title: '触发条件',
-              dataIndex: 'threshold',
-              key: 'threshold',
-              width: 240,
-              render: (_, record) => formatRuleThreshold(record as PolicyGroupRule, findUnitNameById),
-            },
-            {
-              title: '活动告警',
-              dataIndex: 'open_alert_count',
-              key: 'open_alert_count',
-              width: 90,
-              align: 'center',
-              render: (_, record) => {
-                const count = record.open_alert_count || 0;
-                if (count > 0) {
-                  return (
-                    <span className="inline-flex items-center px-1.5 py-0.2 rounded font-bold text-[11px] bg-red-50 text-red-600 border border-red-200">
-                      {count} 条
-                    </span>
-                  );
-                }
-                return <span className="text-[var(--color-text-3)]">--</span>;
-              },
-            },
-            {
-              title: '无数据',
-              dataIndex: 'no_data_enabled',
-              key: 'no_data_enabled',
-              width: 110,
-              filters: [
-                { text: '已开启', value: 'on' },
-                { text: '未开启', value: 'off' },
-              ],
-              filterMultiple: false,
-              filteredValue: ruleNoData ? [ruleNoData] : null,
-              render: (_, record) => (
-                <StatusToneBadge
-                  tone={record.no_data_enabled ? 'success' : 'neutral'}
-                  label={record.no_data_enabled ? '已开启' : '未开启'}
-                />
-              ),
-            },
-            {
-              title: t('common.action'),
-              key: 'action',
-              width: 90,
-              render: (_, record) => (
-                  <Button
-                    type="link"
-                    className="px-0"
-                    onClick={() => {
-                      if (!ruleGroup || !objectId) return;
-                      router.push(
-                        buildMonitorStrategyDetailUrl('groupRule', {
-                          monitorObjId: String(objectId),
-                          monitorName: findLabelById(treeData, String(objectId)) || '',
-                          id: record.policy_id,
-                          name: record.name,
-                          groupId: ruleGroup.id,
-                          ruleId: record.id,
-                        })
-                      );
-                    }}
-                  >
-                    修改
-                  </Button>
-              ),
-            },
-          ]}
+          columns={drawerRuleColumns}
           />
       </Drawer>
       <Drawer
