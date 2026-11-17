@@ -117,7 +117,7 @@ export function useItsmApi() {
   const listViewTemplates = useCallback((formId?: number) => get('/itsm/api/view_templates/', formId ? { params: { form_id: formId } } : undefined), [get]);
   const createViewTemplate = useCallback((body: { form_id: number; name: string; layout?: { fields?: string[] }; match_rules?: { status?: string } }) => post('/itsm/api/view_templates/', body), [post]);
   const exportWorkflow = useCallback((id: number) => get(`/itsm/api/workflows/${id}/export/`), [get]);
-  const importWorkflow = useCallback((id: number, bundle: Record<string, unknown>) => post(`/itsm/api/workflows/${id}/import/`, bundle), [post]);
+  const importWorkflow = useCallback((bundle: Record<string, unknown>) => post('/itsm/api/workflows/import/', bundle), [post]);
   const testVariable = useCallback((body: { workflow_id: number; key: string; form_data?: Record<string, unknown> }) => post('/itsm/api/workflow_variables/test/', body), [post]);
   const listVariables = useCallback((workflowId: number) => get('/itsm/api/workflow_variables/', { params: { workflow_id: workflowId } }), [get]);
   const listDataTables = useCallback(() => get('/itsm/api/data_tables/'), [get]);

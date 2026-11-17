@@ -82,19 +82,18 @@ def copy_dictionaries(request, rows):
 
 
 @transaction.atomic
-def copy_workflow(request, source, payload):
+def copy_workflow(request, payload):
+    if not isinstance(payload, dict):
+        raise ValueError("流程文件必须是 JSON 对象")
     design = payload.get("design")
     if not isinstance(design, dict) or not isinstance(design.get("nodes"), list) or not isinstance(design.get("edges", []), list):
         raise ValueError("流程设计格式无效")
     clone = Workflow.objects.create(
-        **identity(payload.get("key", source.key), payload.get("name", source.name)),
-        description=str(payload.get("description", source.description))[:500],
+        **identity(payload.get("key", "imported_flow"), payload.get("name", "导入流程")),
+        description=str(payload.get("description", ""))[:500],
         **actor(request),
     )
     form = payload.get("form")
-    if "form" not in payload and source.form_id:
-        fv = source.form.current_version or source.form.versions.order_by("-version_no").first()
-        form = {"key": source.form.key, "name": source.form.name, "schema": fv.schema if fv else {"fields": []}}
     if form:
         schema = form.get("schema")
         if not isinstance(schema, dict) or not isinstance(schema.get("fields"), list):

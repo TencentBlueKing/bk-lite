@@ -436,6 +436,8 @@ def workflow_variables(request):
 @api_errors
 @HasPermission("workflow-Publish")
 def enable_version(request, workflow_id, version_id):
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的方法", status_code=405)
     workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
     version = WorkflowVersion.objects.get(id=version_id, workflow=workflow, is_published=True)
     workflow.current_version = version
@@ -765,13 +767,12 @@ def workflow_export(request, workflow_id):
 @csrf_exempt
 @api_errors
 @HasPermission("workflow-Add")
-def workflow_import(request, workflow_id):
+def workflow_import(request):
     if request.method != "POST":
         return WebUtils.response_error("不支持的方法", status_code=405)
-    workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
     from apps.itsm.services.import_copy import copy_workflow
 
-    return WebUtils.response_success(copy_workflow(request, workflow, _body(request)))
+    return WebUtils.response_success(copy_workflow(request, _body(request)))
 
 
 @csrf_exempt

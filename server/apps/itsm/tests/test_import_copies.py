@@ -28,7 +28,7 @@ def test_workflow_import_creates_distinct_drafts():
     original = Workflow.objects.create(key="flow", name="流程")
     version = WorkflowVersion.objects.create(workflow=original, version_no=1, design={"nodes": [{"id": "start", "type": "start"}], "edges": []})
     package = data(workflow_export(req(), original.id))
-    copies = [data(workflow_import(req("post", package), original.id)) for _ in range(2)]
+    copies = [data(workflow_import(req("post", package))) for _ in range(2)]
     assert len({item["id"] for item in copies} | {original.id}) == 3
     for item in copies:
         clone = Workflow.objects.get(pk=item["id"])
@@ -73,11 +73,11 @@ def test_table_copy_preserves_columns_data_and_original():
 
 
 def test_import_requires_add_permission_and_invalid_file_creates_nothing():
-    workflow = Workflow.objects.create(key="flow", name="流程")
+    Workflow.objects.create(key="flow", name="流程")
     DataTable.objects.create(key="table", name="数据表")
-    assert workflow_import(req("post", {}, ["workflow-Edit"]), workflow.id).status_code == 403
+    assert workflow_import(req("post", {}, ["workflow-Edit"])).status_code == 403
     assert data_table_import(req("post", {}, ["data-Edit"])).status_code == 403
-    assert workflow_import(req("post", {"design": "bad"}), workflow.id).status_code == 400
+    assert workflow_import(req("post", {"design": "bad"})).status_code == 400
     assert data_table_import(req("post", {"content_base64": "bad"})).status_code == 400
     assert Workflow.objects.count() == 1 and DataTable.objects.count() == 1
 
@@ -108,11 +108,12 @@ def test_workflow_form_and_variables_are_independent():
     WorkflowVersion.objects.create(workflow=source, version_no=1, design={"nodes": [], "edges": []})
     WorkflowVariable.objects.create(workflow=source, key="v", name="变量", default={"value": 2})
     package = data(workflow_export(req(), source.pk))
-    clone = Workflow.objects.get(pk=data(workflow_import(req("post", package), source.pk))["id"])
+    clone = Workflow.objects.get(pk=data(workflow_import(req("post", package)))["id"])
     assert clone.form_id != form.pk
     assert clone.form.current_version.schema == fv.schema
     assert clone.variables.get().default == {"value": 2}
-    assert workflow_import(request("post", package, "owner", PERMS, domain="other"), source.pk).status_code == 404
+    other = data(workflow_import(request("post", package, "owner", PERMS, domain="other")))
+    assert Workflow.objects.get(pk=other["id"]).domain == "other"
 
 
 def test_dictionary_cycles_rollback():

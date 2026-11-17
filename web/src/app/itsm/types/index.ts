@@ -98,6 +98,7 @@ export interface NamedItem {
 }
 
 export interface WorkflowListItem extends NamedItem {
+  current_version_no?: number | null;
   form_id: number | null;
   current_version_id: number | null;
 }

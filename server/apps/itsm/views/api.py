@@ -270,10 +270,13 @@ def import_dictionaries(request):
 @method_permission("workflow-View", "workflow-Add")
 def workflows(request):
     if request.method == "GET":
-        current = _page(request, Workflow.objects.filter(domain=domain_of(request)).all())
+        current = _page(request, Workflow.objects.filter(domain=domain_of(request)).select_related("current_version"))
         return WebUtils.response_success(
             {
                 "count": current.paginator.count,
+                "can_add": has_permission(request, "workflow-Add"),
+                "can_edit": has_permission(request, "workflow-Edit"),
+                "can_publish": has_permission(request, "workflow-Publish"),
                 "items": [
                     {
                         "id": item.id,
@@ -281,6 +284,7 @@ def workflows(request):
                         "key": item.key,
                         "form_id": item.form_id,
                         "current_version_id": item.current_version_id,
+                        "current_version_no": item.current_version.version_no if item.current_version_id else None,
                     }
                     for item in current
                 ],

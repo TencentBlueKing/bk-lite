@@ -1,5 +1,7 @@
 'use client';
 
+import ItsmListTable from '../../components/itsm-list-table';
+import { ItsmListToolbar } from '../../components/list-controls';
 import { Button, Input, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../../api/useItsmApi';
@@ -13,6 +15,7 @@ interface VariableItem {
 
 export default function WorkflowVariablesPage() {
   const api = useItsmApi();
+  const [keyword,setKeyword] = useState('');
   const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
   const [workflowId, setWorkflowId] = useState<number | undefined>();
   const [variables, setVariables] = useState<VariableItem[]>([]);
@@ -42,15 +45,9 @@ export default function WorkflowVariablesPage() {
   }, [api.ready, load]);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="text-base font-semibold leading-tight text-[var(--color-text-1)]">流程变量</div>
-      <Select
-        className="w-64"
-        value={workflowId}
-        options={workflows.map((item) => ({ value: item.id, label: item.name }))}
-        onChange={(value) => { void load(value); }}
-      />
-      {variables.map((item) => <div key={item.id} className="text-sm">{item.key} · {item.name}</div>)}
+    <div className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+      <ItsmListToolbar search={{value:keyword,onChange:setKeyword,placeholder:'搜索变量名称或标识'}} leading={<Select aria-label="流程" className="w-60 max-w-full" showSearch optionFilterProp="label" value={workflowId} options={workflows.map(item=>({value:item.id,label:item.name}))} onChange={value=>void load(value)} />} />
+      <ItsmListTable queryKey={`${workflowId}:${keyword}`} rowKey="id" dataSource={variables.filter(item=>`${item.key} ${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[{title:'标识',dataIndex:'key',key:'key'},{title:'名称',dataIndex:'name',key:'name'}]} />
       <div className="flex flex-wrap gap-2">
         <Input className="w-40" placeholder="变量 key" value={keyName} onChange={(event) => setKeyName(event.target.value)} />
         <Input className="w-64" placeholder="表单值，如 title=服务器" value={sample} onChange={(event) => setSample(event.target.value)} />

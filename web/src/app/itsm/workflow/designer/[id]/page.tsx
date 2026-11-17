@@ -125,7 +125,7 @@ export default function WorkflowDesignerPage() {
     setBusy(true);
     try {
       await api.saveDesign(workflowId, design);
-      message.success(t('itsm.design.copied'));
+      message.success('已创建新草稿');
       await load();
     } catch (error) {
       message.error(error instanceof Error ? error.message : t('itsm.design.copyFailed'));
@@ -183,8 +183,8 @@ export default function WorkflowDesignerPage() {
           <Button disabled={locked} onClick={()=>void openTemplates()}>选择表单模板</Button>
           <Button onClick={() => setPreview((current) => !current)}>{preview ? t('itsm.design.backDesign') : t('itsm.design.preview')}</Button>
           <div className="mx-1 h-4 w-px bg-[var(--color-border)]" />
-          <Button loading={busy} onClick={() => { void save(); }}>{t('itsm.common.save')}</Button>
-          <Button loading={busy} onClick={() => { void copyDesign(); }}>{t('itsm.design.copyFlow')}</Button>
+          <Button loading={busy} disabled={locked} onClick={() => { void save(); }}>{t('itsm.common.save')}</Button>
+          <Button loading={busy} disabled={!locked} onClick={() => { void copyDesign(); }}>新建草稿</Button>
           <Button type="primary" loading={busy} disabled={locked} onClick={() => { void publish(); }}>{t('itsm.design.publish')}</Button>
         </div>
       </div>
