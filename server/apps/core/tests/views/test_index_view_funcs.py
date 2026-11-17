@@ -334,6 +334,26 @@ class TestLoginInfoView:
         assert data["data"]["username"] == "alice"
         assert data["data"]["is_superuser"] is True
 
+    def test_returns_auditor_flag_without_superuser(self):
+        user = MagicMock(
+            username="auditor",
+            display_name="Auditor",
+            is_superuser=False,
+            is_auditor=True,
+            group_list=[],
+            roles=["auditor"],
+            group_tree=[],
+            locale="en",
+            timezone="UTC",
+        )
+        req = self._get(user)
+        with patch.object(index_view, "_safe_get_user_id_by_username", return_value=7):
+            resp = index_view.login_info(req)
+        data = json.loads(resp.content)
+        assert data["result"] is True
+        assert data["data"]["is_superuser"] is False
+        assert data["data"]["is_auditor"] is True
+
     def test_user_not_found_returns_error(self):
         user = MagicMock(username="ghost", group_list=[])
         req = self._get(user)

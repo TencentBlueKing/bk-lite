@@ -665,6 +665,7 @@ def login_info(request):
                 "username": request.user.username,
                 "display_name": getattr(request.user, "display_name", request.user.username),
                 "is_superuser": getattr(request.user, "is_superuser", False),
+                "is_auditor": bool(getattr(request.user, "is_auditor", False)),
                 "group_list": getattr(request.user, "group_list", []),
                 "roles": getattr(request.user, "roles", []),
                 "is_first_login": is_first_login,
