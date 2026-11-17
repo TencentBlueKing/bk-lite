@@ -3,6 +3,7 @@ import json
 from functools import wraps
 from io import BytesIO
 
+from django.core.paginator import Paginator
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -138,8 +139,11 @@ def resources(request, kind):
         return WebUtils.response_error("未知资源")
     model, fields = spec
     if request.method == "GET":
-        items = [_public(item, fields) for item in resource_scope(request, kind, model).order_by("-id")[:100]]
-        return WebUtils.response_success({"items": items})
+        page_size = max(1, min(100, int(request.GET.get("page_size") or 100)))
+        paginator = Paginator(resource_scope(request, kind, model).order_by("-id"), page_size)
+        page = paginator.get_page(int(request.GET.get("page") or 1))
+        items = [_public(item, fields) for item in page]
+        return WebUtils.response_success({"items": items, "count": paginator.count})
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)

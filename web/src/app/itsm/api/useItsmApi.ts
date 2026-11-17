@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
 import useApiClient from '@/utils/request';
 
@@ -46,7 +47,7 @@ export function useItsmApi() {
     (id: number, schema: unknown) => post(`/itsm/api/forms/${id}/publish/`, { schema }),
     [post],
   );
-  const listWorkflows = useCallback(() => get('/itsm/api/workflows/'), [get]);
+  const listWorkflows = useCallback(() => readListPages(page => get('/itsm/api/workflows/', { params: { page, page_size: 100 } })), [get]);
   const createWorkflow = useCallback(
     (body: { name: string; key: string; form_id?: number }) => post('/itsm/api/workflows/', body),
     [post],
@@ -64,7 +65,7 @@ export function useItsmApi() {
     const params = Object.fromEntries(Object.entries(query || {}).filter(([, value]) => value));
     return get('/itsm/api/tickets/', Object.keys(params).length ? { params } : undefined);
   }, [get]);
-  const listResources = useCallback((kind: string) => get(`/itsm/api/resources/${kind}/`), [get]);
+  const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
   const createResource = useCallback((kind: string, body: Record<string, unknown>) => post(`/itsm/api/resources/${kind}/`, body), [post]);
   const updateResource = useCallback(
     (kind: string, id: number, body: Record<string, unknown>) => put(`/itsm/api/resources/${kind}/${id}/`, body),
@@ -150,7 +151,7 @@ export function useItsmApi() {
     (id: number, relatedId: number) => post(`/itsm/api/tickets/${id}/relations/`, { related_id: relatedId }),
     [post],
   );
-  const listDictionaries = useCallback(() => get('/itsm/api/dictionaries/'), [get]);
+  const listDictionaries = useCallback(() => readListPages(page => get('/itsm/api/dictionaries/', { params: { page, page_size: 100 } })), [get]);
   const createDictionary = useCallback((body: { id?: number; key?: string; name: string }) => post('/itsm/api/dictionaries/', body), [post]);
   const listDictionaryItems = useCallback((id: number) => get(`/itsm/api/dictionaries/${id}/items/`), [get]);
   const createDictionaryItem = useCallback(
