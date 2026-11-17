@@ -1,6 +1,6 @@
 import pytest
 
-from apps.workflow.services.definitions import DefinitionValidationError
+from apps.workflow.services.definitions import DefinitionValidationError, validate_conductor_definition
 from apps.workflow.services.graph_compiler import compile_canvas_graph
 
 
@@ -76,6 +76,82 @@ def test_edge_mode_rejects_hand_authored_engine_fork_nodes():
 
     with pytest.raises(DefinitionValidationError, match="不允许手工配置"):
         compile_canvas_graph(definition, _metadata([{"source": "trigger_form", "target": "start"}]))
+
+
+@pytest.mark.parametrize("connected_case", ["false", "true"])
+@pytest.mark.parametrize("downstream", [("notify",), ("notify", "finish")])
+def test_switch_with_only_one_connected_exit_keeps_tasks_inside_that_case(connected_case, downstream):
+    definition = _definition("condition", *downstream)
+    definition["tasks"][0].update(
+        name="condition",
+        type="SWITCH",
+        inputParameters={"left_0": "${workflow.input.matches}", "right_0": True},
+        evaluatorType="javascript",
+        expression="($.left_0 == $.right_0) ? 'true' : 'false'",
+        decisionCases={"true": [], "false": []},
+        defaultCase=[],
+    )
+    metadata = _metadata(
+        [
+            {"source": "trigger_form", "target": "condition"},
+            {"source": "condition", "sourceHandle": connected_case, "target": "notify"},
+            *[{"source": source, "target": target} for source, target in zip(downstream, downstream[1:])],
+        ]
+    )
+
+    compiled = compile_canvas_graph(definition, metadata)
+
+    assert [task["taskReferenceName"] for task in compiled["tasks"]] == ["condition"]
+    condition = compiled["tasks"][0]
+    assert [task["taskReferenceName"] for task in condition["decisionCases"][connected_case]] == list(downstream)
+    other_case = "true" if connected_case == "false" else "false"
+    assert condition["decisionCases"][other_case] == []
+    assert condition["defaultCase"] == []
+    assert condition["expression"] == definition["tasks"][0]["expression"]
+    assert definition["tasks"][0]["decisionCases"] == {"true": [], "false": []}
+
+
+@pytest.mark.parametrize("return_case", [None, "true", "false"])
+def test_switch_without_downstream_tasks_keeps_valid_empty_cases(return_case):
+    definition = _definition("condition")
+    definition["tasks"][0].update(
+        name="condition",
+        type="SWITCH",
+        inputParameters={"left_0": "${workflow.input.matches}", "right_0": True},
+        evaluatorType="javascript",
+        expression="($.left_0 == $.right_0) ? 'true' : 'false'",
+        decisionCases={"true": [], "false": []},
+        defaultCase=[],
+    )
+    metadata = _metadata([{"source": "trigger_form", "target": "condition"}])
+    if return_case is not None:
+        metadata["return_nodes"] = [{"id": "return_webhook"}]
+        metadata["edges"].append({"source": "condition", "sourceHandle": return_case, "target": "return_webhook"})
+
+    compiled = compile_canvas_graph(definition, metadata)
+
+    assert compiled["tasks"] == definition["tasks"]
+    assert validate_conductor_definition(compiled) == compiled
+
+
+def test_switch_keeps_shared_successor_after_both_cases():
+    definition = _definition("condition", "yes", "no", "finish")
+    definition["tasks"][0].update(type="SWITCH", decisionCases={"true": [], "false": []}, defaultCase=[])
+    metadata = _metadata(
+        [
+            {"source": "trigger_form", "target": "condition"},
+            {"source": "condition", "sourceHandle": "true", "target": "yes"},
+            {"source": "condition", "sourceHandle": "false", "target": "no"},
+            {"source": "yes", "target": "finish"},
+            {"source": "no", "target": "finish"},
+        ]
+    )
+
+    compiled = compile_canvas_graph(definition, metadata)
+
+    assert [task["taskReferenceName"] for task in compiled["tasks"]] == ["condition", "finish"]
+    assert [task["taskReferenceName"] for task in compiled["tasks"][0]["decisionCases"]["true"]] == ["yes"]
+    assert [task["taskReferenceName"] for task in compiled["tasks"][0]["decisionCases"]["false"]] == ["no"]
 
 
 def test_switch_keeps_a_branch_that_finishes_directly_at_webhook_return_node():
