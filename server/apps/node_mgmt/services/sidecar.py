@@ -652,6 +652,27 @@ class Sidecar:
             return node, node_id, True
 
     @staticmethod
+    def _notify_collectors_node_returned(node):
+        """同一节点 ID 重建后通知监控和日志挂回。与延迟推送一样在事务外，失败不阻断心跳。"""
+        from apps.node_mgmt.services.node_collection_exit import log_collection_exit_failure
+
+        organization_ids = list(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
+        try:
+            from apps.monitor.services.collector_node_exit import MonitorCollectorNodeExit
+
+            host_instance_id = MonitorCollectorNodeExit.on_node_returned(node, organization_ids)
+            if host_instance_id and not str(node.monitor_id or "").strip():
+                Node.objects.filter(id=node.id).filter(Q(monitor_id="") | Q(monitor_id__isnull=True)).update(monitor_id=host_instance_id)
+        except Exception as exc:
+            log_collection_exit_failure(node.id, "monitor_returned", exc)
+        try:
+            from apps.log.services.collector_node_exit import LogCollectorNodeExit
+
+            LogCollectorNodeExit.on_node_returned(node, organization_ids)
+        except Exception as exc:
+            log_collection_exit_failure(node.id, "log_returned", exc)
+
+    @staticmethod
     def _consume_deferred_module_push(node):
         """sidecar 首次建节点钩子：按安装勾选补推 CMDB/监控。失败不阻断心跳。"""
         from apps.node_mgmt.services.module_push import ModulePushService
@@ -787,6 +808,7 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
+                Sidecar._notify_collectors_node_returned(node)
                 Sidecar._consume_deferred_module_push(node)
 
         if not created:

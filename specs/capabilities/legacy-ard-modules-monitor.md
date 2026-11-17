@@ -73,8 +73,8 @@
 
 - Monitor 依赖 CMDB 的实例稳定身份：`MonitorInstance.cmdb_id` 最终保存 CMDB 的规范 `inst_uuid`。迁移期接收 `cmdb_id_aliases`，以规范身份与旧数字 ID 共同查找存量关联；命中旧值后会在本次更新中触达式回填为规范身份。若节点关联与 CMDB 候选分别命中不同实例，或 ip+云区域已绑定其它节点，返回冲突结果而不合并。ID 未命中后，先用 `CMDB_MODEL_TO_MONITOR_OBJECT` 把 CMDB `model_id` 换成监控对象 `name`（仅一对一能对上现有插件对象的内置模型；对不上则跳过类型身份）。主机按 IP+云区域再按同对象唯一 IP 认领；网络设备及其它已映射对象只按同对象唯一 IP 认领（不看云区域；列 `ip`、摘要 `asset.ip` 或网络设备主键中的 IP）。同 IP 多条则回落到实例名精确且唯一匹配。Docker（`model_id=docker` → 对象 `Docker Container`）跳过同对象唯一 IP，只按同对象下唯一实例名认领（容器共享宿主机 IP）。CMDB 列表可批量无凭据同步；详情可按监控实例名手绑 / 解绑（仅清指针）；占用中的 `cmdb_id` 拒绝绑定。
 - 监控发起的创建与删除通知携带来源链路标识；接收自身发起的回写时仅返回既有实例，避免循环处理。主机监控实例新建后会尽力通知节点管理和 CMDB，任一对端失败不影响监控实例创建；用户也可将既有监控实例显式推送至 CMDB。
-- 节点管理退役通知会停用并软删除对应监控实例；CMDB 或其他来源的解绑通知只清除关联标识，不删除监控资产。节点来源的新实例会创建监控实例并套用 Host + Telegraf 主机采集模板；插件按名称 `Host` 查找，找不到模板或套用失败则整次同步失败。规范主键已被同对象占用（含软删）时回收该行并回写关联，不再 `uuid` 另建空壳；认领已有采集行后同样通知 CMDB，成对写入 `monitor_id`。接入套用复用 ingest 主键，并带上 IP / `node_id` / `cmdb_id`。CMDB 发起的自动创建路径当前处于关闭状态，未满足既有创建条件时只做关联处理。
-- 主机 Telegraf Agent 接入页的「已接入主机监控」只认还活着的 Host 对象 `CollectConfig`。进程监控等同样 `collect_type=host` 的子配置不占用主机 Agent 节点；再次接入只会清掉没有任何 `CollectConfig` 行的残留子配置。已软删实例仍保留的采集配置行不会被当成无主子配置删掉。
+- 节点管理来源的 lifecycle 直接跳过，不再停用或软删除监控实例；节点删除或远程卸载把联动主机停在停采待处理（只清 `node_id`，本次全部 `CollectConfig` 写 `executor_node_removed` 快照，关闭活动告警）。清除与更换经 `NodeMgmt(is_local_client=True)` 本进程调用已注册 NATS 方法读写节点采集配置。CMDB 或其他来源的解绑通知只清除关联标识，不删除监控资产。节点来源的新实例会创建监控实例并套用 Host + Telegraf 主机采集模板；插件按名称 `Host` 查找，找不到模板或套用失败则整次同步失败。规范主键已被同对象占用（含软删）时回收该行并回写关联，不再 `uuid` 另建空壳；认领已有采集行后同样通知 CMDB，成对写入 `monitor_id`。接入套用复用 ingest 主键，并带上 IP / `node_id` / `cmdb_id`。CMDB 发起的自动创建路径当前处于关闭状态，未满足既有创建条件时只做关联处理。
+- 主机 Telegraf Agent 接入页的「已接入主机监控」只认还活着的 Host 对象 `CollectConfig`。进程监控等同样 `collect_type=host` 的子配置不占用主机 Agent 节点；再次接入只会清掉没有任何 `CollectConfig` 行的残留子配置。停采待处理实例仍保留的采集配置行不会被当成无主子配置删掉。主机接入页再接同 IP 且主机配置全部带已删除标记时，挂回所选节点，不报已存在、不物理删除。
 
 相关架构：[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；相关产品能力：[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]]；相关功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]。
 > 证据来源：server/apps/cmdb/services/instance_identity.py:55-106；server/apps/monitor/models/monitor_object.py:122-136；server/apps/monitor/services/module_ingest.py:53-169,628-639,750-834；server/apps/monitor/services/module_push.py:62-178,181-239,291-406；server/apps/monitor/views/monitor_instance.py:397-410；server/apps/monitor/nats/monitor.py:1565-1578　|　同步基线：b98b782a7　|　【已实现】
@@ -107,7 +107,7 @@
 - `[monitor#20261019-001]` 主机 Telegraf Agent「已接入主机监控」只认活着的 Host 对象 `CollectConfig`。进程监控等同样 `collect_type=host` 的子配置不占用该节点；软删/删除后残留且已无活着采集配置的 host ChildConfig 会在再次接入前清理。
 
 ## 2026-11-05 Code-ARD 校准
-- `[monitor#20261105-001]` 节点删除或卸载软退役联动主机后，该主机的 `CollectConfig` 行仍保护对应子配置，再次接入不会把它当成无主子配置删除。「已接入主机监控」仍只认未软删的 Host 对象。
+- `[monitor#20261105-001]` 节点删除或卸载后联动主机不软删，该主机的 `CollectConfig` 标 `executor_node_removed` 后仍保护对应子配置，再次接入不会把它当成无主子配置删除。同 IP 再接挂回所选节点，不报已存在、不物理删除。「已接入主机监控」仍只认未软删的 Host 对象。
 
 ## 2026-11-06 Code-ARD 校准
 - `[monitor#20261106-001]` `query_latest_active_alerts` 增加可选 `order`。缺省和 `latest` 仍按开始时间倒序取调用方 limit（数据源默认 10）。`order=severity` 在授权组织内对全部 `status=new` 告警按 critical、error、warning、info、no_data 排序，未知级别最低，同级按开始时间更早优先，再截断。`get_host_resource_top` 的组织范围仍由调用方 `user_info.team` 决定；数据源可声明可选 `organization`，不带该参数时行为不变，额外 organization 入参不扩大范围。

@@ -798,14 +798,14 @@ def test_primary_object_plugin_list_batches_and_aggregates_collection_nodes(db, 
                 {
                     "id": "child-a",
                     "nodes": [
-                        {"id": "node-2", "name": "Beta"},
-                        {"id": "node-1", "name": "Alpha"},
+                        {"id": "node-2", "name": "Beta", "active": False},
+                        {"id": "node-1", "name": "Alpha", "active": True},
                     ],
                 },
                 {
                     "id": "child-b",
                     "nodes": [
-                        {"id": "node-1", "name": "Alpha"},
+                        {"id": "node-1", "name": "Alpha", "active": True},
                     ],
                 },
             ]
@@ -824,11 +824,112 @@ def test_primary_object_plugin_list_batches_and_aggregates_collection_nodes(db, 
     assert calls == [(["child-a", "child-b", "child-unbound"], [7])]
     plugins = {plugin["name"]: plugin for plugin in result["results"][0]["plugins"]}
     assert plugins["AutomaticPlugin"]["collector_nodes"] == [
-        {"id": "node-1", "name": "Alpha"},
-        {"id": "node-2", "name": "Beta"},
+        {"id": "node-1", "name": "Alpha", "active": True},
+        {"id": "node-2", "name": "Beta", "active": False},
     ]
     assert plugins["UnboundPlugin"]["collector_nodes"] == []
     assert plugins["ManualPlugin"]["collector_nodes"] == []
+
+
+def test_primary_object_collection_nodes_expose_active_and_removed_snapshot(db, monkeypatch):
+    from apps.monitor.services import monitor_instance
+
+    monitor_object = MonitorObject.objects.create(
+        name="CollectionNodeActiveHost",
+        display_name="Collection Node Active Host",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-active',)",
+        name="Host Active",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    plugin = MonitorPlugin.objects.create(
+        name="ActivePlugin",
+        display_name="Active Plugin",
+        collector="Telegraf",
+        collect_type="host",
+        status_query="active_query",
+    )
+    plugin.monitor_object.add(monitor_object)
+    CollectConfig.objects.create(
+        id="child-live",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+    )
+    CollectConfig.objects.create(
+        id="child-gone",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="mem",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+        executor_node_id="gone-node",
+        executor_node_name="Gone",
+    )
+    CollectConfig.objects.create(
+        id="child-back",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="disk",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+        executor_node_id="node-back",
+        executor_node_name="Old Back",
+    )
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, **kwargs):
+            return {"data": {"result": []}}
+
+    class StubNodeMgmt:
+        def get_child_config_nodes_by_ids(self, ids, organization_ids):
+            return [
+                {
+                    "id": "child-live",
+                    "nodes": [
+                        {"id": "node-down", "name": "Down", "active": False},
+                        {"id": "node-legacy", "name": "Legacy"},
+                    ],
+                },
+                {
+                    "id": "child-back",
+                    "nodes": [
+                        {"id": "node-back", "name": "Back", "active": True},
+                    ],
+                },
+            ]
+
+    monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+    monkeypatch.setattr(monitor_instance, "NodeMgmt", StubNodeMgmt)
+
+    result = monitor_instance.InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+        locale="zh-Hans",
+        visible_organization_ids=frozenset({7}),
+    ).search_by_primary_object()
+
+    nodes = result["results"][0]["plugins"][0]["collector_nodes"]
+    assert nodes == [
+        {"id": "node-back", "name": "Back", "active": True},
+        {"id": "node-down", "name": "Down", "active": False},
+        {"id": "gone-node", "name": "Gone", "removed": True, "active": False},
+        {"id": "node-legacy", "name": "Legacy"},
+    ]
 
 
 def test_get_instance_configs_uses_plugin_id_over_collector_for_child_configs(db, monkeypatch):
@@ -1322,3 +1423,49 @@ def test_lookup_monitor_instance_invalid_id_returns_empty(monkeypatch):
     response = monitor_instance_view.MonitorInstanceViewSet().lookup_monitor_instance(_lookup_request("()"))
     payload = json.loads(response.content)
     assert payload["data"] is None
+
+
+def test_reassign_collector_node_passes_current_user_permission(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_build_actor_context",
+        lambda request: {
+            "username": "tester",
+            "domain": "default",
+            "current_team": 1,
+            "include_children": True,
+            "is_superuser": True,
+        },
+    )
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None, allow_missing=False: ["inst-1"],
+    )
+
+    def _reassign(instance_id, node_id, permission_data=None):
+        captured["instance_id"] = instance_id
+        captured["node_id"] = node_id
+        captured["permission_data"] = permission_data
+
+    monkeypatch.setattr(monitor_instance_view.MonitorCollectorNodeExit, "reassign", _reassign)
+    request = types.SimpleNamespace(
+        data={"instance_id": "inst-1", "node_id": "node-9"},
+        user=types.SimpleNamespace(username="tester", domain="default", is_superuser=True),
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().reassign_collector_node(request)
+
+    assert response.status_code == 200
+    assert captured == {
+        "instance_id": "inst-1",
+        "node_id": "node-9",
+        "permission_data": {
+            "username": "tester",
+            "domain": "default",
+            "current_team": 1,
+            "include_children": True,
+            "is_superuser": True,
+        },
+    }
