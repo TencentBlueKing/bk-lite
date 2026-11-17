@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, DatePicker, Input, Popconfirm, Radio, Select, Switch, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { DatePicker, Input, Radio, Select, Switch, message } from 'antd';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
@@ -46,6 +48,7 @@ const parseAction = (raw: string): ActionConfig => {
 export default function Page() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -109,14 +112,11 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.schedule')}</div>
-        <Button type="primary" onClick={() => start()}>{t('itsm.common.create')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptySchedule') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
@@ -132,17 +132,11 @@ export default function Page() {
                 <Switch checked={value} onChange={(checked) => { void api.updateResource('schedules', item.id, { is_enabled: checked }).then(load); }} />
               ),
             },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: ScheduleItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  <Popconfirm title={t('itsm.rule.deleteSchedule')} onConfirm={() => { void api.deleteResource('schedules', item.id).then(load); }}>
-                    <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                  </Popconfirm>
-                </span>
-              ),
+              render: (_value: unknown, item: ScheduleItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.rule.deleteSchedule'), content: undefined }, onClick: () => { void api.deleteResource('schedules', item.id).then(load); }}]} />,
             },
           ]}
         />

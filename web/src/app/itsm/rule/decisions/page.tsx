@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Input, Popconfirm, Select, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Button, Input, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -63,6 +65,7 @@ const asRules = (rules: DecisionItem['rules'], priority: string, group: string):
 export default function Page() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<DecisionItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DecisionItem | null>(null);
@@ -104,29 +107,20 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.decision')}</div>
-        <Button type="primary" onClick={() => start()}>{t('itsm.common.create')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyDecision') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: DecisionItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  <Button type="link" size="small" onClick={() => setReference(item)}>{t('itsm.rule.reference')}</Button>
-                  <Popconfirm title={t('itsm.rule.deleteDecision')} onConfirm={() => { void api.deleteResource('decisions', item.id).then(load); }}>
-                    <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                  </Popconfirm>
-                </span>
-              ),
+              render: (_value: unknown, item: DecisionItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                {key: 'action-1', label: t('itsm.rule.reference'), kind: 'reference' as const, onClick: () => setReference(item)},
+                {key: 'action-2', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.rule.deleteDecision'), content: undefined }, onClick: () => { void api.deleteResource('decisions', item.id).then(load); }}]} />,
             },
           ]}
         />

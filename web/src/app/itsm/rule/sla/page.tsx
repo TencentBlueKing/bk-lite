@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Input, InputNumber, Select, message } from 'antd';
+import { ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Switch, Input, InputNumber, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -32,6 +34,7 @@ const CATEGORIES = [
 export default function SlaRulePage() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const [policies, setPolicies] = useState<PolicyItem[]>([]);
   const [calendars, setCalendars] = useState<CalendarItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -67,14 +70,11 @@ export default function SlaRulePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.sla')}</div>
-        <Button type="primary" onClick={() => setOpen(true)}>{t('itsm.rule.newPolicy')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => setOpen(true)} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={policies}
+          dataSource={policies.filter(item => `${item.name} ${item.category} ${item.target}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptySla') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
@@ -84,7 +84,7 @@ export default function SlaRulePage() {
             { title: t('itsm.rule.target'), dataIndex: 'target', key: 'target', render: (value: string) => value === 'resolve' ? t('itsm.ticket.resolveDue') : t('itsm.ticket.responseDue') },
             { title: t('itsm.rule.minutes'), dataIndex: 'minutes', key: 'minutes' },
             { title: t('itsm.admin.state'), dataIndex: 'is_enabled', key: 'is_enabled', render: (value: boolean, item: PolicyItem) => (
-              <Button size="small" onClick={() => { void api.saveSla({ policy_id: item.id, is_enabled: !value }).then(load); }}>{value ? t('itsm.admin.disable') : t('itsm.admin.enable')}</Button>
+              <Switch aria-label={value ? t('itsm.admin.disable') : t('itsm.admin.enable')} checked={value} onChange={checked => { void api.saveSla({ policy_id: item.id, is_enabled: checked }).then(load); }} />
             ) },
           ]}
         />

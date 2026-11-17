@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, ColorPicker, Input, Popconfirm, Select, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Button, ColorPicker, Input, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -31,6 +33,7 @@ const makeKey = () => `status_${Math.random().toString(36).slice(2, 9)}`;
 export default function Page() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<StatusItem[]>([]);
   const [transitions, setTransitions] = useState<TransitionItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -84,14 +87,11 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.statusPage')}</div>
-        <Button type="primary" onClick={() => start()}>{t('itsm.rule.newStatus')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyStatus') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
@@ -103,19 +103,11 @@ export default function Page() {
               key: 'transitions',
               render: (_value: unknown, item: StatusItem) => transitions.filter((row) => row.from_id === item.id).map((row) => row.to_name).join('、') || '—',
             },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: StatusItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  {item.kind === 'builtin' ? null : (
-                    <Popconfirm title={t('itsm.rule.deleteStatus')} onConfirm={() => { void api.deleteStatus(item.id).then(load); }}>
-                      <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                    </Popconfirm>
-                  )}
-                </span>
-              ),
+              render: (_value: unknown, item: StatusItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                ...(item.kind === 'builtin' ? [] : [{key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.rule.deleteStatus'), content: undefined }, onClick: () => { void api.deleteStatus(item.id).then(load); }}])]} />,
             },
           ]}
         />
@@ -140,7 +132,7 @@ export default function Page() {
                 {transitions.filter((row) => row.from_id === editing.id).map((row) => (
                   <div key={row.id} className="flex items-center justify-between text-xs">
                     <span>{row.from_name} → {row.to_name}</span>
-                    <Button type="link" size="small" danger onClick={() => { void api.deleteTransition(row.id).then(load); }}>{t('itsm.common.delete')}</Button>
+                    <ItsmRowActions items={[{key: 'delete',label:t('itsm.common.delete'),kind:'delete',danger:true,confirm:{title:'确定删除这个流转关系？'},onClick:()=>api.deleteTransition(row.id).then(load)}]} />
                   </div>
                 ))}
                 <div className="flex gap-2">

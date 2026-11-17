@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Checkbox, Input, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Checkbox, Input, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -21,6 +23,7 @@ const DAY_VALUES = [1, 2, 3, 4, 5, 6, 7];
 export default function CalendarsPage() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const daysOptions = DAY_VALUES.map((value) => ({ value, label: t(`itsm.rule.day${value}`) }));
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -63,20 +66,17 @@ export default function CalendarsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.rule.calendar')}</div>
-        <Button type="primary" onClick={() => startEdit()}>{t('itsm.common.create')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => startEdit()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyCalendar') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
             { title: t('itsm.rule.workdays'), dataIndex: 'work_days', key: 'work_days', render: (value: number[]) => (value || []).map((day) => daysOptions.find((item) => item.value === day)?.label).filter(Boolean).join('、') },
             { title: t('itsm.rule.range'), key: 'range', render: (_value: unknown, item: CalendarItem) => `${item.work_start}-${item.work_end}` },
-            { title: t('itsm.ticket.action'), key: 'actions', render: (_value: unknown, item: CalendarItem) => <Button type="link" size="small" onClick={() => startEdit(item)}>{t('itsm.common.edit')}</Button> },
+            { fixed: 'right' as const, width: 120, title: t('itsm.ticket.action'), key: 'actions', render: (_value: unknown, item: CalendarItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => startEdit(item)}]} /> },
           ]}
         />
       </div>
