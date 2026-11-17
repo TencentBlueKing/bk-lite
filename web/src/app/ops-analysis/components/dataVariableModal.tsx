@@ -502,7 +502,16 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   return (
     <>
       <Modal
-        title={view === 'list' ? t('dataVariable.title') : editTitle}
+        title={view === 'list' ? (
+          <div className="pr-6">
+            <span className="block text-base font-semibold leading-6 text-[var(--color-text-1)]">
+              {t('dataVariable.title')}
+            </span>
+            <span className="mt-2 block text-xs font-normal leading-5 text-[var(--color-text-3)]">
+              {t('dataVariable.intro')}
+            </span>
+          </div>
+        ) : editTitle}
         open={open}
         onCancel={() => {
           if (view === 'edit') leaveEditor();
@@ -526,7 +535,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
             </Button>
           </div>
         )}
-        width={view === 'list' ? 600 : 960}
+        width={view === 'list' ? 600 : 840}
         maskClosable={false}
         destroyOnHidden
         centered
@@ -603,7 +612,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                   name="name"
                   rules={[{ required: true, message: t('dataVariable.missingName') }]}
                 >
-                  <Input maxLength={40} />
+                  <Input maxLength={40} placeholder={t('common.inputTip')} />
                 </Form.Item>
                 <Form.Item label={t('dashboard.dataSource')} required>
                   <Input
