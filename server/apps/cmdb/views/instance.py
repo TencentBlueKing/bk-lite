@@ -30,6 +30,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.current_team_scope import resolve_assignable_organization_ids
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
@@ -111,8 +112,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @staticmethod
     def _get_allowed_org_ids(request) -> list[int]:
-        # 超级管理员：不按当前组织裁剪，通过 system_mgmt NATS 取该用户可分配的组织。
-        if getattr(request.user, "is_superuser", False):
+        # 超级管理员 / 审计员：不按当前组织裁剪，通过 system_mgmt NATS 取可分配组织。
+        if has_unrestricted_org_scope(request.user):
             return list(resolve_assignable_organization_ids(request))
 
         current_team = get_current_team_from_request(request)

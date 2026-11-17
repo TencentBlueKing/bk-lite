@@ -122,6 +122,10 @@ def _platform_admin_role_ids():
     return set(Role.objects.filter(name="admin").filter(Q(app="") | Q(app="system-manager")).values_list("id", flat=True))
 
 
+def _platform_auditor_role_ids():
+    return set(Role.objects.filter(name="auditor").filter(Q(app="") | Q(app="system-manager")).values_list("id", flat=True))
+
+
 def _actor_is_platform_superuser(actor):
     """平台超管只认持久化角色，不接受请求参数声明。"""
     from apps.system_mgmt.nats.common import get_user_all_roles
@@ -131,6 +135,22 @@ def _actor_is_platform_superuser(actor):
         return False
     admin_role_ids = _platform_admin_role_ids()
     return bool(admin_role_ids.intersection(role_ids))
+
+
+def _actor_is_platform_auditor(actor):
+    """平台审计员只认持久化角色；与超管互斥，超管赢。"""
+    if _actor_is_platform_superuser(actor):
+        return False
+    from apps.system_mgmt.nats.common import get_user_all_roles
+
+    role_ids = get_user_all_roles(actor)
+    if not role_ids:
+        return False
+    return bool(_platform_auditor_role_ids().intersection(role_ids))
+
+
+def _actor_has_unrestricted_org_scope(actor):
+    return _actor_is_platform_superuser(actor) or _actor_is_platform_auditor(actor)
 
 
 def _users_platform_superuser_flags(users):
@@ -226,7 +246,7 @@ def _resolve_query_group_ids(*, team, user_info, group_id, include_children):
     actor = _load_actor(user_info)
     if actor is None:
         return None, _soft_error(_TEAM_OUT_OF_SCOPE_MESSAGE), False
-    if _actor_is_platform_superuser(actor):
+    if _actor_has_unrestricted_org_scope(actor):
         return _superuser_query_group_ids(group_id, include_children), None, True
 
     if not injected:
