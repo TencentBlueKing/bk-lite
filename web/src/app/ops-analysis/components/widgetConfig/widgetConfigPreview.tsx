@@ -18,10 +18,12 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import type { InteractionSampleTicket } from '@/app/ops-analysis/utils/interactionSample';
+import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
 const WidgetDataRenderer = React.lazy(
   () => import('@/app/ops-analysis/components/widgetDataRenderer'),
 );
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 
 export type WidgetConfigPreviewTab = 'chart' | 'json';
 
@@ -42,7 +44,7 @@ interface WidgetConfigPreviewProps {
   loading?: boolean;
   sampleTicket?: InteractionSampleTicket;
   onRawData: (data: unknown, ticket?: InteractionSampleTicket) => void;
-  liveName?: string;
+  onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   liveDescription?: string;
   onRefresh?: () => void;
   onCreateDataVariable?: () => void;
@@ -76,7 +78,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   loading = false,
   sampleTicket,
   onRawData,
-  liveName,
+  onRenderStatus,
   liveDescription,
   onRefresh,
   onCreateDataVariable,
@@ -84,20 +86,38 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   const { t } = useTranslation();
   const [tab, setTab] = useState<WidgetConfigPreviewTab>('chart');
   const [copied, setCopied] = useState(false);
+  const [emptyState, setEmptyState] = useState<{
+    kind: 'empty' | 'error';
+    description: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!previewed) {
       setTab('chart');
+      setEmptyState(null);
     }
   }, [previewed]);
+
+  const handleRenderStatus = useCallback((result: DashboardWidgetRenderResult) => {
+    if (result.status === 'empty' || result.status === 'failed') {
+      setEmptyState({
+        kind: result.status === 'failed' ? 'error' : 'empty',
+        description: result.error || t('dashboard.noData'),
+      });
+    } else if (result.status === 'ready') {
+      setEmptyState(null);
+    }
+    onRenderStatus?.(result);
+  }, [onRenderStatus, t]);
 
   const handleTabChange = useCallback((value: string | number) => {
     setTab(value === 'json' ? 'json' : 'chart');
   }, []);
 
   const jsonText = useMemo(() => formatRawJson(rawData), [rawData]);
-  const title = liveName || config?.name || t('dashboard.configPreviewUntitled');
   const description = liveDescription ?? config?.description;
+  const descriptionText = description?.trim() ?? '';
+  const showDataVariableAction = Boolean(onCreateDataVariable) && tab === 'json';
 
   const handleCopyJson = useCallback(async () => {
     if (!jsonText) return;
@@ -201,18 +221,16 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
+          {descriptionText || showDataVariableAction ? (
           <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
-              <h4 className="truncate text-sm font-medium leading-5 text-(--color-text-1)">
-                {title}
-              </h4>
-              {description?.trim() ? (
-                <p className="mt-1 line-clamp-2 text-xs leading-normal text-(--color-text-3)">
-                  {description}
+              {descriptionText ? (
+                <p className="line-clamp-2 text-xs leading-normal text-(--color-text-3)">
+                  {descriptionText}
                 </p>
               ) : null}
             </div>
-            {onCreateDataVariable && tab === 'json' ? (
+            {showDataVariableAction ? (
               <Button
                 type="link"
                 size="small"
@@ -220,10 +238,11 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                 className="shrink-0 !h-auto !px-0"
                 onClick={onCreateDataVariable}
               >
-                {t('dataVariable.add')}
+                {t('dashboard.configPreviewSaveAsDataVariable')}
               </Button>
             ) : null}
           </div>
+          ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
             {tab === 'json' ? (
@@ -251,12 +270,27 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                           : t('common.copy')}
                       </Button>
                     ) : null}
-                    <pre
-                      className="min-h-0 flex-1 overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
-                      data-testid="widget-config-preview-json"
-                    >
-                      {jsonText || t('dashboard.configPreviewRawJsonEmpty')}
-                    </pre>
+                    {jsonText ? (
+                      <pre
+                        className="min-h-0 flex-1 overflow-auto p-3 pr-16 text-xs font-mono leading-relaxed text-(--color-text-1) scrollbar-thin"
+                        data-testid="widget-config-preview-json"
+                      >
+                        {jsonText}
+                      </pre>
+                    ) : (
+                      <div
+                        className="flex min-h-0 flex-1 items-center justify-center"
+                        data-testid="widget-config-preview-json-empty"
+                      >
+                        <WidgetState
+                          kind={emptyState?.kind ?? 'empty'}
+                          description={
+                            emptyState?.description
+                            ?? t('dashboard.configPreviewRawJsonEmpty')
+                          }
+                        />
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -296,6 +330,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                               config.sceneWidgetType === 'room3D'
                             }
                             onRawData={onRawData}
+                            onRenderStatus={handleRenderStatus}
                           />
                         </React.Suspense>
                       </div>

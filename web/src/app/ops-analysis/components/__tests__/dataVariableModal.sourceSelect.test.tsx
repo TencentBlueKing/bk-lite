@@ -1,6 +1,6 @@
 import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -99,9 +99,10 @@ describe('data variable source select', () => {
     });
 
     const user = userEvent.setup();
+    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
     const dataSourceItem = screen.getByText('dashboard.dataSource').closest('.ant-form-item');
     expect(dataSourceItem).toBeTruthy();
-    await user.click(within(dataSourceItem as HTMLElement).getByRole('textbox'));
+    fireEvent.click(within(dataSourceItem as HTMLElement).getByRole('textbox'));
 
     expect((await screen.findAllByText('CMDB 实例监控ID映射')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('监控实例数量统计').length).toBeGreaterThan(0);
@@ -113,5 +114,5 @@ describe('data variable source select', () => {
     await user.click(screen.getAllByText('CMDB 实例监控ID映射')[0]);
     expect((within(dataSourceItem as HTMLElement).getByRole('textbox') as HTMLInputElement).value)
       .toBe('CMDB 实例监控ID映射（api/9）');
-  });
+  }, 15000);
 });

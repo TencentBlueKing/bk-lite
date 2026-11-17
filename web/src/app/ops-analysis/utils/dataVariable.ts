@@ -21,12 +21,24 @@ export interface DataVariable {
 
 export type ColumnBlockReason =
   | 'empty'
+  | 'nodata'
   | 'shape'
   | 'cell'
   | 'missing-field'
   | 'too-many'
   | 'upstream'
   | 'request';
+
+/** 查询还没发出去就停住。和接口失败分开，避免必填项没填被说成查询失败。 */
+export class DataVariableBlocked extends Error {
+  readonly reason: ColumnBlockReason;
+
+  constructor(reason: ColumnBlockReason) {
+    super(reason);
+    this.name = 'DataVariableBlocked';
+    this.reason = reason;
+  }
+}
 
 export type ColumnResult =
   | { status: 'ready'; values: unknown[] }
@@ -83,6 +95,16 @@ const readParamInputs = (
 
 export const isEmptyParamValue = (value: unknown): boolean =>
   value == null || value === '' || (Array.isArray(value) && value.length === 0);
+
+/** 目录里标了必填、整好的请求里仍然没有值。 */
+export const missingRequiredParam = (
+  catalog: Array<{ name?: string; required?: boolean }> | undefined,
+  params: Record<string, unknown>,
+): boolean => Array.isArray(catalog) && catalog.some((param) => (
+  param.required === true
+  && typeof param.name === 'string'
+  && isEmptyParamValue(params[param.name])
+));
 
 const isConditionGroup = (value: unknown): value is { logic?: unknown; items: unknown[] } =>
   isRecord(value)
@@ -180,6 +202,39 @@ const directDependencies = (variable: DataVariable): string[] => {
   return [...ids];
 };
 
+/** 查询相关字段。改名称不重新请求。 */
+export const variableQueryKey = (variable: DataVariable): string => JSON.stringify({
+  dataSourceId: variable.dataSourceId,
+  valueField: variable.valueField,
+  params: variable.params,
+  filterBindings: variable.filterBindings ?? null,
+  paramInputs: variable.paramInputs ?? null,
+});
+
+/** 被改动的变量，以及参数里引用了它们的下游。 */
+export const variablesAffectedBy = (
+  variables: DataVariable[],
+  changedIds: readonly string[],
+): string[] => {
+  const dependents = new Map<string, string[]>();
+  variables.forEach((variable) => {
+    directDependencies(variable).forEach((refId) => {
+      const list = dependents.get(refId) ?? [];
+      list.push(variable.id);
+      dependents.set(refId, list);
+    });
+  });
+  const seen = new Set<string>();
+  const queue = [...changedIds];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    (dependents.get(id) ?? []).forEach((child) => queue.push(child));
+  }
+  return [...seen];
+};
+
 export const validateDataVariables = (variables: DataVariable[]): DataVariableIssue[] => {
   const issues: DataVariableIssue[] = [];
   const seenNames = new Set<string>();
@@ -266,7 +321,7 @@ export const extractValueColumn = (payload: unknown, field: string): ColumnResul
   const rows = rowListOf(payload);
   if (!rows) return { status: 'blocked', reason: 'shape' };
   if (rows.length > DATA_VARIABLE_ROW_LIMIT) return { status: 'blocked', reason: 'too-many' };
-  if (rows.length === 0) return { status: 'blocked', reason: 'empty' };
+  if (rows.length === 0) return { status: 'blocked', reason: 'nodata' };
   const values: unknown[] = [];
   let sawField = false;
   for (const row of rows) {
@@ -283,7 +338,7 @@ export const extractValueColumn = (payload: unknown, field: string): ColumnResul
     values.push(cell);
   }
   if (!sawField) return { status: 'blocked', reason: 'missing-field' };
-  if (values.length === 0) return { status: 'blocked', reason: 'empty' };
+  if (values.length === 0) return { status: 'blocked', reason: 'nodata' };
   return { status: 'ready', values };
 };
 
@@ -364,6 +419,7 @@ export interface VariableRun {
 }
 
 export const columnBlockReasonKey = (reason: ColumnBlockReason): string => {
+  if (reason === 'nodata') return 'dataVariable.reasonNoData';
   if (reason === 'empty') return 'dataVariable.reasonEmpty';
   if (reason === 'shape') return 'dataVariable.reasonShape';
   if (reason === 'cell') return 'dataVariable.reasonCell';
@@ -377,10 +433,16 @@ export const runDataVariables = async ({
   variables,
   roots,
   fetchRows,
+  reuse,
+  refreshIds,
 }: {
   variables: DataVariable[];
   roots: readonly string[];
   fetchRows: (variable: DataVariable, params: Record<string, unknown>) => Promise<unknown>;
+  /** 这次不用重查的列。 */
+  reuse?: Record<string, ColumnResult>;
+  /** 只重查这些编号。缺省时根上的每条都查。 */
+  refreshIds?: ReadonlySet<string>;
 }): Promise<VariableRun> => {
   const byId = new Map(variables.map((variable) => [variable.id, variable]));
   const columns: Record<string, ColumnResult> = {};
@@ -388,6 +450,11 @@ export const runDataVariables = async ({
   for (const id of executionOrder(variables, roots)) {
     const variable = byId.get(id);
     if (!variable) continue;
+    if (refreshIds && !refreshIds.has(id)) {
+      const kept = reuse?.[id];
+      if (kept) columns[id] = kept;
+      continue;
+    }
     const resolved = resolveParamRecord(variable.params, columns);
     const ready = readyRecord(resolved);
     if (!ready) {
@@ -401,8 +468,11 @@ export const runDataVariables = async ({
       const payload = await fetchRows(variable, ready.params);
       payloads[id] = payload;
       columns[id] = extractValueColumn(payload, variable.valueField);
-    } catch {
-      columns[id] = { status: 'blocked', reason: 'request' };
+    } catch (error) {
+      columns[id] = {
+        status: 'blocked',
+        reason: error instanceof DataVariableBlocked ? error.reason : 'request',
+      };
     }
   }
   return { columns, payloads };

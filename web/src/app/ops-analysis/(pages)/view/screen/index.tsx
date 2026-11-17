@@ -1145,8 +1145,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       },
       filters: filtersRef.current,
     });
-    message.success(t("dataVariable.added"));
-    setDataVariableOpen(false);
+    message.success(t("common.saveSuccess"));
     setDataVariableDraft(null);
   };
 

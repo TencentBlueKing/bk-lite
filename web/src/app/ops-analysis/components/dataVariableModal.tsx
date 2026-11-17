@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Table, message } from 'antd';
-import { DeleteOutlined, PlusOutlined, SwapOutlined } from '@ant-design/icons';
+import { Button, Empty, Form, Input, Modal, Select, Table, message } from 'antd';
+import { PlusOutlined, SwapOutlined } from '@ant-design/icons';
 
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { withDatasourceNamespace } from '@/app/ops-analysis/context/dataVariableRuntime';
@@ -100,9 +100,15 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   const [form] = Form.useForm();
   const [drafts, setDrafts] = useState<DataVariable[]>([]);
   const draftsRef = useRef<DataVariable[]>([]);
+  const [committed, setCommitted] = useState<DataVariable[]>([]);
+  const committedRef = useRef<DataVariable[]>([]);
+  const [view, setView] = useState<'list' | 'edit'>('list');
   const [selectedId, setSelectedId] = useState<string>('');
   const selectedIdRef = useRef('');
   selectedIdRef.current = selectedId;
+  const closeOnLeaveRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const hydratingRef = useRef(false);
   const [sourceCatalog, setSourceCatalog] = useState<DatasourceItem[]>([]);
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -115,6 +121,15 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   const replaceDrafts = (next: DataVariable[]) => {
     draftsRef.current = next;
     setDrafts(next);
+  };
+
+  const replaceCommitted = (next: DataVariable[]) => {
+    committedRef.current = next;
+    setCommitted(next);
+  };
+
+  const markDirty = () => {
+    if (!hydratingRef.current) dirtyRef.current = true;
   };
 
   const sourceById = (id?: number): DatasourceItem | undefined => {
@@ -132,11 +147,14 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
         ? current.params[param.name]
         : param.value;
     });
+    hydratingRef.current = true;
     form.setFieldsValue({
       name: current?.name ?? '',
       valueField: current?.valueField || undefined,
       params,
     });
+    hydratingRef.current = false;
+    dirtyRef.current = false;
   };
   const openedRef = useRef(false);
 
@@ -147,16 +165,20 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
     }
     if (openedRef.current) return;
     openedRef.current = true;
-    const firstId = focusId && variables.some((item) => item.id === focusId)
+    const editingId = focusId && variables.some((item) => item.id === focusId)
       ? focusId
-      : (variables[0]?.id ?? '');
+      : '';
+    closeOnLeaveRef.current = Boolean(editingId);
+    replaceCommitted(variables);
     replaceDrafts(variables);
-    setSelectedId(firstId);
+    setView(editingId ? 'edit' : 'list');
+    setSelectedId(editingId);
     setPreviewPayload(null);
     setPreviewReason(null);
     setProbedFields({});
     setEditingParam(null);
-    fillForm(variables.find((item) => item.id === firstId));
+    dirtyRef.current = false;
+    if (editingId) fillForm(variables.find((item) => item.id === editingId));
     // 只在弹层打开时用已保存的变量回填，编辑过程不再被父组件重渲染覆盖。
   }, [open]);
 
@@ -291,18 +313,19 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
     form.setFieldsValue({ valueField: undefined, params: {} });
     setPreviewPayload(null);
     setPreviewReason(null);
+    markDirty();
   };
 
-  const selectVariable = (id: string) => {
-    const next = rememberCurrent();
+  const openEditor = (id: string, list: DataVariable[]) => {
+    replaceDrafts(list);
     setSelectedId(id);
+    setView('edit');
     setPreviewPayload(null);
     setPreviewReason(null);
-    fillForm(next.find((item) => item.id === id));
+    fillForm(list.find((item) => item.id === id));
   };
 
   const addVariable = () => {
-    const current = rememberCurrent();
     const created: DataVariable = {
       id: createDataVariableId(),
       name: '',
@@ -310,16 +333,11 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
       valueField: '',
       params: {},
     };
-    const next = [...current, created];
-    replaceDrafts(next);
-    setSelectedId(created.id);
-    setPreviewPayload(null);
-    setPreviewReason(null);
-    fillForm(created);
+    openEditor(created.id, [...committedRef.current, created]);
   };
 
   const removeVariable = (id: string) => {
-    const current = rememberCurrent();
+    const current = committedRef.current;
     const used = collectVariableIds({
       variables: current.filter((item) => item.id !== id),
       widgets: widgetConfigs,
@@ -328,27 +346,69 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
       message.warning(t('dataVariable.deleteBlocked'));
       return;
     }
-    const next = current.filter((item) => item.id !== id);
-    replaceDrafts(next);
-    if (selectedId === id) {
-      const fallback = next[0];
-      setSelectedId(fallback?.id ?? '');
-      fillForm(fallback);
-    }
+    Modal.confirm({
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      centered: true,
+      onOk: () => {
+        const next = committedRef.current.filter((item) => item.id !== id);
+        replaceCommitted(next);
+        replaceDrafts(next);
+        return onConfirm(next);
+      },
+    });
   };
 
-  const handleConfirm = async () => {
-    const next = rememberCurrent();
-    const issues = validateDataVariables(next);
-    if (issues.length > 0) {
-      message.error(issueText(issues[0].code, t));
-      if (issues[0].id) {
-        setSelectedId(issues[0].id);
-        fillForm(next.find((item) => item.id === issues[0].id));
+  const leaveEditor = () => {
+    const discard = () => {
+      dirtyRef.current = false;
+      setPreviewPayload(null);
+      setPreviewReason(null);
+      if (closeOnLeaveRef.current) {
+        onCancel();
+        return;
       }
+      replaceDrafts(committedRef.current);
+      setSelectedId('');
+      setView('list');
+    };
+    if (!dirtyRef.current) {
+      discard();
       return;
     }
+    Modal.confirm({
+      title: t('opsAnalysisSidebar.unsavedChanges'),
+      content: t('opsAnalysisSidebar.unsavedChangesWarning'),
+      onOk: discard,
+    });
+  };
+
+  const handleSave = async () => {
+    const next = rememberCurrent();
+    const current = next.find((item) => item.id === selectedId);
+    const issues = validateDataVariables(next).filter((issue) => (
+      issue.id === selectedId
+      || (issue.code === 'duplicate-name' && issue.name === current?.name)
+    ));
+    if (issues.length > 0) {
+      message.error(issueText(issues[0].code, t));
+      return;
+    }
+    replaceCommitted(next);
+    replaceDrafts(next);
+    dirtyRef.current = false;
     await onConfirm(next);
+    if (closeOnLeaveRef.current) {
+      onCancel();
+      return;
+    }
+    setSelectedId('');
+    setView('list');
+    setPreviewPayload(null);
+    setPreviewReason(null);
   };
 
   const handlePreview = async () => {
@@ -418,6 +478,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
       };
     });
     replaceDrafts(next);
+    markDirty();
     if (nextConfig.control === 'dataVariable') {
       form.setFieldValue(['params', name], { dataVariableId: nextConfig.dataVariableId });
     } else if (isDataVariableRef(form.getFieldValue(['params', name]))) {
@@ -426,6 +487,9 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
     setEditingParam(null);
   };
 
+  const watchedName = Form.useWatch('name', form);
+  const editTitle = String(watchedName ?? selected?.name ?? '').trim()
+    || `${t('common.new')}${t('dataVariable.title')}`;
   const previewRows = rowsOf(previewPayload).slice(0, 20);
   const previewColumns = Object.keys(previewRows[0] ?? {}).slice(0, 12).map((key) => ({
     title: key,
@@ -438,73 +502,102 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   return (
     <>
       <Modal
-        title={t('dataVariable.add')}
+        title={view === 'list' ? t('dataVariable.title') : editTitle}
         open={open}
-        onCancel={onCancel}
-        onOk={() => handleConfirm()}
-        okText={t('common.confirm')}
-        cancelText={t('common.cancel')}
-        width={1080}
+        onCancel={() => {
+          if (view === 'edit') leaveEditor();
+          else onCancel();
+        }}
+        footer={(
+          <div className="text-right">
+            {view === 'edit' ? (
+              <Button type="primary" onClick={() => { void handleSave(); }}>
+                {t('common.save')}
+              </Button>
+            ) : null}
+            <Button
+              className={view === 'edit' ? 'ml-2' : undefined}
+              onClick={() => {
+                if (view === 'edit') leaveEditor();
+                else onCancel();
+              }}
+            >
+              {view === 'edit' ? t('common.cancel') : t('common.close')}
+            </Button>
+          </div>
+        )}
+        width={view === 'list' ? 600 : 960}
+        maskClosable={false}
         destroyOnHidden
         centered
         styles={{ body: { overflow: 'hidden' } }}
       >
-        <div className="flex h-[min(440px,calc(100vh-220px))] min-h-[280px] gap-4">
-          <div className="flex w-48 shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) pr-3">
-            <div className="mb-1 flex h-8 shrink-0 items-center justify-between">
-              <span className="text-xs text-(--color-text-3)">{t('dataVariable.title')}</span>
-              <button
-                type="button"
-                aria-label={t('dataVariable.add')}
-                title={t('dataVariable.add')}
-                className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-text-2) hover:bg-(--color-fill-1) hover:text-(--color-primary)"
-                onClick={addVariable}
-              >
-                <PlusOutlined className="text-xs" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {drafts.length === 0 ? (
-                <div className="px-1 py-6 text-center text-xs text-(--color-text-3)">
-                  {t('dataVariable.emptyList')}
-                </div>
-              ) : drafts.map((item) => {
-                const active = item.id === selectedId;
-                return (
-                  <div
-                    key={item.id}
-                    className={`group flex h-8 items-center border-l-2 ${
-                      active
-                        ? 'border-(--color-primary) bg-(--color-fill-1)'
-                        : 'border-transparent hover:bg-(--color-fill-1)'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      title={item.name || t('dataVariable.title')}
-                      className={`min-w-0 flex-1 cursor-pointer truncate px-2 text-left text-sm leading-8 ${
-                        active ? 'font-medium text-(--color-text-1)' : 'text-(--color-text-2)'
-                      }`}
-                      onClick={() => selectVariable(item.id)}
-                    >
-                      {item.name || t('dataVariable.title')}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t('common.delete')}
-                      className="mr-1 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-xs text-(--color-text-3) opacity-0 hover:text-(--color-text-1) group-hover:opacity-100 group-focus-within:opacity-100"
-                      onClick={() => removeVariable(item.id)}
-                    >
-                      <DeleteOutlined />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {selected ? (
+        <div className={`mt-5 flex h-[min(440px,calc(100vh-220px))] min-h-[280px] ${view === 'list' ? 'flex-col' : 'gap-4'}`}>
+          {view === 'list' ? (
             <>
-              <Form form={form} layout="vertical" className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
+              <div className="mb-3 flex justify-end">
+                <Button type="primary" icon={<PlusOutlined />} onClick={addVariable}>
+                  {t('common.new')}
+                </Button>
+              </div>
+              <Table
+                size="small"
+                rowKey="id"
+                pagination={false}
+                dataSource={committed}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={t('dataVariable.emptyList')}
+                    />
+                  ),
+                }}
+                columns={[
+                  {
+                    title: t('dataVariable.name'),
+                    dataIndex: 'name',
+                    ellipsis: true,
+                    render: (name: string) => name || t('dataVariable.title'),
+                  },
+                  {
+                    title: t('dashboard.dataSource'),
+                    key: 'source',
+                    ellipsis: true,
+                    render: (_value: unknown, row: DataVariable) => sourceById(row.dataSourceId)?.name || '-',
+                  },
+                  {
+                    title: t('common.actions'),
+                    key: 'actions',
+                    width: 150,
+                    render: (_value: unknown, row: DataVariable) => (
+                      <div className="space-x-4">
+                        <Button
+                          type="link"
+                          size="small"
+                          className="!p-0"
+                          onClick={() => openEditor(row.id, committed)}
+                        >
+                          {t('common.edit')}
+                        </Button>
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          className="!p-0"
+                          onClick={() => removeVariable(row.id)}
+                        >
+                          {t('common.delete')}
+                        </Button>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : selected ? (
+            <Form form={form} layout="vertical" className="contents" onValuesChange={markDirty}>
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
                 <Form.Item
                   label={t('dataVariable.name')}
                   name="name"
@@ -563,6 +656,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                       dataSourceParams={selectedSource?.params ?? []}
                       filterBindings={selected.filterBindings ?? {}}
                       onChange={(filterBindings) => {
+                        markDirty();
                         const next = rememberCurrent().map((item) => (
                           item.id === selected.id ? { ...item, filterBindings } : item
                         ));
@@ -571,27 +665,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     />
                   </div>
                 ) : null}
-                <div className="mt-2 border-t border-(--color-border-1) pt-4">
-                <Form.Item
-                  label={t('dataVariable.valueField')}
-                  tooltip={t('dataVariable.valueFieldTip')}
-                  name="valueField"
-                  className="mb-0"
-                  rules={[{ required: true, message: t('dataVariable.missingValueField') }]}
-                >
-                  <Select
-                    showSearch
-                    options={fieldOptions}
-                    placeholder={t('common.selectTip')}
-                    onChange={(valueField) => {
-                      replaceDrafts(draftsRef.current.map((item) => (
-                        item.id === selected.id ? { ...item, valueField } : item
-                      )));
-                    }}
-                  />
-                </Form.Item>
-                </div>
-              </Form>
+              </div>
               <div className="flex min-h-0 w-[460px] shrink-0 flex-col overflow-hidden border-l border-(--color-border-1) pl-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="m-0 text-sm font-semibold leading-6 text-(--color-text-1)">
@@ -601,6 +675,25 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     {t('dataVariable.preview')}
                   </Button>
                 </div>
+                <Form.Item
+                  label={t('dataVariable.valueField')}
+                  tooltip={t('dataVariable.valueFieldTip')}
+                  name="valueField"
+                  className="mb-3"
+                  rules={[{ required: true, message: t('dataVariable.missingValueField') }]}
+                >
+                  <Select
+                    showSearch
+                    options={fieldOptions}
+                    placeholder={t('common.selectTip')}
+                    onChange={(valueField) => {
+                      markDirty();
+                      replaceDrafts(draftsRef.current.map((item) => (
+                        item.id === selected.id ? { ...item, valueField } : item
+                      )));
+                    }}
+                  />
+                </Form.Item>
                 <div className="min-h-0 flex-1 overflow-auto">
                   {previewReason ? (
                     <div className="text-sm text-(--color-text-2)">{reasonText(previewReason, t)}</div>
@@ -617,7 +710,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                   ) : null}
                 </div>
               </div>
-            </>
+            </Form>
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-(--color-text-3)">
               {t('dataVariable.emptyList')}

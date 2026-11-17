@@ -39,7 +39,9 @@ import {
 } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
   collectVariableIds,
+  DataVariableBlocked,
   isDataVariableRef,
+  missingRequiredParam,
   resolveParamRecord,
   type ColumnBlockReason,
   type ColumnResult,
@@ -673,6 +675,16 @@ export const hasActiveWidgetRuntimeParams = (
   runtimeParams: Record<string, unknown>,
 ): boolean => supportsComponentSwitch(chartType) && Object.keys(runtimeParams).length > 0;
 
+const requiredCatalogFor = (
+  sourceParams: ParamItem[],
+  definitionParams?: ParamItem[],
+): Array<{ name?: string; required?: boolean }> => {
+  const names = new Set(sourceParams.map((param) => param.name));
+  const catalog = Array.isArray(definitionParams) ? definitionParams : [];
+  const flagged = catalog.filter((param) => param.required === true && names.has(param.name));
+  return flagged.length > 0 ? flagged : sourceParams;
+};
+
 const widgetSourceParams = (
   config: { dataSourceParams?: ParamItem[] } | null | undefined,
   dataSource: { params?: ParamItem[] } | null | undefined,
@@ -707,20 +719,56 @@ export const widgetDataVariableBlockReason = ({
   dataSource,
   extraParams,
   dataVariableColumns,
+  unifiedFilterValues,
+  filterBindings,
+  filterDefinitions,
+  resolutionContext,
+  chartType,
+  t,
 }: {
-  config: { dataSourceParams?: ParamItem[] } | null | undefined;
+  config: { dataSourceParams?: ParamItem[]; filterBindings?: FilterBindings; chartType?: string } | null | undefined;
   dataSource?: { params?: ParamItem[] } | null;
   extraParams?: Record<string, unknown>;
   dataVariableColumns?: Record<string, ColumnResult>;
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterBindings?: FilterBindings;
+  filterDefinitions?: UnifiedFilterDefinition[];
+  resolutionContext?: DateRangeResolutionContext;
+  chartType?: string;
+  t?: WidgetMessage;
 }): ColumnBlockReason | null => {
   if (!dataVariableColumns) return null;
+  const sourceParams = widgetSourceParams(config, dataSource);
   const userParams: Record<string, unknown> = {};
-  widgetSourceParams(config, dataSource).forEach((param) => {
+  sourceParams.forEach((param) => {
     userParams[param.name] = param.value;
   });
   Object.assign(userParams, extraParams ?? {});
   const resolved = resolveParamRecord(userParams, dataVariableColumns);
-  return resolved.blocked ? resolved.reason : null;
+  if (resolved.blocked) return resolved.reason;
+  const readyParams = (resolved as { blocked: false; params: Record<string, unknown> }).params;
+  const preserveArrayNames = new Set(
+    Object.entries(userParams)
+      .filter(([, value]) => isDataVariableRef(value))
+      .map(([name]) => name),
+  );
+  const requestParams = processDataSourceParams({
+    sourceParams,
+    definitionParams: Array.isArray(dataSource?.params) ? dataSource.params : undefined,
+    userParams: readyParams,
+    unifiedFilterValues,
+    filterBindings: filterBindings ?? config?.filterBindings,
+    filterDefinitions,
+    resolutionContext,
+    chartType: chartType || config?.chartType,
+    preserveArrayNames,
+    t,
+  });
+  if (missingRequiredParam(
+    requiredCatalogFor(sourceParams, Array.isArray(dataSource?.params) ? dataSource.params : undefined),
+    requestParams,
+  )) return 'empty';
+  return null;
 };
 
 export const buildWidgetRequestParams = ({
@@ -768,6 +816,15 @@ export const buildWidgetRequestParams = ({
     preserveArrayNames: applied.preserveArrayNames,
     t,
   });
+  if (
+    collectVariableIds(userParams).length > 0
+    && missingRequiredParam(
+      requiredCatalogFor(sourceParams, Array.isArray(dataSource?.params) ? dataSource.params : undefined),
+      requestParams,
+    )
+  ) {
+    return null;
+  }
 
   return requestParams;
 };
@@ -818,6 +875,15 @@ export const buildWidgetRequestSignatureParams = ({
     preserveArrayNames: applied.preserveArrayNames,
     t,
   });
+  if (
+    collectVariableIds(userParams).length > 0
+    && missingRequiredParam(
+      requiredCatalogFor(sourceParams, Array.isArray(dataSource?.params) ? dataSource.params : undefined),
+      requestParams,
+    )
+  ) {
+    return null;
+  }
 
   return requestParams;
 };
@@ -852,7 +918,7 @@ export const buildDataVariableRequestParams = ({
       .filter(([, value]) => isDataVariableRef(value))
       .map(([name]) => name),
   );
-  return processDataSourceParams({
+  const shaped = processDataSourceParams({
     sourceParams,
     definitionParams: catalog,
     userParams: resolvedParams,
@@ -861,6 +927,10 @@ export const buildDataVariableRequestParams = ({
     filterDefinitions,
     preserveArrayNames,
   });
+  if (missingRequiredParam(catalog, shaped)) {
+    throw new DataVariableBlocked('empty');
+  }
+  return shaped;
 };
 
 export const dataVariableFilterSources = (

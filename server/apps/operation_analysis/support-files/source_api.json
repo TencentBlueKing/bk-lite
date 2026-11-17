@@ -6000,7 +6000,7 @@
         "required": true,
         "alias_name": "实例标识",
         "filterType": "params",
-        "desc": "一次最多 2000 个。没有对应监控的实例不计入。"
+        "desc": "要统计的 CMDB 实例。一次最多 2000 个，超出后本次查询失败。没关联监控的实例不参与告警统计。"
       },
       {
         "name": "group_by",

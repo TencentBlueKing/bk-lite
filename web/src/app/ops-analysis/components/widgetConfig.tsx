@@ -658,6 +658,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const resolved = resolveParamRecord(userParams, run.columns);
         if (resolved.blocked) {
           setPreviewRawData(null);
+          setPreviewLoading(false);
           return;
         }
         requestUserParams = (resolved as { blocked: false; params: Record<string, unknown> }).params;
@@ -1670,7 +1671,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           setPreviewRawData(data);
           setPreviewLoading(false);
         }}
-        liveName={watchedFormValues?.name}
+        onRenderStatus={(result) => {
+          if (result.status !== 'loading') {
+            setPreviewLoading(false);
+          }
+        }}
         liveDescription={watchedFormValues?.description}
         onRefresh={handlePreview}
         onCreateDataVariable={
@@ -2075,6 +2080,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         value={editingInputConfigParam?.inputConfig}
         dataVariables={dataVariables?.map((item) => ({ id: item.id, name: item.name || item.id }))}
+        onCreateDataVariable={onCreateDataVariable}
         onConfirm={handleInputConfigConfirm}
         onCancel={() => setEditingInputConfigParam(null)}
         excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}

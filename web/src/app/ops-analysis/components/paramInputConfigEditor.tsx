@@ -68,6 +68,7 @@ import {
   resolveOptionsQueryChoice,
   type OptionsQueryEditorContext,
 } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import { createDataVariableId, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { useTranslation } from '@/utils/i18n';
 
 interface StaticRow extends InputOption {
@@ -131,6 +132,8 @@ interface ParamInputConfigEditorProps {
   optionsQueryContext?: OptionsQueryEditorContext;
   /** 有数据变量时，控件类型多一项。选中后这个参数提交整列。 */
   dataVariables?: Array<{ id: string; name: string }>;
+  /** 打开新建数据变量。保存后这条会出现在下拉里并被选中。 */
+  onCreateDataVariable?: (variable: DataVariable) => void;
 }
 
 interface SortableStaticRowProps {
@@ -377,12 +380,25 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   editingNodeId,
   optionsQueryContext,
   dataVariables,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
   const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
   const [dataVariableId, setDataVariableId] = useState<string | undefined>();
+  const [variableSelectOpen, setVariableSelectOpen] = useState(false);
+  const [listedVariables, setListedVariables] = useState(dataVariables ?? []);
+  const pendingVariableIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    setListedVariables(dataVariables ?? []);
+    const pending = pendingVariableIdRef.current;
+    if (!pending) return;
+    const created = (dataVariables ?? []).find((item) => item.id === pending && item.name);
+    if (!created) return;
+    pendingVariableIdRef.current = null;
+    setDataVariableId(created.id);
+  }, [dataVariables]);
   const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [multiple, setMultiple] = useState(false);
@@ -1167,17 +1183,57 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
         {control === 'dataVariable' && !editingConditionFields && (
           <Form.Item label={t('dataVariable.title')} className="mb-3" required>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('dataVariable.selectVariable')}
-              value={dataVariableId}
-              options={(dataVariables ?? []).map((item) => ({
-                value: item.id,
-                label: item.name || item.id,
-              }))}
-              onChange={setDataVariableId}
-            />
+            <div className="flex w-full items-center gap-2">
+              <Select
+                className="min-w-0 flex-1"
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('dataVariable.selectVariable')}
+                value={dataVariableId}
+                open={onCreateDataVariable ? variableSelectOpen : undefined}
+                onOpenChange={onCreateDataVariable ? setVariableSelectOpen : undefined}
+                options={(onCreateDataVariable ? listedVariables : (dataVariables ?? [])).map((item) => ({
+                  value: item.id,
+                  label: item.name || item.id,
+                }))}
+                onChange={setDataVariableId}
+                dropdownRender={onCreateDataVariable ? (menu) => (
+                  <div>
+                    {menu}
+                    <div className="border-t border-[var(--color-border)] px-2 py-1">
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const created: DataVariable = {
+                            id: createDataVariableId(),
+                            name: '',
+                            dataSourceId: 0,
+                            valueField: '',
+                            params: {},
+                          };
+                          pendingVariableIdRef.current = created.id;
+                          setVariableSelectOpen(false);
+                          onCreateDataVariable(created);
+                        }}
+                      >
+                        {t('dataVariable.add')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : undefined}
+              />
+              {onCreateDataVariable ? (
+                <Button
+                  type="text"
+                  icon={<ReloadOutlined />}
+                  aria-label={t('common.refresh')}
+                  onClick={() => setListedVariables(dataVariables ?? [])}
+                />
+              ) : null}
+            </div>
           </Form.Item>
         )}
 

@@ -70,7 +70,7 @@ import ComponentParamSwitchControl from "@/app/ops-analysis/components/component
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { useDataVariableRuntime } from "@/app/ops-analysis/context/dataVariableRuntime";
-import { collectVariableIds, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
+import { collectVariableIds, columnBlockReasonKey, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
 import {
   areTableQueryParamsEquivalent,
   readExplicitPagePair,
@@ -657,10 +657,28 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       dataSource,
       extraParams: requestExtraParams,
       dataVariableColumns: variableColumns,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
+      chartType,
+      t,
     }),
-    [config, dataSource, requestExtraParams, variableColumns],
+    [
+      config,
+      dataSource,
+      requestExtraParams,
+      variableColumns,
+      unifiedFilterValues,
+      filterDefinitions,
+      dateRangeResolutionContext,
+      chartType,
+      t,
+    ],
   );
-  const variableBlockMessage = t("dashboard.noData");
+  const variableBlockMessage = variableBlockReason
+    ? t(columnBlockReasonKey(variableBlockReason))
+    : t("dashboard.noData");
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
       return null;
@@ -1292,6 +1310,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     hasActiveWidgetRuntimeParams(chartType, runtimeParams);
   const variablePending = usesDataVariables && Boolean(variableRuntime) && !variableRuntime?.ready;
   const variableBlocked = usesDataVariables && requestEnabled && !variablePending && requestParams === null;
+  useEffect(() => {
+    if (variablePending || !variableBlocked) return;
+    setLoading(false);
+    setTableLoading(false);
+  }, [variableBlocked, variablePending]);
   const isWaitingForInitialData = variablePending || (!variableBlocked && shouldWaitForInitialWidgetData({
     isSceneWidget,
     isTableLikeChart,
@@ -1316,7 +1339,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     if (variableBlocked) {
       onRenderStatus?.(variableBlockReason === "request"
         ? { widgetId, status: "failed", error: variableBlockMessage }
-        : { widgetId, status: "empty" });
+        : { widgetId, status: "empty", error: variableBlockMessage });
       return;
     }
     if (

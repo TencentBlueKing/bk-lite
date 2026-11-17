@@ -5,7 +5,10 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   collectVariableIds,
+  executionOrder,
   runDataVariables,
+  variableQueryKey,
+  variablesAffectedBy,
   type ColumnResult,
   type DataVariable,
 } from '@/app/ops-analysis/utils/dataVariable';
@@ -60,30 +63,95 @@ export const DataVariableRuntimeProvider: React.FC<{
   prepareParams,
   children,
 }) => {
+  const parent = useDataVariableRuntime();
   const { getSourceDataByApiId } = useDataSourceApi();
   const fetchRowsRef = useRef(getSourceDataByApiId);
   fetchRowsRef.current = getSourceDataByApiId;
   const prepareParamsRef = useRef(prepareParams);
   prepareParamsRef.current = prepareParams;
+  const variablesRef = useRef(variables);
+  variablesRef.current = variables;
+  const contextKey = [
+    filterSignature(filterValues),
+    String(reloadKey),
+    String(scopeKey),
+  ].join('\n');
+  const requestKey = [
+    JSON.stringify(variables),
+    contextKey,
+    collectVariableIds(referencedValues).join('|'),
+  ].join('\n');
   const roots = useMemo(
-    () => collectVariableIds(referencedValues),
-    [referencedValues],
+    () => {
+      const rootKey = requestKey.split('\n').pop() ?? '';
+      return rootKey ? rootKey.split('|') : [];
+    },
+    [requestKey],
   );
-  const requestKey = useMemo(
-    () => [JSON.stringify(variables), filterSignature(filterValues), String(reloadKey), String(scopeKey), roots.join('|')].join('\n'),
-    [variables, filterValues, reloadKey, scopeKey, roots],
-  );
-  const [result, setResult] = useState<{ key: string; columns: Record<string, ColumnResult> } | null>(null);
-  const ready = roots.length === 0 || result?.key === requestKey;
-  const columns = ready && result?.key === requestKey ? result.columns : {};
+  const inheritedColumns = useMemo(() => {
+    if (!parent?.ready || roots.length === 0) return null;
+    const next: Record<string, ColumnResult> = {};
+    for (const id of roots) {
+      const column = parent.columns[id];
+      if (!column) return null;
+      next[id] = column;
+    }
+    return next;
+  }, [parent, roots]);
+  const [columns, setColumns] = useState<Record<string, ColumnResult>>({});
+  const [settled, setSettled] = useState(false);
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
+  const queryKeysRef = useRef<Record<string, string>>({});
+  const contextRef = useRef('');
+  const settledRef = useRef(false);
+  const ready = roots.length === 0 || inheritedColumns != null || settled;
+  const displayColumns = inheritedColumns ?? columns;
 
+  // 筛选或整页刷新才整批重查。只改一条变量时，重查它和引用它的下游，其余列留着。
   useEffect(() => {
-    if (roots.length === 0) return undefined;
+    if (roots.length === 0 || inheritedColumns) return undefined;
     let cancelled = false;
-    const key = requestKey;
+    const list = variablesRef.current;
+    const needed = executionOrder(list, roots);
+    const nextKeys: Record<string, string> = {};
+    needed.forEach((id) => {
+      const variable = list.find((item) => item.id === id);
+      if (variable) nextKeys[id] = variableQueryKey(variable);
+    });
+    const contextChanged = contextRef.current !== contextKey || !settledRef.current;
+    const changedIds = needed.filter((id) => queryKeysRef.current[id] !== nextKeys[id]);
+    const refreshIds = contextChanged
+      ? undefined
+      : new Set([
+        ...variablesAffectedBy(list, changedIds),
+        ...needed.filter((id) => !columnsRef.current[id]),
+      ]);
+    const liveIds = new Set(list.map((variable) => variable.id));
+    const prune = (source: Record<string, ColumnResult>) => {
+      const next: Record<string, ColumnResult> = {};
+      Object.entries(source).forEach(([id, column]) => {
+        if (liveIds.has(id)) next[id] = column;
+      });
+      return next;
+    };
+    if (refreshIds && refreshIds.size === 0) {
+      const pruned = prune(columnsRef.current);
+      if (Object.keys(pruned).length !== Object.keys(columnsRef.current).length) {
+        columnsRef.current = pruned;
+        setColumns(pruned);
+      }
+      return undefined;
+    }
+    if (contextChanged) {
+      settledRef.current = false;
+      setSettled(false);
+    }
     void runDataVariables({
-      variables,
+      variables: list,
       roots,
+      reuse: refreshIds ? columnsRef.current : undefined,
+      refreshIds,
       fetchRows: async (variable, params) => {
         const prepare = prepareParamsRef.current;
         const prepared = prepare ? prepare(variable, params) : params;
@@ -94,18 +162,34 @@ export const DataVariableRuntimeProvider: React.FC<{
         return response.data;
       },
     }).then((run) => {
-      if (!cancelled) setResult({ key, columns: run.columns });
+      if (cancelled) return;
+      const merged = refreshIds
+        ? { ...columnsRef.current, ...run.columns }
+        : run.columns;
+      const nextColumns = prune(merged);
+      columnsRef.current = nextColumns;
+      queryKeysRef.current = { ...queryKeysRef.current, ...nextKeys };
+      contextRef.current = contextKey;
+      settledRef.current = true;
+      setColumns(nextColumns);
+      setSettled(true);
     }).catch(() => {
-      if (!cancelled) setResult({ key, columns: {} });
+      if (cancelled) return;
+      if (contextChanged) {
+        columnsRef.current = {};
+        setColumns({});
+      }
+      settledRef.current = true;
+      setSettled(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [requestKey, roots, variables, filterValues]);
+  }, [requestKey, inheritedColumns, roots, contextKey]);
 
   const value = useMemo<DataVariableRuntimeValue>(
-    () => ({ ready, columns }),
-    [ready, columns],
+    () => ({ ready, columns: displayColumns }),
+    [ready, displayColumns],
   );
 
   return (

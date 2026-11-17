@@ -1575,8 +1575,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleConfirmDataVariables = (next: DataVariable[]) => {
       setOtherConfig((current) => ({ ...current, dataVariables: next }));
-      message.success(t('dataVariable.added'));
-      setDataVariableOpen(false);
+      message.success(t('common.saveSuccess'));
       setDataVariableDraft(null);
     };
 

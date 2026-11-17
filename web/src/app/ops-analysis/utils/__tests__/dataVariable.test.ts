@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DATA_VARIABLE_ROW_LIMIT,
+  DataVariableBlocked,
   collectVariableIds,
   substituteDataVariableUpstream,
   columnBlockReasonKey,
@@ -11,11 +12,17 @@ import {
   resolveParamRecord,
   runDataVariables,
   validateDataVariables,
+  variablesAffectedBy,
   widgetQueryToDataVariable,
   type DataVariable,
 } from '@/app/ops-analysis/utils/dataVariable';
 import { buildCompareRequestParams, fetchCompareData } from '@/app/ops-analysis/utils/compareQuery';
-import { processDataSourceParams, widgetDataVariableBlockReason } from '@/app/ops-analysis/utils/widgetDataTransform';
+import {
+  buildDataVariableRequestParams,
+  buildWidgetRequestParams,
+  processDataSourceParams,
+  widgetDataVariableBlockReason,
+} from '@/app/ops-analysis/utils/widgetDataTransform';
 
 const variable = (patch: Partial<DataVariable> & Pick<DataVariable, 'id'>): DataVariable => ({
   name: patch.id,
@@ -98,10 +105,10 @@ describe('data variables', () => {
       { inst_uuid: '' },
       { inst_uuid: 'b' },
     ], 'inst_uuid')).toEqual({ status: 'ready', values: ['a', 'b'] });
-    expect(extractValueColumn([], 'inst_uuid')).toEqual({ status: 'blocked', reason: 'empty' });
+    expect(extractValueColumn([], 'inst_uuid')).toEqual({ status: 'blocked', reason: 'nodata' });
     expect(extractValueColumn([{ inst_uuid: '' }], 'inst_uuid')).toEqual({
       status: 'blocked',
-      reason: 'empty',
+      reason: 'nodata',
     });
     const tooMany = Array.from({ length: DATA_VARIABLE_ROW_LIMIT + 1 }, (_, index) => ({ id: index }));
     expect(extractValueColumn(tooMany, 'id').status).toBe('blocked');
@@ -118,8 +125,8 @@ describe('data variables', () => {
     expect(resolveParamRecord({
       instance_ids: { dataVariableId: 'hosts' },
     }, {
-      hosts: { status: 'blocked', reason: 'empty' },
-    })).toEqual({ blocked: true, reason: 'empty' });
+      hosts: { status: 'blocked', reason: 'nodata' },
+    })).toEqual({ blocked: true, reason: 'nodata' });
     expect(resolveParamRecord({
       instance_ids: { dataVariableId: 'missing' },
     }, {}).blocked).toBe(true);
@@ -169,6 +176,35 @@ describe('data variables', () => {
     expect(collectVariableIds({ widget: { instance_ids: { dataVariableId: 'assets' } } })).toEqual(['assets']);
   });
 
+  it('refetches a changed variable and the one that reads it, and keeps the rest', async () => {
+    const variables = [
+      variable({ id: 'hosts', valueField: 'inst_uuid' }),
+      variable({ id: 'assets', params: { ids: { dataVariableId: 'hosts' } }, valueField: 'end_uuid' }),
+      variable({ id: 'other', valueField: 'id' }),
+    ];
+    expect(variablesAffectedBy(variables, ['hosts']).sort()).toEqual(['assets', 'hosts']);
+    const calls: string[] = [];
+    const reused = {
+      hosts: { status: 'ready' as const, values: ['h1'] },
+      other: { status: 'ready' as const, values: ['o1'] },
+    };
+    const run = await runDataVariables({
+      variables,
+      roots: ['hosts', 'assets', 'other'],
+      reuse: reused,
+      refreshIds: new Set(['hosts', 'assets']),
+      fetchRows: async (item) => {
+        calls.push(item.id);
+        if (item.id === 'hosts') return [{ inst_uuid: 'h2' }];
+        return [{ end_uuid: 'a2' }];
+      },
+    });
+    expect(calls).toEqual(['hosts', 'assets']);
+    expect(run.columns.hosts).toEqual({ status: 'ready', values: ['h2'] });
+    expect(run.columns.assets).toEqual({ status: 'ready', values: ['a2'] });
+    expect(run.columns.other).toBe(reused.other);
+  });
+
   it('copies a widget query into a data variable without keeping the form object', () => {
     const params = { cloud_region_ids: ['sh'], model_asst_ids: ['mysql_run_host'] };
     const created = widgetQueryToDataVariable({
@@ -205,20 +241,83 @@ describe('data variables', () => {
     });
   });
 
-  it('reports why a widget cannot use a blocked value column', () => {
-    const reason = widgetDataVariableBlockReason({
+  it('reports an empty value column as no data, and a blank required parameter separately', () => {
+    const noData = widgetDataVariableBlockReason({
       config: {
         dataSourceParams: [
           { name: 'ids', type: 'string', value: { dataVariableId: 'dv_1' } },
         ],
       },
       dataVariableColumns: {
-        dv_1: { status: 'blocked', reason: 'empty' },
+        dv_1: { status: 'blocked', reason: 'nodata' },
       },
     });
-    expect(reason).toBe('empty');
+    expect(noData).toBe('nodata');
+    expect(columnBlockReasonKey('nodata')).toBe('dataVariable.reasonNoData');
     expect(columnBlockReasonKey('empty')).toBe('dataVariable.reasonEmpty');
     expect(columnBlockReasonKey('request')).toBe('dataVariable.reasonRequest');
+
+    const missing = widgetDataVariableBlockReason({
+      config: {
+        chartType: 'pie',
+        dataSourceParams: [
+          { name: 'uuids', type: 'string', filterType: 'params', value: '' },
+          { name: 'group_by', type: 'string', filterType: 'params', value: { dataVariableId: 'dv_1' } },
+        ],
+      },
+      dataSource: {
+        params: [
+          { name: 'uuids', alias_name: '实例标识', type: 'string', filterType: 'params', required: true, value: '' },
+          { name: 'group_by', alias_name: '分组', type: 'string', filterType: 'params', required: true, value: 'level' },
+        ],
+      },
+      dataVariableColumns: {
+        dv_1: { status: 'ready', values: ['level'] },
+      },
+    });
+    expect(missing).toBe('empty');
+    expect(buildWidgetRequestParams({
+      config: {
+        chartType: 'pie',
+        dataSourceParams: [
+          { name: 'uuids', type: 'string', filterType: 'params', value: '' },
+          { name: 'group_by', type: 'string', filterType: 'params', value: { dataVariableId: 'dv_1' } },
+        ],
+      },
+      dataSource: {
+        params: [
+          { name: 'uuids', alias_name: '实例标识', type: 'string', filterType: 'params', required: true, value: '' },
+          { name: 'group_by', alias_name: '分组', type: 'string', filterType: 'params', required: true, value: 'level' },
+        ],
+      },
+      dataVariableColumns: {
+        dv_1: { status: 'ready', values: ['level'] },
+      },
+    })).toBeNull();
+  });
+
+  it('does not query a data variable when a required parameter is empty', async () => {
+    const calls: unknown[] = [];
+    expect(() => buildDataVariableRequestParams({
+      variable: variable({ id: 'hosts', params: { uuids: '' } }),
+      resolvedParams: {},
+      dataSource: {
+        params: [
+          { name: 'uuids', alias_name: '实例标识', type: 'string', filterType: 'params', required: true, value: '' },
+        ],
+      },
+    })).toThrow(DataVariableBlocked);
+
+    const run = await runDataVariables({
+      variables: [variable({ id: 'hosts', params: {} })],
+      roots: ['hosts'],
+      fetchRows: async (_variable, params) => {
+        calls.push(params);
+        throw new DataVariableBlocked('empty');
+      },
+    });
+    expect(calls).toEqual([{}]);
+    expect(run.columns.hosts).toEqual({ status: 'blocked', reason: 'empty' });
   });
 
   it('replaces a variable reference with its value column', () => {
