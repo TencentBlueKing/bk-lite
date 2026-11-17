@@ -11,13 +11,14 @@ from apps.system_mgmt.viewset.role_viewset import RoleViewSet
 from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
 
-def _request_user(group_ids, permission, *, is_superuser=False):
+def _request_user(group_ids, permission, *, is_superuser=False, is_auditor=False):
     return types.SimpleNamespace(
         username="org-scope-operator",
         domain="domain.com",
         locale="en",
         is_authenticated=True,
         is_superuser=is_superuser,
+        is_auditor=is_auditor,
         permission={"system-manager": set(permission)},
         group_list=[{"id": group_id} for group_id in group_ids],
     )
@@ -252,6 +253,29 @@ def test_search_user_list_filters_to_accessible_groups():
     assert response.status_code == 200
     assert payload["data"]["count"] == 1
     assert [user["username"] for user in payload["data"]["users"]] == [allowed_user.username]
+
+
+@pytest.mark.django_db
+def test_search_user_list_auditor_sees_users_outside_own_groups():
+    other = Group.objects.create(name="scope-search-auditor-other", parent_id=0, is_virtual=False)
+    foreign_user = User.objects.create(
+        username="scope_search_auditor_foreign",
+        display_name="Foreign User",
+        email="auditor-foreign@example.com",
+        password=make_password("password"),
+        group_list=[other.id],
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"get": "search_user_list"})
+    request = factory.get("/system_mgmt/api/user/search_user_list/", {"search": "scope_search_auditor"})
+    force_authenticate(request, user=_request_user([], {"user_group-View"}, is_auditor=True))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert foreign_user.username in [user["username"] for user in payload["data"]["users"]]
 
 
 @pytest.mark.django_db

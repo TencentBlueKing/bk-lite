@@ -294,6 +294,16 @@ class TestGetQuerysetByPermission:
 
 class TestFilterByGroup:
     @pytest.mark.django_db
+    def test_filter_by_group_allows_auditor_foreign_team(self):
+        from apps.system_mgmt.models import Group
+
+        req = SimpleNamespace(
+            user=SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[], group_tree=[]),
+            COOKIES={"current_team": "99", "include_children": "0"},
+        )
+        GenericViewSetFun.filter_by_group(Group.objects.all(), req, req.user)
+
+    @pytest.mark.django_db
     def test_superuser_skips_team_validation(self):
         from apps.system_mgmt.models import Group
 

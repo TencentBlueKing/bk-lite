@@ -23,6 +23,7 @@ from apps.base.models import UserAPISecret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Channel, ChannelChoices, Group, GroupDataRule, Role, SystemSettings, User, UserRule
@@ -277,7 +278,7 @@ class UserViewSet(ViewSetUtils):
         Returns:
             tuple: (is_valid, error_response)
         """
-        if getattr(request.user, "is_superuser", False):
+        if has_unrestricted_org_scope(request.user):
             return True, None
 
         user_group_ids = self._get_user_group_ids(request.user)
@@ -300,7 +301,7 @@ class UserViewSet(ViewSetUtils):
         Returns:
             QuerySet: 筛选后的查询集
         """
-        if getattr(user, "is_superuser", False):
+        if has_unrestricted_org_scope(user):
             return queryset
 
         user_group_ids = self._get_user_group_ids(user)

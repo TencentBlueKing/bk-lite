@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
@@ -205,8 +206,8 @@ class GenericViewSetFun(object):
     @classmethod
     def filter_by_group(cls, queryset, request, user):
         current_team = cls._parse_current_team_cookie(request)
-        # 验证 current_team 权限（超管豁免）
-        if not getattr(user, "is_superuser", False):
+        # 验证 current_team 权限（超管/审计员豁免）
+        if not has_unrestricted_org_scope(user):
             user_group_ids = user_group_id_set(user)
 
             if current_team not in user_group_ids:
@@ -342,7 +343,7 @@ class AuthViewSet(MaintainerViewSet):
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
             raise PermissionDenied(team_access_denied_message(request, self.loader))
-        if not getattr(request.user, "is_superuser", False):
+        if not has_unrestricted_org_scope(request.user):
             user_group_ids = user_group_id_set(request.user)
             if current_team not in user_group_ids:
                 raise PermissionDenied(team_access_denied_message(request, self.loader))
@@ -577,7 +578,7 @@ class AuthViewSet(MaintainerViewSet):
         """获取详情"""
         user = getattr(request, "user", None)
         instance = self.get_object()
-        if getattr(user, "is_superuser", False):
+        if has_unrestricted_org_scope(user):
             return super().retrieve(request, *args, **kwargs)
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)

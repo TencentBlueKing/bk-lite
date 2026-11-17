@@ -471,6 +471,17 @@ class TestClientViews:
         _, kwargs = mock_client.return_value.get_user_menus.call_args
         assert kwargs["is_superuser"] is True
 
+    def test_get_user_menus_auditor_is_not_superuser(self):
+        factory = RequestFactory()
+        req = factory.get("/api/user_menus/?name=cmdb")
+        req.user = MagicMock(is_superuser=False, is_auditor=True, roles=["auditor"], role_ids=[1], username="aud")
+        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.get_user_menus.return_value = {"result": True, "data": []}
+            index_view.get_user_menus(req)
+        _, kwargs = mock_client.return_value.get_user_menus.call_args
+        assert kwargs["is_superuser"] is False
+        assert kwargs["is_auditor"] is True
+
     def test_get_all_groups_non_superuser_denied(self):
         req = _post({}, user=MagicMock(is_superuser=False))
         resp = index_view.get_all_groups(req)
