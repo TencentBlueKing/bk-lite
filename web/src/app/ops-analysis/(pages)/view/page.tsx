@@ -388,60 +388,59 @@ const ViewPage: React.FC = () => {
     >
       <div
         hidden={screenMode}
-        className={`relative z-30 h-full min-h-0 border-r border-[var(--color-border-1)] transition-all duration-300 ${
-          collapsed ? 'w-0 min-w-0 overflow-visible' : 'w-[280px] min-w-[280px]'
-        }`}
+        className="relative h-full min-h-0 shrink-0"
         style={{
           width: collapsed ? 0 : 280,
           minWidth: collapsed ? 0 : 280,
           maxWidth: collapsed ? 0 : 280,
-          flexShrink: 0,
         }}
       >
         <div
-          id="ops-analysis-sidebar"
-          className="w-full h-full overflow-hidden bg-[var(--color-bg-1)]"
+          className="relative z-30 h-full min-h-0 overflow-hidden border-r border-[var(--color-border-1)] bg-[var(--color-bg-1)]"
+          style={{ width: collapsed ? 0 : 280 }}
         >
-          <Sidebar
-            ref={sidebarRef}
-            onSelect={handleNavigation}
-            onHydrateSelection={hydrateSelection}
-            onDataUpdate={handleSidebarDataUpdate}
-            onCanvasContentReplaced={handleCanvasContentReplaced}
-            beforeImportUpdate={confirmBeforeImportUpdate}
-            panel={panel}
-            carouselId={carouselId}
-            carouselRefreshKey={carouselRefreshKey}
-            onPanelChange={changePanel}
-            onSelectCarousel={openCarousel}
-            prepareCarouselLeave={prepareCarouselLeave}
-            hasUnsavedCarouselChanges={() => Boolean(carouselEditorRef.current?.hasUnsavedChanges())}
-            onAutoSelectCarousel={(id) => {
-              router.replace(buildOpsCarouselViewHref(id, searchParams));
-            }}
-            onCarouselCreated={(id, openEditor) => {
-              commitCarouselLeave();
-              setCarouselRefreshKey((value) => value + 1);
-              if (openEditor) {
-                setEditorRequest((current) => ({
-                  id: String(id),
-                  nonce: (current?.nonce ?? 0) + 1,
-                }));
-              }
-              router.replace(buildOpsCarouselViewHref(String(id), searchParams));
-            }}
-            onCarouselUpdated={() => {
-              setCarouselRefreshKey((value) => value + 1);
-              setCarouselInfoRevision((value) => value + 1);
-            }}
-            onCarouselDeleted={(id) => {
-              setCarouselRefreshKey((value) => value + 1);
-              if (String(id) === carouselId) {
+          <div id="ops-analysis-sidebar" className="h-full w-full overflow-hidden">
+            <Sidebar
+              ref={sidebarRef}
+              onSelect={handleNavigation}
+              onHydrateSelection={hydrateSelection}
+              onDataUpdate={handleSidebarDataUpdate}
+              onCanvasContentReplaced={handleCanvasContentReplaced}
+              beforeImportUpdate={confirmBeforeImportUpdate}
+              panel={panel}
+              carouselId={carouselId}
+              carouselRefreshKey={carouselRefreshKey}
+              onPanelChange={changePanel}
+              onSelectCarousel={openCarousel}
+              prepareCarouselLeave={prepareCarouselLeave}
+              hasUnsavedCarouselChanges={() => Boolean(carouselEditorRef.current?.hasUnsavedChanges())}
+              onAutoSelectCarousel={(id) => {
+                router.replace(buildOpsCarouselViewHref(id, searchParams));
+              }}
+              onCarouselCreated={(id, openEditor) => {
                 commitCarouselLeave();
-                router.push(buildOpsCarouselViewHref(null, searchParams));
-              }
-            }}
-          />
+                setCarouselRefreshKey((value) => value + 1);
+                if (openEditor) {
+                  setEditorRequest((current) => ({
+                    id: String(id),
+                    nonce: (current?.nonce ?? 0) + 1,
+                  }));
+                }
+                router.replace(buildOpsCarouselViewHref(String(id), searchParams));
+              }}
+              onCarouselUpdated={() => {
+                setCarouselRefreshKey((value) => value + 1);
+                setCarouselInfoRevision((value) => value + 1);
+              }}
+              onCarouselDeleted={(id) => {
+                setCarouselRefreshKey((value) => value + 1);
+                if (String(id) === carouselId) {
+                  commitCarouselLeave();
+                  router.push(buildOpsCarouselViewHref(null, searchParams));
+                }
+              }}
+            />
+          </div>
         </div>
         {!screenMode && (
           <Tooltip title={directoryToggleLabel} placement="right">
@@ -451,7 +450,7 @@ const ViewPage: React.FC = () => {
               aria-label={directoryToggleLabel}
               aria-controls="ops-analysis-sidebar"
               aria-expanded={!collapsed}
-              className="absolute bottom-6 z-30 flex h-6 w-6 cursor-pointer items-center justify-center border border-[var(--color-border-1)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] shadow-sm hover:bg-[var(--color-fill-2)]"
+              className="absolute bottom-2 z-50 flex h-6 w-6 cursor-pointer items-center justify-center border border-[var(--color-border-1)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] shadow-sm hover:bg-[var(--color-fill-2)]"
               style={{
                 right: collapsed ? -24 : -12,
                 borderRadius: collapsed ? '0 50% 50% 0' : '50%',
