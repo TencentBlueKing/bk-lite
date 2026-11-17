@@ -1,6 +1,10 @@
 'use client';
 
-import { Button, Input, Popconfirm, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Input, message } from 'antd';
+import OperateModal from '@/components/operate-modal';
+import { FieldRow } from './field-row';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
@@ -42,6 +46,9 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,36 +74,31 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
       if (!value) {
         return;
       }
-      if (value.startsWith('{') || value.startsWith('[')) {
-        body[field] = JSON.parse(value) as unknown;
-      } else {
-        body[field] = value;
-      }
+      body[field] = value;
     });
     return body;
   };
 
-  const save = () => {
-    let body: Record<string, unknown>;
-    try {
-      body = readDraft();
-    } catch {
-      message.error('JSON 格式不正确');
-      return;
-    }
+  const save = async () => {
+    const body = readDraft();
     if (!Object.keys(body).length) {
       message.warning('先填写一项再保存');
       return;
     }
-    const request = editingId == null
-      ? api.createResource(kind, body)
-      : api.updateResource(kind, editingId, body);
-    void request.then(() => {
+    setSaving(true);
+    try {
+      if (editingId == null) await api.createResource(kind, body);
+      else await api.updateResource(kind, editingId, body);
+      setOpen(false);
       setDraft({});
       setEditingId(null);
       message.success(editingId == null ? '已新建' : '已保存');
-      return load();
-    }).catch((error: unknown) => message.error(error instanceof Error ? error.message : '保存失败'));
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const startEdit = (item: Record<string, unknown>) => {
@@ -105,36 +107,21 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
       const value = item[field];
       next[field] = value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
     });
+    setOpen(true);
     setDraft(next);
     setEditingId(Number(item.id));
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-base font-semibold text-[var(--color-text-1)]">{title}</div>
-        <div className="flex flex-wrap items-center gap-2">
-          {fields.map((field) => (
-            <Input
-              key={field}
-              className="w-40"
-              placeholder={labelOf(field)}
-              value={draft[field] || ''}
-              onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
-            />
-          ))}
-          <Button type="primary" onClick={save}>{editingId == null ? createLabel : '保存'}</Button>
-          {editingId == null ? null : (
-            <Button onClick={() => { setEditingId(null); setDraft({}); }}>取消</Button>
-          )}
-        </div>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: `搜索${title}` }}
+          actions={<ItsmCreateButton onClick={() => { setDraft({}); setEditingId(null); setOpen(true); }} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
           size="middle"
           loading={loading}
-          dataSource={items}
+          dataSource={items.filter(item => fields.some(field => String(item[field] ?? '').toLowerCase().includes(keyword.trim().toLowerCase())))}
           locale={{ emptyText: '暂无数据' }}
           columns={[
             ...fields.map((field) => ({
@@ -144,43 +131,39 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
               ellipsis: true,
               render: (value: unknown) => (value == null || value === '' ? '—' : typeof value === 'string' ? value : JSON.stringify(value)),
             })),
-            ...(actions.length ? [{
+            ...(actions.length ? [{ fixed: 'right' as const, width: 120,
               title: '操作',
               key: 'actions',
-              width: 180,
-              render: (_value: unknown, item: Record<string, unknown>) => (
-                <span className="inline-flex gap-2">
-                  {actions.includes('edit') ? (
-                    <Button type="link" size="small" onClick={() => startEdit(item)}>编辑</Button>
-                  ) : null}
-                  {actions.includes('enable') ? (
-                    <Button type="link" size="small" onClick={() => {
-                      void api.updateResource(kind, Number(item.id), { is_enabled: !item.is_enabled }).then(() => {
-                        message.success(item.is_enabled ? '已停用' : '已启用');
-                        return load();
-                      }).catch((error: unknown) => message.error(error instanceof Error ? error.message : '操作失败'));
-                    }}>{item.is_enabled ? '停用' : '启用'}</Button>
-                  ) : null}
-                  {actions.includes('delete') ? (
-                    <Popconfirm title="确定删除？" onConfirm={() => {
-                      void api.deleteResource(kind, Number(item.id)).then(() => {
-                        if (editingId === Number(item.id)) {
-                          setEditingId(null);
-                          setDraft({});
-                        }
-                        message.success('已删除');
-                        return load();
-                      }).catch((error: unknown) => message.error(error instanceof Error ? error.message : '删除失败'));
-                    }}>
-                      <Button type="link" size="small" danger>删除</Button>
-                    </Popconfirm>
-                  ) : null}
-                </span>
-              ),
+
+              render: (_value: unknown, item: Record<string, unknown>) => <ItsmRowActions items={[...(actions.includes('edit') ? [{key: 'action-0', label: "编辑", kind: 'edit' as const, onClick: () => startEdit(item)}] : []),
+                ...(actions.includes('enable') ? [{key: 'action-1', label: item.is_enabled ? '停用' : '启用', kind: 'publish' as const, onClick: () => {
+                  void api.updateResource(kind, Number(item.id), { is_enabled: !item.is_enabled }).then(() => {
+                    message.success(item.is_enabled ? '已停用' : '已启用');
+                    return load();
+                  }).catch((error: unknown) => message.error(error instanceof Error ? error.message : '操作失败'));
+                }}] : []),
+                ...(actions.includes('delete') ? [{key: 'action-2', label: "删除", kind: 'delete' as const, danger: true, confirm: {title: "确定删除？", content: undefined }, onClick: () => {
+                  void api.deleteResource(kind, Number(item.id)).then(() => {
+                    if (editingId === Number(item.id)) {
+                      setEditingId(null);
+                      setDraft({});
+                    }
+                    message.success('已删除');
+                    return load();
+                  }).catch((error: unknown) => message.error(error instanceof Error ? error.message : '删除失败'));
+                }}] : [])]} />,
             }] : []),
           ]}
         />
       </div>
+      <OperateModal title={editingId == null ? `${createLabel}${title}` : `编辑${title}`} open={open}
+        confirmLoading={saving} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+        <div className="flex flex-col gap-4">{fields.map(field => <FieldRow key={field} label={labelOf(field)}>
+          {['content', 'body', 'prompt'].includes(field)
+            ? <Input.TextArea aria-label={labelOf(field)} rows={4} value={draft[field] || ''} onChange={event => setDraft(current => ({ ...current, [field]: event.target.value }))} />
+            : <Input aria-label={labelOf(field)} value={draft[field] || ''} onChange={event => setDraft(current => ({ ...current, [field]: event.target.value }))} />}
+        </FieldRow>)}</div>
+      </OperateModal>
     </div>
   );
 }

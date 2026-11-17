@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Input, Popconfirm, Tag, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Input, Tag, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -19,6 +21,7 @@ interface TemplateItem {
 export default function NotifyTemplatesPage() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<TemplateItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TemplateItem | null>(null);
@@ -59,31 +62,20 @@ export default function NotifyTemplatesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.admin.notify')}</div>
-        <Button type="primary" onClick={() => start()}>{t('itsm.common.create')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => `${item.event} ${item.title_tpl}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyNotify') }}
           columns={[
             { title: t('itsm.admin.event'), dataIndex: 'event', key: 'event', render: (value: string) => <Tag>{value}</Tag> },
             { title: t('itsm.admin.noticeTitle'), dataIndex: 'title_tpl', key: 'title_tpl' },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: TemplateItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  {item.is_builtin ? null : (
-                    <Popconfirm title={t('itsm.admin.deleteNotify')} onConfirm={() => { void api.deleteNotifyTemplate(item.id).then(load); }}>
-                      <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                    </Popconfirm>
-                  )}
-                </span>
-              ),
+              render: (_value: unknown, item: TemplateItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                ...(item.is_builtin ? [] : [{key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.admin.deleteNotify'), content: undefined }, onClick: () => { void api.deleteNotifyTemplate(item.id).then(load); }}])]} />,
             },
           ]}
         />

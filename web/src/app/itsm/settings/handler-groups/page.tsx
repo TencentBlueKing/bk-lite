@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Input, Popconfirm, Tag, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Input, Tag, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -60,15 +62,9 @@ export default function HandlerGroupsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.admin.groups')}</div>
-        <div className="flex gap-2">
-          <Input className="w-48" placeholder={t('itsm.admin.searchGroup')} value={keyword} onChange={(event) => setKeyword(event.target.value)} allowClear />
-          <Button type="primary" onClick={() => start()}>{t('itsm.common.create')}</Button>
-        </div>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: t('itsm.admin.searchGroup') }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
           dataSource={shown}
           locale={{ emptyText: t('itsm.admin.emptyGroup') }}
@@ -76,17 +72,11 @@ export default function HandlerGroupsPage() {
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
             { title: t('itsm.admin.leader'), dataIndex: 'leaders', key: 'leaders', render: (leaders: string[]) => leaders?.length ? leaders.map((user) => <Tag key={user}>{user}</Tag>) : '—' },
             { title: t('itsm.admin.members'), dataIndex: 'members', key: 'members', render: (value: string[]) => value?.join('、') || '—' },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: HandlerGroupItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  <Popconfirm title={t('itsm.admin.deleteGroup')} onConfirm={() => { void api.deleteHandlerGroup(item.id).then(load); }}>
-                    <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                  </Popconfirm>
-                </span>
-              ),
+              render: (_value: unknown, item: HandlerGroupItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.admin.deleteGroup'), content: undefined }, onClick: () => { void api.deleteHandlerGroup(item.id).then(load); }}]} />,
             },
           ]}
         />

@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Input, Popconfirm, message } from 'antd';
+import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Button, Input, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -18,6 +20,8 @@ interface NoticeItem {
 export default function Page() {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [keyword, setKeyword] = useState('');
+  const [status, setStatus] = useState('all');
   const [items, setItems] = useState<NoticeItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<NoticeItem | null>(null);
@@ -63,33 +67,26 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-        <div className="text-base font-semibold leading-tight text-[var(--color-text-1)]">{t('itsm.admin.notice')}</div>
-        <Button type="primary" onClick={() => start()}>{t('itsm.common.create')}</Button>
-      </div>
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <CustomTable
+        <ItsmListToolbar leading={<ItsmListTabs activeKey={status} onChange={setStatus} items={[
+          {key:'all',label:'全部'}, {key:'enabled',label:'启用'}, {key:'disabled',label:'停用'},
+        ]} />} search={{ value: keyword, onChange: setKeyword, placeholder: '搜索公告标题' }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <CustomTable queryKey={`${status}:${keyword}`}
           rowKey="id"
-          dataSource={items}
+          dataSource={items.filter(item => (status === 'all' || (status === 'enabled' ? item.is_enabled : !item.is_enabled)) && item.title.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyNotice') }}
           columns={[
             { title: t('itsm.admin.noticeTitle'), dataIndex: 'title', key: 'title' },
             { title: t('itsm.admin.content'), dataIndex: 'content', key: 'content', ellipsis: true },
             { title: t('itsm.admin.state'), key: 'enabled', render: (_value: unknown, item: NoticeItem) => (item.is_enabled ? t('itsm.admin.enable') : t('itsm.admin.disable')) },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: NoticeItem) => (
-                <span className="inline-flex gap-2">
-                  <Button type="link" size="small" onClick={() => start(item)}>{t('itsm.common.edit')}</Button>
-                  <Button type="link" size="small" onClick={() => {
-                    void api.updateResource('announcements', item.id, { is_enabled: !item.is_enabled }).then(load);
-                  }}>{item.is_enabled ? t('itsm.admin.disable') : t('itsm.admin.enable')}</Button>
-                  <Popconfirm title={t('itsm.admin.deleteNotice')} onConfirm={() => { void api.deleteResource('announcements', item.id).then(load); }}>
-                    <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                  </Popconfirm>
-                </span>
-              ),
+              render: (_value: unknown, item: NoticeItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
+                {key: 'action-1', label: item.is_enabled ? t('itsm.admin.disable') : t('itsm.admin.enable'), kind: 'publish' as const, onClick: () => {
+                  void api.updateResource('announcements', item.id, { is_enabled: !item.is_enabled }).then(load);
+                }},
+                {key: 'action-2', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.admin.deleteNotice'), content: undefined }, onClick: () => { void api.deleteResource('announcements', item.id).then(load); }}]} />,
             },
           ]}
         />
