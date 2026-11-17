@@ -1,6 +1,10 @@
 'use client';
 
-import { Alert, Button, Input, Popconfirm, Select, Switch, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Alert, Button, Input, Select, Switch, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { UserSelector } from '../../components/user-selector';
 import OperateModal from '@/components/operate-modal';
@@ -145,7 +149,7 @@ export default function ServiceManagePage() {
       <div className="flex w-64 shrink-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
           <span className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.portal.catalog')}</span>
-          <Button type="link" size="small" onClick={() => startCatalog()}>{t('itsm.common.create')}</Button>
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => startCatalog()}>{t('itsm.common.create')}</Button>
         </div>
         <button
           type="button"
@@ -159,23 +163,18 @@ export default function ServiceManagePage() {
             <button type="button" className="min-w-0 flex-1 truncate text-left text-sm" onClick={() => setCatalogId(item.id)}>
               {item.parent_id ? '└ ' : ''}{item.name}
             </button>
-            <Button type="link" size="small" onClick={() => startCatalog(item)}>{t('itsm.common.edit')}</Button>
-            <Popconfirm title={t('itsm.portal.deleteCatalog')} onConfirm={() => { void api.deleteCatalog(item.id).then(load).catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.portal.deleteFailed'))); }}>
-              <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-            </Popconfirm>
+            <ItsmRowActions items={[
+              {key:'edit',label:t('itsm.common.edit'),kind:'edit',onClick:()=>startCatalog(item)},
+              {key:'delete',label:t('itsm.common.delete'),kind:'delete',danger:true,confirm:{title:t('itsm.portal.deleteCatalog')},onClick:()=>api.deleteCatalog(item.id).then(load).catch((error:unknown)=>message.error(error instanceof Error ? error.message : t('itsm.portal.deleteFailed')))},
+            ]} />
           </div>
         ))}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
-          <div className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.portal.services')}</div>
-          <div className="flex gap-2">
-            <Input className="w-48" placeholder={t('itsm.portal.searchService')} value={keyword} onChange={(event) => setKeyword(event.target.value)} allowClear />
-            <Button type="primary" onClick={() => startService()}>{t('itsm.portal.newService')}</Button>
-          </div>
-        </div>
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-          <CustomTable
+          <ItsmListToolbar search={{value:keyword,onChange:setKeyword,placeholder:t('itsm.portal.searchService')}}
+            actions={<ItsmCreateButton onClick={() => startService()} />} />
+          <CustomTable queryKey={`${catalogId}:${keyword}`}
             rowKey="id"
             dataSource={shown}
             locale={{ emptyText: t('itsm.portal.emptyServices') }}
@@ -199,17 +198,11 @@ export default function ServiceManagePage() {
                   <Switch checked={value} onChange={(checked) => { void api.createService({ id: item.id, is_enabled: checked }).then(load); }} />
                 ),
               },
-              {
+              { fixed: 'right' as const, width: 120,
                 title: t('itsm.ticket.action'),
                 key: 'actions',
-                render: (_value: unknown, item: ServiceItem) => (
-                  <span className="inline-flex gap-2">
-                    <Button type="link" size="small" onClick={() => startService(item)}>{t('itsm.common.edit')}</Button>
-                    <Popconfirm title={t('itsm.portal.deleteService')} onConfirm={() => { void api.deleteService(item.id).then(load); }}>
-                      <Button type="link" size="small" danger>{t('itsm.common.delete')}</Button>
-                    </Popconfirm>
-                  </span>
-                ),
+                render: (_value: unknown, item: ServiceItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => startService(item)},
+                  {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.portal.deleteService'), content: undefined }, onClick: () => { void api.deleteService(item.id).then(load); }}]} />,
               },
             ]}
           />
