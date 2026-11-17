@@ -59,7 +59,7 @@ const ShieldStrategy: React.FC = () => {
       title: t('settings.assignTime'),
       key: 'suppression_time',
       width: 280,
-      render: (_: unknown, row: AlertShieldListItem) => formatSuppressionTime(row.suppression_time),
+      render: (_: unknown, row: AlertShieldListItem) => formatSuppressionTime(row.suppression_time, t),
     },
     {
       title: t('settings.shieldDisplay.runtimeStatus'),
