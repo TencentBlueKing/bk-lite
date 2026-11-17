@@ -381,3 +381,29 @@ class TestIntegerGroupListAccess:
         with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
             assert vs.get_detail(req) is serializer
             assert vs._validate_destroy_access(req, instance) is None
+
+
+class TestAuditorWriteGuards:
+    def test_auditor_destroy_denied_even_with_org_membership(self):
+        import json
+
+        vs = _auth_vs()
+        instance = SimpleNamespace(id=8, team=[1])
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            resp = vs._validate_destroy_access(req, instance)
+        assert resp is not None
+        assert json.loads(resp.content)["result"] is False
+
+    def test_auditor_update_denied_even_with_org_membership(self):
+        import json
+
+        vs = _auth_vs()
+        instance = SimpleNamespace(id=8, team=[1])
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            resp = vs._validate_update_access(req, instance, {})
+        assert resp is not None
+        assert json.loads(resp.content)["result"] is False

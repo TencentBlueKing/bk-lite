@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
-from apps.core.utils.platform_scope import has_unrestricted_org_scope
+from apps.core.utils.platform_scope import bypasses_write_guard, has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
@@ -606,8 +606,11 @@ class AuthViewSet(MaintainerViewSet):
     def _validate_destroy_access(self, request, instance):
         """在删除产生外部副作用前执行完整、无副作用的实例授权校验。"""
         user = getattr(request, "user", None)
-        if getattr(user, "is_superuser", False):
+        if bypasses_write_guard(user):
             return None
+        if getattr(user, "is_auditor", False):
+            message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
+            return self.value_error(message)
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)
         user_group_ids = user_group_id_set(user)
@@ -624,8 +627,11 @@ class AuthViewSet(MaintainerViewSet):
     def _validate_update_access(self, request, instance, data):
         """在更新产生外部副作用前执行完整、无副作用的实例授权校验。"""
         user = getattr(request, "user", None)
-        if getattr(user, "is_superuser", False):
+        if bypasses_write_guard(user):
             return None
+        if getattr(user, "is_auditor", False):
+            message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+            return self.value_error(message)
 
         org_field = self.ORGANIZATION_FIELD
         instance_org_value = getattr(instance, org_field, [])
