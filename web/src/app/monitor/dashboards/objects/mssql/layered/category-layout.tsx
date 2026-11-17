@@ -16,13 +16,8 @@ import OverviewPane from './overview-pane';
 import BufferPane from './buffer-pane';
 import IoPane from './io-pane';
 import WaitsPane from './waits-pane';
-import { ReplicationPane, TopSqlPane } from './gray-panes';
 import { isMssqlTab, MSSQL_TABS, mssqlFocusJump, mssqlKpiJump, resolveMssqlTab, type MssqlTab } from './ia';
 import type { MssqlMetricMap } from './series';
-
-const tabBadgeClass = (
-  'ml-1 inline-flex h-[18px] items-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]'
-);
 
 interface MssqlCategoryLayoutProps {
   instanceId: Key;
@@ -167,15 +162,8 @@ export default function MssqlCategoryLayout({
             items={MSSQL_TABS.map((item) => ({
               key: item.key,
               label: (
-                <span
-                  className={`${host.tabLabel}${item.dimmed ? ' !text-[var(--color-text-4)] [.ant-tabs-tab-active_&]:!text-[var(--color-text-1)]' : ''}`}
-                  data-mssql-tab={item.key}
-                  data-mssql-tab-mode={item.dimmed ? 'empty' : 'ready'}
-                >
+                <span className={host.tabLabel} data-mssql-tab={item.key} data-mssql-tab-mode="ready">
                   {item.label}
-                  {item.badge ? (
-                    <span className={tabBadgeClass} data-mssql-badge={item.key}>{item.badge}</span>
-                  ) : null}
                 </span>
               )
             }))}
@@ -228,8 +216,6 @@ export default function MssqlCategoryLayout({
               reloadKey={reloadKey}
             />
           ) : null}
-          {tab === 'top_sql' ? <TopSqlPane /> : null}
-          {tab === 'replication' ? <ReplicationPane /> : null}
         </div>
         <HostAlertDrawer
           open={alertDrawerOpen}

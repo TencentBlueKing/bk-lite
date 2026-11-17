@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from '@/utils/i18n';
 import { ProSection, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import { MssqlHint } from './hint';
@@ -16,6 +17,8 @@ export default function BufferPane({
   metricMap: MssqlMetricMap;
   pendingMetricNames: ReadonlySet<string>;
 }) {
+  const { t } = useTranslation();
+  const memoryTitle = t('monitor.dashboards.text.mssqlInstanceMemory', '实例内存');
   const clerks = clerkChart(metricMap);
   const clerkPending = pendingMetricNames.has(MSSQL_PRO_NAMES.clerks) && clerks.data.length === 0;
   return (
@@ -55,18 +58,21 @@ export default function BufferPane({
         <div className={host.chartGrid2}>
           <MssqlTrend
             anchor="server-memory"
-            title="Server Memory"
-            body="当前已提交给 SQL Server 的内存，以及实例希望使用的目标内存。两者接近属于常见稳态；出现持续缺口时再关注内存配置与负载。"
+            title={memoryTitle}
+            body={t(
+              'monitor.dashboards.text.mssqlInstanceMemoryBody',
+              '当前已提交给 SQL Server 的内存，以及实例希望使用的目标内存。两者接近属于常见稳态；出现持续缺口时再关注内存配置与负载。'
+            )}
             series={[
               {
                 name: MSSQL_PRO_NAMES.totalMemory,
-                label: '当前',
+                label: t('monitor.dashboards.text.mssqlMemoryCurrent', '当前'),
                 color: MSSQL_PRO_PALETTE.indigo,
                 unit: 'kibibytes'
               },
               {
                 name: MSSQL_PRO_NAMES.targetMemory,
-                label: '目标',
+                label: t('monitor.dashboards.text.mssqlMemoryTarget', '目标'),
                 color: MSSQL_PRO_PALETTE.neutral,
                 unit: 'kibibytes'
               }

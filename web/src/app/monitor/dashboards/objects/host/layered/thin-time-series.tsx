@@ -288,6 +288,12 @@ const seriesAxisValues = (data: ChartData[], key: string) => {
   return values;
 };
 
+/** 这条序列有采样且全是 0。按序列判断，空的对照序列不能把主序列的零值线藏掉。 */
+export const markedZeroSeries = (
+  markZeroCount: boolean,
+  samples: readonly number[]
+) => markZeroCount && samples.length > 0 && samples.every((value) => value === 0);
+
 /**
  * 整段贴在数值轴下限。速率轴把全 0 钉在 0，1.6px 描边和轴线重合，图区像没画。
  * 略高于下限的平线已经落在轴内，不抬。
@@ -565,10 +571,6 @@ export default function ThinTimeSeries({
     const sharedExtent = splitAxes
       ? null
       : extentOf(keys.flatMap((key) => seriesAxisValues(plotted, key)), unit);
-    const zeroCountLine = markZeroCount && keys.length > 0 && keys.every((key) => {
-      const samples = seriesAxisValues(plotted, key);
-      return samples.length > 0 && samples.every((value) => value === 0);
-    });
     const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
       const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
@@ -697,7 +699,8 @@ export default function ThinTimeSeries({
         const samples = seriesAxisValues(plotted, key);
         const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
-        // 全 0 计数趋势不走这条：线留在 0，靠序列色和采样点认出来。
+        // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
+        const zeroCountLine = markedZeroSeries(markZeroCount, samples);
         const onFloor = !zeroCountLine && !keepSeriesColor && Boolean(
           axisColor
           && extent

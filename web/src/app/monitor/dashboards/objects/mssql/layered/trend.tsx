@@ -11,6 +11,7 @@ import {
   mssqlCountMerged,
   mssqlLatest,
   mssqlMerged,
+  mssqlSamplesAreFlatZero,
   type MssqlMetricMap
 } from './series';
 
@@ -96,6 +97,14 @@ export function MssqlTrend({
   const awaiting = (loading || series.some((item) => pending.has(item.name))) && plotted.length === 0;
   const samples = seriesSampleValues(plotted);
   const countBounds = counts ? mssqlCountAxisBounds(samples) : null;
+  const percentZero = Boolean(percent && series.some((_, index) => {
+    const key = `value${index + 1}`;
+    const values = plotted.flatMap((point) => {
+      const value = point[key];
+      return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
+    });
+    return mssqlSamplesAreFlatZero(values);
+  }));
   const legends = series.map((item) => {
     const latest = mssqlLatest(metricMap, item.name);
     return {
@@ -117,8 +126,8 @@ export function MssqlTrend({
         pinAxisZero={!percent}
         independentAxes={mixedUnits}
         keepLegend={multi}
-        markZeroCount={Boolean(counts && countBounds)}
-        keepSeriesColor={Boolean(counts && countBounds)}
+        markZeroCount={Boolean((counts && countBounds) || percentZero)}
+        keepSeriesColor={Boolean((counts && countBounds) || percentZero)}
         loading={awaiting}
         emptyText="本窗口暂无数据"
         data={plotted}

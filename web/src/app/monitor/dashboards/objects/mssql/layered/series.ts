@@ -3,7 +3,7 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricUnit } from '../../../shared/types';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
-import { deriveRatioPercent, latestNumber, numericValue, primaryChartSeries } from '../../host/layered/readings';
+import { deriveRatioPercent, numericValue } from '../../host/layered/readings';
 import { MSSQL_PRO_PALETTE, MSSQL_PRO_NAMES } from './queries';
 
 export type MssqlMetricMap = Record<string, MetricSeries | undefined>;
@@ -11,6 +11,46 @@ export type MssqlMetricMap = Record<string, MetricSeries | undefined>;
 const PLACEHOLDERS = new Set(['', '--', '-']);
 
 const timeSeconds = (time: number) => (time > 1e11 ? time / 1000 : time);
+
+/** 0 也是读数。字符串数字同样留下，避免把 "0" 当成没有点。 */
+const asFinite = (raw: unknown): number | null => {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const pointNumber = (point: ChartData | undefined): number | null => {
+  if (!point) return null;
+  let bestKey = '';
+  let best: number | null = null;
+  Object.entries(point).forEach(([key, value]) => {
+    if (!/^value\d+$/.test(key)) return;
+    const numeric = asFinite(value);
+    if (numeric == null) return;
+    const index = Number(key.slice(5));
+    const bestIndex = bestKey ? Number(bestKey.slice(5)) : Number.POSITIVE_INFINITY;
+    if (best == null || index < bestIndex) {
+      bestKey = key;
+      best = numeric;
+    }
+  });
+  return best;
+};
+
+const chartPoints = (points: ChartData[] | undefined): ChartData[] => {
+  if (!points?.length) return [];
+  const result: ChartData[] = [];
+  points.forEach((point) => {
+    const time = timeSeconds(Number(point.time));
+    const value = pointNumber(point);
+    if (!Number.isFinite(time) || value == null) return;
+    result.push({ time, value1: value });
+  });
+  return result;
+};
 
 const hasAsciiToken = (text: string, token: string) => (
   new RegExp(`(?:^|[^a-z0-9])${token}(?:[^a-z0-9]|$)`, 'i').test(text)
@@ -45,12 +85,22 @@ export const formatMssqlUptime = (minutes: number | null | undefined): string | 
 };
 
 export const mssqlPoints = (metricMap: MssqlMetricMap, name: string): ChartData[] => (
-  primaryChartSeries(metricMap[name]?.loadState === 'success' ? metricMap[name]?.viewData : [])
-    .map((point) => ({ time: timeSeconds(Number(point.time)), value1: point.value1 }))
+  chartPoints(metricMap[name]?.loadState === 'success' ? metricMap[name]?.viewData : [])
 );
 
-export const mssqlLatest = (metricMap: MssqlMetricMap, name: string) => (
-  latestNumber(metricMap[name])
+export const mssqlLatest = (metricMap: MssqlMetricMap, name: string): number | null => {
+  const series = metricMap[name];
+  if (!series || series.loadState !== 'success' || !series.viewData?.length) return null;
+  for (let index = series.viewData.length - 1; index >= 0; index -= 1) {
+    const value = pointNumber(series.viewData[index]);
+    if (value != null) return value;
+  }
+  return null;
+};
+
+/** 有采样且全是 0。没有点不是 0。 */
+export const mssqlSamplesAreFlatZero = (samples: readonly number[]) => (
+  samples.length > 0 && samples.every((value) => value === 0)
 );
 
 /** 各时间桶次数相加，得到当前窗口内的次数。没有点返回 null，不造 0。 */
@@ -104,8 +154,10 @@ export const formatCount = (value: number, unit: '个' | '次') => (
   `${Math.round(Math.max(0, value)).toLocaleString()} ${unit}`
 );
 
-/** 源端已是 0–100 的百分数。不再乘 100。 */
-export const formatPercentPoint = (value: number) => `${value.toFixed(1)}%`;
+/** 源端已是 0–100 的百分数。不再乘 100。正好为 0 时写成 0%，不写成 —。 */
+export const formatPercentPoint = (value: number) => (
+  value === 0 ? '0%' : `${value.toFixed(1)}%`
+);
 
 /** 读数最多两位小数。整数不补 `.00`。 */
 const tightenReading = (text: string) => text
@@ -172,25 +224,59 @@ const CLERK_COLORS = [
   MSSQL_PRO_PALETTE.neutral
 ];
 
-/** 按 clerk_type 拆开。不把各类办事员加总成一条「实例内存」。 */
+const dimensionLabel = (
+  labels: Record<string, string> | undefined,
+  dimension: string
+) => {
+  const named = String(labels?.[dimension] || '').trim();
+  if (named) return named;
+  if (!labels) return '';
+  const extra = Object.entries(labels)
+    .filter(([key]) => !['instance_id', 'instance_type', 'job', '__name__'].includes(key))
+    .map(([, value]) => String(value || '').trim())
+    .find(Boolean);
+  return extra || '';
+};
+
+/** 按维度拆开。不把各类办事员加总成一条「实例内存」。 */
 export const splitByDimension = (points: ChartData[], dimension: string) => {
   const buckets = new Map<string, ChartData[]>();
   points.forEach((point) => {
     const metrics = point.seriesMetrics as Record<string, Record<string, string>> | undefined;
-    if (!metrics) return;
-    Object.entries(metrics).forEach(([valueKey, labels]) => {
-      const label = String(labels?.[dimension] || '').trim();
+    Object.entries(point).forEach(([valueKey, raw]) => {
+      if (!/^value\d+$/.test(valueKey)) return;
+      const value = asFinite(raw);
+      if (value == null) return;
+      const label = dimensionLabel(metrics?.[valueKey], dimension);
       if (!label) return;
-      const raw = point[valueKey];
-      if (typeof raw !== 'number' || !Number.isFinite(raw)) return;
       const time = timeSeconds(Number(point.time));
       if (!Number.isFinite(time)) return;
       const list = buckets.get(label) || [];
-      list.push({ time, value1: raw });
+      list.push({ time, value1: value });
       buckets.set(label, list);
     });
   });
   return Array.from(buckets, ([label, data]) => ({ label, data }));
+};
+
+/** 维度名没落到标签上时，仍按数值列把线画出来，不把有数结果收成空壳。 */
+const splitUnlabeled = (points: ChartData[]) => {
+  const buckets = new Map<string, ChartData[]>();
+  points.forEach((point) => {
+    Object.entries(point).forEach(([valueKey, raw]) => {
+      if (!/^value\d+$/.test(valueKey)) return;
+      const value = asFinite(raw);
+      if (value == null) return;
+      const time = timeSeconds(Number(point.time));
+      if (!Number.isFinite(time)) return;
+      const list = buckets.get(valueKey) || [];
+      list.push({ time, value1: value });
+      buckets.set(valueKey, list);
+    });
+  });
+  const rows = Array.from(buckets.values());
+  if (rows.length <= 1) return rows.map((data) => ({ label: '内存占用', data }));
+  return rows.map((data, index) => ({ label: `占用 ${index + 1}`, data }));
 };
 
 const lineLatest = (data: ChartData[]) => {
@@ -204,7 +290,8 @@ const lineLatest = (data: ChartData[]) => {
 export const clerkChart = (metricMap: MssqlMetricMap) => {
   const series = metricMap[MSSQL_PRO_NAMES.clerks];
   const points = series?.loadState === 'success' ? series.viewData : [];
-  const ranked = splitByDimension(points, 'clerk_type')
+  const split = splitByDimension(points, 'clerk_type');
+  const ranked = (split.length ? split : splitUnlabeled(points))
     .map((item) => ({ ...item, latest: lineLatest(item.data) }))
     .sort((left, right) => right.latest - left.latest)
     .slice(0, 8);

@@ -8,6 +8,7 @@ import host from '../../host/layered/layered.module.scss';
 import { HorizontalBarPanel } from '../../../shared/widgets';
 import type { BarItem } from '../../../shared/widgets';
 import { buildSearchParams, topLabelBars } from '../../../shared/utils';
+import { asRangeQueryResult } from '../../../shared/utils/metric-series';
 import styles from '../index.module.scss';
 import { mssqlCardFace } from './card-face';
 import { MssqlHint } from './hint';
@@ -64,7 +65,7 @@ export default function WaitsPane({
       { monitorObjectId: String(monitorObjectId || ''), instanceId: String(instanceId) }
     )).then((result) => {
       if (!active) return;
-      setCategories(topLabelBars(result, 'msps', MSSQL_PRO_PALETTE.indigo, ['wait_category']));
+      setCategories(topLabelBars(asRangeQueryResult(result), 'msps', MSSQL_PRO_PALETTE.indigo, ['wait_category']));
       setPhase('ready');
     }).catch(() => {
       if (!active) return;
