@@ -72,7 +72,11 @@ describe('mssql clerk readout', () => {
     const list = container.querySelector('[data-mssql-series-readout]');
     expect(list?.getAttribute('data-mssql-series-readout')).toBe('rows');
     expect(list?.className).toContain('flex-col');
+    expect(list?.className).toContain('overflow-y-auto');
     expect(list?.className).not.toContain('flex-wrap');
+    expect(list?.getAttribute('style')).toContain('max-height');
+    expect(list?.querySelector('li')?.getAttribute('style')).toContain('height: 36px');
+    expect(container.querySelector('select')).toBeNull();
     expect(list?.querySelectorAll('li')).toHaveLength(2);
     expect(screen.getByText('CACHESTORE_SQLCP')).toBeTruthy();
     expect(screen.getByText('12 MiB')).toBeTruthy();

@@ -16,9 +16,9 @@ import styles from '../index.module.scss';
 import { mssqlCardFace, mssqlDeferEmpty } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
+import { mssqlLockedReading } from './display-units';
 import {
   formatPercentPoint,
-  joinMetric,
   readVolumeUsage,
   volumeUsagePoints,
   type MssqlMetricMap
@@ -115,13 +115,20 @@ export default function IoPane({
   ]);
 
   const selected = MSSQL_TOP_DB_QUERIES.find((item) => item.key === rankKey) || MSSQL_TOP_DB_QUERIES[0];
-  const rankItems = bars[selected.key] || [];
+  const rawRank = bars[selected.key] || [];
+  const rankPeak = rawRank.reduce((max, item) => Math.max(max, Math.abs(item.value)), 0);
+  const rankFormat = selected.unit === 'ms' ? mssqlLockedReading('ms', rankPeak) : null;
+  const rankItems = rankFormat
+    ? rawRank.map((item) => ({ ...item, display: rankFormat(item.value) }))
+    : rawRank;
   const rankFace = mssqlCardFace(
     mssqlDeferEmpty(rankItems.length > 0, rankPhase === 'loading', batchLoading),
     rankItems.length > 0
   );
-  const usedText = usage.used == null ? '' : joinMetric(usage.used, 'bytes');
-  const totalText = usage.total == null ? '' : joinMetric(usage.total, 'bytes');
+  const volumePeak = Math.max(Math.abs(usage.used ?? 0), Math.abs(usage.total ?? 0));
+  const volumeFormat = mssqlLockedReading('bytes', volumePeak);
+  const usedText = usage.used == null || !volumeFormat ? '' : volumeFormat(usage.used);
+  const totalText = usage.total == null || !volumeFormat ? '' : volumeFormat(usage.total);
   const note = usedText && totalText ? `已用 ${usedText} / 总量 ${totalText}` : '';
 
   return (

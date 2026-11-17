@@ -5,11 +5,11 @@ import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
 import { ProDashLoading, ProSection } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
-import { HorizontalBarPanel } from '../../../shared/widgets';
+import classic from '../../host/index.module.scss';
 import type { BarItem } from '../../../shared/widgets';
+import { MSSQL_LIST_ROW_PX, MSSQL_WAIT_TOP_VIEWPORT, MSSQL_WAIT_TOP_VISIBLE_ROWS } from './display-units';
 import { buildSearchParams, topLabelBars } from '../../../shared/utils';
 import { asRangeQueryResult } from '../../../shared/utils/metric-series';
-import styles from '../index.module.scss';
 import { mssqlCardFace, mssqlDeferEmpty } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE, MSSQL_PRO_WAIT_CATEGORY_QUERY } from './queries';
@@ -122,12 +122,17 @@ export default function WaitsPane({
             metricMap={metricMap}
             pending={pendingMetricNames}
             batchLoading={batchLoading}
+            plotHeight={MSSQL_WAIT_TOP_VIEWPORT}
           />
-          <div id="mssql-wait-top" className="min-w-0 scroll-mt-3" data-mssql-chart="wait-top">
-            <HorizontalBarPanel
-              styles={styles}
-              className="h-full"
-              title={(
+          <section
+            id="mssql-wait-top"
+            className={`${classic.panel} ${host.chartPanel} flex h-full min-w-0 scroll-mt-3 flex-col`}
+            data-mssql-chart="wait-top"
+            data-mssql-face={categoryFace}
+            data-mssql-wait-rows={MSSQL_WAIT_TOP_VISIBLE_ROWS}
+          >
+            <div className={host.chartHead}>
+              <div className={host.chartTitle}>
                 <span className="inline-flex items-center gap-1">
                   等待类别 Top
                   <MssqlHint
@@ -136,36 +141,69 @@ export default function WaitsPane({
                     body="按等待类别汇总，查看哪一类等待占用时间最多。"
                   />
                 </span>
+              </div>
+            </div>
+            <div
+              className="overflow-y-auto"
+              style={{ height: MSSQL_WAIT_TOP_VIEWPORT }}
+              data-mssql-wait-viewport=""
+            >
+              {categoryFace === 'loading' ? (
+                <div className="flex h-full items-center justify-center">
+                  <ProDashLoading />
+                </div>
+              ) : categoryFace === 'empty' ? (
+                <div className="flex h-full items-center justify-center text-[13px] font-semibold text-[var(--color-text-2)]">
+                  本窗口暂无数据
+                </div>
+              ) : (
+                <ul className="m-0 list-none p-0">
+                  {categories.map((item) => (
+                    <li
+                      key={item.label}
+                      className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-1 text-[13px]"
+                      style={{ height: MSSQL_LIST_ROW_PX }}
+                      data-mssql-wait-row=""
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[var(--color-text-1)]">{item.label}</span>
+                      <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--color-text-1)]">
+                        {item.display}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
-              items={categoryFace === 'ready' ? categories : []}
-              placeholder={categoryFace === 'loading' ? <ProDashLoading /> : categoryFace === 'empty' ? (
-                <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
-              ) : undefined}
-            />
-          </div>
+            </div>
+          </section>
         </div>
       </ProSection>
       <ProSection title="锁与死锁">
-        <div className={host.chartGrid2}>
+        <div className={host.chartGrid3}>
           <MssqlTrend
             anchor="locks"
-            title="锁等待与阻塞"
-            body="锁等待发生的频繁程度，以及当前被堵住的进程个数，用于观察并发争用是否在加重。"
-            dualAxis
-            series={[
-              {
-                name: MSSQL_PRO_NAMES.lockWaits,
-                label: '锁等待',
-                color: MSSQL_PRO_PALETTE.orange,
-                unit: 'cps'
-              },
-              {
-                name: MSSQL_PRO_NAMES.blocked,
-                label: '阻塞进程',
-                color: MSSQL_PRO_PALETTE.rose,
-                unit: 'counts'
-              }
-            ]}
+            title="锁等待"
+            body="锁等待发生的频繁程度。持续走高说明并发争用在加重。"
+            series={[{
+              name: MSSQL_PRO_NAMES.lockWaits,
+              label: '锁等待',
+              color: MSSQL_PRO_PALETTE.orange,
+              unit: 'cps'
+            }]}
+            metricMap={metricMap}
+            pending={pendingMetricNames}
+            batchLoading={batchLoading}
+          />
+          <MssqlTrend
+            anchor="blocked"
+            title="阻塞进程数"
+            body="当前被其他会话堵住、正在等待的进程个数。"
+            counts
+            series={[{
+              name: MSSQL_PRO_NAMES.blocked,
+              label: '阻塞进程数',
+              color: MSSQL_PRO_PALETTE.rose,
+              unit: 'counts'
+            }]}
             metricMap={metricMap}
             pending={pendingMetricNames}
             batchLoading={batchLoading}

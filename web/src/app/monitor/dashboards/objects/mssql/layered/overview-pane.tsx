@@ -36,6 +36,7 @@ import {
   type MssqlMetricMap
 } from './series';
 import { mssqlDeferEmpty } from './card-face';
+import { mssqlLockedReading } from './display-units';
 import { MssqlTrend } from './trend';
 
 const EMPTY = '—';
@@ -327,6 +328,8 @@ function FocusCard({
     pending.has(metric),
     batchLoading
   );
+  const peak = samples.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+  const duration = unit === 'ms' ? mssqlLockedReading('ms', peak) : null;
   const axis = describeFocusAxis(unit, samples);
   const target = mssqlFocusJump(cardKey);
   return (
@@ -338,12 +341,12 @@ function FocusCard({
       >
         <FocusShortcutTitle
           label={label}
-          unit={axis.unitLabel}
+          unit={duration ? undefined : axis.unitLabel}
           hint={<MssqlHint kind={`mssql-focus-${cardKey}`} title={label} body={body} />}
         />
         {loading ? <ProDashLoading size="small" /> : (
           <div className={proChromeClass.shortcutValue} style={latest == null ? undefined : { color }}>
-            {latest == null ? EMPTY : formatFocusHeadline(axis, latest)}
+            {latest == null ? EMPTY : duration ? duration(latest) : formatFocusHeadline(axis, latest)}
           </div>
         )}
         {target ? (
@@ -362,6 +365,7 @@ function FocusCard({
           unit={unit}
           data={plotted}
           legends={[{ label, color }]}
+          formatReading={duration ?? undefined}
         />
       ) : (
         <div className={proChromeClass.focusChart} />

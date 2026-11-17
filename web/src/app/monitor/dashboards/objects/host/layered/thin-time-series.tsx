@@ -117,6 +117,13 @@ interface ThinTimeSeriesProps {
    * 只给活跃与排队。其它趋势全 0 仍走原来的贴轴处理。
    */
   markZeroCount?: boolean;
+  /**
+   * 整张卡共用的读数。传入后轴刻度和悬浮都走它，不再按每个点各自换单位。
+   * 不传时保持原来的刻度和悬浮。
+   */
+  formatReading?: (value: number) => string;
+  /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
+  plotHeight?: number;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -464,7 +471,9 @@ export default function ThinTimeSeries({
   pinAxisZero = false,
   areaOpacity,
   keepSeriesColor = false,
-  markZeroCount = false
+  markZeroCount = false,
+  formatReading,
+  plotHeight
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -593,6 +602,7 @@ export default function ThinTimeSeries({
           color,
           show: !flatAxis,
           formatter: (value: number) => {
+            if (formatReading) return formatReading(Number(value));
             if (focusAxis) return focusAxis.formatTick(Number(value));
             return formatAxisTick(Number(value), axisUnit, peak);
           }
@@ -687,7 +697,11 @@ export default function ThinTimeSeries({
               const name = item.seriesName || '';
               const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
               const seriesUnit = typeof item.seriesIndex === 'number' ? unitAt(item.seriesIndex) : unit;
-              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, seriesUnit)}</span></div>`;
+              const numeric = typeof raw === 'number' ? raw : Number(raw);
+              const readingText = formatReading
+                ? formatReading(numeric)
+                : formatTooltipReading(raw, seriesUnit);
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${readingText}</span></div>`;
             })
             .join('');
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;
@@ -742,7 +756,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [areaOpacity, axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, chartWindow, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
@@ -840,7 +854,10 @@ export default function ThinTimeSeries({
           ) : null}
         </div>
       ) : null}
-      <div className={styles.chartBody}>
+      <div
+        className={styles.chartBody}
+        style={plotHeight ? { height: plotHeight, minHeight: plotHeight, flex: 'none' } : undefined}
+      >
         {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
             {suspend || loading ? <ProDashLoading /> : (

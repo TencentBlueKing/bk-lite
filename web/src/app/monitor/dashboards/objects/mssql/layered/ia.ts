@@ -34,7 +34,7 @@ export const mssqlKpiJump = (key: string): MssqlFocusTarget | null => {
 export const mssqlFocusJump = (key: string): MssqlFocusTarget | null => {
   if (key === 'read-latency') return { tab: 'io_storage', anchor: 'latency' };
   if (key === 'ple') return { tab: 'buffer_memory', anchor: 'ple' };
-  if (key === 'blocked') return { tab: 'waits', anchor: 'locks' };
+  if (key === 'blocked') return { tab: 'waits', anchor: 'blocked' };
   if (key === 'deadlocks') return { tab: 'waits', anchor: 'deadlocks' };
   return null;
 };

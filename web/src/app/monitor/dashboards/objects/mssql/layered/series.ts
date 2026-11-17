@@ -4,6 +4,7 @@ import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import type { MetricUnit } from '../../../shared/types';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { deriveRatioPercent, numericValue } from '../../host/layered/readings';
+import { mssqlLockedReading } from './display-units';
 import { MSSQL_PRO_PALETTE, MSSQL_PRO_NAMES } from './queries';
 
 export type MssqlMetricMap = Record<string, MetricSeries | undefined>;
@@ -295,6 +296,14 @@ export const clerkChart = (metricMap: MssqlMetricMap) => {
     .map((item) => ({ ...item, latest: lineLatest(item.data) }))
     .sort((left, right) => right.latest - left.latest)
     .slice(0, 8);
+  const peak = ranked.reduce((max, item) => {
+    item.data.forEach((point) => {
+      const value = point.value1;
+      if (typeof value === 'number' && Number.isFinite(value)) max = Math.max(max, Math.abs(value));
+    });
+    return max;
+  }, 0);
+  const formatReading = mssqlLockedReading('kibibytes', peak) ?? undefined;
   return {
     data: mergeChartSeries(ranked.map((item) => ({
       key: item.label,
@@ -304,7 +313,8 @@ export const clerkChart = (metricMap: MssqlMetricMap) => {
     legends: ranked.map((item, index) => ({
       label: item.label,
       color: CLERK_COLORS[index % CLERK_COLORS.length],
-      reading: Number.isFinite(item.latest) ? joinMetric(item.latest, 'kibibytes') : undefined
-    }))
+      reading: formatReading && Number.isFinite(item.latest) ? formatReading(item.latest) : undefined
+    })),
+    formatReading
   };
 };

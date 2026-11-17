@@ -182,6 +182,7 @@ export default function BufferPane({
             emptyText="本窗口暂无数据"
             data={clerks.data}
             legends={clerks.legends}
+            formatReading={clerks.formatReading}
           />
           {clerks.data.length > 0 ? <MssqlSeriesReadout items={clerks.legends} /> : null}
         </div>

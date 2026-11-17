@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import type { MetricUnit } from '../../../shared/types';
 import { ThinTimeSeries } from '../../host/layered/pro-chrome';
 import { seriesSampleValues } from '../../host/layered/focus-axis';
+import { MSSQL_CLERK_LIST_MAX_PX, MSSQL_LIST_ROW_PX, mssqlLockedReading } from './display-units';
 import { MssqlHint } from './hint';
 import {
   joinMetric,
@@ -31,31 +33,19 @@ export function MssqlSeriesReadout({
 }) {
   if (!items.length) return null;
   return (
-    <ul className="m-0 mt-2 flex w-full list-none flex-col gap-1 p-0" data-mssql-series-readout="rows">
+    <ul
+      className="m-0 mt-2 flex w-full list-none flex-col overflow-y-auto border-t border-[var(--color-border)] p-0"
+      style={{ maxHeight: MSSQL_CLERK_LIST_MAX_PX }}
+      data-mssql-series-readout="rows"
+    >
       {items.map((item) => (
         <li
           key={item.label}
-          className="flex w-full min-w-0 items-baseline gap-2 text-[12px] leading-5 text-[var(--color-text-3)]"
+          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] px-1 text-[13px]"
+          style={{ height: MSSQL_LIST_ROW_PX }}
         >
-          <span
-            aria-hidden
-            className="inline-block shrink-0 self-center"
-            style={item.dashed
-              ? {
-                width: 14,
-                height: 0,
-                borderTop: `1.5px dashed ${item.color}`,
-                background: 'transparent'
-              }
-              : {
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                background: item.color
-              }}
-          />
-          <span className="min-w-0 truncate">{item.label}</span>
-          <span className="shrink-0 font-semibold tabular-nums" style={{ color: item.color }}>
+          <span className="min-w-0 flex-1 truncate text-[var(--color-text-1)]">{item.label}</span>
+          <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--color-text-1)]">
             {item.reading || '—'}
           </span>
         </li>
@@ -76,7 +66,8 @@ export function MssqlTrend({
   dualAxis = false,
   data,
   loading = false,
-  batchLoading = false
+  batchLoading = false,
+  plotHeight
 }: {
   anchor: string;
   title: string;
@@ -93,6 +84,8 @@ export function MssqlTrend({
   loading?: boolean;
   /** 同一批指标还没全部返回。没有点的卡先保持加载中。 */
   batchLoading?: boolean;
+  /** 图区高度。用来和旁边按行固定的列表对齐。 */
+  plotHeight?: number;
 }) {
   const items = series.map((item) => ({ name: item.name, label: item.label }));
   const plotted = data ?? (counts ? mssqlCountMerged(metricMap, items) : mssqlMerged(metricMap, items));
@@ -104,6 +97,13 @@ export function MssqlTrend({
     batchLoading
   );
   const samples = seriesSampleValues(plotted);
+  const peak = samples.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+  const unit = series[0]?.unit;
+  const uniform = series.every((item) => item.unit === unit);
+  const formatReading = useMemo(
+    () => (uniform ? mssqlLockedReading(unit, peak) : null),
+    [peak, uniform, unit]
+  );
   const countBounds = counts ? mssqlCountAxisBounds(samples) : null;
   const percentZero = Boolean(percent && series.some((_, index) => {
     const key = `value${index + 1}`;
@@ -120,7 +120,9 @@ export function MssqlTrend({
       color: item.color,
       dashed: item.dashed,
       unit: mixedUnits ? item.unit : undefined,
-      reading: multi && latest != null ? joinMetric(latest, item.unit) : undefined
+      reading: multi && latest != null
+        ? (formatReading ? formatReading(latest) : joinMetric(latest, item.unit))
+        : undefined
     };
   });
   return (
@@ -145,6 +147,8 @@ export function MssqlTrend({
         emptyText="本窗口暂无数据"
         data={plotted}
         legends={legends}
+        formatReading={formatReading ?? undefined}
+        plotHeight={plotHeight}
       />
     </div>
   );
