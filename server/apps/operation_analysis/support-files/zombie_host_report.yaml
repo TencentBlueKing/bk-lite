@@ -34,7 +34,6 @@ reports:
       defaultValue: []
       order: 0
       enabled: true
-      inputMode: select
       inputConfig: &systemOptions
         control: select
         multiple: true

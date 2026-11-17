@@ -60,7 +60,7 @@ from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.auto_mode import normalize_auto_request, set_unattended_flag
 from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
-from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
+from apps.opspilot.utils.run_locale import get_run_locale, reset_run_locale, set_run_locale
 
 _REPLY_LANGUAGE_EN = (
     "\n\n[Reply language] The user interface language is English. "
@@ -205,6 +205,14 @@ def _attach_wiki_answer_budget(chat_kwargs, extra_config, wiki_budget_trace, der
     chat_kwargs["max_steps"] = remaining_calls
     chat_kwargs["max_model_calls"] = 1
     extra_config["wiki_budget"]["remaining_answer_calls"] = remaining_calls
+
+
+def _invoke_error_locale(kwargs: Dict[str, Any]) -> str:
+    """本次调用的页面语言。没有 locale 时用已设置的 run locale，再默认英文。"""
+    requested = kwargs.get("locale") if isinstance(kwargs, dict) else None
+    if isinstance(requested, str) and requested.strip():
+        return requested.strip()
+    return get_run_locale() or "en"
 
 
 def _resolve_agent_execute_timeout() -> int:
@@ -423,8 +431,12 @@ class ChatService:
             # 整轮 agent 执行超时，调用方已放弃等待
             _agent_timeout = _resolve_agent_execute_timeout()
             logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
-            loader = LanguageLoader(app="opspilot", default_lang="en")
-            message = loader.get("error.llm_timeout") or f"智能体执行超时（>{_agent_timeout}s），请稍后重试"
+            loader = LanguageLoader(app="opspilot", default_lang=_invoke_error_locale(kwargs))
+            template = loader.get("error.llm_timeout") or "Agent execution timed out (>{seconds}s). Please try again later."
+            try:
+                message = str(template).format(seconds=_agent_timeout)
+            except (KeyError, ValueError):
+                message = str(template)
             return (
                 {
                     "message": message,
@@ -444,7 +456,7 @@ class ChatService:
             # 记录详细的异常信息以便排查问题
             logger.exception(f"invoke_chat 执行失败: skill_type={skill_type}, error={str(e)}")
 
-            loader = LanguageLoader(app="opspilot", default_lang="en")
+            loader = LanguageLoader(app="opspilot", default_lang=_invoke_error_locale(kwargs))
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
             return (
                 {
@@ -696,11 +708,12 @@ class ChatService:
         memory_block = kwargs.get("skill_memory_block") or ""
         if memory_block:
             resolved_prompt = append_skill_memory_block(resolved_prompt, memory_block)
-        resolved_prompt = append_reply_language(
-            resolved_prompt,
-            kwargs.get("locale"),
-            match_user_message=kwargs.get("reply_language") == "match_user",
-        )
+        if not kwargs.get("omit_reply_language"):
+            resolved_prompt = append_reply_language(
+                resolved_prompt,
+                kwargs.get("locale"),
+                match_user_message=kwargs.get("reply_language") == "match_user",
+            )
         authoring = kwargs.get(AUTHORING_EXTRA_KEY)
         if isinstance(authoring, dict) and authoring.get("enabled"):
             resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"

@@ -810,33 +810,11 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (chartType === 'topN') {
-    const scalarFields: Array<{ field: string; label?: string }> = [];
-    (values.topNScalarFields || []).forEach((item) => {
-      const field = trimOptionalField(item?.field);
-      if (!field) {
-        return;
-      }
-      const label = trimOptionalField(item?.label);
-      scalarFields.push(label ? { field, label } : { field });
-    });
-    if (scalarFields.length > 0) {
-      result.topNScalarFields = scalarFields;
-      result.topNLabelField = undefined;
-      result.topNValueField = undefined;
-    } else {
-      result.topNLabelField = values.topNLabelField;
-      result.topNValueField = values.topNValueField;
-      result.topNScalarFields = undefined;
-    }
-    if (values.barMode === 'absolute') {
-      result.barMode = 'absolute';
-      result.barMax = isFiniteNumber(values.barMax) && values.barMax > 0
-        ? values.barMax
-        : undefined;
-    } else {
-      result.barMode = undefined;
-      result.barMax = undefined;
-    }
+    result.topNLabelField = values.topNLabelField;
+    result.topNValueField = values.topNValueField;
+    result.topNScalarFields = undefined;
+    result.barMode = undefined;
+    result.barMax = undefined;
   }
 
   if (chartType === 'nodeGraph') {

@@ -349,7 +349,7 @@ describe('ViewConfig screen panel', () => {
     expect(await screen.findByTestId('widget-config-panel')).toBeTruthy();
     expect(screen.getByTestId('widget-config-preview-button')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByText('common.confirm')).toBeTruthy();
+    expect(screen.getByText('opsAnalysis.screen.applyConfig')).toBeTruthy();
   });
 
   it('opens a light dashboard preview into the external host', async () => {
@@ -605,7 +605,7 @@ describe('ViewConfig screen panel', () => {
       expect(screen.getByDisplayValue('在线数')).toBeTruthy();
     });
     await user.click(screen.getByTestId('widget-config-preview-button'));
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -817,7 +817,7 @@ describe('ViewConfig interaction validation', () => {
         surface="screen"
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfigSectionChange).toHaveBeenCalledWith('interaction');
@@ -1035,7 +1035,7 @@ describe('ViewConfig interaction validation', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue('在线数')).toBeTruthy();
     });
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfigSectionChange).toHaveBeenCalledWith('data');

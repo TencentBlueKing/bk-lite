@@ -34,6 +34,7 @@ interface DashboardToolbarProps {
   onToggleFullscreen: () => void;
   onExportPdf: () => void;
   onOpenFilterConfig: () => void;
+  onOpenDataVariables?: () => void;
   onOpenAddView: () => void;
   onOpenAddGroup: () => void;
   onToggleEditMode: () => void;
@@ -63,6 +64,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onToggleFullscreen,
   onExportPdf,
   onOpenFilterConfig,
+  onOpenDataVariables,
   onOpenAddView,
   onOpenAddGroup,
   onToggleEditMode,
@@ -124,6 +126,19 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               />
             </Tooltip>
           </PermissionWrapper>
+          {onOpenDataVariables ? (
+            <PermissionWrapper requiredPermissions={['EditChart']}>
+              <Tooltip title={t('dataVariable.title')}>
+                <Button
+                  type="text"
+                  icon={<Icon type="bianliang" style={{ fontSize: 20 }} />}
+                  aria-label={t('dataVariable.title')}
+                  onClick={onOpenDataVariables}
+                  className={iconButtonClassName}
+                />
+              </Tooltip>
+            </PermissionWrapper>
+          ) : null}
           <Tooltip title={t('dashboard.undoAiApply')}>
             <span className="inline-flex">
               <Button

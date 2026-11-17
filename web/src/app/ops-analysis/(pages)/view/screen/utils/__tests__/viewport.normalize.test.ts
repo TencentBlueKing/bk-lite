@@ -11,6 +11,34 @@ import {
 import type { ScreenItem } from '@/app/ops-analysis/types/screen';
 
 describe('normalizeScreenViewSets', () => {
+  it('keeps data variables and drops a row without an id', () => {
+    const normalized = normalizeScreenViewSets({
+      viewport: { width: 1920, height: 1080 },
+      items: [],
+      decorations: {},
+      dataVariables: [
+        {
+          id: 'dv_hosts',
+          name: ' 云区域主机 ',
+          dataSourceId: 9,
+          valueField: 'inst_uuid',
+          params: { model_id: 'host' },
+        },
+        { name: 'missing id' },
+      ],
+    });
+
+    expect(normalized.dataVariables).toEqual([
+      {
+        id: 'dv_hosts',
+        name: '云区域主机',
+        dataSourceId: 9,
+        valueField: 'inst_uuid',
+        params: { model_id: 'host' },
+      },
+    ]);
+  });
+
   it('keeps a saved custom image instead of resetting the default preset', () => {
     const src = 'data:image/png;base64,iVBORw0KGgo=';
     const normalized = normalizeScreenViewSets({

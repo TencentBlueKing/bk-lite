@@ -54,6 +54,7 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_monitor_alert_counts",
         "query_monitor_alert_distribution",
         "query_monitor_instance_counts",
+        "query_cmdb_alert_distribution",
         "query_monitor_instances",
         "query_monitor_metric",
         "search_monitor_policies",

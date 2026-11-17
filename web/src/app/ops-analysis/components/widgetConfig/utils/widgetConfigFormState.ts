@@ -199,9 +199,6 @@ function buildClearedChartDependentFormFields() {
     selectedFields: [] as string[],
     topNLabelField: undefined,
     topNValueField: undefined,
-    topNScalarFields: [] as Array<{ field?: string; label?: string }>,
-    barMode: undefined,
-    barMax: undefined,
     dimensionField: undefined,
     valueField: undefined,
     valueFields: [] as string[],
@@ -366,13 +363,6 @@ export function applyOpenedValueConfigToFormValues(
   }
   if (valueConfig?.topNValueField !== undefined) {
     formValues.topNValueField = valueConfig.topNValueField;
-  }
-  formValues.topNScalarFields = valueConfig?.topNScalarFields?.length
-    ? valueConfig.topNScalarFields
-    : [];
-  formValues.barMode = valueConfig?.barMode === 'absolute' ? 'absolute' : undefined;
-  if (valueConfig?.barMax !== undefined) {
-    formValues.barMax = valueConfig.barMax;
   }
   if (valueConfig?.dimensionField !== undefined) {
     formValues.dimensionField = valueConfig.dimensionField;

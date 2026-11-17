@@ -16,6 +16,7 @@ from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, external_actor
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.flow_locale import WORKBENCH_DEFAULT_LOCALE
 
 # 钉钉官方域名白名单
 DINGTALK_ALLOWED_DOMAINS = [
@@ -185,6 +186,7 @@ class DingTalkChatFlowUtils(BaseChatFlowUtils):
             "node_id": node_id,
             "channel": "ding_talk",
             "is_third_party": is_third_party,
+            "locale": WORKBENCH_DEFAULT_LOCALE,
             WIKI_MATERIAL_ACTOR_KEY: external_actor(sender_id),
         }
 

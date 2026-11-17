@@ -269,7 +269,7 @@
     "importScriptsHint": "上传脚本库 ZIP 包（每脚本一个目录，含 meta.json 与脚本本体）",
     "importScriptsLimitHint": "仅支持 .zip，压缩包不超过 20MB，解压总量不超过 50MB",
     "importScriptsSuccess": "脚本导入完成",
-    "importScriptsResult": "成功 {{created}}，跳过 {{skipped}}，失败 {{failed}}",
+    "importScriptsResult": "成功 {created}，跳过 {skipped}，失败 {failed}",
     "confirmImport": "确认导入",
     "paramDefinition": "参数定义",
     "addParam": "新增参数",

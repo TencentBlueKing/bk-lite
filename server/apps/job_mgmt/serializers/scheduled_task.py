@@ -8,7 +8,7 @@ from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.serializers.validators import validate_scheduled_task_payload
 from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundaryError, resolve_single_task_team
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
-from apps.job_mgmt.utils.i18n import choice_message
+from apps.job_mgmt.utils.i18n import choice_message, serializer_message
 
 
 class ScheduledTaskListSerializer(serializers.ModelSerializer):
@@ -164,7 +164,7 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
                 instance.save(update_fields=["periodic_task_id"])
             else:
                 # PeriodicTask 创建失败，回滚整个事务
-                raise serializers.ValidationError({"non_field_errors": ["创建定时调度任务失败，请检查 Cron 表达式或计划执行时间"]})
+                raise serializers.ValidationError({"non_field_errors": [serializer_message(self, "error.schedule_create_failed", "创建定时调度任务失败，请检查 Cron 表达式或计划执行时间")]})
 
         return instance
 
@@ -238,7 +238,7 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
                 instance.save(update_fields=["periodic_task_id"])
             elif instance.is_enabled:
                 # 启用状态下 PeriodicTask 更新失败，回滚
-                raise serializers.ValidationError({"non_field_errors": ["更新定时调度任务失败，请检查配置"]})
+                raise serializers.ValidationError({"non_field_errors": [serializer_message(self, "error.schedule_update_failed", "更新定时调度任务失败，请检查配置")]})
 
         return instance
 

@@ -52,4 +52,4 @@ def test_cloud_region_resource_counts_bind_option_sources():
     assert params["model_asst_ids"]["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "cmdb/get_model_association_options"
     assert params["supplement_tag_key"].get("required") is not True
     assert params["supplement_tag_value"].get("required") is not True
-    assert {field["key"] for field in source["field_schema"]} >= {"model_id", "model_name", "value"}
+    assert {field["key"] for field in source["field_schema"]} >= {"model_id", "model_name", "value", "inst_uuids"}

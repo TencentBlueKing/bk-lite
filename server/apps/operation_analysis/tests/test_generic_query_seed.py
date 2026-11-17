@@ -33,6 +33,7 @@ def _sources():
             "monitor/query_monitor_alerts",
             "monitor/query_monitor_alert_counts",
             "monitor/query_monitor_alert_distribution",
+            "monitor/query_cmdb_alert_distribution",
             "alert/query_alert_center",
             "alert/query_alert_center_counts",
             "alert/query_alert_center_distribution",
@@ -85,6 +86,7 @@ def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
         "monitor/query_monitor_alerts",
         "monitor/query_monitor_alert_counts",
         "monitor/query_monitor_alert_distribution",
+        "monitor/query_cmdb_alert_distribution",
         "alert/query_alert_center",
         "alert/query_alert_center_counts",
         "alert/query_alert_center_distribution",
@@ -93,6 +95,7 @@ def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
         "monitor/query_monitor_metric",
         "monitor/query_monitor_alert_counts",
         "monitor/query_monitor_alert_distribution",
+        "monitor/query_cmdb_alert_distribution",
         "cmdb/query_cmdb_model_counts",
         "cmdb/query_cmdb_instance_value",
         "cmdb/query_cmdb_one_hop_counts",
@@ -174,7 +177,7 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     instances = sources["monitor/query_monitor_instances"]
     instance_names = {param["name"] for param in instances["params"]}
     assert "analysis_mode" not in instance_names
-    assert instances["chart_type"] == ["table"]
+    assert instances["chart_type"] == ["table", "multiValue", "cardList"]
     assert "group_by" not in instance_names
     assert "filters" not in instance_names
     assert "order" not in instance_names
@@ -418,7 +421,7 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert "TOP5" not in models["desc"]
     assert _param(models, "page")["value"] is None
     assert _param(models, "page_size")["value"] is None
-    assert models["chart_type"] == ["table", "bar", "pie", "topN"]
+    assert models["chart_type"] == ["table", "bar", "pie", "line", "topN", "multiValue", "cardList"]
     model_counts = sources["cmdb/query_cmdb_model_counts"]
     assert model_counts["chart_type"] == ["single"]
     assert [field["key"] for field in model_counts["field_schema"]] == ["model_count"]
@@ -482,7 +485,7 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         return [field["key"] for field in source["field_schema"]]
 
     assert field_keys(instance_query) == ["inst_uuid", "inst_name"]
-    assert instance_query["chart_type"] == ["table"]
+    assert instance_query["chart_type"] == ["table", "multiValue", "cardList"]
     instance_value = sources["cmdb/query_cmdb_instance_value"]
     assert instance_value["chart_type"] == ["single"]
     assert field_keys(instance_value) == ["value"]
@@ -491,7 +494,7 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert _param(instance_value, "aggregate_field")["desc"]
     assert _param(instance_value, "aggregate_op")["desc"]
     instance_distribution = sources["cmdb/query_cmdb_instance_distribution"]
-    assert instance_distribution["chart_type"] == ["bar", "pie", "topN"]
+    assert instance_distribution["chart_type"] == ["bar", "pie", "line", "table", "topN", "multiValue", "cardList"]
     assert field_keys(instance_distribution) == ["instance_count"]
     assert "page" not in {param["name"] for param in instance_distribution["params"]}
     assert field_keys(one_hop) == [
@@ -502,13 +505,13 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
         "asst_name",
         "model_asst_id",
     ]
-    assert one_hop["chart_type"] == ["table"]
+    assert one_hop["chart_type"] == ["table", "multiValue", "cardList"]
     one_hop_counts = sources["cmdb/query_cmdb_one_hop_counts"]
     assert one_hop_counts["chart_type"] == ["single"]
     assert field_keys(one_hop_counts) == ["relation_count"]
     assert "page" not in {param["name"] for param in one_hop_counts["params"]}
     one_hop_rank = sources["cmdb/query_cmdb_one_hop_distribution"]
-    assert one_hop_rank["chart_type"] == ["topN"]
+    assert one_hop_rank["chart_type"] == ["topN", "bar", "pie", "line", "table", "multiValue", "cardList"]
     assert field_keys(one_hop_rank) == ["start_name", "start_uuid", "relation_count"]
     assert "page" not in {param["name"] for param in one_hop_rank["params"]}
     assert "analysis_mode" not in {param["name"] for param in one_hop["params"]}
@@ -548,11 +551,24 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     counts = sources["monitor/query_monitor_alert_counts"]
     assert field_keys(counts) == ["alert_count"]
     assert counts["chart_type"] == ["single"]
-    assert alerts["chart_type"] == ["table"]
+    assert alerts["chart_type"] == ["table", "multiValue", "cardList"]
     distribution = sources["monitor/query_monitor_alert_distribution"]
-    assert distribution["chart_type"] == ["pie", "bar"]
+    assert distribution["chart_type"] == ["pie", "bar", "line", "table", "topN", "multiValue", "cardList"]
     assert field_keys(distribution) == ["group_value", "alert_count"]
     assert _param(distribution, "group_by")["required"] is True
+    assert _param(distribution, "monitor_object_id")["inputConfig"]["multiple"] is True
+    assert _param(distribution, "instance_ids")["inputConfig"]["multiple"] is True
+    cmdb_alert = sources["monitor/query_cmdb_alert_distribution"]
+    assert cmdb_alert["name"] == "CMDB 资源监控告警分布"
+    assert cmdb_alert["chart_type"] == ["pie", "bar", "line", "table", "topN", "multiValue", "cardList"]
+    assert field_keys(cmdb_alert) == ["group_value", "alert_count", "monitor_object_id", "monitor_object_name"]
+    assert [param["name"] for param in cmdb_alert["params"][:2]] == ["uuids", "group_by"]
+    assert _param(cmdb_alert, "uuids")["required"] is True
+    assert _param(cmdb_alert, "group_by")["required"] is True
+    assert "monitor_object_id" not in {param["name"] for param in cmdb_alert["params"]}
+    assert "model_id" not in {param["name"] for param in cmdb_alert["params"]}
+    assert "page" not in {param["name"] for param in cmdb_alert["params"]}
+    assert _option_values(_param(cmdb_alert, "group_by")) == {"level", "monitor_object_id", "alert_type"}
     assert _option_values(_param(distribution, "group_by")) == {"level", "monitor_object_id", "alert_type"}
     assert "status" not in _option_values(_param(distribution, "group_by"))
     assert "analysis_mode" not in {param["name"] for param in distribution["params"]}

@@ -12,6 +12,8 @@ export interface ScreenDataConfigCompareProps {
   screenFrame?: unknown;
   previewSingleStyle?: unknown;
   previewHost?: unknown;
+  dataVariables?: unknown;
+  onCreateDataVariable?: unknown;
   dataSourceManager: {
     dataSources: unknown;
     dataSourcesLoading: unknown;
@@ -36,6 +38,8 @@ export const areScreenDataConfigPropsEqual = (
   prev.screenFrame === next.screenFrame &&
   prev.previewSingleStyle === next.previewSingleStyle &&
   prev.previewHost === next.previewHost &&
+  prev.dataVariables === next.dataVariables &&
+  prev.onCreateDataVariable === next.onCreateDataVariable &&
   prev.dataSourceManager.selectedDataSource ===
     next.dataSourceManager.selectedDataSource &&
   prev.dataSourceManager.dataSources === next.dataSourceManager.dataSources &&

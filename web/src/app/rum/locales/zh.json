@@ -144,7 +144,9 @@
       "recent": "近期会话",
       "recentEmpty": "当前窗口暂无会话",
       "viewAll": "查看全部",
-      "noData": "当前窗口暂无数据"
+      "noData": "当前窗口暂无数据",
+      "allItems": "全部",
+      "moreItems": "还有 {n} 项"
     },
     "create": {
       "title": "新建 RUM 应用",
@@ -252,6 +254,7 @@
       "searchPlaceholder": "搜索会话 ID",
       "onlyErrors": "仅看错误",
       "onlyReplay": "仅看回放",
+      "filterRoute": "路由",
       "sortImpact": "影响力",
       "sortStart": "开始时间",
       "sortErrors": "错误数",
@@ -555,6 +558,13 @@
       "enableNotification": "启用通知",
       "notificationEnabled": "已开启",
       "notificationDisabled": "未开启",
+      "basic": "基本信息",
+      "conditionStep": "告警条件",
+      "whenMetric": "当 {metric}",
+      "noticeStep": "通知",
+      "breadcrumb": "页面路径",
+      "backAria": "返回告警策略",
+      "notFound": "没有找到这条策略",
       "channelRequiredWhenEnabled": "启用通知后请至少选择一个通知渠道",
       "recipientsRequiredForChannel": "所选通知渠道需要配置通知对象",
       "organizationsPlaceholder": "选择所属组织",

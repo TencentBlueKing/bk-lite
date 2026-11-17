@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.core.openapi.serializers import OpenAPIRequestSerializer, PaginatedRequestSerializer
+from apps.log.utils.locale_text import serializer_text
 
 
 class LogGroupQuerySerializer(PaginatedRequestSerializer):
@@ -45,7 +46,7 @@ class LogCollectConfigUpdateSerializer(OpenAPIRequestSerializer):
 
     def validate(self, attrs):
         if not attrs.get("child") and not attrs.get("base"):
-            raise serializers.ValidationError("需要提供 child 或 base 配置")
+            raise serializers.ValidationError(serializer_text(self, "error.collect_config_child_or_base"))
         return attrs
 
 

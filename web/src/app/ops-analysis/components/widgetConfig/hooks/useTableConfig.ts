@@ -14,6 +14,7 @@ import {
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { collectVariableIds } from '@/app/ops-analysis/utils/dataVariable';
 import {
   DisplayColumnRow,
   buildDisplayColumnsFromSchema,
@@ -267,7 +268,7 @@ export function useTableConfig({
       targetDataSource: DatasourceItem,
       formParams: Record<string, any>,
       chartTypeOverride?: string,
-    ): Record<string, any> => {
+    ): Record<string, any> | null => {
       const payload: Record<string, any> = {};
       const sourceParams = targetDataSource.params || [];
       const processedParams = processFormParamsForSubmit(formParams, sourceParams);
@@ -275,6 +276,8 @@ export function useTableConfig({
         acc[param.name] = param.value;
         return acc;
       }, {});
+      // 探列走的是原始表单值，还没换成取值列。带着编号发出去会报参数格式错误。
+      if (collectVariableIds(userParams).length > 0) return null;
 
       Object.assign(
         payload,
@@ -324,6 +327,7 @@ export function useTableConfig({
     ): Promise<DisplayColumnRow[]> => {
       try {
         const payload = buildProbeParams(targetDataSource, formParams, chartTypeOverride);
+        if (!payload) return [];
         const { data: sourceData } = await getSourceDataByApiId(targetDataSource.id, payload);
         const firstRecord = extractFirstRecordFromSourceData(sourceData);
         if (!firstRecord || Object.keys(firstRecord).length === 0) {
