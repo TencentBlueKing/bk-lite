@@ -142,3 +142,65 @@ def test_result_reader_is_hidden_in_summary_stage(workspace):
         runtime=SimpleNamespace(),
     )
     policy.wrap_model_call(request, lambda prepared: pytest.fail("summary exposed a tool") if prepared.tools else None)
+
+
+def test_complete_alert_file_is_aggregated_beyond_preview(workspace, mocker):
+    from apps.opspilot.metis.llm.tools.alerts.queries import alerts_list_alerts
+    from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
+
+    mocker.patch("apps.opspilot.utils.db_cleanup.close_old_connections")
+    rows = [{"alert_id": str(index), "item": "cpu" if index < 100 else "memory", "content": "x" * 100} for index in range(203)]
+    mocker.patch(
+        "apps.opspilot.metis.llm.tools.alerts.queries.call_alerts_rpc",
+        side_effect=[
+            {"success": True, "data": {"count": 203, "page": page, "page_size": 100, "items": rows[(page - 1) * 100 : page * 100]}}
+            for page in (1, 2, 3)
+        ],
+    )
+    config = {"configurable": {"python_sandbox": workspace}}
+    message = alerts_list_alerts.invoke(
+        {"name": "alerts_list_alerts", "args": {"status": "active"}, "id": "alerts", "type": "tool_call"}, config=config
+    )
+    middleware = FilesystemMiddleware(backend=build_result_backend(workspace), tool_token_limit_before_evict=1000)
+    result = middleware.wrap_tool_call(SimpleNamespace(tool_call={"name": "alerts_list_alerts"}, runtime=None), lambda _: message)
+    assert "/large_tool_results/alerts" in result.content
+    code = (
+        "import json\nfrom collections import Counter\n"
+        "with open('large_tool_results/alerts') as stream:\n    data = json.load(stream)['data']\n"
+        "assert data['complete'] and len(data['items']) == data['count']\n"
+        "print(json.dumps({'count': data['count'], 'metrics': dict(Counter(row['item'] for row in data['items'])), "
+        "'last_id': data['items'][-1]['alert_id']}))"
+    )
+    aggregate = json.loads(python_execute_direct.invoke({"code": code}, config=config))
+    assert aggregate == {"count": 203, "metrics": {"cpu": 100, "memory": 103}, "last_id": "202"}
+
+
+def test_selected_python_is_available_for_result_analysis_but_hidden_in_summary(workspace):
+    from langchain.agents.middleware import ModelRequest
+
+    from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
+
+    registered = [job_mgmt_query, python_execute_direct]
+    visible, hidden = DeepAgentAssemblyMixin._build_planned_execution_tool_visibility(
+        skill_sources=[], skills_only_plan=False, registered_tools=registered
+    )
+    active = [job_mgmt_query]
+    policy = ToolVisibilityMiddleware(
+        business_tools=registered,
+        active_tools=active,
+        always_visible_tools=visible,
+        hidden_tools=hidden,
+        allow_unregistered_tools=False,
+    )
+    request = ModelRequest(model=SimpleNamespace(), tools=registered, messages=[], state={}, runtime=SimpleNamespace())
+    exposed = policy.wrap_model_call(request, lambda prepared: {tool.name for tool in prepared.tools})
+    assert "python_execute_direct" in exposed
+    policy.include_always_visible = False
+    active.clear()
+    exposed = policy.wrap_model_call(request, lambda prepared: {tool.name for tool in prepared.tools})
+    assert not exposed
+    denied = policy.wrap_tool_call(
+        SimpleNamespace(tool_call={"name": "python_execute_direct", "args": {"code": "print(1)"}, "id": "python"}),
+        lambda _: pytest.fail("summary executed Python"),
+    )
+    assert denied.status == "error"

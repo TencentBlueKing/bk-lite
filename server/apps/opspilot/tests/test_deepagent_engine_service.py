@@ -2697,7 +2697,7 @@ def test_plan_is_skills_only_and_step_guidance():
 def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     guidance = ToolsNodes._planned_tool_step_guidance()
     assert "【工具执行】" in guidance
-    assert "未计划工具" in guidance
+    assert "当前不可见的工具" in guidance
     assert "空列表" in guidance
     assert "monitor_list_object_instances" in guidance
     assert "禁止猜测" in guidance
