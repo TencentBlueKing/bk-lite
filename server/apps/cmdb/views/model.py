@@ -337,6 +337,17 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         result = ModelManage.set_association_context_link(model_asst_id, payload.get("context_link"))
         return WebUtils.response_success(result)
 
+    @HasPermission("model_management-Edit Model")
+    @action(detail=False, methods=["put"], url_path="association/(?P<model_asst_id>.+)/quick_filter")
+    def model_association_quick_filter(self, request, model_asst_id: str):
+        association_info, reason, error_code = self._association_operate_permission(request, model_asst_id)
+        if not association_info:
+            status_code = status.HTTP_403_FORBIDDEN if error_code == "permission_denied" else status.HTTP_404_NOT_FOUND
+            return WebUtils.response_error(reason, status_code=status_code)
+        payload = request.data if hasattr(request.data, "get") else {}
+        result = ModelManage.set_association_quick_filter(model_asst_id, payload.get("quick_filter"))
+        return WebUtils.response_success(result)
+
     @HasPermission("model_management-Delete Model")
     @action(detail=False, methods=["delete"], url_path="association/(?P<model_asst_id>.+?)")
     def model_association_delete(self, request, model_asst_id: str):
@@ -909,9 +920,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not BusinessModelVisibility.is_visible(model_info):
             return False, missing_message, "not_found"
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
         organizations = self.organizations(request, model_info)
         if not organizations:
             return False, denied_message, "permission_denied"

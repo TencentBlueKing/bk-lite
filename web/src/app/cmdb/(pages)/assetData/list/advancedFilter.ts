@@ -189,10 +189,16 @@ export function exportFilterPayload(
   exportType: string,
   queryList: unknown[] | null | undefined,
   advanced: AdvancedFilter | null | undefined,
+  relationFilters?: { model_asst_id: string; inst_uuids: string[] }[] | null,
 ) {
   if (exportType !== 'all') return {};
-  const payload: { query_list?: unknown[]; advanced_filter?: AdvancedFilter } = {};
+  const payload: {
+    query_list?: unknown[];
+    advanced_filter?: AdvancedFilter;
+    relation_filters?: { model_asst_id: string; inst_uuids: string[] }[];
+  } = {};
   if (queryList?.length) payload.query_list = queryList;
   if (advanced?.conditions?.length) payload.advanced_filter = advanced;
+  if (relationFilters?.length) payload.relation_filters = relationFilters;
   return payload;
 }

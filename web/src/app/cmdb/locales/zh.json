@@ -54,7 +54,8 @@
         "value": "值",
         "noPath": "当前范围没有可用的关联路径",
         "conditionIncomplete": "第{n}个条件还不完整",
-        "queryFailed": "关联筛选失败"
+        "queryFailed": "关联筛选失败",
+        "belongsTo": "所属{name}"
     },
     "deleteTitle": "您确定要删除这个项目吗？",
     "disassociationTitle": "您确定要取消关联吗？",
@@ -116,6 +117,7 @@
     "closeAll": "全部收起",
     "more": "更多",
     "batchEdit": "批量编辑",
+    "selectionBarClear": "取消选择",
     "searchTitle": "资产搜索",
     "assetSearchTxt": "请输入关键词",
     "AssetSearch": {
@@ -267,6 +269,8 @@
         "constraint": "约束",
         "ciContextHint": "应用的运行于 / 关联会记成第 1 层成员；这些成员上的运行于记成第 2 层。不必给 MySQL、Redis 等分别打标。",
         "ciContextMore": "更多",
+        "quickFilter": "快捷筛选",
+        "quickFilterHint": "打开后，资产列表顶部会出现按对端实例筛选的下拉。同一模型最多两个，相同对端只保留一个。",
         "ciContextFollow": "跟随默认",
         "ciContextInclude": "强制计入",
         "ciContextExclude": "不计入",
