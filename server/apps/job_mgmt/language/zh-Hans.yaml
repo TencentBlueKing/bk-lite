@@ -148,7 +148,6 @@ error:
   script_name_conflict: "同一组织内已存在同名脚本"
   builtin_rule_superuser_only: "只有平台超级管理员可操作内置规则"
   script_execute_failed: "脚本执行失败"
-  task_ids_required: "task_ids 不能为空"
   task_ids_limit: "task_ids 最多 100 个"
   query_failed: "查询失败"
   schedule_other_team_forbidden: "无权操作其他团队的定时任务"
