@@ -9,6 +9,8 @@ from django.apps.registry import Apps
 from django.db import connections, models
 from django.db.backends.signals import connection_created
 
+import apps.cmdb.models  # noqa: F401  INSTALL_APPS 需含 cmdb（monitor.nats.monitor 导入 cmdb.services）
+import apps.node_mgmt.models  # noqa: F401  INSTALL_APPS 需含 node_mgmt（monitor.apps.ready → nats.monitor）
 from apps.log.nats import log as log_api
 from apps.monitor.nats import monitor as monitor_api
 from nats_client.handlers import nats_handler
