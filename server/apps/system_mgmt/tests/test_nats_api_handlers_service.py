@@ -325,6 +325,18 @@ def test_get_user_menus_auditor_only_view():
     assert "Add" not in ops
 
 
+@pytest.mark.django_db
+def test_get_user_menus_superuser_wins_over_auditor_flag():
+    from apps.system_mgmt.nats.clients import get_user_menus
+
+    Menu.objects.create(app="cmdb", name="asset_info-View", display_name="资产-View", menu_type="asset", order=1)
+    Menu.objects.create(app="cmdb", name="asset_info-Add", display_name="资产-Add", menu_type="asset", order=2)
+    result = get_user_menus("cmdb", roles=[], username="admin", is_superuser=True, is_auditor=True)
+    ops = result["data"][0]["children"][0]["operation"]
+    assert "View" in ops
+    assert "Add" in ops
+
+
 # ---------------------------------------------------------------------------
 # get_group_users / get_all_users
 # ---------------------------------------------------------------------------

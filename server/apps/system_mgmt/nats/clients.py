@@ -8,12 +8,9 @@ from .common import *  # noqa: F401,F403
 def get_user_menus(client_id, roles, username, is_superuser, is_auditor=False):
     client = RoleManage()
     menus = []
+    is_auditor = bool(is_auditor) and not bool(is_superuser)
     if is_auditor:
-        menus = [
-            name
-            for name in Menu.objects.filter(app=client_id).values_list("name", flat=True)
-            if name.rsplit("-", 1)[-1] == "View"
-        ]
+        menus = [name for name in Menu.objects.filter(app=client_id).values_list("name", flat=True) if name.rsplit("-", 1)[-1] == "View"]
     elif not is_superuser:
         menu_ids = []
         role_menus = Role.objects.filter(app=client_id, id__in=roles).values_list("menu_list", flat=True)

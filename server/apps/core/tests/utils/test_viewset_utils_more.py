@@ -407,3 +407,16 @@ class TestAuditorWriteGuards:
             resp = vs._validate_update_access(req, instance, {})
         assert resp is not None
         assert json.loads(resp.content)["result"] is False
+
+    def test_auditor_org_field_denied_even_with_membership(self):
+        vs = _auth_vs()
+        req = SimpleNamespace(user=SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1]))
+        with pytest.raises(PermissionDenied):
+            vs._validate_org_field_permission(req, [1])
+
+    def test_auditor_create_denied_even_with_org_membership(self):
+        vs = _auth_vs()
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, data={"team": [1]})
+        with pytest.raises(PermissionDenied):
+            vs.create(req)

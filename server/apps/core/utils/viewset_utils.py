@@ -384,9 +384,12 @@ class AuthViewSet(MaintainerViewSet):
             message = self.core_loader.get("error.user_not_logged_in", "用户未登录") if self.core_loader else "用户未登录"
             raise PermissionDenied(message)
 
-        # 超级管理员跳过校验
-        if getattr(user, "is_superuser", False):
+        # 超级管理员跳过校验。审计员 group_list 会被填成全组织，不能据此获得写权限。
+        if bypasses_write_guard(user):
             return
+        if getattr(user, "is_auditor", False):
+            message = self.core_loader.get("error.no_permission_for_groups", "您没有权限创建或修改该组织下的数据") if self.core_loader else "您没有权限创建或修改该组织下的数据"
+            raise PermissionDenied(message)
 
         # 获取用户可管理的组织 ID 集合
         user_group_ids = user_group_id_set(user)
@@ -429,6 +432,11 @@ class AuthViewSet(MaintainerViewSet):
 
     def create(self, request, *args, **kwargs):
         """重写创建方法以支持组织权限校验"""
+        user = getattr(request, "user", None)
+        if getattr(user, "is_auditor", False) and not bypasses_write_guard(user):
+            message = self.core_loader.get("error.no_permission_create", "您没有权限创建数据") if getattr(self, "core_loader", None) else "您没有权限创建数据"
+            raise PermissionDenied(message)
+
         org_field = self.ORGANIZATION_FIELD
         data = request.data
 
