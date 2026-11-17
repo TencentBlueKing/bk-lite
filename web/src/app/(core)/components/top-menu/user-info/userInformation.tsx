@@ -445,9 +445,12 @@ const UserInformation: React.FC<UserInformationProps> = ({
                   {userInfo.role_list && userInfo.role_list.length > 0 ? (
                     (() => {
                       const superAdmin = userInfo.role_list.find((role: any) => !role.app && role.name === 'admin');
+                      const auditor = !superAdmin && userInfo.role_list.find((role: any) => !role.app && role.name === 'auditor');
 
-                      // 过滤掉超级管理员，其他角色按应用分组
-                      const normalRoles = userInfo.role_list.filter((role: any) => !((!role.app) && role.name === 'admin'));
+                      // 过滤掉平台超管/审计员，其他角色按应用分组
+                      const normalRoles = userInfo.role_list.filter((role: any) => !(
+                        !role.app && (role.name === 'admin' || role.name === 'auditor')
+                      ));
                       const groupedRoles = normalRoles.reduce((acc: any, role: any) => {
                         const appKey = role.app || 'other';
                         if (!acc[appKey]) {
@@ -474,6 +477,17 @@ const UserInformation: React.FC<UserInformationProps> = ({
                               <div className="flex flex-wrap gap-2">
                                 <span className="px-2 py-0.5 rounded text-xs bg-red-50 text-red-600">
                                   {t('userInfo.fullPermissions')}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {auditor && (
+                            <div className="min-w-[180px] rounded-lg border border-[var(--color-border)] border-l-[3px] border-l-blue-500 p-3">
+                              <div className="font-medium text-sm">{t('userInfo.auditor')}</div>
+                              <hr className='mt-1 mb-2 border-t border-[var(--color-border)]' />
+                              <div className="flex flex-wrap gap-2">
+                                <span className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-600">
+                                  {t('userInfo.viewOnlyPermissions')}
                                 </span>
                               </div>
                             </div>
