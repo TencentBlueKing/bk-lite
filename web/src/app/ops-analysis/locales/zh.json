@@ -1566,6 +1566,7 @@
     "bindingInvalidTypeMismatch": "参数类型不匹配",
     "bindingInvalidUnknown": "未知原因",
     "unifiedFilterConfig": "全局筛选",
+    "unifiedFilterIntro": "配置页面级筛选条件，供已绑定该参数的组件共用。",
     "configUnifiedFilterFields": "配置全局筛选字段",
     "filterName": "显示名称",
     "filterKey": "参数名",
@@ -2230,6 +2231,7 @@
   },
   "dataVariable": {
     "title": "数据变量",
+    "intro": "将查询结果的指定列保存为变量，供组件参数引用。",
     "add": "添加数据变量",
     "added": "添加成功",
     "valueField": "取值列",

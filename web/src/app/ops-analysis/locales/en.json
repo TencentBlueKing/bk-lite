@@ -1566,6 +1566,7 @@
     "bindingInvalidTypeMismatch": "Parameter type mismatch",
     "bindingInvalidUnknown": "Unknown reason",
     "unifiedFilterConfig": "Global Filters",
+    "unifiedFilterIntro": "Page-level filters shared by widgets bound to the same parameter.",
     "configUnifiedFilterFields": "Configure global filter fields",
     "filterName": "Display Name",
     "filterKey": "Parameter Key",
@@ -2230,6 +2231,7 @@
   },
   "dataVariable": {
     "title": "Data variables",
+    "intro": "Save a selected column from a query result as a variable for widget parameters.",
     "add": "Add data variable",
     "added": "Added",
     "valueField": "Value column",

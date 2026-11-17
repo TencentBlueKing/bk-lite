@@ -1679,8 +1679,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           toolbar={screenToolbar ?? undefined}
           filterBar={unifiedFilterBar}
         >
-          {editorOpen ? (
-            <div className="relative flex h-full min-h-0 overflow-hidden" data-screen-editor>
+          {/* 画布必须留在同一个父节点。取消/保存关掉编辑栏时如果把画布换到另一支树，React 会整棵卸载再挂上，所有组件重新取数。 */}
+          <div
+            className="relative flex h-full min-h-0 overflow-hidden"
+            {...(editorOpen ? { "data-screen-editor": true } : {})}
+          >
+            {editorOpen ? (
               <ScreenElementPalette
                 stagePreviewBackground={String(
                   getScreenTheme(draftViewSets.viewport.theme).variables["--screen-stage-bg"],
@@ -1721,8 +1725,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                 onOpenItemMenu={openItemMenu}
                 onReorderItem={handleReorderItem}
               />
-              <div className="relative min-h-0 min-w-0 flex-1">
-                {screenCanvas}
+            ) : null}
+            <div className="relative min-h-0 min-w-0 flex-1">
+              {screenCanvas}
+              {editorOpen ? (
                 <div
                   ref={bindWidgetPreviewHost}
                   data-testid="screen-widget-preview-host"
@@ -1730,7 +1736,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                     isScreenPreviewHostVisible(activeInspectorTab),
                   )}
                 />
-              </div>
+              ) : null}
+            </div>
+            {editorOpen ? (
               <ScreenInspectorPane
                 label={t("opsAnalysis.screen.inspectorResize")}
                 collapsed={inspectorCollapsed}
@@ -1799,20 +1807,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                   </>
                 )}
               </ScreenInspectorPane>
-              {itemMenu && itemMenuEntries.length > 0 ? (
-                <ScreenItemContextMenu
-                  open
-                  x={itemMenu.x}
-                  y={itemMenu.y}
-                  entries={itemMenuEntries}
-                  onAction={handleItemMenuAction}
-                  onClose={() => setItemMenu(null)}
-                />
-              ) : null}
-            </div>
-          ) : (
-            screenCanvas
-          )}
+            ) : null}
+            {editorOpen && itemMenu && itemMenuEntries.length > 0 ? (
+              <ScreenItemContextMenu
+                open
+                x={itemMenu.x}
+                y={itemMenu.y}
+                entries={itemMenuEntries}
+                onAction={handleItemMenuAction}
+                onClose={() => setItemMenu(null)}
+              />
+            ) : null}
+          </div>
         </ViewWorkspace>
       </div>
       <ViewSelector

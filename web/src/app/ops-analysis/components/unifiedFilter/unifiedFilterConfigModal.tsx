@@ -561,7 +561,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.defaultValue'),
       dataIndex: 'defaultValue',
-      width: 350,
+      width: 220,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
           return (
@@ -737,16 +737,26 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
   return (
     <Modal
-      title={t('dashboard.unifiedFilterConfig')}
+      title={(
+        <div className="pr-6">
+          <span className="block text-base font-semibold leading-6 text-[var(--color-text-1)]">
+            {t('dashboard.unifiedFilterConfig')}
+          </span>
+          <span className="mt-2 block text-xs font-normal leading-5 text-[var(--color-text-3)]">
+            {t('dashboard.unifiedFilterIntro')}
+          </span>
+        </div>
+      )}
       open={open}
       onCancel={handleCancel}
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={1000}
+      width={840}
       maskClosable={false}
       centered
       destroyOnHidden
+      styles={{ body: { paddingTop: 20, minHeight: 168 } }}
     >
       <DndContext
         sensors={sensors}
