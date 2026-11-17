@@ -903,3 +903,259 @@ def test_monitor_alerts_sort_level_by_severity_and_keep_deleted_policy_group(mon
         time_range=window,
     )
     assert active == [{"alert_count": 2}]
+
+
+def _patch_alert_access(monkeypatch):
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_actor_scope",
+        lambda user_info: (user_info, 1, False, [1], False, None),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_accessible_policy_queryset",
+        lambda user_info: (MonitorPolicy.objects.all(), None),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._filter_nats_visible_alerts",
+        lambda queryset, scope_ids, policies: queryset,
+    )
+
+    def fake_instances(user_info, instance_ids=None):
+        queryset = MonitorInstance.objects.filter(is_deleted=False)
+        if instance_ids is not None:
+            queryset = queryset.filter(id__in=list(instance_ids))
+        return queryset, None
+
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_accessible_instance_queryset",
+        fake_instances,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_monitor_instance_permission",
+        lambda object_id, user_info: ({"instance": [{"id": "*"}], "team": [1]}, None),
+    )
+
+
+def test_alert_distribution_keeps_single_object_and_skips_invalid_instances(monkeypatch):
+    from apps.monitor.nats.generic_query import query_monitor_alert_counts, query_monitor_alert_distribution
+
+    host = _object()
+    database = MonitorObject.objects.create(name="db-object", level="base")
+    _instance(host, "('web-1',)", name="web-1")
+    _instance(database, "db-1", name="db-1")
+    host_policy = MonitorPolicy.objects.create(monitor_object=host, name="主机策略", algorithm="avg")
+    database_policy = MonitorPolicy.objects.create(monitor_object=database, name="数据库策略", algorithm="avg")
+    MonitorAlert.objects.create(
+        policy_id=host_policy.id,
+        monitor_instance_id="('web-1',)",
+        level="warning",
+        status="new",
+        alert_type="alert",
+    )
+    MonitorAlert.objects.create(
+        policy_id=database_policy.id,
+        monitor_instance_id="db-1",
+        level="error",
+        status="new",
+        alert_type="alert",
+    )
+    _patch_alert_access(monkeypatch)
+    user_info = {"user": "ada", "team": 1, "domain": "example.com"}
+
+    single = query_monitor_alert_distribution(
+        group_by="level",
+        monitor_object_id=str(host.id),
+        instance_ids=["web-1"],
+        user_info=user_info,
+    )
+    assert single["result"] is True
+    assert single["data"] == [{"group_value": "警告", "alert_count": 1}]
+
+    skipped = query_monitor_alert_distribution(
+        group_by="level",
+        monitor_object_id=str(host.id),
+        instance_ids=["web-1", "db-1", "gone"],
+        user_info=user_info,
+    )
+    assert skipped["result"] is True
+    assert skipped["data"] == [{"group_value": "警告", "alert_count": 1}]
+
+    empty = query_monitor_alert_distribution(
+        group_by="level",
+        monitor_object_id=str(host.id),
+        instance_ids=["gone", "also-gone"],
+        user_info=user_info,
+    )
+    assert empty["result"] is True
+    assert empty["data"] == []
+
+    counted = query_monitor_alert_counts(
+        monitor_object_id=str(host.id),
+        instance_ids=["web-1", "gone"],
+        user_info=user_info,
+    )
+    assert counted["result"] is False
+    assert "不存在、已删除或无权访问" in counted["message"]
+    assert "gone" in counted["message"]
+
+
+def test_alert_distribution_supports_multiple_objects_and_cross_object_instances(monkeypatch):
+    from apps.monitor.nats.generic_query import query_monitor_alert_distribution, query_monitor_instances
+
+    host = _object()
+    database = MonitorObject.objects.create(name="db-object", level="base")
+    _instance(host, "host-1", name="web")
+    _instance(database, "db-1", name="mysql")
+    host_policy = MonitorPolicy.objects.create(monitor_object=host, name="主机策略", algorithm="avg")
+    database_policy = MonitorPolicy.objects.create(monitor_object=database, name="数据库策略", algorithm="avg")
+    MonitorAlert.objects.create(
+        policy_id=host_policy.id,
+        monitor_instance_id="host-1",
+        level="warning",
+        status="new",
+        alert_type="alert",
+    )
+    MonitorAlert.objects.create(
+        policy_id=database_policy.id,
+        monitor_instance_id="db-1",
+        level="critical",
+        status="new",
+        alert_type="alert",
+    )
+    _patch_alert_access(monkeypatch)
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_authorized_instance_queryset",
+        lambda permission, scope_ids=None: MonitorInstance.objects.filter(is_deleted=False),
+    )
+    user_info = {"user": "ada", "team": 1, "domain": "example.com"}
+
+    distributed = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        monitor_object_id=[str(host.id), str(database.id)],
+        instance_ids=["host-1", "db-1", "missing"],
+        user_info=user_info,
+    )
+    assert distributed["result"] is True
+    assert {item["group_value"] for item in distributed["data"]} == {"host-object", "db-object"}
+    assert {item["alert_count"] for item in distributed["data"]} == {1}
+
+    listed = query_monitor_instances(
+        monitor_object_id=[str(host.id), str(database.id)],
+        analysis_mode="detail",
+        page=1,
+        page_size=20,
+        user_info=user_info,
+    )
+    assert listed["result"] is True
+    assert {item["instance_id"] for item in listed["data"]["items"]} == {"host-1", "db-1"}
+
+
+def test_cmdb_alert_distribution_maps_uuids_then_groups_like_alert_distribution(monkeypatch):
+    from apps.monitor.nats.generic_query import query_cmdb_alert_distribution
+    from apps.monitor.services.cmdb_alert_distribution import normalize_cmdb_uuids
+    from apps.monitor.services.generic_query import GenericQueryError
+
+    host = _object()
+    database = MonitorObject.objects.create(name="db-object", display_name="MySQL", level="base")
+    nginx = MonitorObject.objects.create(name="nginx-object", display_name="Nginx", level="base")
+    _instance(host, "('web-1',)", name="web-1")
+    _instance(database, "db-1", name="mysql")
+    _instance(nginx, "nginx-1", name="nginx")
+    host_policy = MonitorPolicy.objects.create(monitor_object=host, name="主机策略", algorithm="avg")
+    database_policy = MonitorPolicy.objects.create(monitor_object=database, name="数据库策略", algorithm="avg")
+    MonitorAlert.objects.create(
+        policy_id=host_policy.id,
+        monitor_instance_id="('web-1',)",
+        level="warning",
+        status="new",
+        alert_type="alert",
+    )
+    MonitorAlert.objects.create(
+        policy_id=host_policy.id,
+        monitor_instance_id="('web-1',)",
+        level="critical",
+        status="new",
+        alert_type="alert",
+    )
+    MonitorAlert.objects.create(
+        policy_id=database_policy.id,
+        monitor_instance_id="db-1",
+        level="error",
+        status="new",
+        alert_type="alert",
+    )
+    _patch_alert_access(monkeypatch)
+
+    host_uuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    mysql_uuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    missing_uuid = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    mismatch_uuid = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    nginx_uuid = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+
+    monkeypatch.setattr(
+        "apps.monitor.services.cmdb_alert_distribution.fetch_cmdb_monitor_mappings",
+        lambda uuids, user_info: [
+            {"inst_uuid": host_uuid, "model_id": "host", "monitor_id": "('web-1',)"},
+            {"inst_uuid": mysql_uuid, "model_id": "mysql", "monitor_id": "db-1"},
+            {"inst_uuid": nginx_uuid, "model_id": "nginx", "monitor_id": "nginx-1"},
+            {"inst_uuid": mismatch_uuid, "model_id": "host", "monitor_id": "gone"},
+        ],
+    )
+    user_info = {"user": "ada", "team": 1, "domain": "example.com", "locale": "zh-Hans"}
+    mixed_uuids = [host_uuid, mysql_uuid, nginx_uuid, missing_uuid, mismatch_uuid]
+
+    by_object = query_cmdb_alert_distribution(
+        uuids=mixed_uuids,
+        group_by="monitor_object_id",
+        user_info=user_info,
+    )
+    assert by_object["result"] is True
+    by_name = {item["monitor_object_name"]: item for item in by_object["data"]}
+    assert by_name["host-object"]["alert_count"] == 2
+    assert by_name["host-object"]["monitor_object_id"] == host.id
+    assert by_name["host-object"]["group_value"] == "host-object"
+    assert by_name["MySQL"]["alert_count"] == 1
+    assert by_name["MySQL"]["monitor_object_id"] == database.id
+    by_id = {item["monitor_object_id"]: item for item in by_object["data"]}
+    assert by_id[nginx.id]["alert_count"] == 0
+    assert by_id[nginx.id]["group_value"] == by_id[nginx.id]["monitor_object_name"]
+
+    by_level = query_cmdb_alert_distribution(
+        uuids=mixed_uuids,
+        group_by="level",
+        user_info=user_info,
+    )
+    assert by_level["result"] is True
+    assert {item["group_value"]: item["alert_count"] for item in by_level["data"]} == {"警告": 1, "严重": 1, "错误": 1}
+
+    rejected_object = query_cmdb_alert_distribution(
+        uuids=mixed_uuids,
+        group_by="monitor_object_id",
+        monitor_object_id=str(host.id),
+        user_info=user_info,
+    )
+    assert rejected_object["result"] is False
+    assert "不接收监控对象" in rejected_object["message"]
+
+    empty = query_cmdb_alert_distribution(uuids=[missing_uuid], group_by="level", user_info=user_info)
+    assert empty["result"] is True
+    assert empty["data"] == []
+
+    unmapped_without_group = query_cmdb_alert_distribution(uuids=[missing_uuid], user_info=user_info)
+    assert unmapped_without_group["result"] is False
+    assert "请选择按什么分布" in unmapped_without_group["message"]
+
+    rejected_model = query_cmdb_alert_distribution(
+        model_id=["host", "mysql"],
+        uuids=mixed_uuids,
+        group_by="level",
+        user_info=user_info,
+    )
+    assert rejected_model["result"] is False
+    assert "不支持模型参数" in rejected_model["message"]
+
+    missing_group = query_cmdb_alert_distribution(uuids=mixed_uuids, user_info=user_info)
+    assert missing_group["result"] is False
+    assert "请选择按什么分布" in missing_group["message"]
+
+    with pytest.raises(GenericQueryError, match="实例标识不能为空"):
+        normalize_cmdb_uuids([])

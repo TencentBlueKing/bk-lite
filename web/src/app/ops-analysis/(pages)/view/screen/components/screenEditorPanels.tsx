@@ -37,6 +37,7 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import { FilterTokenInput } from '@/app/ops-analysis/components/filterTokenInput';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { ScreenSingleValueStyleSections } from '@/app/ops-analysis/components/widgetConfig/sections/singleValueStyleSection';
 import { useTranslation } from '@/utils/i18n';
 import { SCREEN_LAYER_DRAG_MIME } from '../utils/screenLayer';
@@ -673,7 +674,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
       className={`relative z-40 h-full shrink-0 transition-[width] duration-300 ${
         collapsed
           ? 'w-0 border-r-0'
-          : 'w-[192px] border-r border-(--color-border-1) bg-(--color-bg-1)'
+          : 'w-[162px] border-r border-(--color-border-1) bg-(--color-bg-1)'
       }`}
     >
       <Tooltip title={paletteToggleLabel} placement="right">
@@ -836,7 +837,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
                       >
                         {elementListIcon(itemById.get(entry.id))}
                       </span>
-                      <span className="truncate">{entry.label}</span>
+                      <EllipsisWithTooltip className="min-w-0 flex-1 truncate" text={entry.label} />
                     </button>
                   </div>
                 </div>

@@ -278,11 +278,6 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
 
         <div className={styles.content}>
           <div className={styles.categoryPane}>
-            <div className={styles.categoryTitle}>
-              {selectorMode === 'sceneWidget'
-                ? t('dashboard.sceneComponents')
-                : t('dashboard.dataSource')}
-            </div>
             {tagsLoading && selectorMode === 'dataSource' ? (
               <div className={styles.loadingBox}>
                 <Spin size="small" />

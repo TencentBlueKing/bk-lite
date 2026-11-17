@@ -3,7 +3,6 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
-  DatabaseOutlined,
   DesktopOutlined,
   EditOutlined,
   FullscreenOutlined,
@@ -144,7 +143,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
             <Tooltip title={t('dataVariable.title')}>
               <Button
                 type="text"
-                icon={<DatabaseOutlined className={iconClassName} />}
+                icon={<Icon type="bianliang" style={{ fontSize: 20 }} />}
                 aria-label={t('dataVariable.title')}
                 onClick={onOpenDataVariables}
                 className={iconButtonClassName}

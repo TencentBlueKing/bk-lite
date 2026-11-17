@@ -22,7 +22,9 @@ from apps.monitor.services.authorized_metric_query import (
     _metric_instance_id_keys,
 )
 from apps.monitor.services.generic_query import (
+    ALERT_DISTRIBUTION_FIELDS,
     GenericQueryError,
+    _filled,
     _id_list,
     build_metric_result,
     ensure_payload_limit,
@@ -108,27 +110,62 @@ def _require_filter_list(filters) -> list:
     return list(filters)
 
 
-def _authorized_instances(user_info, monitor_object_id: str):
-    if not monitor_object_id:
-        raise GenericQueryError("监控对象不能为空")
-    if not MonitorObject.objects.filter(id=monitor_object_id).exists():
+def _selected_monitor_object_ids(monitor_object_id):
+    if monitor_object_id in (None, "", []):
+        return []
+    raw = monitor_object_id if isinstance(monitor_object_id, (list, tuple)) else [monitor_object_id]
+    object_ids = []
+    for item in raw:
+        if item in (None, ""):
+            continue
+        object_id = _existing_monitor_object_id(item)
+        if object_id is None:
+            raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+        if object_id not in object_ids:
+            object_ids.append(object_id)
+    if not object_ids:
         raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+    return object_ids
+
+
+def _ensure_monitor_object_accessible(object_id, user_info, policies, is_superuser):
+    if is_superuser:
+        return
+    has_policy = policies.filter(monitor_object_id=object_id).exists()
+    permission, error = _get_monitor_instance_permission(str(object_id), user_info or {})
+    if error:
+        raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+    has_instance = bool((permission or {}).get("instance") or (permission or {}).get("team"))
+    if not has_policy and not has_instance:
+        raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
+
+
+def _authorized_instances(user_info, monitor_object_id):
+    object_ids = _selected_monitor_object_ids(monitor_object_id)
+    if not object_ids:
+        raise GenericQueryError("监控对象不能为空")
     _user, _team, _children, scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
     if scope_error:
         raise GenericQueryError(scope_error.get("message") or "无权限", status="forbidden")
-    scoped = MonitorInstance.objects.filter(
-        monitor_object_id=monitor_object_id,
-        is_deleted=False,
-        monitorinstanceorganization__organization__in=list(scope_ids),
-    )
     if is_superuser:
-        return scoped.distinct()
-    permission, error = _get_monitor_instance_permission(str(monitor_object_id), user_info or {})
-    if error:
-        raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
-    if not (permission or {}).get("instance") and not (permission or {}).get("team"):
-        raise GenericQueryError("无权限", status="forbidden")
-    return _get_authorized_instance_queryset(permission, scope_ids).filter(monitor_object_id=monitor_object_id, is_deleted=False).distinct()
+        return MonitorInstance.objects.filter(
+            monitor_object_id__in=object_ids,
+            is_deleted=False,
+            monitorinstanceorganization__organization__in=list(scope_ids),
+        ).distinct()
+    allowed_ids = []
+    for object_id in object_ids:
+        permission, error = _get_monitor_instance_permission(str(object_id), user_info or {})
+        if error:
+            raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+        if not (permission or {}).get("instance") and not (permission or {}).get("team"):
+            raise GenericQueryError("无权限", status="forbidden")
+        allowed_ids.extend(
+            _get_authorized_instance_queryset(permission, scope_ids)
+            .filter(monitor_object_id=object_id, is_deleted=False)
+            .values_list("id", flat=True)
+        )
+    return MonitorInstance.objects.filter(id__in=allowed_ids, is_deleted=False).distinct()
 
 
 @nats_client.register
@@ -270,7 +307,7 @@ def _reject_retired_alert_args(kwargs) -> None:
         raise GenericQueryError("当前查询不支持分组")
 
 
-def _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids):
+def _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids, *, skip_unknown_instances=False):
     _user, _team, _children, scope_ids, is_superuser, scope_error = _get_nats_actor_scope(user_info or {})
     if scope_error:
         raise GenericQueryError(scope_error.get("message") or "无权限", status="forbidden")
@@ -278,35 +315,62 @@ def _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids):
     if policy_error:
         raise GenericQueryError(policy_error.get("message") or "无权限", status="forbidden")
     alerts = _filter_nats_visible_alerts(MonitorAlert.objects.all(), scope_ids, policies)
-    object_id = None
-    if monitor_object_id not in (None, ""):
-        object_id = _existing_monitor_object_id(monitor_object_id)
-        if object_id is None:
-            raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
-        if not is_superuser:
-            has_policy = policies.filter(monitor_object_id=object_id).exists()
-            permission, error = _get_monitor_instance_permission(str(object_id), user_info or {})
-            if error:
-                raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
-            has_instance = bool((permission or {}).get("instance") or (permission or {}).get("team"))
-            if not has_policy and not has_instance:
-                raise GenericQueryError("监控对象不存在或无权访问", status="forbidden")
-        alerts = alerts.filter(policy_id__in=MonitorPolicy.objects.filter(monitor_object_id=object_id).values("id"))
-    selected_ids = _id_list(instance_ids)
-    if selected_ids:
-        authorized, error = _get_nats_accessible_instance_queryset(user_info or {}, instance_ids=selected_ids)
-        if error:
-            raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
-        found = {str(item) for item in authorized.values_list("id", flat=True)}
-        missing = [item for item in selected_ids if item not in found]
-        if missing:
-            raise GenericQueryError("实例不存在、已删除或无权访问: " + ", ".join(missing), status="forbidden")
-        if object_id is not None:
-            foreign = [str(item) for item in authorized.exclude(monitor_object_id=object_id).values_list("id", flat=True) if str(item) in found]
-            if foreign:
-                raise GenericQueryError("实例不属于所选监控对象: " + ", ".join(foreign))
-        alerts = alerts.filter(monitor_instance_id__in=selected_ids)
-    return alerts, selected_ids
+    object_ids = []
+    if monitor_object_id not in (None, "", []):
+        object_ids = _selected_monitor_object_ids(monitor_object_id)
+        for object_id in object_ids:
+            _ensure_monitor_object_accessible(object_id, user_info, policies, is_superuser)
+        alerts = alerts.filter(policy_id__in=MonitorPolicy.objects.filter(monitor_object_id__in=object_ids).values("id"))
+    requested_ids = _id_list(instance_ids)
+    if requested_ids:
+        selected_ids = _resolve_requested_alert_instances(
+            user_info,
+            requested_ids,
+            object_ids,
+            skip_unknown_instances=skip_unknown_instances,
+        )
+        if selected_ids:
+            alerts = alerts.filter(monitor_instance_id__in=selected_ids)
+        else:
+            alerts = alerts.none()
+        return alerts, selected_ids
+    return alerts, requested_ids
+
+
+def _resolve_requested_alert_instances(user_info, requested_ids, object_ids, *, skip_unknown_instances):
+    candidates = []
+    seen = set()
+    for item in requested_ids:
+        for candidate in _instance_lookup_candidates(item):
+            if candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+    authorized, error = _get_nats_accessible_instance_queryset(user_info or {}, instance_ids=candidates)
+    if error:
+        raise GenericQueryError(error.get("message") or "无权限", status="forbidden")
+    scoped = authorized.filter(monitor_object_id__in=object_ids) if object_ids else authorized
+    found = {str(item) for item in scoped.values_list("id", flat=True)}
+    resolved = []
+    for item in requested_ids:
+        match = next((candidate for candidate in _instance_lookup_candidates(item) if candidate in found), None)
+        if match and match not in resolved:
+            resolved.append(match)
+    if skip_unknown_instances:
+        return resolved
+    missing = []
+    foreign = []
+    authorized_ids = {str(item) for item in authorized.values_list("id", flat=True)}
+    for item in requested_ids:
+        match = next((candidate for candidate in _instance_lookup_candidates(item) if candidate in authorized_ids), None)
+        if match is None:
+            missing.append(item)
+        elif object_ids and match not in found:
+            foreign.append(item)
+    if missing:
+        raise GenericQueryError("实例不存在、已删除或无权访问: " + ", ".join(missing), status="forbidden")
+    if foreign:
+        raise GenericQueryError("实例不属于所选监控对象: " + ", ".join(foreign))
+    return resolved
 
 
 @nats_client.register
@@ -398,7 +462,12 @@ def query_monitor_alert_distribution(
     if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
         raise GenericQueryError("分布不支持排序")
     del kwargs
-    alerts, selected_ids = _scoped_monitor_alerts(user_info, monitor_object_id, instance_ids)
+    alerts, selected_ids = _scoped_monitor_alerts(
+        user_info,
+        monitor_object_id,
+        instance_ids,
+        skip_unknown_instances=True,
+    )
     data = query_alert_distribution(
         alerts,
         group_by=group_by,
@@ -409,5 +478,61 @@ def query_monitor_alert_distribution(
         time_field=time_field,
         time_range=time_range,
         locale=(user_info or {}).get("locale"),
+    )
+    return _ok(data)
+
+
+@nats_client.register
+@_guard("query_cmdb_alert_distribution")
+def query_cmdb_alert_distribution(
+    uuids=None,
+    group_by=None,
+    level=None,
+    status=None,
+    alert_type=None,
+    time_field=None,
+    time_range=None,
+    user_info=None,
+    **kwargs,
+):
+    from apps.monitor.services.cmdb_alert_distribution import fetch_cmdb_monitor_mappings, normalize_cmdb_uuids, select_mapped_monitor_ids
+
+    _reject_retired_alert_args(kwargs)
+    if kwargs.get("page") not in (None, "") or kwargs.get("page_size") not in (None, ""):
+        raise GenericQueryError("分布不支持分页")
+    if kwargs.get("order_by") not in (None, "") or kwargs.get("order_dir") not in (None, ""):
+        raise GenericQueryError("分布不支持排序")
+    if kwargs.get("model_id") not in (None, "", []):
+        raise GenericQueryError("当前查询不支持模型参数，请传实例标识")
+    if kwargs.get("monitor_object_id") not in (None, "", []):
+        raise GenericQueryError("当前查询不接收监控对象，请只传实例标识")
+    if kwargs.get("instance_ids") not in (None, "", []):
+        raise GenericQueryError("请传实例标识，不要传监控实例")
+    del kwargs
+    uuid_list = normalize_cmdb_uuids(uuids)
+    if not _filled(group_by):
+        raise GenericQueryError("请选择按什么分布")
+    if group_by not in ALERT_DISTRIBUTION_FIELDS:
+        raise GenericQueryError("分布字段不受支持")
+    mapped_ids = select_mapped_monitor_ids(uuid_list, fetch_cmdb_monitor_mappings(uuid_list, user_info))
+    if not mapped_ids:
+        return _ok([])
+    alerts, selected_ids = _scoped_monitor_alerts(
+        user_info,
+        None,
+        mapped_ids,
+        skip_unknown_instances=True,
+    )
+    data = query_alert_distribution(
+        alerts,
+        group_by=group_by,
+        level=level,
+        status=status,
+        alert_type=alert_type,
+        instance_ids=selected_ids,
+        time_field=time_field,
+        time_range=time_range,
+        locale=(user_info or {}).get("locale"),
+        include_object_identity=True,
     )
     return _ok(data)

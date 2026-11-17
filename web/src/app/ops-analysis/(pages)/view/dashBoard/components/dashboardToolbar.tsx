@@ -1,7 +1,6 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
-  DatabaseOutlined,
   DownloadOutlined,
   EditOutlined,
   FullscreenOutlined,
@@ -132,7 +131,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               <Tooltip title={t('dataVariable.title')}>
                 <Button
                   type="text"
-                  icon={<DatabaseOutlined style={{ fontSize: 16 }} />}
+                  icon={<Icon type="bianliang" style={{ fontSize: 20 }} />}
                   aria-label={t('dataVariable.title')}
                   onClick={onOpenDataVariables}
                   className={iconButtonClassName}

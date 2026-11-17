@@ -1,4 +1,5 @@
 import type { DirItem } from './index';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import type { UnifiedFilterDefinition, ValueConfig, WidgetInteractionLink } from './dashBoard';
 
 export type ScreenWidgetChartType =
@@ -189,14 +190,7 @@ export interface ScreenViewSets {
   items: ScreenItem[];
   decorations: ScreenDecorationsConfig;
   filters?: UnifiedFilterDefinition[];
-  dataVariables?: Array<{
-    id: string;
-    name: string;
-    dataSourceId: number;
-    valueField: string;
-    params: Record<string, unknown>;
-    filterBindings?: Record<string, boolean>;
-  }>;
+  dataVariables?: DataVariable[];
 }
 
 export interface ScreenProps {

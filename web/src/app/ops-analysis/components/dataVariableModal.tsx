@@ -71,6 +71,18 @@ const rowsOf = (payload: unknown): Array<Record<string, unknown>> => {
   return list.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object' && !Array.isArray(row));
 };
 
+const previewCellText = (value: unknown): string => {
+  if (value == null) return '';
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item != null && item !== '')
+      .map((item) => (typeof item === 'object' ? JSON.stringify(item) : String(item)))
+      .join(', ');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
 const DataVariableModal: React.FC<DataVariableModalProps> = ({
   open,
   variables,
@@ -420,7 +432,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
     dataIndex: key,
     key,
     ellipsis: true,
-    render: (value: unknown) => (value == null || typeof value === 'object' ? '' : String(value)),
+    render: (value: unknown) => previewCellText(value),
   }));
 
   return (
@@ -445,7 +457,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                 type="button"
                 aria-label={t('dataVariable.add')}
                 title={t('dataVariable.add')}
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-(--color-text-2) hover:bg-(--color-fill-1) hover:text-(--color-primary)"
+                className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-text-2) hover:bg-(--color-fill-1) hover:text-(--color-primary)"
                 onClick={addVariable}
               >
                 <PlusOutlined className="text-xs" />
@@ -470,7 +482,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     <button
                       type="button"
                       title={item.name || t('dataVariable.title')}
-                      className={`min-w-0 flex-1 truncate px-2 text-left text-sm leading-8 ${
+                      className={`min-w-0 flex-1 cursor-pointer truncate px-2 text-left text-sm leading-8 ${
                         active ? 'font-medium text-(--color-text-1)' : 'text-(--color-text-2)'
                       }`}
                       onClick={() => selectVariable(item.id)}
@@ -480,7 +492,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     <button
                       type="button"
                       aria-label={t('common.delete')}
-                      className="mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center text-xs text-(--color-text-3) opacity-0 hover:text-(--color-text-1) group-hover:opacity-100 group-focus-within:opacity-100"
+                      className="mr-1 inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center text-xs text-(--color-text-3) opacity-0 hover:text-(--color-text-1) group-hover:opacity-100 group-focus-within:opacity-100"
                       onClick={() => removeVariable(item.id)}
                     >
                       <DeleteOutlined />

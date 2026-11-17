@@ -49,14 +49,7 @@ export interface TimeConfig {
 export interface OtherConfig {
   timeSelector?: TimeConfig;
   /** 画布级数据变量。引用处只存 id，名称只用于回显。 */
-  dataVariables?: Array<{
-    id: string;
-    name: string;
-    dataSourceId: number;
-    valueField: string;
-    params: Record<string, unknown>;
-    filterBindings?: Record<string, boolean>;
-  }>;
+  dataVariables?: DataVariable[];
   /**
    * 仪表盘横向格数。缺省或 12 表示按旧 12 列保存的 x/w；
    * 当前运行时为 24，打开旧盘时换算一次后写入 24。
