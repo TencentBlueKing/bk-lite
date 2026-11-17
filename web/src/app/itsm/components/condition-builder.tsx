@@ -1,20 +1,21 @@
 'use client';
 
-import { Button, Input, Select } from 'antd';
+import { Button, Input, InputNumber, Select } from 'antd';
 import type { ConditionGroup, ConditionItem } from '../types';
 
 const OPS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'not_in', 'contains', 'is_empty', 'not_empty'];
 
 interface ConditionBuilderProps {
   fields: string[];
-  value?: ConditionGroup;
+  fieldTypes?: Record<string, string>;
+  value?: ConditionGroup | ConditionItem;
   onChange: (value: ConditionGroup) => void;
 }
 
 const emptyItem = (field: string): ConditionItem => ({ field, op: '=', value: '' });
 
-export function ConditionBuilder({ fields, value, onChange }: ConditionBuilderProps) {
-  const group: ConditionGroup = value || { logic: 'and', items: [emptyItem(fields[0] || '')] };
+export function ConditionBuilder({ fields, fieldTypes = {}, value, onChange }: ConditionBuilderProps) {
+  const group: ConditionGroup = value && 'logic' in value ? value : { logic: 'and', items: value ? [value] : [emptyItem(fields[0] || '')] };
   const items = group.items.filter((item): item is ConditionItem => 'op' in item);
 
   const update = (nextItems: ConditionItem[], logic = group.logic) => {
@@ -47,14 +48,18 @@ export function ConditionBuilder({ fields, value, onChange }: ConditionBuilderPr
             options={OPS.map((op) => ({ label: op, value: op }))}
             onChange={(op) => update(items.map((current, currentIndex) => currentIndex === index ? { ...current, op } : current))}
           />
-          <Input
+          {fieldTypes[item.field] === 'number' && ['=', '!=', '>', '>=', '<', '<='].includes(item.op) ? <InputNumber
+            size="small" className="w-full" placeholder="比较值"
+            value={item.value === '' || item.value == null ? null : Number(item.value)}
+            onChange={value => update(items.map((current, currentIndex) => currentIndex === index ? { ...current, value } : current))}
+          /> : <Input
             size="small"
             placeholder="比较值"
             value={String(item.value ?? '')}
             onChange={(event) => update(items.map((current, currentIndex) => (
               currentIndex === index ? { ...current, value: event.target.value } : current
             )))}
-          />
+          />}
         </div>
       ))}
       <Button size="small" type="dashed" onClick={() => update([...items, emptyItem(fields[0] || '')])}>

@@ -11,6 +11,7 @@ import { flattenNodeFields } from '../../../components/node-settings';
 import { FlowDesigner } from '../../../components/flow-designer';
 import { publishDesignedWorkflow } from '../../../components/publish-designed-workflow';
 import { FormDesigner } from '../../../components/form-designer';
+import { WorkflowPreview } from '../../../components/workflow-preview';
 import { FormRenderer } from '../../../components/form-renderer';
 import { DEMO_FLOW, type FlowDesign } from '../../../constants/demo-flow';
 import type { FormFieldSchema, FormSchema } from '../../../types';
@@ -205,11 +206,7 @@ export default function WorkflowDesignerPage() {
         />
       ) : null}
       {preview ? (
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
-          <div className="mx-auto max-w-4xl rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-            <FormRenderer schema={schema} fetchContext={{ preview: true, schema }} onSubmit={() => undefined} />
-          </div>
-        </div>
+        <WorkflowPreview schema={schema} design={design} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 pb-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
           <Tabs

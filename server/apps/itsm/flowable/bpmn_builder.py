@@ -72,7 +72,20 @@ def build_bpmn(payload: dict, process_id: str = "itsm_process") -> str:
     errors = validate_design(payload)
     if errors:
         raise BpmnBuildError("；".join(errors))
-    document = DesignDocument.model_validate(payload)
+    nodes = [dict(node) for node in payload["nodes"]]
+    edges = [dict(edge) for edge in payload["edges"]]
+    for node in list(nodes):
+        if node.get("type") != "manual_trigger":
+            continue
+        action_id = node["id"] + "__action"
+        if any(item["id"] == action_id for item in nodes):
+            raise BpmnBuildError("手动触发的执行节点标识冲突")
+        nodes.append({**node, "id": action_id, "type": "auto"})
+        for edge in edges:
+            if edge["from"] == node["id"]:
+                edge["from"] = action_id
+        edges.append({"from": node["id"], "to": action_id})
+    document = DesignDocument.model_validate({**payload, "nodes": nodes, "edges": edges})
     ET.register_namespace("", BPMN)
     ET.register_namespace("flowable", FLOWABLE)
     ET.register_namespace("itsm", ITSM)
@@ -84,6 +97,8 @@ def build_bpmn(payload: dict, process_id: str = "itsm_process") -> str:
     for index, edge in enumerate(document.edges):
         if edge.default:
             gateway = process.find(f"{{{BPMN}}}exclusiveGateway[@id='{edge.from_}']")
+            if gateway is None:
+                gateway = process.find(f"{{{BPMN}}}inclusiveGateway[@id='{edge.from_}']")
             if gateway is not None:
                 gateway.set("default", f"flow_{index}_{edge.from_}_{edge.to}")
     for index, edge in enumerate(document.edges):
@@ -101,9 +116,9 @@ _NODE_ALIAS = {
     "notice": "cc",
     "branch": "exclusive",
     "branch_condition": "exclusive",
-    "parallel_condition": "parallel",
-    "converge": "parallel",
-    "manual_trigger": "auto",
+    "parallel_condition": "inclusive",
+    "converge": "inclusive",
+    "manual_trigger": "handle",
     "rule_trigger": "auto",
     "auto_dispatch": "auto",
     "subprocess": "call",
@@ -124,11 +139,14 @@ def _append_node(process, node):
     if node.type == "exclusive":
         ET.SubElement(process, f"{{{BPMN}}}exclusiveGateway", {"id": node.id})
         return
+    if node.type == "inclusive":
+        ET.SubElement(process, f"{{{BPMN}}}inclusiveGateway", {"id": node.id})
+        return
     if node.type == "parallel":
         ET.SubElement(process, f"{{{BPMN}}}parallelGateway", {"id": node.id})
         return
     if node.type == "call":
-        called = str((node.auto or {}).get("process_key") or node.name or node.id)
+        called = str((node.auto or {}).get("process_key") or node.name or node.id).strip()
         ET.SubElement(
             process,
             f"{{{BPMN}}}callActivity",

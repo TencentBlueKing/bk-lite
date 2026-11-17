@@ -80,7 +80,7 @@ class TicketService:
         context = {"initiator": creator, "form": form_data}
         variables = {}
         for node in (workflow_version.design or {}).get("nodes") or []:
-            if node.get("type") not in {"approval", "handle", "manual", "subprocess_handle"}:
+            if node.get("type") not in {"approval", "handle", "manual", "manual_trigger", "subprocess_handle"}:
                 continue
             try:
                 people = resolver.resolve(node, context)

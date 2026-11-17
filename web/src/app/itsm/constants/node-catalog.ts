@@ -41,7 +41,7 @@ export const NODE_GROUPS: Array<{ id: string; name: string; items: CatalogNode[]
     id: 'dispatch',
     name: '派单',
     items: [
-      { type: 'manual_trigger', label: '手动触发', group: 'dispatch' },
+      { type: 'manual_trigger', label: '手动触发', group: 'dispatch', actions: ['submit', 'save'] },
       { type: 'rule_trigger', label: '规则组触发', group: 'dispatch' },
       { type: 'auto_dispatch', label: '自动派单', group: 'dispatch' },
     ],

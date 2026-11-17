@@ -1,9 +1,9 @@
 'use client';
 
-import { Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, type Node, type NodeProps } from '@xyflow/react';
+import { Background, Controls, MiniMap, useReactFlow, Handle, Position, ReactFlow, ReactFlowProvider, type Node, type NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { Button, Modal, Popover, Tag, Tooltip } from 'antd';
+import { Button, Modal, Popover, Select, Tag, Tooltip } from 'antd';
 import { AimOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
 import { NodeGlyph } from './node-glyph';
 import { NODE_PALETTE } from '../constants/node-catalog';
@@ -107,11 +107,24 @@ const withPassedGateways = (nodes: TicketProgressNode[], edges: TicketProgressEd
   return nodes.map((node) => ({ ...node, state: state.get(node.id) || node.state, outcome: state.get(node.id) !== node.state ? 'passed' : node.outcome }));
 };
 
+function FlowNavigation({ nodes, focusIds }: { nodes: TicketProgressNode[]; focusIds: string[] }) {
+  const { fitView } = useReactFlow();
+  const focus = (ids: string[]) => { void fitView({ nodes: ids.map(id => ({ id })), minZoom: .75, maxZoom: 1, padding: .3, duration: 250 }); };
+  return <div className="flex shrink-0 items-center gap-2 pb-2">
+    <Select aria-label="定位流程节点" placeholder="搜索并定位节点" className="w-64" showSearch optionFilterProp="label" value={null}
+      options={nodes.map(node => ({ value: node.id, label: node.name }))} onChange={id => focus([id])} />
+    <Button size="small" aria-label="定位当前节点" onClick={() => focus(focusIds)} icon={<AimOutlined />}>定位当前</Button>
+    <Button size="small" aria-label="查看全图" onClick={() => { void fitView({ minZoom: .1, maxZoom: 1, padding: .15, duration: 250 }); }}>全图</Button>
+    <span className="text-xs text-[var(--color-text-3)]">拖动画布或缩放查看</span>
+  </div>;
+}
+
 export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[]; edges: TicketProgressEdge[] }) {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const prepared = useMemo(() => withPassedGateways(nodes, edges), [nodes, edges]);
   const current = prepared.filter((node) => node.state === 'current');
+  const focusIds = current.length ? current.map(node => node.id) : prepared.slice(0, 1).map(node => node.id);
   const flowNodes = useMemo(() => layout(prepared, edges), [prepared, edges]);
   const flowEdges = edges.filter((edge) => edge.from && edge.to).map((edge) => {
     const source = prepared.find((node) => node.id === edge.from);
@@ -124,11 +137,11 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
       style: { stroke: taken ? 'var(--color-primary)' : 'var(--color-border)' },
     };
   });
-  const canvas = <ReactFlowProvider><ReactFlow key={current.map((node) => node.id).join(',')}
+  const canvas = <ReactFlowProvider><div className="flex h-full flex-col"><FlowNavigation nodes={prepared} focusIds={focusIds} /><div className="min-h-0 flex-1"><ReactFlow key={current.map((node) => node.id).join(',')}
     nodes={flowNodes} edges={flowEdges} nodeTypes={NODE_TYPES}
-    minZoom={0.1} fitView fitViewOptions={{ nodes: current.length ? current.map((node) => ({ id: node.id })) : undefined, maxZoom: 1, padding: 0.5 }}
+    minZoom={0.1} fitView fitViewOptions={{ nodes: focusIds.map(id => ({ id })), minZoom: .75, maxZoom: 1, padding: .3 }}
     nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}
-  ><Background /><Controls showInteractive={false} /></ReactFlow></ReactFlowProvider>;
+  ><Background /><Controls showFitView={false} showInteractive={false} /><MiniMap pannable zoomable nodeColor="var(--color-primary)" maskColor="var(--color-fill-2)" bgColor="var(--color-bg)" /></ReactFlow></div></div></ReactFlowProvider>;
   return (
     <div className="relative">
       <Button onClick={() => setOpen(!open)} size="small" aria-label="流程图" aria-expanded={open} className="!absolute !-top-7 !left-1/2 !z-30 !flex !-translate-x-1/2 !items-center !gap-1 !bg-[var(--color-bg)]">
@@ -139,7 +152,7 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
           {(['waiting', 'passed', 'accepted', 'rejected', 'current'] as const).map((state) => <span key={state} className="flex items-center gap-1"><span className={`h-3 w-4 rounded-sm p-[1.5px] ${FRAME_CLASS} ${STATE_CLASS[state]}`}><span className="block h-full w-full rounded-[1px] bg-[var(--color-bg)]" /></span>{STATE_LABEL[state]}</span>)}
         </div>
         <div className="absolute right-3 top-3 z-10"><Tooltip title="全屏查看流程"><Button aria-label="全屏查看流程" size="small" icon={<ZoomInOutlined />} onClick={() => setFullscreen(true)} /></Tooltip></div>
-        <div className="h-80 max-h-[35vh]">{!fullscreen ? canvas : null}</div>
+        <div className="h-96 max-h-[42vh] pt-8">{!fullscreen ? canvas : null}</div>
       </section> : null}
       <Modal title="工单流程" open={fullscreen} onCancel={() => setFullscreen(false)} footer={null} width="100vw" className="!top-0 !max-w-none !pb-0" destroyOnHidden>
         <div className="h-[calc(100dvh-110px)]">{fullscreen ? canvas : null}</div>

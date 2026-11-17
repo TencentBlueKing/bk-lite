@@ -368,6 +368,12 @@ def publish_workflow(request, workflow_id):
             "form_schema": schema,
             "settings": {**version.design.get("settings", {}), "fields": field_keys(schema.get("fields", []))},
         }
+    from apps.itsm.services.workflow.dependencies import validate_subprocesses
+
+    try:
+        validate_subprocesses(version.design, workflow)
+    except ValueError as exc:
+        return WebUtils.response_error(str(exc))
     try:
         xml = build_bpmn(version.design, workflow.key)
     except BpmnBuildError as exc:

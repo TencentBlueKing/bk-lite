@@ -63,6 +63,8 @@ def execute_node(ticket, node):
     if kind == "auto_dispatch":
         variables = TicketService()._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data)
         return {"variables": variables}
+    if kind == "rule_trigger" and not match_when(config.get("when"), ticket.form_data):
+        return {"skipped": True, "reason": "未满足触发条件"}
     if kind not in {"auto", "manual_trigger", "rule_trigger"}:
         raise ValueError("未知自动节点")
     status, detail = run_auto_action(ticket, str(config.get("kind") or ""), config, "system")
@@ -91,6 +93,10 @@ def process_job(client, job):
         try:
             with transaction.atomic():
                 node = _find_node(ticket.workflow_version.design, node_id=job.get("elementId"))
+                if not node and str(job.get("elementId") or "").endswith("__action"):
+                    original = _find_node(ticket.workflow_version.design, node_id=job["elementId"][:-8])
+                    if original.get("type") == "manual_trigger":
+                        node = original
                 result = execute_node(ticket, node)
                 execution.status = "executed"
                 execution.detail = {"job_id": job_id, "node_id": node.get("id"), "result": result}

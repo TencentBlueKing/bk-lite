@@ -37,8 +37,8 @@ import {
   type FlowDesign,
 } from '../constants/demo-flow';
 import { NODE_GROUPS, NODE_PALETTE, nodeLabelId } from '../constants/node-catalog';
-import { NodeSettings } from './node-settings';
-import type { FormFieldSchema } from '../types';
+import { NodeSettings, flattenNodeFields } from './node-settings';
+import type { ConditionGroup, ConditionItem, FormFieldSchema } from '../types';
 import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
@@ -49,7 +49,7 @@ import { useTranslation } from '@/utils/i18n';
 const NODE_WIDTH = 148;
 const NODE_HEIGHT = 56;
 const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'branch_condition', 'exclusive', 'converge']);
-const BRANCH_TYPES = new Set(['branch', 'branch_condition', 'exclusive']);
+const BRANCH_TYPES = new Set(['branch', 'branch_condition', 'parallel_condition', 'exclusive']);
 
 type ItsmFlowNodeType = Node<CanvasNodeData, 'itsm'>;
 
@@ -155,6 +155,7 @@ export function FlowDesigner(props: FlowDesignerProps) {
 }
 
 function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds = [], onChange }: FlowDesignerProps) {
+  const fieldTypes = useMemo(() => Object.fromEntries(flattenNodeFields(formFields).map(field => [field.key, field.type])), [formFields]);
   const { t } = useTranslation();
   const seeded = design?.nodes?.length ? canvasFromDesign(design) : INITIAL;
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>(
@@ -508,10 +509,12 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
               <span className="text-xs font-medium text-[var(--color-text-2)]">节点名称</span>
               <Input value={selected.data.label} onChange={(event) => patchSelected({ label: event.target.value })} />
             </div>
-            {['auto', 'notice', 'cc', 'decision', 'knowledge', 'subprocess', 'call'].includes(selected.data.nodeType) && (
+            {['auto', 'manual_trigger', 'rule_trigger', 'notice', 'cc', 'decision', 'knowledge', 'subprocess', 'subprocess_submit', 'call'].includes(selected.data.nodeType) && (
               <div className="flex flex-col gap-2 rounded border border-[var(--color-border)] p-3">
-                {selected.data.nodeType === 'auto' && <>
-                  <span className="text-xs">自动动作</span>
+                {['auto', 'manual_trigger', 'rule_trigger'].includes(selected.data.nodeType) && <>
+                  <span className="text-xs">执行动作</span>
+                  {selected.data.nodeType === 'manual_trigger' && <span className="text-xs text-[var(--color-text-3)]">处理人提交确认后执行动作；保存不会执行。</span>}
+                  {selected.data.nodeType === 'rule_trigger' && <><span className="text-xs">触发条件（不设置则始终执行）</span><ConditionBuilder fields={fields} fieldTypes={fieldTypes} value={selected.data.auto?.when as ConditionGroup | ConditionItem | undefined} onChange={when => patchSelected({ auto: { ...selected.data.auto, when } })} /></>}
                   <Select value={String(selected.data.auto?.kind || 'table')} options={[{ value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' }, { value: 'integration', label: '集成 · API / Python' }]} onChange={(kind) => patchSelected({ auto: { ...selected.data.auto, kind } })} />
                   {selected.data.auto?.kind === 'integration' ? <IntegrationNodeSettings key={selected.id} config={selected.data.auto} onChange={auto => patchSelected({ auto })} /> : <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />}
                 </>}
@@ -522,16 +525,17 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
                 </>}
                 {selected.data.nodeType === 'decision' && <Input placeholder="决策表编号" value={String(selected.data.auto?.decision_id || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, decision_id: event.target.value } })} />}
                 {selected.data.nodeType === 'knowledge' && <Input placeholder="知识正文字段" value={String(selected.data.auto?.content_field || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, content_field: event.target.value } })} />}
-                {['subprocess', 'call'].includes(selected.data.nodeType) && <Input placeholder="子流程标识" value={String(selected.data.auto?.process_key || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, process_key: event.target.value } })} />}
+                {['subprocess', 'subprocess_submit', 'call'].includes(selected.data.nodeType) && <Input placeholder="子流程标识" value={String(selected.data.auto?.process_key || '')} onChange={(event) => patchSelected({ auto: { ...selected.data.auto, process_key: event.target.value } })} />}
               </div>
             )}
-            {['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(selected.data.nodeType) ? (
+            {['approval', 'handle', 'manual', 'manual_trigger', 'submit', 'subprocess_handle'].includes(selected.data.nodeType) ? (
               <NodeSettings key={selected.id} data={selected.data} fields={formFields} onChange={patchSelected} />
             ) : null}
             <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
               <span className="text-xs font-semibold text-[var(--color-text-2)]">流转条件</span>
               <ConditionBuilder
                 fields={fields}
+                fieldTypes={fieldTypes}
                 onChange={(condition) => {
                   patchSelected({ condition });
                   setEdges((current) => {
