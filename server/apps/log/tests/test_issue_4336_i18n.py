@@ -63,6 +63,7 @@ KEYS = (
     "error.scope_exclusive",
     "error.generation_published",
     "error.channel_query_failed",
+    "error.collect_config_child_or_base",
 )
 
 
@@ -103,6 +104,8 @@ def test_rule_limit_keeps_the_count():
     assert log_text("en", "error.instance_rule_limit", count=20) == "A collect instance can have at most 20 rules"
     assert log_text("zh-Hans", "error.instance_rule_limit", count=20) == "单个采集实例最多 20 条规则"
     assert log_text(None, "error.channel_query_failed") == "通知通道查询失败"
+    assert log_text("en", "error.collect_config_child_or_base") == "Provide a child or base configuration"
+    assert log_text("zh-Hans", "error.collect_config_child_or_base") == "需要提供 child 或 base 配置"
 
 
 def test_topn_message_follows_request_locale():
