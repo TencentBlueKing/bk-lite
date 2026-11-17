@@ -47,7 +47,7 @@ def _optional_positive_id(raw, param_name):
     return value
 
 
-def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=False):
+def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=False, metric_units=None):
     metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
     metric_name = ""
     if metric_id and metric_names is not None:
@@ -55,12 +55,16 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
     metric_name_list = []
     if metric_names is not None:
         metric_name_list = [metric_names[item] for item in PolicyGroupService.metric_ids_for_policy(rule.policy) if item in metric_names]
+    catalog_unit = ""
+    if metric_id and metric_units is not None:
+        catalog_unit = metric_units.get(metric_id) or ""
     query = rule.policy.query_condition if isinstance(rule.policy.query_condition, dict) else {}
     condition_thresholds = {}
     if query.get("type") == "multi":
         condition_thresholds = {item.get("ref"): item.get("threshold") or [] for item in query.get("queries") or [] if isinstance(item, dict)}
     plugin = rule.plugin
     counts = alert_counts or {}
+    policy_unit = rule.policy.threshold_unit or rule.policy.calculation_unit or rule.policy.metric_unit or ""
     return {
         "id": rule.id,
         "name": rule.name,
@@ -72,6 +76,10 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "query_type": query.get("type") or "",
         "condition_thresholds": condition_thresholds,
         "threshold": rule.policy.threshold,
+        "unit": policy_unit or catalog_unit,
+        "threshold_unit": rule.policy.threshold_unit or "",
+        "calculation_unit": rule.policy.calculation_unit or "",
+        "metric_unit": rule.policy.metric_unit or "",
         "alert_name": rule.policy.alert_name or "",
         "trigger_count": rule.policy.trigger_count,
         "recovery_condition": rule.policy.recovery_condition,
@@ -83,14 +91,25 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
     }
 
 
-def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None, alert_counts=None):
+def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None, alert_counts=None, metric_units=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
     loaded_rules = list(group.rules.select_related("plugin", "policy"))
     visible_rules = PolicyGroupService.filter_rules_for_access(loaded_rules, plugin_id=plugin_id, collect_type=collect_type)
     carrier_ids = no_data_carrier_rule_ids(loaded_rules)
-    rules = [_serialize_rule(rule, metric_names, alert_counts, no_data_carrier=rule.id in carrier_ids) for rule in visible_rules]
+    if metric_units is None:
+        metric_units = PolicyGroupService.metric_units_for_policies([rule.policy for rule in loaded_rules])
+    rules = [
+        _serialize_rule(
+            rule,
+            metric_names,
+            alert_counts,
+            no_data_carrier=rule.id in carrier_ids,
+            metric_units=metric_units,
+        )
+        for rule in visible_rules
+    ]
     counts = alert_counts or {}
     open_alert_count = sum(counts.get(rule.policy_id, 0) for rule in loaded_rules)
     notice = _group_notice(loaded_rules)
@@ -175,6 +194,7 @@ def _group_enable(rules):
 def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
     policies = [rule.policy for group in groups for rule in group.rules.all()]
     metric_names = PolicyGroupService.metric_names_for_policies(policies)
+    metric_units = PolicyGroupService.metric_units_for_policies(policies)
     alert_counts = PolicyGroupService.open_alert_counts([policy.id for policy in policies])
     data = []
     for group in groups:
@@ -188,6 +208,7 @@ def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
                 plugin_id=plugin_id,
                 collect_type=collect_type,
                 alert_counts=alert_counts,
+                metric_units=metric_units,
             )
         )
     return data

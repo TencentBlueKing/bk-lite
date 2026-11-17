@@ -1242,6 +1242,15 @@ class PolicyGroupService:
         return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
 
     @staticmethod
+    def metric_units_for_policies(policies):
+        ids = []
+        for policy in policies:
+            ids.extend(PolicyGroupService.metric_ids_for_policy(policy))
+        if not ids:
+            return {}
+        return {row["id"]: row["unit"] or "" for row in Metric.objects.filter(id__in=ids).values("id", "unit")}
+
+    @staticmethod
     def filter_rules_for_access(rules, *, plugin_id=None, collect_type=None):
         """接入页只展示当前插件的规则；不传筛选时返回全部，供策略组管理页使用。"""
         items = list(rules)

@@ -679,6 +679,38 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]
 
 
+def test_serialize_rule_reads_metric_catalog_unit_when_policy_units_empty():
+    monitor_object = _object()
+    plugin = _plugin(monitor_object, "Host")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, plugin, "CPU")],
+    )
+    rule = group.rules.select_related("policy", "plugin").get()
+    policy = rule.policy
+    metric = Metric.objects.get(id=PolicyGroupService.metric_id_for_policy(policy))
+    metric.unit = "percent"
+    metric.save(update_fields=["unit"])
+    policy.metric_unit = ""
+    policy.calculation_unit = ""
+    policy.threshold_unit = ""
+    policy.save(update_fields=["metric_unit", "calculation_unit", "threshold_unit"])
+
+    units = PolicyGroupService.metric_units_for_policies([policy])
+    payload = _serialize_rule(rule, metric_units=units)
+    assert units[metric.id] == "percent"
+    assert payload["unit"] == "percent"
+    assert payload["metric_unit"] == ""
+    assert payload["threshold_unit"] == ""
+
+    policy.threshold_unit = "kibibytes"
+    policy.save(update_fields=["threshold_unit"])
+    payload = _serialize_rule(rule, metric_units=units)
+    assert payload["unit"] == "kibibytes"
+
+
 def test_copy_keeps_the_current_rule_after_the_template_is_gone():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")
