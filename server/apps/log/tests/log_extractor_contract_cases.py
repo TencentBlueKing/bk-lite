@@ -172,4 +172,283 @@ CONTRACT_CASES = [
         "expected": {"payload": "not-json"},
         "status": "failed",
     },
+    {
+        "name": "grok_atomic_and_nested_paths",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{IP:client} %{WORD:http.request.method} %{URIPATHPARAM:url.path}"},
+            "delete_source": False,
+        },
+        "event": {"message": "192.168.1.10 GET /search?q=1"},
+        "expected": {
+            "message": "192.168.1.10 GET /search?q=1",
+            "client": "192.168.1.10",
+            "http": {"request": {"method": "GET"}},
+            "url": {"path": "/search?q=1"},
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_composite_common_apache",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{COMMONAPACHELOG}"},
+            "delete_source": False,
+        },
+        "event": {"message": '127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326'},
+        "expected": {
+            "message": '127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326',
+            "source": {"address": "127.0.0.1"},
+            "user": {"name": "frank"},
+            "log_time": "10/Oct/2000:13:55:36 -0700",
+            "http": {
+                "request": {"method": "GET"},
+                "version": "1.0",
+                "response": {"status_code": "200", "body": {"bytes": "2326"}},
+            },
+            "url": {"original": "/apache_pb.gif"},
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_optional_group_absent",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{SYSLOGBASE}"},
+            "delete_source": False,
+        },
+        "event": {"message": "Nov 16 15:04:05 web-01 kernel: Out of memory"},
+        "expected": {
+            "message": "Nov 16 15:04:05 web-01 kernel: Out of memory",
+            "log_time": "Nov 16 15:04:05",
+            "host": {"hostname": "web-01"},
+            "process": {"name": "kernel"},
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_unmatched_preserves_event",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{IP:client}"},
+            "delete_source": False,
+        },
+        "event": {"message": "not an ip line"},
+        "expected": {"message": "not an ip line"},
+        "status": "failed",
+    },
+    {
+        "name": "grok_delete_source",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "payload",
+            "condition": {},
+            "config": {"pattern": "%{WORD:event.action}"},
+            "delete_source": True,
+        },
+        "event": {"payload": "login"},
+        "expected": {"event": {"action": "login"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_non_string_source_is_skipped",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "payload",
+            "condition": {},
+            "config": {"pattern": "%{WORD:event.action}"},
+            "delete_source": False,
+        },
+        "event": {"payload": 12},
+        "expected": {"payload": 12},
+        "status": "skipped",
+    },
+    {
+        "name": "grok_reads_previous_rule_output",
+        "drafts": [
+            {
+                "extractor_type": "grok",
+                "source_field": "message",
+                "condition": {},
+                "config": {"pattern": "%{WORD:event.action}"},
+                "delete_source": False,
+            },
+            {
+                "extractor_type": "grok",
+                "source_field": "event.action",
+                "condition": {},
+                "config": {"pattern": "%{WORD:event.copied}"},
+                "delete_source": False,
+            },
+        ],
+        "event": {"message": "login"},
+        "expected": {"message": "login", "event": {"action": "login", "copied": "login"}},
+        "statuses": ["success", "success"],
+    },
+    {
+        "name": "grok_unanchored_compressed_ipv6",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{IPV6:client.ip}"},
+            "delete_source": False,
+        },
+        "event": {"message": "connect 2001:db8::1 port"},
+        "expected": {"message": "connect 2001:db8::1 port", "client": {"ip": "2001:db8::1"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_nats_ipv4_endpoint_unchanged",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {
+                "pattern": (
+                    r"\[%{NOTSPACE:container.name}\] \[%{INT:process.pid}\] "
+                    r"\[%{WORD:log.level}\] %{IP:client.ip}:%{INT:client.port} "
+                    r"- cid:%{INT:nats.cid} - %{GREEDYDATA:detail}"
+                )
+            },
+            "delete_source": False,
+        },
+        "event": {"message": "[compose-nats-1] [1] [ERR] 10.10.90.117:33290 - cid:6376277 - TLS handshake error: EOF"},
+        "expected": {
+            "message": "[compose-nats-1] [1] [ERR] 10.10.90.117:33290 - cid:6376277 - TLS handshake error: EOF",
+            "container": {"name": "compose-nats-1"},
+            "process": {"pid": "1"},
+            "log": {"level": "ERR"},
+            "client": {"ip": "10.10.90.117", "port": "33290"},
+            "nats": {"cid": "6376277"},
+            "detail": "TLS handshake error: EOF",
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_iso8601_fractional_seconds",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{TIMESTAMP_ISO8601:event.created}"},
+            "delete_source": False,
+        },
+        "event": {"message": "at 2026-11-16T15:04:05.123+08:00 done"},
+        "expected": {
+            "message": "at 2026-11-16T15:04:05.123+08:00 done",
+            "event": {"created": "2026-11-16T15:04:05.123+08:00"},
+        },
+        "status": "success",
+    },
+    {
+        "name": "grok_iso8601_without_fraction_stays_complete",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{TIMESTAMP_ISO8601:event.created}"},
+            "delete_source": False,
+        },
+        "event": {"message": "at 2026-11-16T15:04:05Z done"},
+        "expected": {"message": "at 2026-11-16T15:04:05Z done", "event": {"created": "2026-11-16T15:04:05Z"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_loglevel_does_not_match_inside_a_word",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{LOGLEVEL:log.level}"},
+            "delete_source": False,
+        },
+        "event": {"message": "informational"},
+        "expected": {"message": "informational"},
+        "status": "failed",
+    },
+    {
+        "name": "grok_loglevel_matches_nats_abbreviation",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": r"\[%{LOGLEVEL:log.level}\]"},
+            "delete_source": False,
+        },
+        "event": {"message": "ready [INF] now"},
+        "expected": {"message": "ready [INF] now", "log": {"level": "INF"}},
+        "status": "success",
+    },
+    {
+        "name": "grok_data_alone_is_no_match",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{DATA:text}"},
+            "delete_source": False,
+        },
+        "event": {"message": "sample text"},
+        "expected": {"message": "sample text"},
+        "status": "failed",
+    },
+    {
+        "name": "grok_quoted_empty_data_writes_empty_string",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": '"%{DATA:text}"'},
+            "delete_source": False,
+        },
+        "event": {"message": 'say "" now'},
+        "expected": {"message": 'say "" now', "text": ""},
+        "status": "success",
+    },
+    {
+        "name": "grok_nginx_dash_body_bytes_are_omitted",
+        "draft": {
+            "extractor_type": "grok",
+            "source_field": "message",
+            "condition": {},
+            "config": {"pattern": "%{COMBINEDAPACHELOG}"},
+            "delete_source": False,
+        },
+        "event": {
+            "message": (
+                "127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "
+                '"GET /apache_pb.gif HTTP/1.0" 200 - '
+                '"http://www.example.com/start.html" '
+                '"Mozilla/4.08 [en] (Win98; I ;Nav)"'
+            )
+        },
+        "expected": {
+            "message": (
+                "127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] "
+                '"GET /apache_pb.gif HTTP/1.0" 200 - '
+                '"http://www.example.com/start.html" '
+                '"Mozilla/4.08 [en] (Win98; I ;Nav)"'
+            ),
+            "source": {"address": "127.0.0.1"},
+            "user": {"name": "frank"},
+            "log_time": "10/Oct/2000:13:55:36 -0700",
+            "http": {
+                "request": {"method": "GET", "referrer": "http://www.example.com/start.html"},
+                "version": "1.0",
+                "response": {"status_code": "200"},
+            },
+            "url": {"original": "/apache_pb.gif"},
+            "user_agent": {"original": "Mozilla/4.08 [en] (Win98; I ;Nav)"},
+        },
+        "status": "success",
+    },
 ]

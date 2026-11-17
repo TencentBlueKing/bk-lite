@@ -12,16 +12,24 @@ from apps.log.services.log_extractor.semantics import execute_rules, normalize_r
 from apps.log.tests.log_extractor_contract_cases import CONTRACT_CASES
 
 
+def _case_drafts(case):
+    return case["drafts"] if "drafts" in case else [case["draft"]]
+
+
+def _case_statuses(case):
+    return case["statuses"] if "statuses" in case else [case["status"]]
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize("case", CONTRACT_CASES, ids=lambda case: case["name"])
 def test_python_preview_uses_shared_contract_cases(case):
     event = {"instance_id": case["name"], **case["event"]}
     expected = {"instance_id": case["name"], **case["expected"]}
 
-    result = execute_rules(event, [normalize_rule(case["draft"])])
+    result = execute_rules(event, [normalize_rule(draft) for draft in _case_drafts(case)])
 
     assert result.event == expected
-    assert result.results[0].status == case["status"]
+    assert [item.status for item in result.results] == _case_statuses(case)
 
 
 @pytest.mark.integration
@@ -32,18 +40,21 @@ def test_vector_048_runs_shared_contract_cases():
     records = []
     events = []
     expected = []
-    for index, case in enumerate(CONTRACT_CASES):
-        records.append(
-            SimpleNamespace(
-                **{
-                    "id": index + 1,
-                    "collect_instance_id": case["name"],
-                    "sort_order": 0,
-                    "target_field": None,
-                    **case["draft"],
-                }
+    record_id = 1
+    for case in CONTRACT_CASES:
+        for offset, draft in enumerate(_case_drafts(case)):
+            records.append(
+                SimpleNamespace(
+                    **{
+                        "id": record_id,
+                        "collect_instance_id": case["name"],
+                        "sort_order": offset,
+                        "target_field": None,
+                        **draft,
+                    }
+                )
             )
-        )
+            record_id += 1
         events.append({"instance_id": case["name"], **case["event"]})
         expected.append({"instance_id": case["name"], **case["expected"]})
     content = compile_system_vector_config(records)
@@ -235,3 +246,108 @@ def test_vector_048_uses_central_receive_time_and_preserves_upstream_timestamp()
     for event in actual:
         server_timestamp = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
         assert started_at <= server_timestamp <= finished_at
+
+
+def _run_vector(args, payload):
+    return subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--entrypoint",
+            "vector",
+            "bk-lite.tencentcloudcr.com/bklite/timberio/vector:0.48.0-debian",
+            *args,
+        ],
+        check=False,
+        capture_output=True,
+        input=payload,
+        text=True,
+        timeout=180,
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_vector_048_validates_and_runs_grok_pattern_library():
+    if not shutil.which("docker"):
+        pytest.skip("Docker 不可用")
+    from apps.log.services.log_extractor.grok_library import GROK_PATTERNS
+
+    records = []
+    events = []
+    expected = []
+    for index, pattern in enumerate(GROK_PATTERNS, start=1):
+        source = f"%{{{pattern.name}}}" if pattern.composite else f"^%{{{pattern.name}:value}}$"
+        records.append(
+            SimpleNamespace(
+                id=index,
+                collect_instance_id=pattern.name,
+                sort_order=0,
+                extractor_type="grok",
+                source_field="message",
+                target_field=None,
+                condition={},
+                config={"pattern": source},
+                delete_source=False,
+            )
+        )
+        event = {"instance_id": pattern.name, "message": pattern.example}
+        events.append(event)
+        preview = execute_rules(
+            dict(event),
+            [
+                normalize_rule(
+                    {
+                        "extractor_type": "grok",
+                        "source_field": "message",
+                        "condition": {},
+                        "config": {"pattern": source},
+                        "delete_source": False,
+                    }
+                )
+            ],
+        )
+        expected.append(preview.event)
+    content = compile_system_vector_config(records)
+    validated = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "-e",
+            "VECTOR_NATS_SERVERS=nats://example:4222",
+            "-e",
+            "VECTOR_NATS_TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt",
+            "-e",
+            "VECTOR_NATS_TLS_ENABLED=false",
+            "-e",
+            "NATS_ADMIN_USERNAME=test",
+            "-e",
+            "NATS_ADMIN_PASSWORD=test",
+            "-e",
+            "VECTOR_VICTORIA_LOGS_URL=http://example:9428",
+            "--entrypoint",
+            "vector",
+            "bk-lite.tencentcloudcr.com/bklite/timberio/vector:0.48.0-debian",
+            "validate",
+            "--no-environment",
+            "--config-yaml",
+            "/dev/stdin",
+        ],
+        check=False,
+        capture_output=True,
+        input=content,
+        text=True,
+        timeout=180,
+    )
+    assert validated.returncode == 0, validated.stderr
+    source = yaml.safe_load(content)["transforms"]["log_extractors"]["source"].replace("$$", "$")
+    completed = _run_vector(["vrl", source, "--input", "/dev/stdin", "--print-object"], "".join(json.dumps(event) + "\n" for event in events))
+    assert completed.returncode == 0, completed.stderr
+    actual = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
+    mismatches = [pattern.name for pattern, got, want in zip(GROK_PATTERNS, actual, expected) if got != want]
+    assert len(actual) == len(expected)
+    assert mismatches == []

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createIntl, createIntlCache } from 'react-intl';
 import {
   EXTRACTOR_CONDITION_OPERATORS,
   buildInstanceExtractorPath,
@@ -18,6 +19,8 @@ import {
   flattenExtractorPaths,
   formatExtractorPreviewValue,
   getExtractorConditionSummary,
+  insertGrokPatternAtCursor,
+  insertTextAtCursor,
   moveExtractorItem,
   normalizeExtractorCondition,
   normalizeExtractorSamples,
@@ -26,6 +29,8 @@ import {
   resolveExtractorCreateTarget,
   restoreExtractorEventShape,
   serializeExtractorCreateHandoff,
+  extractorRuleTargetSummary,
+  serializeGrokExtractorFields,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert
 } from '../src/app/log/(pages)/integration/receive/logExtractorLogic';
@@ -209,6 +214,7 @@ assert.equal(extractorUsesSingleTargetField('copy'), true);
 assert.equal(extractorUsesSingleTargetField('json'), true);
 assert.equal(extractorUsesSingleTargetField('regex'), false);
 assert.equal(extractorUsesSingleTargetField('kv'), false);
+assert.equal(extractorUsesSingleTargetField('grok'), false, 'Grok 不使用单一目标属性');
 assert.equal(extractorRequiresTargetField('copy'), true);
 assert.equal(extractorRequiresTargetField('json'), false);
 assert.deepEqual(
@@ -240,12 +246,17 @@ const drawerSource = readFileSync(
   ),
   'utf8'
 );
+type LogExtractorLocaleFile = {
+  log: {
+    extractor: Record<string, string | Record<string, string>>;
+  };
+};
 const zhLocale = JSON.parse(
   readFileSync(new URL('../src/app/log/locales/zh.json', import.meta.url), 'utf8')
-) as { log: { extractor: Record<string, string> } };
+) as LogExtractorLocaleFile;
 const enLocale = JSON.parse(
   readFileSync(new URL('../src/app/log/locales/en.json', import.meta.url), 'utf8')
-) as { log: { extractor: Record<string, string> } };
+) as LogExtractorLocaleFile;
 
 assert.match(
   drawerSource,
@@ -395,6 +406,7 @@ assert.match(
 );
 assert.equal(extractorTypeLabelKey('copy'), 'log.extractor.typeCopy');
 assert.equal(extractorTypeLabelKey('regex_replace'), 'log.extractor.typeRegexReplace');
+assert.equal(extractorTypeLabelKey('grok'), 'log.extractor.typeGrok');
 assert.equal(
   extractorConditionOperatorLabelKey('startswith'),
   'log.extractor.conditionOpStartsWith'
@@ -410,6 +422,11 @@ for (const key of [
   'typeRegex',
   'typeRegexReplace',
   'typeJson',
+  'typeGrok',
+  'grokPattern',
+  'grokPatternExample',
+  'insertGrokPattern',
+  'grokPatternsError',
   'regexNamedGroupHint',
   'kvMappingHint',
   'previewEffect',
@@ -572,6 +589,201 @@ assert.match(
   receivePageSource,
   /consumeExtractorCreateSample\(\{\s*kind: 'instance'/,
   '实例级创建抽屉可回退读取同页跳转留下的样本'
+);
+
+assert.equal(zhLocale.log.extractor.typeGrok, 'Grok');
+assert.equal(enLocale.log.extractor.typeGrok, 'Grok');
+
+const grokCategoryTitles = (locale: LogExtractorLocaleFile) => {
+  const value = locale.log.extractor.grokCategory;
+  assert.equal(typeof value, 'object');
+  assert.ok(value && !Array.isArray(value));
+  return value as Record<string, string>;
+};
+assert.deepEqual(grokCategoryTitles(zhLocale), {
+  common: '通用',
+  number: '数字',
+  network: '网络',
+  path: '路径与 URL',
+  datetime: '日期时间',
+  level: '日志级别与程序',
+  composite: '复合'
+});
+assert.deepEqual(grokCategoryTitles(enLocale), {
+  common: 'Common',
+  number: 'Number',
+  network: 'Network',
+  path: 'Path and URL',
+  datetime: 'Date and time',
+  level: 'Level and program',
+  composite: 'Composite'
+});
+
+const formatCatalogMessage = (message: string) => {
+  const needsFullIcu =
+    message.includes("'{'") ||
+    message.includes("'}'") ||
+    message.includes("'<'") ||
+    message.includes("'>'");
+  const intl = createIntl(
+    { locale: 'en', messages: { example: message } },
+    createIntlCache()
+  );
+  return intl.formatMessage({ id: 'example' }, needsFullIcu ? {} : undefined);
+};
+const visibleGrokExample =
+  '%{IP:client} %{WORD:method} %{URIPATHPARAM:url.path}';
+assert.equal(
+  formatCatalogMessage(String(zhLocale.log.extractor.grokPatternExample)),
+  `例如 ${visibleGrokExample}`
+);
+assert.equal(
+  formatCatalogMessage(String(enLocale.log.extractor.grokPatternExample)),
+  `For example ${visibleGrokExample}`
+);
+
+assert.deepEqual(insertTextAtCursor('abcd', 1, 3, 'X', 1), {
+  value: 'aXd',
+  selectionStart: 2,
+  selectionEnd: 2
+});
+const atomicInsert = insertGrokPatternAtCursor('a b', 2, 2, {
+  name: 'IP',
+  composite: false
+});
+assert.equal(atomicInsert.value, 'a %{IP:}b');
+assert.equal(atomicInsert.selectionStart, 'a %{IP:'.length);
+assert.equal(atomicInsert.selectionEnd, atomicInsert.selectionStart);
+assert.equal(atomicInsert.value[atomicInsert.selectionStart], '}');
+const replacedAtomic = insertGrokPatternAtCursor('hello', 1, 4, {
+  name: 'WORD',
+  composite: false
+});
+assert.equal(replacedAtomic.value, 'h%{WORD:}o');
+assert.equal(replacedAtomic.selectionStart, 'h%{WORD:'.length);
+assert.equal(replacedAtomic.selectionEnd, replacedAtomic.selectionStart);
+const compositeInsert = insertGrokPatternAtCursor('ab', 1, 1, {
+  name: 'COMBINEDAPACHELOG',
+  composite: true
+});
+assert.equal(compositeInsert.value, 'a%{COMBINEDAPACHELOG}b');
+assert.equal(compositeInsert.selectionStart, 'a%{COMBINEDAPACHELOG}'.length);
+assert.equal(compositeInsert.selectionEnd, compositeInsert.selectionStart);
+assert.equal(compositeInsert.value[compositeInsert.selectionStart], 'b');
+const appendedComposite = insertGrokPatternAtCursor('', 0, 0, {
+  name: 'SYSLOGBASE',
+  composite: true
+});
+assert.equal(appendedComposite.value, '%{SYSLOGBASE}');
+assert.equal(appendedComposite.selectionStart, '%{SYSLOGBASE}'.length);
+assert.equal(appendedComposite.selectionEnd, appendedComposite.selectionStart);
+
+const serializedGrok = serializeGrokExtractorFields(visibleGrokExample);
+assert.deepEqual(serializedGrok, {
+  config: { pattern: visibleGrokExample },
+  target_field: null
+});
+assert.deepEqual(Object.keys(serializedGrok), ['config', 'target_field']);
+assert.deepEqual(Object.keys(serializedGrok.config), ['pattern']);
+assert.equal(Object.hasOwn(serializedGrok.config, 'group_mapping'), false);
+assert.equal(serializedGrok.target_field, null);
+
+const grokPattern =
+  '%{IP:client.ip} %{WORD:http.request.method} %{URIPATHPARAM:url.path} extra-token-to-force-truncation-0123456789';
+assert.equal(
+  extractorRuleTargetSummary(
+    {
+      extractor_type: 'grok',
+      target_field: null,
+      config: { pattern: `  ${grokPattern}  ` }
+    },
+    '根字段或源字段'
+  ),
+  `${grokPattern.slice(0, 80)}…`
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    { extractor_type: 'grok', target_field: 'parsed.message', config: { pattern: '   ' } },
+    '根字段或源字段'
+  ),
+  '根字段或源字段'
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    {
+      extractor_type: 'regex',
+      target_field: null,
+      config: { group_mapping: { command: 'event.action' } }
+    },
+    '根字段或源字段'
+  ),
+  'event.action'
+);
+assert.equal(
+  extractorRuleTargetSummary(
+    { extractor_type: 'copy', target_field: 'parsed.message', config: {} },
+    '根字段或源字段'
+  ),
+  'parsed.message'
+);
+
+assert.match(
+  drawerSource,
+  /pattern: typeof config\.pattern === 'string' \? config\.pattern : ''/,
+  '编辑既有规则时应回显 config.pattern，Grok 与正则共用该字段'
+);
+assert.match(
+  drawerSource,
+  /extractor_type === 'grok'[\s\S]{0,220}serializeGrokExtractorFields\(values\.pattern \|\| ''\)/,
+  'Grok 提交必须走只含 pattern 的序列化'
+);
+assert.match(
+  drawerSource,
+  /grokFields\s*\?\s*grokFields\.target_field/,
+  'Grok 的 target_field 必须来自序列化结果'
+);
+assert.doesNotMatch(
+  drawerSource,
+  /extractor_type === 'grok'[\s\S]{0,260}group_mapping/,
+  'Grok 序列化不能带 group_mapping'
+);
+assert.match(
+  drawerSource,
+  /extractorType === 'grok'[\s\S]{0,900}GrokPatternTextArea[\s\S]{0,120}className="font-mono"/,
+  'Grok 模式输入应是等宽多行文本'
+);
+assert.match(drawerSource, /Input\.TextArea/, 'Grok 模式输入使用 Ant Design TextArea');
+assert.match(
+  drawerSource,
+  /showSearch[\s\S]{0,900}Select\.OptGroup/,
+  '插入模式应按分类分组并可搜索'
+);
+assert.match(drawerSource, /log\.extractor\.grokPatternExample/);
+assert.match(drawerSource, /log\.extractor\.insertGrokPattern/);
+assert.match(drawerSource, /log\.extractor\.grokCategory\.\$\{group\.category\}/);
+assert.match(drawerSource, /getGrokPatterns\(/);
+assert.match(drawerSource, /normalizeGrokPatternCatalog\(/);
+assert.match(drawerSource, /extractorRuleTargetSummary\(/);
+assert.match(drawerSource, /log\.extractor\.samplesEmpty/);
+assert.match(
+  drawerSource,
+  /setSampleIndex\(index\);\s*setPreview\(null\);/,
+  '切换样本必须清掉上一条预览'
+);
+assert.match(
+  drawerSource,
+  /setSampleIndex\(merged\.length \? 0 : null\);\s*setPreview\(null\);/,
+  '重新加载样本必须清掉上一条预览'
+);
+
+const integrationApiSource = readFileSync(
+  new URL('../src/app/log/api/integration.ts', import.meta.url),
+  'utf8'
+);
+assert.match(
+  integrationApiSource,
+  /getGrokPatterns[\s\S]{0,280}\/log\/log_extractors\/grok_patterns\//,
+  '模式目录应请求提取器同风格的 grok_patterns 接口'
 );
 
 console.log('log-extractor-interaction tests passed');
