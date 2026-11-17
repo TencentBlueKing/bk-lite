@@ -72,14 +72,18 @@ class ScanSettingSerializer(serializers.ModelSerializer):
         uploaded = self.context.get("offline_catalog_upload")
         catalog_ready = uploaded is not None or bool(self.instance and offline_catalog_is_available(self.instance))
         if offline_enabled and not catalog_ready:
-            raise serializers.ValidationError({"offline_catalog_enabled": "启用离线目录前请先上传离线目录"})
+            raise serializers.ValidationError(
+                {"offline_catalog_enabled": serializer_message(self, "error.offline_catalog_required", "启用离线目录前请先上传离线目录")}
+            )
         request = self.context.get("request")
         timezone_name = getattr(getattr(request, "user", None), "timezone", None)
 
         try:
             ZoneInfo(timezone_name)
         except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
-            raise serializers.ValidationError({"timezone": "当前登录用户未配置有效的 IANA 时区"}) from exc
+            raise serializers.ValidationError(
+                {"timezone": serializer_message(self, "error.timezone_invalid", "当前登录用户未配置有效的 IANA 时区")}
+            ) from exc
         attrs["timezone"] = timezone_name
 
         if schedule_enabled and not self.partial:
@@ -149,15 +153,21 @@ class ScanSettingSerializer(serializers.ModelSerializer):
 
     def _validate_notification_rules(self, enabled: bool, rules) -> list[dict]:
         if not isinstance(rules, list):
-            raise serializers.ValidationError({"notification_rules": "通知规则必须是列表"})
+            raise serializers.ValidationError(
+                {"notification_rules": serializer_message(self, "error.notification_rules_list", "通知规则必须是列表")}
+            )
         if enabled and not rules:
-            raise serializers.ValidationError({"notification_rules": "开启通知后至少添加一种通知方式"})
+            raise serializers.ValidationError(
+                {"notification_rules": serializer_message(self, "error.notification_rules_required", "开启通知后至少添加一种通知方式")}
+            )
         if not rules:
             return []
 
         request = self.context.get("request")
         if request is None:
-            raise serializers.ValidationError({"notification_rules": "无法校验通知规则的授权范围"})
+            raise serializers.ValidationError(
+                {"notification_rules": serializer_message(self, "error.notification_rules_scope", "无法校验通知规则的授权范围")}
+            )
         candidates = load_notification_candidates(request)
         channel_map = {int(item["id"]): item for item in candidates["channels"] if item.get("id") is not None}
         allowed_user_ids = {int(item["id"]) for item in candidates["users"] if item.get("id") is not None}
@@ -165,32 +175,97 @@ class ScanSettingSerializer(serializers.ModelSerializer):
         seen_channel_ids = set()
         for index, rule in enumerate(rules):
             if not isinstance(rule, dict):
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条通知规则格式非法"})
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_rule_invalid",
+                            "第 {index} 条通知规则格式非法",
+                            index=index + 1,
+                        )
+                    }
+                )
             try:
                 channel_id = int(rule.get("channel_id"))
             except (TypeError, ValueError) as exc:
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条通知方式无效"}) from exc
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_channel_invalid",
+                            "第 {index} 条通知方式无效",
+                            index=index + 1,
+                        )
+                    }
+                ) from exc
             if channel_id in seen_channel_ids:
-                raise serializers.ValidationError({"notification_rules": "同一通知方式不能重复添加"})
+                raise serializers.ValidationError(
+                    {"notification_rules": serializer_message(self, "error.notification_channel_duplicate", "同一通知方式不能重复添加")}
+                )
             channel = channel_map.get(channel_id)
             if channel is None:
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条通知方式不存在或无权使用"})
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_channel_forbidden",
+                            "第 {index} 条通知方式不存在或无权使用",
+                            index=index + 1,
+                        )
+                    }
+                )
 
             receiver_values = rule.get("receivers", [])
             if not isinstance(receiver_values, list):
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条接收人格式非法"})
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_receivers_invalid",
+                            "第 {index} 条接收人格式非法",
+                            index=index + 1,
+                        )
+                    }
+                )
             try:
                 receivers = list(dict.fromkeys(int(value) for value in receiver_values))
             except (TypeError, ValueError) as exc:
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条接收人格式非法"}) from exc
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_receivers_invalid",
+                            "第 {index} 条接收人格式非法",
+                            index=index + 1,
+                        )
+                    }
+                ) from exc
 
             channel_type = str(channel.get("channel_type") or "")
             if channel_type == "nats":
                 receivers = []
             elif not receivers:
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条通知方式至少选择一名接收人"})
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_receivers_required",
+                            "第 {index} 条通知方式至少选择一名接收人",
+                            index=index + 1,
+                        )
+                    }
+                )
             elif any(receiver_id not in allowed_user_ids for receiver_id in receivers):
-                raise serializers.ValidationError({"notification_rules": f"第 {index + 1} 条包含不存在或无权选择的接收人"})
+                raise serializers.ValidationError(
+                    {
+                        "notification_rules": serializer_message(
+                            self,
+                            "error.notification_receivers_forbidden",
+                            "第 {index} 条包含不存在或无权选择的接收人",
+                            index=index + 1,
+                        )
+                    }
+                )
 
             seen_channel_ids.add(channel_id)
             normalized.append(
