@@ -1,6 +1,10 @@
 'use client';
 
-import { Alert, Button, Input, InputNumber, Popconfirm, Switch, Tag, Upload, message } from 'antd';
+import { ImportOutlined, ExportOutlined } from '@ant-design/icons';
+
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Alert, Button, Input, InputNumber, Switch, Tag, Upload, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -118,41 +122,33 @@ export default function DictionariesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {canEdit && <Button type="primary" onClick={() => { setEditing(null); setName(''); setDictKey(''); setCreateOpen(true); }}>{t('itsm.admin.newDictionary')}</Button>}
-            <Button onClick={() => { void exportFile().catch(showError); }}>{t('itsm.admin.exportAll')}</Button>
-            {canImport && <Upload accept=".json,application/json" showUploadList={false} beforeUpload={async (file) => {
-              if (file.size > 10 * 1024 * 1024) { message.error('文件不能超过 10 MB'); return false; }
-              setImporting(true);
-              try {
-                const rows: unknown = JSON.parse(await file.text());
-                if (!Array.isArray(rows)) throw new Error('请选择导出的字典 JSON 文件');
-                const result = await api.importDictionaries(rows) as { created: number };
-                await load(); message.success(`已导入 ${result.created} 个字典`);
-              } catch (error) { showError(error); } finally { setImporting(false); }
-              return false;
-            }}><Button loading={importing}>导入</Button></Upload>}
-
-          </div>
-          <Input aria-label="搜索数据字典" className="!w-64" placeholder="搜索名称或标识" value={keyword} onChange={event => setKeyword(event.target.value)} allowClear />
-        </div>
-        <CustomTable
+        <ItsmListToolbar search={{value: keyword, onChange: setKeyword, label: '搜索数据字典', placeholder: '搜索名称或标识'}} actions={<>
+<Button icon={<ExportOutlined />} onClick={() => { void exportFile().catch(showError); }}>{t('itsm.admin.exportAll')}</Button>
+{canImport && <Upload accept=".json,application/json" showUploadList={false} beforeUpload={async (file) => {
+  if (file.size > 10 * 1024 * 1024) { message.error('文件不能超过 10 MB'); return false; }
+  setImporting(true);
+  try {
+    const rows: unknown = JSON.parse(await file.text());
+    if (!Array.isArray(rows)) throw new Error('请选择导出的字典 JSON 文件');
+    const result = await api.importDictionaries(rows) as { created: number };
+    await load(); message.success(`已导入 ${result.created} 个字典`);
+  } catch (error) { showError(error); } finally { setImporting(false); }
+  return false;
+}}><Button icon={<ImportOutlined />} loading={importing}>导入</Button></Upload>}
+{canEdit && <ItsmCreateButton onClick={() => { setEditing(null); setName(''); setDictKey(''); setCreateOpen(true); }}>新建</ItsmCreateButton>}
+</>} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
           dataSource={items.filter(item => `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyDictionary') }}
           columns={[
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
             { title: t('itsm.admin.key'), dataIndex: 'key', key: 'key' },
-            {
+            { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
-              render: (_value: unknown, item: DictionaryItem) => (
-                <span className="inline-flex gap-2">
-                  {canEdit && <Button type="link" size="small" onClick={() => { setEditing(item); setName(item.name); setDictKey(item.key); setCreateOpen(true); }}>{t('itsm.common.edit')}</Button>}
-                  <Button type="link" size="small" onClick={() => { void openItems(item); }}>{t('itsm.admin.items')}</Button>
-                </span>
-              ),
+              render: (_value: unknown, item: DictionaryItem) => <ItsmRowActions items={[...(canEdit ? [{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => { setEditing(item); setName(item.name); setDictKey(item.key); setCreateOpen(true); }}] : []),
+                {key: 'action-1', label: t('itsm.admin.items'), kind: 'data' as const, onClick: () => { void openItems(item); }}]} />,
             },
           ]}
         />
@@ -169,21 +165,19 @@ export default function DictionariesPage() {
       </OperateModal>
       <OperateModal title={`字典项 · ${current?.name || ''}`} open={Boolean(current)} width={900} footer={null}
         onCancel={() => { sequence.current++; setCurrent(null); setEntries([]); setEntryOpen(false); }}>
-        {canEditEntries && <Button type="primary" className="mb-4" onClick={() => editEntry(null)}>新增字典项</Button>}
+        {canEditEntries && <ItsmListToolbar actions={<ItsmCreateButton onClick={() => editEntry(null)}>新增字典项</ItsmCreateButton>} />}
         {error ? <Alert type="error" message={error} action={<Button onClick={() => { if (current) void openItems(current); }}>重试</Button>} /> :
-          <CustomTable rowKey="id" loading={loading} dataSource={entries} scroll={{ y: '45vh' }} columns={[
+          <CustomTable queryKey={keyword} rowKey="id" loading={loading} dataSource={entries} scroll={{ y: '45vh' }} columns={[
             { title: '名称', dataIndex: 'label', key: 'label' },
             { title: '标识', dataIndex: 'key', key: 'key' },
             { title: '上级字典项', key: 'parent', render: (_: unknown, item: EntryItem) => entries.find(parent => parent.id === item.parent_id)?.label || '—' },
             { title: '排序', dataIndex: 'order', key: 'order' },
             { title: '状态', key: 'status', render: (_: unknown, item: EntryItem) => <Tag color={item.is_enabled === false ? 'default' : 'green'}>{item.is_enabled === false ? '已停用' : '已启用'}</Tag> },
-            ...(canEditEntries ? [{ title: '操作', key: 'actions', render: (_: unknown, item: EntryItem) => <span className="inline-flex gap-2">
-              <Button type="link" size="small" onClick={() => editEntry(item)}>编辑</Button>
-              <Popconfirm title="确认删除该字典项？" onConfirm={async () => {
+            ...(canEditEntries ? [{ fixed: 'right' as const, width: 120, title: '操作', key: 'actions', render: (_: unknown, item: EntryItem) => <ItsmRowActions items={[{key: 'action-2', label: "编辑", kind: 'edit' as const, onClick: () => editEntry(item)},
+              {key: 'action-3', label: "删除", kind: 'delete' as const, disabled: entries.some(child => child.parent_id === item.id), danger: true, confirm: {title: "确认删除该字典项？", content: undefined }, onClick: async () => {
                 if (!current) return;
                 try { await api.deleteDictionaryItem(current.id, item.id); await openItems(current); } catch (error) { showError(error); }
-              }}><Button type="link" size="small" danger disabled={entries.some(child => child.parent_id === item.id)}>删除</Button></Popconfirm>
-            </span> }] : []),
+              }}]} /> }] : []),
           ]} />}
       </OperateModal>
       <OperateModal title={editingEntry ? '编辑字典项' : '新增字典项'} open={entryOpen} confirmLoading={busy} onCancel={() => setEntryOpen(false)} onOk={() => void saveEntry()}>

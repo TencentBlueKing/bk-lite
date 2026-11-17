@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, Input, message } from 'antd';
-import Link from 'next/link';
+import { ItsmListToolbar, ItsmCreateButton, ItsmRowActions } from '@/app/itsm/components/list-controls';
+
+import { Input, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { FieldRow } from '../components/field-row';
 import { useRouter } from 'next/navigation';
@@ -44,11 +45,10 @@ export default function FormListPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <Button type="primary" onClick={() => setCreateOpen(true)}>{t('itsm.admin.newForm')}</Button>
-          <Input aria-label="搜索表单" className="!w-64" placeholder={t('itsm.admin.searchName')} value={keyword} onChange={event => setKeyword(event.target.value)} allowClear />
-        </div>
-        <CustomTable
+        <ItsmListToolbar search={{value: keyword, onChange: setKeyword, label: '搜索表单', placeholder: '搜索名称或标识'}} actions={<>
+<ItsmCreateButton onClick={() => setCreateOpen(true)}>新建</ItsmCreateButton>
+</>} />
+        <CustomTable queryKey={keyword}
           rowKey="id"
           dataSource={items.filter((item) => !keyword.trim() || `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyForm') }}
@@ -58,11 +58,10 @@ export default function FormListPage() {
             {
               title: t('itsm.ticket.action'),
               key: 'action',
-              render: (_value, record: NamedItem) => (
-                <Link href={`/itsm/form/designer/${record.id}`} className="text-[var(--color-primary)]">
-                  {t('itsm.admin.designForm')}
-                </Link>
-              ),
+              fixed: 'right', width: 120,
+              render: (_value, record: NamedItem) => <ItsmRowActions items={[
+                {key: 'design', label: t('itsm.admin.designForm'), kind: 'edit', onClick: () => router.push(`/itsm/form/designer/${record.id}`)},
+              ]} />,
             },
           ]}
         />

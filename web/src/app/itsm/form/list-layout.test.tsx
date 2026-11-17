@@ -17,7 +17,7 @@ beforeEach(() => {
 it.each([[Tables, '搜索数据表'], [Dictionaries, '搜索数据字典'], [Forms, '搜索表单']] as const)('%s 支持表格上方搜索和清空', async (Page, label) => {
   render(<Page />);
   await screen.findByText('设备申请');
-  const search = screen.getByRole('textbox', { name: label });
+  const search = screen.getByRole('searchbox', { name: label });
   fireEvent.change(search, { target: { value: '账号' } });
   expect(screen.queryByText('设备申请')).toBeNull();
   expect(screen.getByText('账号申请')).toBeTruthy();

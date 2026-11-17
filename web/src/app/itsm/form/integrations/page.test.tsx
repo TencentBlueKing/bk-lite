@@ -19,17 +19,17 @@ beforeEach(() => {
 });
 it('按名称筛选并隔离不同类型', async () => {
   render(<Page />); await screen.findByText('查询工单');
-  fireEvent.change(screen.getByRole('textbox', { name: '搜索集成' }), { target: { value: '不存在' } });
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索集成' }), { target: { value: '不存在' } });
   expect(screen.queryByText('查询工单')).toBeNull();
-  fireEvent.change(screen.getByRole('textbox', { name: '搜索集成' }), { target: { value: '' } });
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索集成' }), { target: { value: '' } });
   fireEvent.click(screen.getByRole('tab', { name: /Python 脚本/ }));
   expect(screen.queryByText('查询工单')).toBeNull();
-  expect(screen.getByRole('button', { name: '新建Python 脚本' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '新建' })).toBeTruthy();
 });
 it('只读用户不能新增或执行', async () => {
   api.listIntegrations.mockResolvedValue({ items: [item], can_add: false, can_edit: false });
   render(<Page />); await screen.findByText('查询工单');
-  expect(screen.queryByRole('button', { name: '新建API 集成' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '新建' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '记录' }));
   const run = await screen.findByRole('button', { name: /执行测试/ });
   expect((run as HTMLButtonElement).disabled).toBe(true);
@@ -46,7 +46,7 @@ it('调试提交 JSON 参数并显示结果', async () => {
 
 it('外部 API 配置入口与平台网关分开', async () => {
   render(<Page />); await screen.findByText('查询工单');
-  fireEvent.click(screen.getByRole('button', { name: '新建API 集成' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建' }));
   fireEvent.mouseDown(screen.getByRole('combobox', { name: 'API 来源' }));
   fireEvent.click(await screen.findByText('外部 API', { selector: '.ant-select-item-option-content' }));
   fireEvent.change(screen.getByRole('textbox', { name: '集成名称' }), { target: { value: '外部查询' } });

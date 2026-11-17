@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { Alert, Button, Checkbox, Input, Modal, Select, Space, Switch, Tabs, Tag, Upload, message as antdMessage } from 'antd';
@@ -65,26 +67,21 @@ export default function Page() {
 
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
     {contextHolder}
-    <Tabs activeKey={kind} onChange={value => setKind(value as IntegrationKind)} items={[
+    <ItsmListToolbar leading={<ItsmListTabs activeKey={kind} onChange={value => setKind(value as IntegrationKind)} items={[
       { key: 'api', label: <Space><ApiOutlined />API 集成</Space> },
       { key: 'python', label: <Space><CodeOutlined />Python 脚本</Space> },
       { key: 'todo', label: <Space><InboxOutlined />待办对接</Space> },
-    ]} />
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <Space>{permissions.can_add && <Button type="primary" onClick={() => setDraft({ id: 0, name: '', kind, is_enabled: true, updated_by: '', config: kind === 'python' ? { script: PYTHON_EXAMPLE, filename: 'transform.py' } : {} })}>新建{titles[kind]}</Button>}
-        {kind === 'api' && <Button href="/system-manager/settings/openapi-docs" target="_blank">平台 API 文档</Button>}
-      </Space>
-      <Input aria-label="搜索集成" placeholder="搜索名称或接口" allowClear className="!w-64" value={keyword} onChange={event => setKeyword(event.target.value)} />
-    </div>
-    <CustomTable rowKey="id" dataSource={items.filter(item => item.kind === kind && `${item.name} ${item.config.path || ''}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
+    ]} />} search={{value: keyword, onChange: setKeyword, label: '搜索集成', placeholder: '搜索名称或标识'}} actions={<>
+{kind === 'api' && <Button href="/system-manager/settings/openapi-docs" target="_blank">平台 API 文档</Button>}
+{permissions.can_add && <ItsmCreateButton onClick={() => setDraft({ id: 0, name: '', kind, is_enabled: true, updated_by: '', config: kind === 'python' ? { script: PYTHON_EXAMPLE, filename: 'transform.py' } : {} })}>新建</ItsmCreateButton>}
+</>} />
+    <CustomTable queryKey={`${kind}:${keyword}`} rowKey="id" dataSource={items.filter(item => item.kind === kind && `${item.name} ${item.config.path || ''}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
       { title: '名称', dataIndex: 'name', key: 'name' },
       { title: kind === 'api' ? '接口地址' : kind === 'python' ? '文件' : '接收地址', key: 'target', render: (_: unknown, item: IntegrationItem) => item.config.path ? <span className="font-mono text-xs">{item.config.method} {item.config.path}</span> : item.config.filename || item.config.url },
       { title: '状态', key: 'enabled', render: (_: unknown, item: IntegrationItem) => <Tag color={item.is_enabled ? 'green' : 'default'}>{item.is_enabled ? '启用' : '停用'}</Tag> },
       { title: '维护人', dataIndex: 'updated_by', key: 'owner' },
-      { title: '操作', key: 'actions', render: (_: unknown, item: IntegrationItem) => <Space size={0}>
-        <Button type="link" onClick={() => setDraft({ ...item, config: { ...item.config } })}>{permissions.can_edit ? '配置' : '查看'}</Button>
-        <Button type="link" onClick={() => void debug(item)}>{permissions.can_edit ? '调试 / 记录' : '记录'}</Button>
-      </Space> },
+      { fixed: 'right' as const, width: 120, title: '操作', key: 'actions', render: (_: unknown, item: IntegrationItem) => <ItsmRowActions items={[{key: 'action-0', label: permissions.can_edit ? '配置' : '查看', kind: 'configure' as const, onClick: () => setDraft({ ...item, config: { ...item.config } })},
+        {key: 'action-1', label: permissions.can_edit ? '调试 / 记录' : '记录', kind: 'history' as const, onClick: () => void debug(item)}]} /> },
     ]} />
     <Modal title={draft ? `${draft.id ? '配置' : '新建'}${titles[draft.kind]}` : ''} open={!!draft} width={900} onCancel={() => setDraft(undefined)} onOk={() => void save()} confirmLoading={busy} okButtonProps={{ disabled: draft?.id ? !permissions.can_edit : !permissions.can_add }} destroyOnHidden>
       {draft && <div className="flex flex-col gap-4 py-3">
@@ -136,7 +133,7 @@ export default function Page() {
         ]} /> },
         ...(selected?.kind === 'todo' ? [{ key: 'deliveries', label: '待办投递', children: <CustomTable<NonNullable<IntegrationItem['deliveries']>[number]> rowKey="id" dataSource={selected.deliveries || []} columns={[
           { title: '任务', dataIndex: 'task_id', key: 'task' }, { title: '状态', key: 'status', render: (_: unknown, row: { status: string; code: string }) => `${statuses[row.status] || row.status} ${row.code}` },
-          { title: '次数', dataIndex: 'attempts', key: 'attempts' }, { title: '操作', key: 'action', render: (_: unknown, row: { id: number; status: string }) => row.status === 'failed' && permissions.can_edit ? <Button type="link" onClick={() => { void api.retryDelivery(selected.id, row.id).then(() => api.getIntegration(selected.id)).then(value => setSelected(value as IntegrationItem)).catch(notifyError); }}>重试</Button> : '—' },
+          { title: '次数', dataIndex: 'attempts', key: 'attempts' }, { fixed: 'right' as const, width: 120, title: '操作', key: 'action', render: (_: unknown, row: { id: number; status: string }) => <ItsmRowActions items={(row.status === 'failed' && permissions.can_edit ? [{key: 'action-2', label: "重试", kind: 'retry' as const, onClick: () => { void api.retryDelivery(selected.id, row.id).then(() => api.getIntegration(selected.id)).then(value => setSelected(value as IntegrationItem)).catch(notifyError); }}] : [])} /> },
         ]} /> }] : []),
       ]} />
     </Modal>

@@ -1,4 +1,8 @@
 'use client';
+
+import { ImportOutlined } from '@ant-design/icons';
+
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 import { Alert, Button, Input, InputNumber, Select, Upload, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import OperateModal from '@/components/operate-modal';
@@ -85,19 +89,22 @@ export default function DataTablesPage() {
   };
   const visibleFields=fields.length?fields:Array.from(new Set(rows.flatMap(r=>Object.keys(r.data)))).map(key=>({key,label:key,type:'string'}));
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2">
-      {permissions.can_add&&<><Button type="primary" onClick={()=>{setFormError('');setDraft({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]});}}>新建数据表</Button><Upload accept=".xlsx" showUploadList={false} beforeUpload={file=>{void upload(file);return false;}}><Button loading={busy}>导入</Button></Upload></>}
-    </div><Input aria-label="搜索数据表" className="!w-64" placeholder="搜索名称或标识" value={keyword} onChange={e=>setKeyword(e.target.value)} allowClear/></div>
-    <CustomTable rowKey="id" dataSource={items.filter(i=>`${i.name} ${i.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
+    <ItsmListToolbar search={{value: keyword, onChange: setKeyword, label: '搜索数据表', placeholder: '搜索名称或标识'}} actions={<>
+{permissions.can_add&&<><Upload accept=".xlsx" showUploadList={false} beforeUpload={file=>{void upload(file);return false;}}><Button icon={<ImportOutlined />} loading={busy}>导入</Button></Upload><ItsmCreateButton onClick={()=>{setFormError('');setDraft({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]});}}>新建</ItsmCreateButton></>}
+</>} />
+    <CustomTable queryKey={keyword} rowKey="id" dataSource={items.filter(i=>`${i.name} ${i.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
       {title:'名称',dataIndex:'name',key:'name'},{title:'标识',dataIndex:'key',key:'key'},
-      {title:'操作',key:'actions',render:(_:unknown,item:TableItem)=><span className="inline-flex gap-2"><Button type="link" onClick={()=>void openRows(item)}>{t('itsm.admin.data')}</Button>{permissions.can_edit&&<Button type="link" onClick={()=>void editFields(item)}>字段配置</Button>}<Button type="link" onClick={()=>void download(item.id)}>导出</Button></span>},
+      { fixed: 'right' as const, width: 120,title:'操作',key:'actions',render:(_:unknown,item:TableItem)=><ItsmRowActions items={[{key: 'action-0', label: t('itsm.admin.data'), kind: 'data' as const, onClick: ()=>void openRows(item)},
+        ...(permissions.can_edit ? [{key: 'action-1', label: "字段配置", kind: 'configure' as const, onClick: ()=>void editFields(item)}] : []),
+        {key: 'action-2', label: "导出", kind: 'export' as const, onClick: ()=>void download(item.id), more: true}]} />},
     ]}/>
     {active&&<OperateModal title={`${active.name} · 数据`} subTitle={active.key} open width={1100} footer={null} onCancel={closeRows} destroyOnHidden>
       {rowsError?<Alert type="error" message={rowsError} action={<Button onClick={()=>void openRows(active)}>重试</Button>}/>:<>
-        {canEditRows&&<Button type="primary" className="mb-3" onClick={()=>beginRow()}>新增数据</Button>}
+        {canEditRows&&<ItsmListToolbar actions={<ItsmCreateButton onClick={()=>beginRow()}>新增数据</ItsmCreateButton>} />}
         <CustomTable rowKey="id" loading={rowsLoading} dataSource={rows} scroll={{x:'max-content',y:'40vh'}} columns={[
           ...visibleFields.map(f=>({title:f.label||f.key,key:f.key,render:(_:unknown,row:RowItem)=>row.data[f.key]==null?'':typeof row.data[f.key]==='boolean'?(row.data[f.key]?'是':'否'):typeof row.data[f.key]==='object'?JSON.stringify(row.data[f.key]):String(row.data[f.key])})),
-          ...(canEditRows?[{title:'操作',key:'actions',render:(_:unknown,row:RowItem)=><span className="inline-flex gap-2"><Button type="link" onClick={()=>beginRow(row)}>编辑</Button><Button type="link" danger onClick={()=>{const seq=rowsRequest.current;void api.deleteDataRows(active.id,[row.id]).then(()=>{if(seq===rowsRequest.current)void openRows(active);}).catch(notify);}}>{t('itsm.common.delete')}</Button></span>}]:[]),
+          ...(canEditRows?[{ fixed: 'right' as const, width: 120,title:'操作',key:'actions',render:(_:unknown,row:RowItem)=><ItsmRowActions items={[{key: 'action-3', label: "编辑", kind: 'edit' as const, onClick: ()=>beginRow(row)},
+            {key: 'action-4', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: '确定删除这条数据？'}, onClick: ()=>{const seq=rowsRequest.current;void api.deleteDataRows(active.id,[row.id]).then(()=>{if(seq===rowsRequest.current)void openRows(active);}).catch(notify);}}]} />}]:[]),
         ]}/>
       </>}
     </OperateModal>}
