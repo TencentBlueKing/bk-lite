@@ -376,6 +376,99 @@ def test_create_user_allows_empty_personal_roles():
 
 
 @pytest.mark.django_db
+def test_create_user_auditor_binds_auditor_role_not_admin():
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    Role.objects.get_or_create(name="admin", app="")
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "platform_auditor",
+            "lastName": "Auditor",
+            "email": "auditor@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [],
+            "rules": [],
+            "is_auditor": True,
+            "is_superuser": False,
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([], {"user_group-Add User"}))
+    response = view(request)
+    assert response.status_code == 200
+    created = User.objects.get(username="platform_auditor")
+    assert auditor_role.id in created.role_list
+    assert Role.objects.get(name="admin", app="").id not in created.role_list
+    assert created.group_list == []
+
+
+@pytest.mark.django_db
+def test_create_user_superuser_wins_over_auditor_flag():
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "platform_admin_wins",
+            "lastName": "Admin Wins",
+            "email": "admin-wins@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [],
+            "rules": [],
+            "is_auditor": True,
+            "is_superuser": True,
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([], {"user_group-Add User"}))
+    response = view(request)
+    assert response.status_code == 200
+    created = User.objects.get(username="platform_admin_wins")
+    assert admin_role.id in created.role_list
+    assert auditor_role.id not in created.role_list
+
+
+@pytest.mark.django_db
+def test_get_user_detail_returns_is_auditor():
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    Role.objects.get_or_create(name="admin", app="")
+    target = User.objects.create(
+        username="detail_auditor",
+        display_name="Detail Auditor",
+        email="detail-auditor@example.com",
+        password=make_password("password"),
+        group_list=[],
+        role_list=[auditor_role.id],
+    )
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "get_user_detail"})
+    request = factory.post("/system_mgmt/api/user/get_user_detail/", {"user_id": target.id}, format="json")
+    force_authenticate(request, user=_request_user([], {"user_group-View"}, is_superuser=True))
+    response = view(request)
+    payload = _json_payload(response)
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert payload["data"]["is_auditor"] is True
+    assert payload["data"]["is_superuser"] is False
+
+
+@pytest.mark.django_db
 def test_import_users_creates_valid_rows_and_reports_conflicts():
     group = Group.objects.create(name="xlsx-import-group", parent_id=0, is_virtual=False)
     User.objects.create(
