@@ -18,6 +18,7 @@ export interface PolicyGroupRule {
   policy_id?: number;
   open_alert_count?: number;
   unit?: string;
+  source_template_id?: number | null;
 }
 
 export const VIEW_MODE_OPTIONS = [

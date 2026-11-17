@@ -163,6 +163,7 @@ const PolicyGroupPage: React.FC = () => {
     setDefaultPolicyGroup,
     deletePolicyGroup,
     createPolicyGroup,
+    addPolicyGroupTemplates,
   } = useIntegrationApi();
   const { getPolicyTemplate, getSystemChannelList } = useEventApi();
   const currentGroupId = useUserInfoContext()?.selectedGroup?.id;
@@ -186,6 +187,7 @@ const PolicyGroupPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
+  const [addingToGroup, setAddingToGroup] = useState<PolicyGroupRow | null>(null);
   const [enableSavingId, setEnableSavingId] = useState<number | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
@@ -422,10 +424,7 @@ const PolicyGroupPage: React.FC = () => {
     if (unchanged && objectId) await loadGroups(objectId, { page: 1, name: '' });
   };
 
-  const openCreate = async () => {
-    setCreateOpen(true);
-    setCreateName('新建策略组');
-    setSelectedTemplateIds([]);
+  const loadTemplateOptions = async () => {
     setTemplateLoading(true);
     try {
       const monitorName = findLabelById(treeData, String(objectId));
@@ -443,11 +442,52 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
+  const openCreate = async () => {
+    setAddingToGroup(null);
+    setCreateOpen(true);
+    setCreateName('新建策略组');
+    setSelectedTemplateIds([]);
+    await loadTemplateOptions();
+  };
+
+  const openAddRules = async (group: PolicyGroupRow) => {
+    setAddingToGroup(group);
+    setCreateOpen(true);
+    setCreateName(group.name);
+    setSelectedTemplateIds([]);
+    await loadTemplateOptions();
+  };
+
   const submitCreate = async () => {
     const name = createName.trim();
-    if (!name || selectedTemplateIds.length === 0) return;
+    if (selectedTemplateIds.length === 0) return;
     setCreateSaving(true);
     try {
+      if (addingToGroup) {
+        const targetId = addingToGroup.id;
+        const result = await addPolicyGroupTemplates({
+          group_id: targetId,
+          template_ids: selectedTemplateIds,
+        });
+        const added = Number(result?.added || 0);
+        const skipped = Number(result?.skipped || 0);
+        if (added > 0) {
+          message.success(
+            skipped > 0
+              ? `已追加 ${added} 条规则，组内已有模板已跳过`
+              : `已追加 ${added} 条规则，按接入插件匹配到的实例开始扫描`
+          );
+        } else {
+          message.info('所选模板都已在组内');
+        }
+        setCreateOpen(false);
+        setAddingToGroup(null);
+        const items = await loadGroups(objectId);
+        const next = (items || []).find((item) => item.id === targetId);
+        if (next && ruleGroup?.id === targetId) setRuleGroup(next);
+        return;
+      }
+      if (!name) return;
       await createPolicyGroup({ name, template_ids: selectedTemplateIds });
       message.success('已创建策略组。实例尚未加入');
       setCreateOpen(false);
@@ -939,6 +979,11 @@ const PolicyGroupPage: React.FC = () => {
                   <Button onClick={() => openConfig(currentGroup)}>
                     配置
                   </Button>
+                  <Permission requiredPermissions={['Edit']}>
+                    <Button onClick={() => void openAddRules(currentGroup)}>
+                      新增策略
+                    </Button>
+                  </Permission>
                   <Button
                     onClick={() => {
                       setCopySource(currentGroup);
@@ -1380,6 +1425,13 @@ const PolicyGroupPage: React.FC = () => {
               setRulePagination((prev) => ({ ...prev, current: 1 }));
             },
           }}
+          actions={
+            ruleGroup ? (
+              <Permission requiredPermissions={['Edit']}>
+                <Button onClick={() => void openAddRules(ruleGroup)}>新增策略</Button>
+              </Permission>
+            ) : null
+          }
         />
         <CustomTable
           rowKey="id"
@@ -1564,34 +1616,47 @@ const PolicyGroupPage: React.FC = () => {
         })()}
       </Drawer>
       <Drawer
-        title="新建策略组"
+        title={addingToGroup ? `给 ${addingToGroup.name} 新增策略` : '新建策略组'}
         open={createOpen}
         width={760}
         closable={false}
         onClose={() => {
           if (createSaving) return;
           setCreateOpen(false);
+          setAddingToGroup(null);
         }}
         footer={
           <div className="flex justify-end gap-2">
             <Button
               type="primary"
               loading={createSaving}
-              disabled={!createName.trim() || selectedTemplateIds.length === 0}
+              disabled={(!addingToGroup && !createName.trim()) || selectedTemplateIds.length === 0}
               onClick={() => void submitCreate()}
             >
               确认
             </Button>
-            <Button disabled={createSaving} onClick={() => setCreateOpen(false)}>
+            <Button
+              disabled={createSaving}
+              onClick={() => {
+                setCreateOpen(false);
+                setAddingToGroup(null);
+              }}
+            >
               取消
             </Button>
           </div>
         }
       >
-        <div className="mb-3">
-          <div className="mb-1">名称</div>
-          <Input maxLength={100} value={createName} onChange={(event) => setCreateName(event.target.value)} />
-        </div>
+        {addingToGroup ? (
+          <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
+            按模板追加规则。主机已接入对应插件的才会写入覆盖并开始扫描，没有该插件数据源的规则保持静默。
+          </div>
+        ) : (
+          <div className="mb-3">
+            <div className="mb-1">名称</div>
+            <Input maxLength={100} value={createName} onChange={(event) => setCreateName(event.target.value)} />
+          </div>
+        )}
         <div>
           <div className="mb-1">策略模板</div>
           <Spin spinning={templateLoading}>
@@ -1599,37 +1664,51 @@ const PolicyGroupPage: React.FC = () => {
               <span className="text-[var(--color-text-3)]">当前对象没有策略模板</span>
             ) : (
               templateGroups.map((group) => {
-                const ids = group.items.map((item) => item.id);
+                const existingIds = new Set(
+                  (addingToGroup?.rules || [])
+                    .map((item) => Number(item.source_template_id))
+                    .filter((id) => Number.isFinite(id) && id > 0)
+                );
+                const ids = group.items.map((item) => item.id).filter((id) => !existingIds.has(id));
                 const selectedCount = ids.filter((id) => selectedTemplateIds.includes(id)).length;
                 return (
                   <div key={group.name} className="mb-3">
-                    <Checkbox
-                      checked={selectedCount === ids.length && ids.length > 0}
-                      indeterminate={selectedCount > 0 && selectedCount < ids.length}
-                      onChange={(event) => {
-                        setSelectedTemplateIds((prev) =>
-                          event.target.checked
-                            ? Array.from(new Set([...prev, ...ids]))
-                            : prev.filter((id) => !ids.includes(id))
-                        );
-                      }}
-                    >
-                      {group.name}
-                    </Checkbox>
+                    {ids.length > 0 ? (
+                      <Checkbox
+                        checked={selectedCount === ids.length && ids.length > 0}
+                        indeterminate={selectedCount > 0 && selectedCount < ids.length}
+                        onChange={(event) => {
+                          setSelectedTemplateIds((prev) =>
+                            event.target.checked
+                              ? Array.from(new Set([...prev, ...ids]))
+                              : prev.filter((id) => !ids.includes(id))
+                          );
+                        }}
+                      >
+                        {group.name}
+                      </Checkbox>
+                    ) : (
+                      <span className="text-[var(--color-text-3)]">{group.name}</span>
+                    )}
                     <div className="mt-1 flex flex-col gap-1 pl-6">
-                      {group.items.map((item) => (
-                        <Checkbox
-                          key={item.id}
-                          checked={selectedTemplateIds.includes(item.id)}
-                          onChange={(event) => {
-                            setSelectedTemplateIds((prev) =>
-                              event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-                            );
-                          }}
-                        >
-                          {item.name}
-                        </Checkbox>
-                      ))}
+                      {group.items.map((item) => {
+                        const alreadyInGroup = existingIds.has(item.id);
+                        return (
+                          <Checkbox
+                            key={item.id}
+                            disabled={alreadyInGroup}
+                            checked={alreadyInGroup || selectedTemplateIds.includes(item.id)}
+                            onChange={(event) => {
+                              if (alreadyInGroup) return;
+                              setSelectedTemplateIds((prev) =>
+                                event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                              );
+                            }}
+                          >
+                            {alreadyInGroup ? `${item.name}（已在组内）` : item.name}
+                          </Checkbox>
+                        );
+                      })}
                     </div>
                   </div>
                 );

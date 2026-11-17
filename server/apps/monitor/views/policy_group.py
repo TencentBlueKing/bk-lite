@@ -85,6 +85,7 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "no_data_enabled": AlertConstants.NO_DATA in (rule.policy.enable_alerts or []),
         "policy_id": rule.policy_id,
         "open_alert_count": counts.get(rule.policy_id, 0),
+        "source_template_id": rule.source_template_id,
     }
 
 
@@ -270,6 +271,34 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             operator=_operator(scope),
         )
         return WebUtils.response_success({"id": group.id, "member_count": 0})
+
+    @action(methods=["post"], detail=False, url_path="add_templates")
+    @HasPermission("strategy_list-Edit")
+    def add_templates(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        requested_ids = request.data.get("template_ids") or []
+        if not isinstance(requested_ids, list) or not requested_ids:
+            raise BaseAppException("至少选择一条策略模板")
+        try:
+            requested_ids = [int(item) for item in requested_ids]
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("至少选择一条策略模板") from exc
+        templates_by_id = {item.id: item for item in PolicyTemplate.objects.filter(id__in=requested_ids).select_related("plugin", "monitor_object")}
+        templates = [templates_by_id[item_id] for item_id in requested_ids if item_id in templates_by_id]
+        if not templates:
+            raise BaseAppException("至少选择一条策略模板")
+        result = PolicyGroupService.add_templates(group, templates, operator=_operator(scope))
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "策略组追加规则",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, **result},
+        )
+        return WebUtils.response_success(result)
 
     @action(methods=["post"], detail=False)
     @HasPermission("strategy_list-Edit")
