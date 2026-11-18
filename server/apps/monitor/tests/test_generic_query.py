@@ -935,6 +935,43 @@ def _patch_alert_access(monkeypatch):
     )
 
 
+def test_alert_distribution_keeps_selected_objects_with_no_alerts(monkeypatch):
+    from apps.monitor.nats.generic_query import query_monitor_alert_distribution
+
+    host = _object()
+    quiet = MonitorObject.objects.create(name="oracle-object", level="base")
+    untouched = MonitorObject.objects.create(name="nginx-object", level="base")
+    _instance(host, "host-1", name="web")
+    policy = MonitorPolicy.objects.create(monitor_object=host, name="主机策略", algorithm="avg")
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id="host-1",
+        level="warning",
+        status="new",
+        alert_type="alert",
+    )
+    _patch_alert_access(monkeypatch)
+    user_info = {"user": "ada", "team": 1, "domain": "example.com"}
+
+    selected = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        monitor_object_id=[str(host.id), str(quiet.id)],
+        user_info=user_info,
+    )
+    assert selected["result"] is True
+    by_name = {item["group_value"]: item["alert_count"] for item in selected["data"]}
+    assert by_name == {"host-object": 1, "oracle-object": 0}
+    assert "nginx-object" not in by_name
+
+    unselected = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        user_info=user_info,
+    )
+    assert unselected["result"] is True
+    assert {item["group_value"] for item in unselected["data"]} == {"host-object"}
+    assert untouched.id
+
+
 def test_alert_distribution_keeps_single_object_and_skips_invalid_instances(monkeypatch):
     from apps.monitor.nats.generic_query import query_monitor_alert_counts, query_monitor_alert_distribution
 

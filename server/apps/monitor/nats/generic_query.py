@@ -468,6 +468,7 @@ def query_monitor_alert_distribution(
         instance_ids,
         skip_unknown_instances=True,
     )
+    selected_objects = _selected_monitor_object_ids(monitor_object_id) if monitor_object_id not in (None, "", []) else []
     data = query_alert_distribution(
         alerts,
         group_by=group_by,
@@ -478,6 +479,7 @@ def query_monitor_alert_distribution(
         time_field=time_field,
         time_range=time_range,
         locale=(user_info or {}).get("locale"),
+        monitor_object_ids=selected_objects,
     )
     return _ok(data)
 
