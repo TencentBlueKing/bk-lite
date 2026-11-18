@@ -90,7 +90,6 @@ describe('ComponentSelector 搜索重开', () => {
 
     await waitFor(() => {
       expect(getDataSourceBriefList).toHaveBeenLastCalledWith({
-        tags: 11,
         search: '区域',
         page_size: -1,
       });
@@ -106,7 +105,6 @@ describe('ComponentSelector 搜索重开', () => {
     await screen.findByText('报表列表');
     expect(screen.getByText('云区域资源分布')).toBeTruthy();
     expect(getDataSourceBriefList).toHaveBeenLastCalledWith({
-      tags: 11,
       search: undefined,
       page_size: -1,
     });
@@ -154,6 +152,90 @@ describe('ComponentSelector 搜索重开', () => {
 
     await screen.findByText('报表列表');
     expect(screen.queryByText('过期搜索结果')).toBeNull();
+  });
+
+  it('全部不带标签，搜索覆盖全量数据源', async () => {
+    const logSource = source(9, '日志错误');
+    getTagList.mockResolvedValue([
+      { id: 11, name: 'CMDB' },
+      { id: 12, name: '告警' },
+    ]);
+    getDataSourceBriefList.mockImplementation(async (params?: { tags?: number; search?: string }) => {
+      if (params?.search === '日志') return [logSource];
+      if (params?.tags == null) return [logSource, regionSource, reportSource];
+      return [regionSource, reportSource];
+    });
+
+    const user = userEvent.setup();
+    renderSelector(true);
+
+    await screen.findByText('日志错误');
+    expect(screen.getByRole('menuitem', { name: 'dashboard.allDataSources' }).className)
+      .toContain('ant-menu-item-selected');
+    expect(getDataSourceBriefList).toHaveBeenLastCalledWith({
+      search: undefined,
+      page_size: -1,
+    });
+
+    await user.type(screen.getByPlaceholderText('common.search'), '日志{Enter}');
+    await waitFor(() => {
+      expect(getDataSourceBriefList).toHaveBeenLastCalledWith({
+        search: '日志',
+        page_size: -1,
+      });
+    });
+    expect(screen.queryByText('报表列表')).toBeNull();
+    expect(screen.getByText('日志错误')).toBeTruthy();
+
+    await user.click(screen.getByRole('menuitem', { name: 'CMDB' }));
+    await waitFor(() => {
+      expect(getDataSourceBriefList).toHaveBeenLastCalledWith({
+        tags: 11,
+        search: undefined,
+        page_size: -1,
+      });
+    });
+    expect(screen.queryByText('日志错误')).toBeNull();
+    expect(screen.getByText('报表列表')).toBeTruthy();
+  });
+
+  it('切换分类或顶部标签后滚动回到顶部', async () => {
+    getTagList.mockResolvedValue([
+      { id: 11, name: 'CMDB' },
+      { id: 12, name: '告警' },
+    ]);
+    const user = userEvent.setup();
+    renderSelector(true);
+    await screen.findByText('报表列表');
+
+    const keepScroll = (element: HTMLElement) => {
+      let top = 0;
+      Object.defineProperty(element, 'scrollTop', {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = value;
+        },
+      });
+    };
+    const list = document.querySelector('[class*="cardList"]') as HTMLElement;
+    const pane = document.querySelector('[class*="categoryPane"]') as HTMLElement;
+    keepScroll(list);
+    keepScroll(pane);
+    list.scrollTop = 240;
+    pane.scrollTop = 80;
+
+    await user.click(screen.getByRole('menuitem', { name: '告警' }));
+    await screen.findByText('报表列表');
+    const nextList = document.querySelector('[class*="cardList"]') as HTMLElement;
+    expect(nextList).not.toBe(list);
+    expect(nextList.scrollTop).toBe(0);
+
+    await user.click(screen.getByRole('button', { name: /dashboard.sceneComponents/ }));
+    await screen.findByText('dashboard.networkStatusTopology');
+    const nextPane = document.querySelector('[class*="categoryPane"]') as HTMLElement;
+    expect(nextPane).not.toBe(pane);
+    expect(nextPane.scrollTop).toBe(0);
   });
 
   it('lists a source without chart types and does not open a component for it', async () => {

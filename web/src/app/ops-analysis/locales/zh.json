@@ -1289,6 +1289,7 @@
     "title": "选择",
     "dataComponents": "数据源",
     "sceneComponents": "内置场景",
+    "allDataSources": "全部",
     "allSceneComponents": "全部内置场景",
     "sceneCategoryCmdb": "CMDB",
     "networkStatusTopology": "网络状态拓扑",

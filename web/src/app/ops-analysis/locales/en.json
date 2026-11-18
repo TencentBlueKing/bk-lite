@@ -1289,6 +1289,7 @@
     "title": "Select",
     "dataComponents": "Data Source",
     "sceneComponents": "Built-in Scenes",
+    "allDataSources": "All",
     "allSceneComponents": "All Built-in Scenes",
     "sceneCategoryCmdb": "CMDB",
     "networkStatusTopology": "Network Status Topology",
