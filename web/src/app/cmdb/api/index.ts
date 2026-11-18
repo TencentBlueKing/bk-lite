@@ -2,6 +2,14 @@ export { useClassificationApi } from './classification';
 export { useModelApi } from './model';
 export { useInstanceApi } from './instance';
 export { useChangeRecordApi } from './changeRecord';
+export {
+  useOwnerHandoverApi,
+  type HandoverFailure,
+  type HandoverModel,
+  type HandoverPreview,
+  type HandoverTask,
+  type HandoverUser,
+} from './ownerHandover';
 export { useRetentionApi } from './retention';
 export { useOidApi } from './oid';
 export { usePortFingerprintApi, type PortFingerprintItem } from './portFingerprint';

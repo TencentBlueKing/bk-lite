@@ -11,6 +11,7 @@ from apps.cmdb.models.first_collection_run import *  # noqa
 from apps.cmdb.models.ipam_models import IPAMReconcileRun, IPAMReconcileSource  # noqa
 from apps.cmdb.models.node_mgmt_sync import *  # noqa
 from apps.cmdb.models.operation import *  # noqa
+from apps.cmdb.models.owner_handover import OwnerHandoverFailure, OwnerHandoverOutcome, OwnerHandoverTask  # noqa
 from apps.cmdb.models.public_enum_library import *  # noqa
 from apps.cmdb.models.repair_state import *  # noqa
 from apps.cmdb.models.scale_cursor import *  # noqa
