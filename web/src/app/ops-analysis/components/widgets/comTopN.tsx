@@ -293,7 +293,7 @@ const TopN: React.FC<TopNProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {componentSwitchControl ? (
-        <div className="shrink-0 overflow-x-auto px-3 pt-2">
+        <div className="shrink-0 overflow-x-auto overflow-y-hidden px-3 py-px pt-2">
           {componentSwitchControl}
         </div>
       ) : null}

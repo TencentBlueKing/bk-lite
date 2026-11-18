@@ -856,6 +856,54 @@ def list_monitor_object_options(*args, **kwargs):
     return {"result": True, "data": results, "message": ""}
 
 
+def _option_type_ids(value):
+    if value in (None, "", []):
+        return []
+    if isinstance(value, str):
+        raw = [item.strip() for item in value.split(",") if item.strip()]
+    elif isinstance(value, (list, tuple)):
+        raw = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        return []
+    type_ids = []
+    for item in raw:
+        if item not in type_ids:
+            type_ids.append(item)
+    return type_ids
+
+
+def _monitor_object_type_option_rows(user_info):
+    locale = (user_info or {}).get("locale") or "en"
+    loader = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+    rows = []
+    for item in MonitorObjectType.objects.all().order_by("order", "id"):
+        translated = loader.get(f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{item.id}")
+        if isinstance(translated, str) and translated.strip():
+            label = translated.strip()
+        else:
+            label = (item.name or "").strip() or item.id
+        rows.append({"id": item.id, "display_name": label})
+    return rows
+
+
+@nats_client.register
+def list_monitor_object_type_options(**kwargs):
+    """监控对象分类下拉。本身不出图。"""
+    return {"result": True, "data": _monitor_object_type_option_rows(kwargs.get("user_info")), "message": ""}
+
+
+@nats_client.register
+def list_monitor_objects_by_type(monitor_object_type_ids=None, **kwargs):
+    """返回所选分类下的监控对象。不传分类则返回空。本身不出图。"""
+    type_ids = _option_type_ids(monitor_object_type_ids)
+    if not type_ids:
+        return {"result": True, "data": [], "message": ""}
+    queryset = MonitorObject.objects.filter(type_id__in=type_ids).order_by("type__order", "order", "id")
+    results = [{"id": item.id, "name": item.name, "display_name": item.display_name} for item in queryset]
+    _apply_monitor_object_display_names(results, kwargs.get("user_info"))
+    return {"result": True, "data": results, "message": ""}
+
+
 @nats_client.register
 def monitor_object_instance_count(*args, **kwargs):
     """统计监控对象实例数量。

@@ -229,7 +229,6 @@ export const WidgetQueryFields: React.FC<
                   {t('dashboard.unifiedFilterBindingTip')}
                 </span>
               }
-              overlayInnerStyle={{ maxWidth: 340, width: 340 }}
               styles={{ body: { maxWidth: 340, width: 340 } }}
             >
               <QuestionCircleOutlined className="cursor-help text-(--color-text-3)" />

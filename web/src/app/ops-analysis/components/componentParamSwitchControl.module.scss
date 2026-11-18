@@ -1,0 +1,61 @@
+.root {
+  width: max-content;
+  max-width: 100%;
+
+  :global(.ant-segmented),
+  :global(.ant-segmented.ant-segmented-block) {
+    display: inline-flex;
+    width: max-content;
+    max-width: 100%;
+    font-size: var(--ops-switch-font, 13px);
+  }
+
+  :global(.ant-segmented-item),
+  :global(.ant-segmented.ant-segmented-block .ant-segmented-item) {
+    flex: 0 1 auto;
+    min-width: 2.5em;
+    max-width: calc(9em + var(--ops-switch-pad, 12px) * 2);
+  }
+
+  :global(.ant-segmented-item-label) {
+    min-height: var(--ops-switch-height, 28px);
+    line-height: var(--ops-switch-height, 28px);
+    padding: 0 var(--ops-switch-pad, 12px);
+    font-size: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.ant-select.ant-select-single) {
+    width: var(--ops-switch-select, 128px);
+    max-width: 100%;
+    height: var(--ops-switch-height, 28px);
+    overflow: hidden;
+    font-size: var(--ops-switch-font, 13px);
+  }
+
+  :global(.ant-select-single .ant-select-selector) {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  :global(.ant-select-single .ant-select-selection-item),
+  :global(.ant-select-single .ant-select-selection-placeholder),
+  :global(.ant-select-single .ant-select-selection-wrap::after),
+  :global(.ant-select-single .ant-select-selection-search-input) {
+    line-height: calc(var(--ops-switch-height, 28px) - 2px) !important;
+  }
+
+  :global(.ant-select-single .ant-select-selection-search-input) {
+    height: calc(var(--ops-switch-height, 28px) - 2px) !important;
+  }
+}
+
+.optionLabel {
+  display: block;
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

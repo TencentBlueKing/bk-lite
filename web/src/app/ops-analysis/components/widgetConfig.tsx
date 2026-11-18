@@ -59,6 +59,7 @@ import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
   reconcileComponentParamValue,
+  sameParamValue,
   supportsComponentSwitch,
 } from '@/app/ops-analysis/utils/componentParamSwitch';
 import type {
@@ -1180,9 +1181,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       resolvedParamOptionsRef.current.set(paramName, options);
       const currentParams = form.getFieldValue('params') || {};
       const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
-      if (nextValue !== currentParams[paramName]) {
-        form.setFieldValue(['params', paramName], nextValue);
-      }
+      if (sameParamValue(nextValue, currentParams[paramName])) return;
+      // setFieldValue 会走 rc-field-form 的 isEqual。字段 errors/warnings 初始共用同一个空数组，
+      // 选项回填时再写一次就会报 circular references。setFieldsValue 不走这条比较。
+      form.setFieldsValue({
+        params: {
+          ...currentParams,
+          [paramName]: nextValue,
+        },
+      });
     },
     [form],
   );

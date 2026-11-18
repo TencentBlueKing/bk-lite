@@ -44,6 +44,7 @@ def test_validate_metric_type_rejects_unknown_metric():
 def test_memory_fallback_is_supported_by_service():
     class FakeVM:
         def query(self, query, **kwargs):
+            assert kwargs.get("step") == "600s"
             metric = query.split('"')[1]
             values = {
                 "device_memory_used": "80",
@@ -51,19 +52,30 @@ def test_memory_fallback_is_supported_by_service():
             }
             result = []
             if metric in values:
-                result.append({
-                    "metric": {"instance_id": "sw-1"},
-                    "value": [datetime(2026, 7, 22, 12, tzinfo=timezone.utc).timestamp(), values[metric]],
-                })
+                result.append(
+                    {
+                        "metric": {"instance_id": "sw-1"},
+                        "value": [datetime(2026, 7, 22, 12, tzinfo=timezone.utc).timestamp(), values[metric]],
+                    }
+                )
             return {"status": "success", "data": {"result": result}}
 
-    instance = type("Instance", (), {
-        "id": "sw-1", "name": "Switch A", "ip": None, "interval": 300,
-        "monitor_object": type("Object", (), {"name": "Switch"})(),
-    })()
-    rows = __import__("apps.monitor.services.network_device_resource_top", fromlist=["NetworkDeviceResourceTopService"]).NetworkDeviceResourceTopService(
-        vm_api=FakeVM(), now=datetime(2026, 7, 22, 12, tzinfo=timezone.utc)
-    ).run("memory", [instance])
+    instance = type(
+        "Instance",
+        (),
+        {
+            "id": "sw-1",
+            "name": "Switch A",
+            "ip": None,
+            "interval": 300,
+            "monitor_object": type("Object", (), {"name": "Switch"})(),
+        },
+    )()
+    rows = (
+        __import__("apps.monitor.services.network_device_resource_top", fromlist=["NetworkDeviceResourceTopService"])
+        .NetworkDeviceResourceTopService(vm_api=FakeVM(), now=datetime(2026, 7, 22, 12, tzinfo=timezone.utc))
+        .run("memory", [instance])
+    )
     assert rows[0]["value"] == 80.0
 
 

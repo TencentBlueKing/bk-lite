@@ -31,12 +31,14 @@ export function useTableServerQuery<RecordType extends Record<string, any>>({
   savedParams,
   onQueryChange,
   additionalQuery,
+  paginationResetKey = '',
 }: {
   rawData: unknown;
   sourceParams?: NamedParam[];
   savedParams?: NamedParam[];
   onQueryChange?: (params: Record<string, any>) => void;
   additionalQuery?: Record<string, unknown>;
+  paginationResetKey?: string;
 }) {
   const supportsPaginationParams = useMemo(
     () => supportsServerPagination(sourceParams),
@@ -113,6 +115,12 @@ export function useTableServerQuery<RecordType extends Record<string, any>>({
       return { ...prev, current: 1 };
     });
   }, []);
+  const paginationResetKeyRef = useRef(paginationResetKey);
+  useEffect(() => {
+    if (paginationResetKeyRef.current === paginationResetKey) return;
+    paginationResetKeyRef.current = paginationResetKey;
+    resetToFirstPage();
+  }, [paginationResetKey, resetToFirstPage]);
 
   return {
     rows: parsed.rows,
