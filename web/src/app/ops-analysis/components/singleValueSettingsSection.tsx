@@ -176,8 +176,8 @@ export const SingleValueSettingsSection: React.FC<
       disabled={fieldSelectorDisabled}
       onChange={(value) => handleFieldSelect(value as string | undefined)}
       className={`w-full ${fieldSelectorClassName}`}
-      popupClassName={fieldPopupClassName}
-      dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+      classNames={fieldPopupClassName ? { popup: { root: fieldPopupClassName } } : undefined}
+      styles={{ popup: { root: { maxHeight: 360, overflow: 'auto' } } }}
     />
   );
 
@@ -210,7 +210,7 @@ export const SingleValueSettingsSection: React.FC<
             {t('topology.nodeConfig.displayField')}
             <Tooltip
               title={t('dashboard.displayFieldTip')}
-              overlayInnerStyle={{ maxWidth: 360 }}
+              styles={{ body: { maxWidth: 360 } }}
             >
               <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
             </Tooltip>
@@ -271,8 +271,8 @@ export const SingleValueSettingsSection: React.FC<
               }
               disabled={fieldSelectorDisabled}
               className={fieldSelectorClassName}
-              popupClassName={fieldPopupClassName}
-              dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+              classNames={fieldPopupClassName ? { popup: { root: fieldPopupClassName } } : undefined}
+              styles={{ popup: { root: { maxHeight: 360, overflow: 'auto' } } }}
             />
           </Form.Item>
         ) : null}
