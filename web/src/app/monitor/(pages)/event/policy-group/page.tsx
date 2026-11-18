@@ -27,7 +27,7 @@ import {
   joinCandidateCheckboxDisabled,
   joinCandidateGroupLabel,
 } from './joinCandidate';
-import { policyGroupListEmptyText } from './policyGroupListEmpty';
+import { appliedPolicyGroupSearch, policyGroupListEmptyText } from './policyGroupListEmpty';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { MODULE_OBJECT_QUERY_PARAM, resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
@@ -202,6 +202,7 @@ const PolicyGroupPage: React.FC = () => {
   });
   const [searchText, setSearchText] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  const [defaultRemoved, setDefaultRemoved] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
@@ -287,6 +288,7 @@ const PolicyGroupPage: React.FC = () => {
       });
       const items = Array.isArray(data) ? data : data?.items || [];
       const total = Array.isArray(data) ? items.length : Number(data?.count || 0);
+      setDefaultRemoved(Boolean(!Array.isArray(data) && data?.default_removed));
       if (page > 1 && items.length === 0 && total > 0) {
         setPagination((prev) => ({ ...prev, current: page - 1, total }));
         return;
@@ -916,6 +918,7 @@ const PolicyGroupPage: React.FC = () => {
   const listEmptyText = policyGroupListEmptyText({
     objectSelected: Boolean(objectId),
     search: appliedSearch,
+    defaultRemoved,
   });
   const joinCandidateState = (record: InstanceCandidate) => {
     const belongsToOtherOrganization = candidateBelongsToOtherOrganization(
@@ -1225,12 +1228,10 @@ const PolicyGroupPage: React.FC = () => {
                       enterButton
                       className="w-60"
                       value={searchText}
-                      onPressEnter={() => {
-                        setAppliedSearch(searchText.trim());
-                        setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
-                      }}
-                      onSearch={() => {
-                        setAppliedSearch(searchText.trim());
+                      onSearch={(value) => {
+                        const next = appliedPolicyGroupSearch(value);
+                        setSearchText(next);
+                        setAppliedSearch(next);
                         setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
                       }}
                       onChange={(event) => setSearchText(event.target.value)}
