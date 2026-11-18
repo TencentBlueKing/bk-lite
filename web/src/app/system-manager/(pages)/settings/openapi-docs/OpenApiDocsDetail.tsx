@@ -40,6 +40,8 @@ import { useTranslation } from '@/utils/i18n';
 const DETAIL_SNIPPET_CLASS = '!rounded-lg !px-3.5 !py-2.5 [&_pre]:!leading-5';
 
 interface OpenApiDocsDetailProps {
+  /** 嵌入表单时使用父容器宽度；文档主页面保持侧栏布局。 */
+  embedded?: boolean;
   selectedRow?: OpenAPIDocRow;
   activeTab: string;
   onTabChange: (key: string) => void;
@@ -47,6 +49,7 @@ interface OpenApiDocsDetailProps {
 
 const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
   selectedRow,
+  embedded = false,
   activeTab,
   onTabChange,
 }) => {
@@ -208,7 +211,7 @@ const OpenApiDocsDetail: React.FC<OpenApiDocsDetailProps> = ({
   );
 
   return (
-    <aside className="flex w-[min(32rem,44%)] shrink-0 flex-col overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)]">
+    <aside className={`flex ${embedded ? 'w-full min-w-0' : 'w-[min(32rem,44%)] shrink-0'} flex-col overflow-hidden rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)]`}>
       {!selectedRow ? (
         <div className="flex h-full items-center justify-center p-8">
           <CompactEmptyState description={t('system.settings.openapiDocs.selectRow')} />

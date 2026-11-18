@@ -25,7 +25,7 @@ it('弹窗管理字典项，编辑保留标识', async () => {
   const input = screen.getByRole('textbox',{name:'字典项标识'}) as HTMLInputElement;
   expect(input.disabled).toBe(true);
   fireEvent.change(screen.getByRole('textbox',{name:'字典项名称'}),{target:{value:'乙'}});
-  fireEvent.click(screen.getByRole('button',{name:/确\s*定|OK/}));
+  fireEvent.click(screen.getByRole('button',{name:/保\s*存/}));
   await waitFor(()=>expect(api.createDictionaryItem).toHaveBeenCalledWith(1,{id:2,key:'a',label:'乙',order:0,is_enabled:true}));
 });
 it('只读用户可打开字典项但不能修改', async () => {

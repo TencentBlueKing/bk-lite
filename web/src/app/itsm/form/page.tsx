@@ -5,7 +5,7 @@ import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 import { ItsmListToolbar, ItsmCreateButton, ItsmRowActions } from '@/app/itsm/components/list-controls';
 
 import { Input, message } from 'antd';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import { FieldRow } from '../components/field-row';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -68,7 +68,7 @@ export default function FormListPage() {
           ]}
         />
       </div>
-      <OperateModal title={t('itsm.admin.newForm')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => { void create(); }}>
+      <OperateModal formValue={name} title={t('itsm.admin.newForm')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={create}>
         <FieldRow label={t('itsm.admin.formName')}><Input aria-label="表单名称" value={name} onChange={event => setName(event.target.value)} placeholder={t('itsm.admin.formName')} /></FieldRow>
       </OperateModal>
     </div>

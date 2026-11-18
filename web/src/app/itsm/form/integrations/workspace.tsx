@@ -5,7 +5,7 @@ import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { useRouter } from 'next/navigation';
-import { usePageLeave } from '../../components/page-leave';
+import { usePageLeave } from '../../components/interaction-surfaces';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
@@ -148,9 +148,10 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
             </div></FieldRow>
             <Alert type="info" showIcon message="外部接口须返回 JSON" description="GET 参数放在查询字符串，其他方法发送 JSON。保存后可在线调试，并在字段中选择此接口；字段只允许 GET 查询，流程 API 节点可使用其他方法。访问地址遵循平台网络白名单。" />
           </> : <><FieldRow label="平台接口"><Select className="w-full" aria-label="平台接口" showSearch optionFilterProp="label" placeholder="选择平台已注册的 API" value={endpoint?.key} options={endpoints.map(row => ({ value: row.key, label: `${row.method} ${row.path} · ${row.summary || row.service}` }))} onChange={key => { const row = endpoints.find(item => item.key === key); if (row) patchConfig({ method: row.method, path: row.path.replace('/openapi/v1/', '') }); }} /></FieldRow>
-            {endpoint && <OpenApiDocsDetail selectedRow={endpoint} activeTab={docTab} onTabChange={setDocTab} />}
+          <FieldRow label="接口文档" align="start"><div className="flex min-w-0 flex-col gap-3">
+            {endpoint && <OpenApiDocsDetail embedded selectedRow={endpoint} activeTab={docTab} onTabChange={setDocTab} />}
             <span className="text-xs text-[var(--color-text-3)]">接口定义、参数与权限来自平台 API 文档；在线调试会真实调用接口。</span>
-          </>}
+          </div></FieldRow></>}
         </>}
         {draft.kind === 'python' && <>
           <FieldRow label="Python 文件"><Upload accept=".py" showUploadList={false} beforeUpload={async file => { try { patchConfig({ script: await readPythonFile(file), filename: file.name }); } catch (error) { notifyError(error); } return false; }}><Button icon={<UploadOutlined />}>上传 .py</Button></Upload><span className="ml-3 text-[var(--color-text-3)]">{draft.config.filename} · UTF-8 / 100KB</span></FieldRow>

@@ -2,14 +2,13 @@
 
 import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 
-import { ImportOutlined } from '@ant-design/icons';
+import { ImportDialog } from '../../components/import-dialog';
 import { useRouter } from 'next/navigation';
-import OperateModal from '@/components/operate-modal';
-import { usePageLeave } from '../../components/page-leave';
+import { ItsmDrawer, usePageLeave } from '../../components/interaction-surfaces';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
-import { Alert, Button, Input, InputNumber, Select, Upload, message } from 'antd';
+import { Alert, Button, Input, InputNumber, Select, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
@@ -107,7 +106,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
   const visibleFields=fields.length?fields:Array.from(new Set(rows.flatMap(r=>Object.keys(r.data)))).map(key=>({key,label:key,type:'string'}));
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
     {!tableId && <><ItsmListToolbar search={{value: keyword, onChange: search, label: '搜索数据表', placeholder: '搜索名称或标识'}} actions={<>
-{permissions.can_add&&<><Upload accept=".xlsx" showUploadList={false} beforeUpload={file=>{void upload(file);return false;}}><Button icon={<ImportOutlined />} loading={busy}>导入</Button></Upload><ItsmCreateButton onClick={()=>{setFormError('');setBaseline(JSON.stringify({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]}));setDraft({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]});}}>新建</ItsmCreateButton></>}
+{permissions.can_add&&<><ImportDialog accept=".xlsx" onImport={upload} /><ItsmCreateButton onClick={()=>{setFormError('');setBaseline(JSON.stringify({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]}));setDraft({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]});}}>新建</ItsmCreateButton></>}
 </>} />
     <CustomTable storageKey="itsm:tables:position" queryKey={keyword} rowKey="id" dataSource={items.filter(i=>`${i.name} ${i.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
       {title:'名称',dataIndex:'name',key:'name',render:(value:string,item:TableItem)=><ItsmListEntry href={`/itsm/form/tables/${item.id}`}>{value}</ItsmListEntry>},{title:'标识',dataIndex:'key',key:'key'},
@@ -127,13 +126,13 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
         ]}/>
       </>}
     </section>}
-    {draft&&<OperateModal title={draft.id?'字段配置':'新建数据表'} open width={850} onCancel={()=>setDraft(undefined)} okText="保存" onOk={()=>void saveTable()} confirmLoading={busy} destroyOnHidden>
+    {draft&&<ItsmDrawer formValue={draft} title={draft.id?'字段配置':'新建数据表'} open width={850} onCancel={()=>setDraft(undefined)} onOk={()=>void saveTable()} confirmLoading={busy} destroyOnHidden>
       <div className="flex flex-col gap-4"><FieldRow label="名称"><Input aria-label="数据表名称" value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></FieldRow><FieldRow label="标识"><Input aria-label="数据表标识" disabled={!!draft.id} value={draft.key} onChange={e=>setDraft({...draft,key:e.target.value})}/></FieldRow>
       <FieldEditor fields={draft.fields} fixedKeys={draft.fixedKeys} onChange={newFields=>setDraft({...draft,fields:newFields})}/>{formError&&<Alert type="error" message={formError}/>}</div>
-    </OperateModal>}
-    {rowDraft&&<OperateModal title={rowDraft.id?'编辑数据':'新增数据'} open width={650} onCancel={()=>setRowDraft(undefined)} okText="保存" onOk={()=>void saveRow()} confirmLoading={busy} destroyOnHidden><div className="flex flex-col gap-3">
+    </ItsmDrawer>}
+    {rowDraft&&<ItsmDrawer formValue={rowDraft} title={rowDraft.id?'编辑数据':'新增数据'} open width={650} onCancel={()=>setRowDraft(undefined)} onOk={()=>void saveRow()} confirmLoading={busy} destroyOnHidden><div className="flex flex-col gap-3">
       {fields.map(f=>{const value=rowDraft.data[f.key];const change=(next:unknown)=>setRowDraft({...rowDraft,data:{...rowDraft.data,[f.key]:next}});return <FieldRow key={f.key} label={f.label||f.key}>
         {f.type==='number'?<InputNumber aria-label={f.label||f.key} value={value as number} onChange={change} className="!w-full"/>:f.type==='boolean'?<Select aria-label={f.label||f.key} className="w-full" allowClear value={value==null?undefined:String(value)} options={[{value:'true',label:'是'},{value:'false',label:'否'}]} onChange={v=>change(v==null?null:v==='true')}/>:['object','array'].includes(f.type)?<Input.TextArea aria-label={f.label||f.key} value={String(value??'')} rows={4} placeholder={f.type==='object'?'例如 {"name":"示例"}':'例如 ["示例"]'} onChange={e=>change(e.target.value)}/>:<Input aria-label={f.label||f.key} type={f.type==='date'?'date':f.type==='datetime'?'datetime-local':'text'} value={String(value??'')} onChange={e=>change(e.target.value||null)}/>}
-      </FieldRow>;})}{formError&&<Alert type="error" message={formError}/>}</div></OperateModal>}
+      </FieldRow>;})}{formError&&<Alert type="error" message={formError}/>}</div></ItsmDrawer>}
   </div>;
 }

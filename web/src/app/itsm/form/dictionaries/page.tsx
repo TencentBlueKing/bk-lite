@@ -2,13 +2,14 @@
 
 import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 
-import { ImportOutlined, ExportOutlined } from '@ant-design/icons';
+import { ImportDialog } from '../../components/import-dialog';
+import { ExportOutlined } from '@ant-design/icons';
 
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
-import { Alert, Button, Input, InputNumber, Switch, Tag, Upload, message } from 'antd';
+import { Alert, Button, Input, InputNumber, Switch, Tag, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal, ItsmDrawer, confirmLeave } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -47,16 +48,18 @@ export default function DictionariesPage() {
   const [canImport, setCanImport] = useState(false);
   const [canEditEntries, setCanEditEntries] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [entryBaseline,setEntryBaseline]=useState('');
   const [editingEntry, setEditingEntry] = useState<EntryItem | null>(null);
   const [order, setOrder] = useState(0);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [, setImporting] = useState(false);
   const [error, setError] = useState('');
   const sequence = useRef(0);
   const showError = (error: unknown) => message.error(error instanceof Error ? error.message : '操作失败，请重试');
   const editEntry = (entry: EntryItem | null) => {
+    setEntryBaseline(JSON.stringify([entry?.key || '',entry?.label || '',entry?.order || 0,entry?.is_enabled ?? true]));
     setEditingEntry(entry); setEntryKey(entry?.key || ''); setEntryLabel(entry?.label || '');
     setOrder(entry?.order || 0); setEnabled(entry?.is_enabled ?? true); setEntryOpen(true);
   };
@@ -126,17 +129,17 @@ export default function DictionariesPage() {
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
         <ItsmListToolbar search={{value: keyword, onChange: setKeyword, label: '搜索数据字典', placeholder: '搜索名称或标识'}} actions={<>
 <Button icon={<ExportOutlined />} onClick={() => { void exportFile().catch(showError); }}>{t('itsm.admin.exportAll')}</Button>
-{canImport && <Upload accept=".json,application/json" showUploadList={false} beforeUpload={async (file) => {
+{canImport && <ImportDialog accept=".json,application/json" onImport={async (file) => {
   if (file.size > 10 * 1024 * 1024) { message.error('文件不能超过 10 MB'); return false; }
   setImporting(true);
   try {
     const rows: unknown = JSON.parse(await file.text());
     if (!Array.isArray(rows)) throw new Error('请选择导出的字典 JSON 文件');
     const result = await api.importDictionaries(rows) as { created: number };
-    await load(); message.success(`已导入 ${result.created} 个字典`);
+    await load(); message.success(`已导入 ${result.created} 个字典`);return true;
   } catch (error) { showError(error); } finally { setImporting(false); }
   return false;
-}}><Button icon={<ImportOutlined />} loading={importing}>导入</Button></Upload>}
+}} />}
 {canEdit && <ItsmCreateButton onClick={() => { setEditing(null); setName(''); setDictKey(''); setCreateOpen(true); }}>新建</ItsmCreateButton>}
 </>} />
         <CustomTable queryKey={keyword}
@@ -155,7 +158,7 @@ export default function DictionariesPage() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.admin.editDictionary') : t('itsm.admin.newDictionaryTitle')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => { void create().catch(showError); }}>
+      <OperateModal formValue={{name,dictKey}} title={editing ? t('itsm.admin.editDictionary') : t('itsm.admin.newDictionaryTitle')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={create}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.admin.dictName')}>
             <Input value={name} onChange={(event) => setName(event.target.value)} />
@@ -165,8 +168,10 @@ export default function DictionariesPage() {
           </FieldRow>
         </div>
       </OperateModal>
-      <OperateModal title={`字典项 · ${current?.name || ''}`} open={Boolean(current)} width={900} footer={null}
-        onCancel={() => { sequence.current++; setCurrent(null); setEntries([]); setEntryOpen(false); }}>
+      <ItsmDrawer title={entryOpen ? `${editingEntry ? '编辑' : '新增'}字典项` : `字典项 · ${current?.name || ''}`} open={Boolean(current)} width={900}
+        confirmLoading={busy} footer={entryOpen ? <><Button disabled={busy} onClick={()=>confirmLeave(entryBaseline!==JSON.stringify([entryKey,entryLabel,order,enabled]),()=>setEntryOpen(false))}>返回字典项列表</Button><Button type="primary" loading={busy} onClick={()=>void saveEntry()}>保存</Button></> : null}
+        onCancel={() => confirmLeave(entryOpen && entryBaseline!==JSON.stringify([entryKey,entryLabel,order,enabled]),()=>{ sequence.current++; setCurrent(null); setEntries([]); setEntryOpen(false); })}>
+        {!entryOpen && <>
         {canEditEntries && <ItsmListToolbar actions={<ItsmCreateButton onClick={() => editEntry(null)}>新增字典项</ItsmCreateButton>} />}
         {error ? <Alert type="error" message={error} action={<Button onClick={() => { if (current) void openItems(current); }}>重试</Button>} /> :
           <CustomTable queryKey={keyword} rowKey="id" loading={loading} dataSource={entries} scroll={{ y: '45vh' }} columns={[
@@ -181,8 +186,8 @@ export default function DictionariesPage() {
                 try { await api.deleteDictionaryItem(current.id, item.id); await openItems(current); } catch (error) { showError(error); }
               }}]} /> }] : []),
           ]} />}
-      </OperateModal>
-      <OperateModal title={editingEntry ? '编辑字典项' : '新增字典项'} open={entryOpen} confirmLoading={busy} onCancel={() => setEntryOpen(false)} onOk={() => void saveEntry()}>
+        </>}
+      {entryOpen && <>
         <div className="flex flex-col gap-4">
           <FieldRow label="名称"><Input aria-label="字典项名称" maxLength={128} value={entryLabel} onChange={event => setEntryLabel(event.target.value)} /></FieldRow>
           <FieldRow label="标识"><Input aria-label="字典项标识" maxLength={64} disabled={Boolean(editingEntry)} value={entryKey} onChange={event => setEntryKey(event.target.value)} /></FieldRow>
@@ -190,7 +195,8 @@ export default function DictionariesPage() {
           <FieldRow label="排序"><InputNumber aria-label="排序" min={0} max={2147483647} precision={0} value={order} onChange={value => setOrder(value ?? 0)} /></FieldRow>
           <FieldRow label="启用"><Switch aria-label="启用" checked={enabled} onChange={setEnabled} /></FieldRow>
         </div>
-      </OperateModal>
+      </>}
+      </ItsmDrawer>
     </div>
   );
 }

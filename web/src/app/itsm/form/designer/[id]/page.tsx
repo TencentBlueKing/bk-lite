@@ -1,7 +1,7 @@
 'use client';
 
-import { usePageLeave } from '@/app/itsm/components/page-leave';
-import { Button, Drawer, Empty, Tag, message } from 'antd';
+import { ItsmDrawer as Drawer, usePageLeave } from '@/app/itsm/components/interaction-surfaces';
+import { Button, Empty, Tag, message } from 'antd';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -94,7 +94,7 @@ export default function FormDesignerPage() {
       ) : (
         <FormDesigner fields={fields} onChange={setFields} />
       )}
-      <Drawer title={t('itsm.design.history')} open={historyOpen} onClose={() => setHistoryOpen(false)}>
+      <Drawer title={t('itsm.design.history')} open={historyOpen} onCancel={() => setHistoryOpen(false)}>
         {(detail?.versions || []).length ? (
           <div className="flex flex-col gap-2">
             {(detail?.versions || []).map((item) => (

@@ -1,7 +1,7 @@
 'use client';
 
 import { Input, Select, message } from 'antd';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import ItsmListTable from '../../components/itsm-list-table';
 import { ItsmListToolbar, ItsmCreateButton } from '../../components/list-controls';
 import { FieldRow } from '../../components/field-row';
@@ -66,7 +66,7 @@ export default function ViewTemplatesPage() {
       {title:'表单',key:'form',render:(_,item:TemplateItem)=>forms.find(form=>form.id===item.form_id)?.name || item.form_id},
       {title:'字段顺序',key:'fields',render:(_,item:TemplateItem)=>(item.layout?.fields || []).join('、') || '未指定顺序'},
     ]} />
-    <OperateModal title="新建视图模板" open={open} onCancel={() => setOpen(false)} onOk={() => void save()} confirmLoading={saving}>
+    <OperateModal formValue={{ formId, name, fields, matchStatus }} title="新建视图模板" open={open} onCancel={() => setOpen(false)} onOk={() => void save()} confirmLoading={saving}>
       <div className="flex flex-col gap-4">
         <FieldRow label="表单"><Select className="w-full" showSearch optionFilterProp="label" value={formId} options={forms.map(item=>({value:item.id,label:item.name}))} onChange={setFormId} /></FieldRow>
         <FieldRow label="名称"><Input value={name} onChange={event=>setName(event.target.value)} /></FieldRow>
