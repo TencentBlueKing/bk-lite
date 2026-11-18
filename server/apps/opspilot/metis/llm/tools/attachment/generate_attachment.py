@@ -107,6 +107,9 @@ def generate_attachment_file(
     file_type: str = "md",
     title: str = "",
     sandbox_path: str = "",
+    genre: str = "business_report",
+    header_rows: int = 1,
+    merges: list[str] | None = None,
     config: RunnableConfig = None,
 ) -> dict:
     """Generate a new downloadable file and return its download URL.
@@ -125,14 +128,22 @@ def generate_attachment_file(
 
     Parameters:
     - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
-    - content:  Complete file content to save. For xlsx/csv pass raw data; for md/txt/pdf
-                pass the full Markdown or plain-text body.
+    - content:  Complete file content to save. For xlsx/csv pass one CSV sheet; for md/txt/pdf/docx
+                pass the full Markdown body. The server applies the document theme. Do not embed
+                Markdown syntax into an xlsx sheet.
     - file_type: File format — "txt", "md", "html", "pdf", "docx", "pptx", "xlsx", or "csv".
                  Defaults to "md". Use "txt" for a text file; do not substitute md.
                  Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.
-    - title:    Optional document title used as a header in PDF/Word output.
+    - title:    Optional document title used as the Word/PDF page header.
     - sandbox_path: Existing file under the current task working directory to deliver byte-for-byte. When set,
-      content must be empty; file_type must match the file's actual format.
+      content must be empty; file_type must match the file's actual format. Sandbox files are not restyled.
+    - genre: "business_report" (default), "official", or "meeting_minutes". Word and PDF only.
+      business_report is an analysis or inspection report. official is 公文、函、请示 or 通知.
+      meeting_minutes is 会议纪要 or 会议记录. Excel ignores this.
+    - header_rows: Excel header row count. Default 1. The last of these rows is the column header.
+      Rows above it are titles. Excel only.
+    - merges: Excel A1 merge ranges, for example ["A1:C1"]. Omit when nothing should be merged.
+      Do not guess merges from repeated values. Excel only.
     """
 
     configurable = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
@@ -180,7 +191,14 @@ def generate_attachment_file(
                 raise ValueError("沙箱文件扩展名与附件类型不匹配")
             attachment_bytes = sandbox.read_workspace_file(sandbox_path)
         else:
-            attachment_bytes = build_attachment_bytes(content=content, file_type=normalized_type, title=title or normalized_filename)
+            attachment_bytes = build_attachment_bytes(
+                content=content,
+                file_type=normalized_type,
+                title=title or normalized_filename,
+                genre=genre,
+                header_rows=header_rows,
+                merges=merges,
+            )
         asset = create_workflow_attachment_asset(
             execution_id=execution_id,
             attachment_id=attachment_id,

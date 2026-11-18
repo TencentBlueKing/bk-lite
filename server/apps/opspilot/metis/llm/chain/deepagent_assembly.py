@@ -224,7 +224,10 @@ class DeepAgentAssemblyMixin:
             name = str(getattr(message, "name", "") or "tool")
             tool_bits.append(f"{name}: {str(getattr(message, 'content', '') or '')[:400]}")
         if tool_bits:
-            return "；".join(tool_bits)[:1200]
+            tool_summary = "；".join(tool_bits)[:1200]
+            if carry_over:
+                return cls._join_step_summary(tool_summary, carry_over)
+            return tool_summary
         if ai_text:
             return ai_text[:200]
         return "步骤已完成"
@@ -352,6 +355,8 @@ class DeepAgentAssemblyMixin:
             return []
         if tool_name == "search_data_sources":
             return cls._dashboard_source_facts(payload)
+        if tool_name == "alerts_list_alerts":
+            return cls._alert_list_facts(payload)
         facts: list[str] = []
         for row in cls._rows_of(payload):
             if not isinstance(row, dict):
@@ -375,6 +380,53 @@ class DeepAgentAssemblyMixin:
                 if metric:
                     facts.append(f"metric={metric}")
         return facts
+
+    @classmethod
+    def _alert_list_facts(cls, payload: dict) -> list[str]:
+        """告警列表的逐条字段。正文摘要只有总数时，写报告的下一步仍要能列出明细。"""
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        rows = [row for row in cls._rows_of(payload) if isinstance(row, dict)]
+        shown = rows[:20]
+        count = data.get("count")
+        facts = [f"alerts_count={count if count not in (None, '') else len(rows)} shown={len(shown)}"]
+        for row in shown:
+            parts = []
+            for key in ("alert_id", "title", "level", "status", "source_name", "resource_type", "resource_name", "created_at"):
+                text = cls._alert_fact_text(row.get(key))
+                if text:
+                    parts.append(f"{key}={text}")
+            owners = cls._alert_owner_text(row.get("owners") or row.get("operator"))
+            if owners:
+                parts.append(f"owners={owners}")
+            if parts:
+                facts.append(" ".join(parts))
+        if isinstance(count, int) and count > len(shown):
+            facts.append(f"alerts_truncated=true remaining={count - len(shown)}")
+        return facts
+
+    @staticmethod
+    def _alert_fact_text(value) -> str:
+        if value is None or isinstance(value, (dict, list)):
+            return ""
+        text = " ".join(str(value).split())
+        if len(text) > 80:
+            text = text[:80]
+        return text
+
+    @staticmethod
+    def _alert_owner_text(value) -> str:
+        items = value if isinstance(value, list) else [value]
+        names = []
+        for item in items:
+            if isinstance(item, str) and item.strip():
+                names.append(item.strip())
+            elif isinstance(item, dict):
+                name = str(item.get("name") or item.get("username") or "").strip()
+                if name:
+                    names.append(name)
+            if len(names) == 3:
+                break
+        return ",".join(names)
 
     @staticmethod
     def _rows_of(payload) -> list:

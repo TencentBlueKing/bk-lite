@@ -2519,6 +2519,52 @@ def test_summarize_planned_step_for_limit_continue_stitches_carry_over_on_tool_b
     assert "[OPSPILOT_LIMIT:" not in summary
 
 
+def test_summarize_planned_step_carries_alert_rows_into_next_step():
+    """写报告的下一步只能看到摘要。告警列表必须带上编号、对象、时间和负责人，不能只留总数。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    alerts = json.dumps(
+        {
+            "success": True,
+            "data": {
+                "count": 5,
+                "page": 1,
+                "page_size": 20,
+                "items": [
+                    {
+                        "alert_id": "SEED-AC-01",
+                        "title": "CPU过高",
+                        "content": "正文" * 800,
+                        "level": "0",
+                        "status": "pending",
+                        "source_name": "本地验收",
+                        "resource_type": "host",
+                        "resource_name": "web-01",
+                        "created_at": "2026-11-18 10:00:00",
+                        "owners": ["张三"],
+                    }
+                ],
+            },
+        },
+        ensure_ascii=False,
+    )
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "alerts_list_alerts", "args": {"status": "active"}}]),
+        ToolMessage(content=alerts, tool_call_id="1", name="alerts_list_alerts"),
+        AIMessage(content="活动告警共 5 条，来源均为本地验收，级别均为 0。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "alert_id=SEED-AC-01" in summary
+    assert "resource_name=web-01" in summary
+    assert "created_at=2026-11-18 10:00:00" in summary
+    assert "owners=张三" in summary
+    assert "正文" * 20 not in summary
+
+
 def test_summarize_planned_step_carries_instance_id_into_next_step():
     """查全部主机时第 3 步要用第 2 步查到的 instance_id，摘要只留正文会把它丢掉。"""
     import json
