@@ -610,6 +610,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
           ) : selected ? (
             <Form form={form} layout="vertical" className="contents" onValuesChange={markDirty}>
               <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                <div className="pr-4">
                 <Form.Item
                   label={t('dataVariable.name')}
                   name="name"
@@ -677,6 +678,7 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     />
                   </div>
                 ) : null}
+                </div>
               </div>
               <div className="flex min-h-0 w-[460px] shrink-0 flex-col overflow-hidden border-l border-(--color-border-1) pl-4">
                 <Form.Item

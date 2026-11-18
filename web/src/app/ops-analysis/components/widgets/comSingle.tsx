@@ -40,7 +40,7 @@ import OpsAnalysisMetricValue, {
   resolveMetricFontSize,
 } from '@/app/ops-analysis/components/ops-analysis-metric-value';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
-import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
+import DataLinkHoverMark from '@/app/ops-analysis/components/dataLinkHoverMark';
 import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
@@ -532,13 +532,17 @@ const ComSingle: React.FC<ComSingleProps> = ({
   }
 
   return (
-    <DataLinkHintTooltip hint={singlePoint ? hoverHint : undefined}>
     <div
-      className={`flex h-full w-full flex-col overflow-hidden ${
+      className={`group/data-link relative flex h-full w-full flex-col overflow-hidden ${
         usesScreenTheme ? '' : 'px-2'
       } ${dataLinkActive && singlePoint ? 'cursor-pointer' : ''}`}
       onClick={dataLinkActive ? () => openPoint(singlePoint) : undefined}
     >
+      <DataLinkHoverMark
+        show={Boolean(dataLinkActive && singlePoint)}
+        label={hoverHint}
+        className="absolute right-1 top-1 z-10"
+      />
       <div
         ref={contentAreaRef}
         className="flex min-h-0 flex-1 flex-col"
@@ -713,7 +717,6 @@ const ComSingle: React.FC<ComSingleProps> = ({
         ) : null}
       </div>
     </div>
-    </DataLinkHintTooltip>
   );
 };
 
