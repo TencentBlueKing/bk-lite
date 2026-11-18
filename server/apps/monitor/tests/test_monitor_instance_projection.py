@@ -380,6 +380,84 @@ def test_monitor_instance_list_filters_instances_by_plugin_status_query(db, monk
     assert [item["instance_id"] for item in data["results"]] == [active_instance.id]
 
 
+def test_plugin_status_query_covers_identity_requires_every_object_key():
+    covers = MonitorObjectService.plugin_status_query_covers_identity
+    cluster_query = "any({instance_type='k8s'}) by (instance_id)"
+    assert covers(cluster_query, ["instance_id"]) is True
+    assert covers(cluster_query, ["instance_id", "pod"]) is False
+    assert covers(cluster_query, ["instance_id", "node"]) is False
+    assert covers("any({instance_type='k8s'}) by (instance_id, pod)", ["instance_id", "pod"]) is True
+    assert covers("", ["instance_id"]) is False
+    assert covers(cluster_query, []) is False
+
+
+def test_monitor_instance_list_uses_object_metric_when_plugin_query_misses_identity(db, monkeypatch):
+    """数据查询选 Pod 会带 K8S 插件 ID；集群级 status_query 不能过滤 (instance_id, pod)。"""
+    monitor_object = MonitorObject.objects.create(
+        name="Pod",
+        display_name="Pod",
+        default_metric="prometheus_remote_write_kube_pod_info",
+        instance_id_keys=["instance_id", "pod"],
+        level="derivative",
+    )
+    plugin = MonitorPlugin.objects.create(
+        name="K8S",
+        display_name="K8S",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({instance_type='k8s'}) by (instance_id)",
+    )
+    plugin.monitor_object.add(monitor_object)
+    live_pod = MonitorInstance.objects.create(
+        id="('cluster-a', 'coredns')",
+        name="coredns",
+        monitor_object_id=monitor_object.id,
+    )
+    MonitorInstance.objects.create(
+        id="('cluster-a', 'stale-pod')",
+        name="stale-pod",
+        monitor_object_id=monitor_object.id,
+    )
+    captured = []
+
+    def fake_get_instances_by_metric(metric, instance_id_keys):
+        captured.append((metric, list(instance_id_keys)))
+        if metric == plugin.status_query:
+            return {
+                "('cluster-a', None)": {
+                    "instance_id": "('cluster-a', None)",
+                    "agent_id": None,
+                    "time": 1781589583,
+                }
+            }
+        return {
+            live_pod.id: {
+                "instance_id": live_pod.id,
+                "agent_id": None,
+                "time": 1781589583,
+            }
+        }
+
+    monkeypatch.setattr(
+        MonitorObjectService,
+        "get_instances_by_metric",
+        fake_get_instances_by_metric,
+    )
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
+
+    data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=-1,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        monitor_plugin_id=plugin.id,
+    )
+
+    assert captured == [(monitor_object.default_metric, ["instance_id", "pod"])]
+    assert [item["instance_id"] for item in data["results"]] == [live_pod.id]
+
+
 def test_monitor_instance_list_returns_empty_for_unknown_plugin(db, monkeypatch):
     monitor_object = MonitorObject.objects.create(
         name="Host",

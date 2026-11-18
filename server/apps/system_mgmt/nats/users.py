@@ -25,6 +25,20 @@ def _is_persisted_superuser(user_obj):
     return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
 
 
+def _is_persisted_auditor(user_obj):
+    """仅从持久化 auditor 角色解析，不接受请求参数声明。"""
+    if _is_persisted_superuser(user_obj):
+        return False
+    if not getattr(user_obj, "role_list", None):
+        return False
+    role_ids = get_user_all_roles(user_obj)
+    return Role.objects.filter(id__in=role_ids, name="auditor").filter(Q(app="") | Q(app="system-manager")).exists()
+
+
+def _has_unrestricted_org_scope(user_obj):
+    return _is_persisted_superuser(user_obj) or _is_persisted_auditor(user_obj)
+
+
 # SECURITY COMPATIBILITY: 仅为已知仓外消费者限时恢复；不得新增消费者。
 # 风险接受与 NATS 身份/ACL 迁移跟踪见 #4533，截止 2026-09-04。
 @nats_client.register
@@ -74,8 +88,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
     if not user_obj:
         return None, [], None
 
-    # 超管身份只能来自持久化用户，RPC 调用方声明不得提升权限。
-    is_superuser = _is_persisted_superuser(user_obj)
+    # 超管 / 审计员身份只能来自持久化用户，RPC 调用方声明不得提升权限。
+    unrestricted_scope = _has_unrestricted_org_scope(user_obj)
 
     try:
         current_team = next(iter(_normalize_organization_ids([current_team])))
@@ -85,7 +99,7 @@ def _get_actor_user_scope(actor_context, include_children=False):
     if Group.objects.filter(id=current_team, is_delete=True).exists():
         return user_obj, [], _current_team_archived_message(user_obj)
 
-    if is_superuser:
+    if unrestricted_scope:
         if not GroupUtils.active_queryset(id=current_team).exists():
             return user_obj, [], _current_team_archived_message(user_obj)
         if include_children:
@@ -178,7 +192,7 @@ def get_assignable_groups(actor_context):
     if not user_obj:
         return {"result": True, "data": []}
 
-    if _is_persisted_superuser(user_obj):
+    if _has_unrestricted_org_scope(user_obj):
         return {"result": True, "data": list(GroupUtils.active_queryset().values_list("id", flat=True))}
 
     user_group_list = list(user_obj.group_list or [])

@@ -294,6 +294,16 @@ class TestGetQuerysetByPermission:
 
 class TestFilterByGroup:
     @pytest.mark.django_db
+    def test_filter_by_group_allows_auditor_foreign_team(self):
+        from apps.system_mgmt.models import Group
+
+        req = SimpleNamespace(
+            user=SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[], group_tree=[]),
+            COOKIES={"current_team": "99", "include_children": "0"},
+        )
+        GenericViewSetFun.filter_by_group(Group.objects.all(), req, req.user)
+
+    @pytest.mark.django_db
     def test_superuser_skips_team_validation(self):
         from apps.system_mgmt.models import Group
 
@@ -371,3 +381,42 @@ class TestIntegerGroupListAccess:
         with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
             assert vs.get_detail(req) is serializer
             assert vs._validate_destroy_access(req, instance) is None
+
+
+class TestAuditorWriteGuards:
+    def test_auditor_destroy_denied_even_with_org_membership(self):
+        import json
+
+        vs = _auth_vs()
+        instance = SimpleNamespace(id=8, team=[1])
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            resp = vs._validate_destroy_access(req, instance)
+        assert resp is not None
+        assert json.loads(resp.content)["result"] is False
+
+    def test_auditor_update_denied_even_with_org_membership(self):
+        import json
+
+        vs = _auth_vs()
+        instance = SimpleNamespace(id=8, team=[1])
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, COOKIES={})
+        with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
+            resp = vs._validate_update_access(req, instance, {})
+        assert resp is not None
+        assert json.loads(resp.content)["result"] is False
+
+    def test_auditor_org_field_denied_even_with_membership(self):
+        vs = _auth_vs()
+        req = SimpleNamespace(user=SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1]))
+        with pytest.raises(PermissionDenied):
+            vs._validate_org_field_permission(req, [1])
+
+    def test_auditor_create_denied_even_with_org_membership(self):
+        vs = _auth_vs()
+        user = SimpleNamespace(is_superuser=False, is_auditor=True, group_list=[1])
+        req = SimpleNamespace(user=user, data={"team": [1]})
+        with pytest.raises(PermissionDenied):
+            vs.create(req)

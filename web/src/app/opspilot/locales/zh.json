@@ -812,6 +812,13 @@
     },
     "pageTitle": "工作台",
     "pageDescription": "管理机器人应用，配置渠道发布与对话能力",
+    "retirementNotice": {
+      "title": "工作台计划于 2027 年 1 月下架",
+      "description": "编排中心已完整继承工作台能力，请尽快将AI流程迁至编排中心，并验证运行结果。",
+      "openWorkflow": "前往编排中心",
+      "muteInBrowser": "不再提醒",
+      "acknowledge": "我已清楚"
+    },
     "settings": {
       "selectSkills": "选择智能体",
       "enableSsl": "启用 SSL",
@@ -1993,7 +2000,14 @@
       "introEnd": " 顶部 YAML frontmatter，或从标题和目录名推导基础信息。",
       "uploadText": "点击或拖拽 ZIP 技能包到这里",
       "uploadHint": "第一版支持本地 ZIP 上传；公开 Git 仓库导入后续接入同一导入器。"
-    }
+    },
+    "templatesTitle": "模版",
+    "templatesDescription": "从内置模版创建自己的智能体，再选择模型并完善配置。",
+    "searchTemplates": "搜索模版",
+    "templatesLoadFailed": "模版加载失败，请重试。",
+    "templateCreateFailed": "智能体创建失败，请重试。",
+    "noMatchingTemplates": "没有匹配的模版",
+    "noTemplates": "暂无可用模版"
   },
   "chatflow": {
     "lock": "锁定画布",

@@ -38,7 +38,8 @@ const UserInfo: React.FC = () => {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser } = useUserInfoContext();
+  const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser, roles } = useUserInfoContext();
+  const unrestrictedOrgPicker = isSuperUser || roles.includes('auditor');
   const homepageMenu = useHomepageMenu(selectedGroup?.id);
 
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
@@ -250,7 +251,7 @@ const UserInfo: React.FC = () => {
   const groupPanelContent = useMemo(() => {
     const filterGroups = (groups: Group[]): Group[] => {
       return groups
-        .filter(group => isSuperUser || (session?.user as any)?.username === 'kayla' || group.name !== 'OpsPilotGuest')
+        .filter(group => unrestrictedOrgPicker || (session?.user as any)?.username === 'kayla' || group.name !== 'OpsPilotGuest')
         .map(group => ({
           ...group,
           subGroups: group.subGroups ? filterGroups(group.subGroups) : undefined,
@@ -319,7 +320,7 @@ const UserInfo: React.FC = () => {
         </div>
       </>
     );
-  }, [selectedGroup, groupTree, includeChildren, isSuperUser, session, searchValue, userExpandedKeys, handleChangeGroup, handleIncludeChildrenChange, t]);
+  }, [selectedGroup, groupTree, includeChildren, unrestrictedOrgPicker, session, searchValue, userExpandedKeys, handleChangeGroup, handleIncludeChildrenChange, t]);
 
   const dropdownItems: MenuProps['items'] = useMemo(() => {
     const items: MenuProps['items'] = [

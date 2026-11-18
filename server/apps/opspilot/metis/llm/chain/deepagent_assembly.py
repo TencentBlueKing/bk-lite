@@ -573,7 +573,7 @@ class DeepAgentAssemblyMixin:
         if mode == "alert_rca":
             return (
                 "本步给出用户可见的最终答案，只输出一份报告，不要按排查步骤重复粘贴。"
-                "必须以「# RCA 报告」作为第一行，然后按系统提示「输出格式」写完整中文 Markdown，章节顺序为："
+                "必须以「# RCA 报告」作为第一行，然后按系统提示「输出格式」写完整 Markdown，章节顺序为："
                 "事件概述、异常对象清单、根因分析、修复建议、待确认项。"
                 "标题之前不要写定位说明、步骤结果或客套话。"
                 "异常对象清单必须是 Markdown 表，列名为：对象、状态/现象、重启次数、关键事件、是否已定位。"
@@ -658,8 +658,13 @@ class DeepAgentAssemblyMixin:
         )
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
-            "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
+            "当前不可见的工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即不要把空当失败反复换参。"
+            "大结果落盘通知只是预览，全量分析须读取完整文件；当前可见Python时用它加载JSON并校验记录数后聚合。"
+            "Python读取结果使用工作目录相对路径large_tool_results/<文件名>，文件工具显示的/large_tool_results/是虚拟路径。"
+            "分别计算用户要求的各维度；每张完整分组表的数量合计须等于已校验总数。"
+            "同一指标跨对象类型时须合并计数或完整列出各类型，未知值单列，不得漏项；展示时沿用计算结果。"
+            "读取不全须说明数据不足，不得估算未读记录、用预览抽样或把匹配行数当记录数。"
             "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
             f"{object_choice}"
@@ -699,8 +704,8 @@ class DeepAgentAssemblyMixin:
     def _build_lightweight_system_prompt(user_system_message: str = "", *, skills_available: bool = False) -> str:
         role = (user_system_message or "").strip() or "你是运维助手。"
         if skills_available:
-            return f"{role}\n\n" "直接用中文简洁回答用户。" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
-        return f"{role}\n\n" "直接用中文简洁回答用户。" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
+            return f"{role}\n\n" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
+        return f"{role}\n\n" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
 
     PLANNED_EXECUTION_STEP_PROMPT_SUFFIX = (
         "\n\n【分步工具执行】外部规划器已经拆分任务。"

@@ -1029,6 +1029,7 @@ class InstanceManage(object):
         case_sensitive: bool = True,
         advanced_filter: dict = None,
         permission_lookup=None,
+        relation_filters=None,
         condition_params: list = None,
         condition_logic: str = "AND",
     ):
@@ -1044,7 +1045,7 @@ class InstanceManage(object):
             order = order[1:]
             order_type = "DESC"
 
-        if advanced_filter:
+        if advanced_filter or relation_filters:
             from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
 
             return run_advanced_instance_query(
@@ -1058,6 +1059,7 @@ class InstanceManage(object):
                 order=order,
                 order_type=order_type,
                 case_sensitive=case_sensitive,
+                relation_filters=relation_filters,
             )
 
         with GraphClient() as ag:
@@ -2831,6 +2833,7 @@ class InstanceManage(object):
         advanced_filter: dict = None,
         permission_lookup=None,
         *,
+        relation_filters=None,
         file_backed: bool = False,
         row_limit=None,
         progress=None,
@@ -2845,6 +2848,7 @@ class InstanceManage(object):
         metadata_finished = perf_counter()
         if ids:
             advanced_filter = None
+            relation_filters = None
             query_list = [
                 {"field": "id", "type": "id[]", "value": ids},
                 {"field": "model_id", "type": "str=", "value": model_id},
@@ -2876,7 +2880,7 @@ class InstanceManage(object):
                 params = list(query_list)
                 if cursor is not None:
                     params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
-                if advanced_filter:
+                if advanced_filter or relation_filters:
                     from apps.cmdb.services.advanced_instance_query import run_advanced_instance_query
 
                     batch, _ = run_advanced_instance_query(
@@ -2891,6 +2895,7 @@ class InstanceManage(object):
                         order_type="ASC",
                         fields=fields,
                         include_count=False,
+                        relation_filters=relation_filters,
                     )
                 else:
                     with GraphClient() as ag:

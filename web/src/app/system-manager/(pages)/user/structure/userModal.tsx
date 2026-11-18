@@ -64,7 +64,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     groupRules,
     organizationRoleIds,
     organizationRoleSourceMap,
-    isSuperuser,
+    userKind,
     isSyncedUser,
     currentUserId,
     showModal,
@@ -72,7 +72,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     handleConfirm,
     handleGroupChange,
     handleRoleChange,
-    handleSuperuserChange,
+    handleUserKindChange,
     handleChangeRule,
     sensitiveBehavior,
   } = useUserModalData();
@@ -318,7 +318,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           </Form.Item>
           <Form.Item
             label={t('common.organization')}
-            required={!isSuperuser}
+            required={userKind === 'normal'}
           >
             {visible && (type !== 'edit' || !loading) ? (
               <RoleTransfer
@@ -336,15 +336,16 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
           <Form.Item
             label={t('system.user.form.role')}
             tooltip={t('system.user.form.rolePermissionTip')}
-            required={type === 'edit' && !isSuperuser}
+            required={type === 'edit' && userKind === 'normal'}
           >
-            <Form.Item name="is_superuser" style={{ marginBottom: 8 }}>
-                <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
-                <Radio value={false}>{t('system.user.form.normalUser')}</Radio>
-                <Radio value={true}>{t('system.user.form.superuser')}</Radio>
+            <Form.Item name="user_kind" style={{ marginBottom: 8 }}>
+              <Radio.Group onChange={(e) => handleUserKindChange(e.target.value)}>
+                <Radio value="normal">{t('system.user.form.normalUser')}</Radio>
+                <Radio value="superuser">{t('system.user.form.superuser')}</Radio>
+                <Radio value="auditor">{t('system.user.form.auditor')}</Radio>
               </Radio.Group>
             </Form.Item>
-            {!isSuperuser ? (
+            {userKind === 'normal' ? (
               visible ? (
                 <RoleTransfer
                   groupRules={groupRules}
@@ -359,11 +360,11 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
                 />
               ) : null
             ) : (
-              <div>{t('system.user.form.superuser')}</div>
+              <div>{userKind === 'auditor' ? t('system.user.form.auditor') : t('system.user.form.superuser')}</div>
             )}
-            {isSuperuser && (
+            {(userKind === 'superuser' || userKind === 'auditor') && (
               <Alert
-                message={t('system.user.form.superuserTip')}
+                message={userKind === 'auditor' ? t('system.user.form.auditorTip') : t('system.user.form.superuserTip')}
                 type="info"
                 showIcon
                 style={{ marginTop: 8 }}

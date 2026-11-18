@@ -60,6 +60,7 @@ PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS = frozenset(
         "request_user_choice",
         "report_config_diff",
         "generate_repair_report",
+        "python_execute_direct",
     }
 )
 

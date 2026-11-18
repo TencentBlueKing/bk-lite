@@ -74,9 +74,19 @@ def verify_job_signature(request) -> bool:
 
 
 class ActionCallbackView(APIView):
-    """接收 job_mgmt 作业结果回调，更新 ActionExecution 状态。"""
+    """接收 job_mgmt 作业结果回调，更新 ActionExecution 状态。
+
+    鉴权靠 HMAC（X-BK-Lite-Signature），调用方没有登录 Token。
+    as_view() 必须打 api_exempt，否则 AuthMiddleware 会在视图前返回 401。
+    """
 
     permission_classes = [AllowAny]
+
+    @classmethod
+    def as_view(cls, **initkwargs):
+        view = super().as_view(**initkwargs)
+        view.api_exempt = True
+        return view
 
     def post(self, request):
         if not verify_job_signature(request):

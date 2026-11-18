@@ -277,7 +277,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
         </div>
       </div>
       <Tour
-        open={tourOpen}
+        open={tourOpen && pathname !== '/opspilot/studio'}
         onClose={handleCloseTour}
         steps={tourStep}
         current={currentStep}

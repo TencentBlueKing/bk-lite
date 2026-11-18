@@ -62,18 +62,18 @@ export const alarmMatchRuleRuleList = [
 ];
 
 export const alarmEffectiveTimeIntervals = [
-  { name: '单次', value: 'one' },
-  { name: '每天', value: 'day' },
-  { name: '每周', value: 'week' },
-  { name: '每月', value: 'month' },
+  { name: '单次', value: 'one', labelKey: 'settings.effectiveOnce' },
+  { name: '每天', value: 'day', labelKey: 'settings.effectiveDaily' },
+  { name: '每周', value: 'week', labelKey: 'settings.effectiveWeekly' },
+  { name: '每月', value: 'month', labelKey: 'settings.effectiveMonthly' },
 ];
 
 export const alarmEffectiveTimeWeekList = [
-  { name: '星期一', value: 1 },
-  { name: '星期二', value: 2 },
-  { name: '星期三', value: 3 },
-  { name: '星期四', value: 4 },
-  { name: '星期五', value: 5 },
-  { name: '星期六', value: 6 },
-  { name: '星期天', value: 7 },
+  { name: '星期一', value: 1, labelKey: 'settings.weekdayMon' },
+  { name: '星期二', value: 2, labelKey: 'settings.weekdayTue' },
+  { name: '星期三', value: 3, labelKey: 'settings.weekdayWed' },
+  { name: '星期四', value: 4, labelKey: 'settings.weekdayThu' },
+  { name: '星期五', value: 5, labelKey: 'settings.weekdayFri' },
+  { name: '星期六', value: 6, labelKey: 'settings.weekdaySat' },
+  { name: '星期天', value: 7, labelKey: 'settings.weekdaySun' },
 ];

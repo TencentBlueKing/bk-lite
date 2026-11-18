@@ -34,6 +34,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTOR_KEY, external_actor
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.flow_locale import WORKBENCH_DEFAULT_LOCALE
 
 # 两阶段去重缓存过期时间
 MESSAGE_PROCESSING_EXPIRE_SECONDS = 300  # 处理中状态 5 分钟超时（允许超时后重试）
@@ -111,6 +112,7 @@ class BaseChatFlowUtils(ABC):
             "node_id": node_id,
             "channel": self.channel_code,
             "is_third_party": True,
+            "locale": WORKBENCH_DEFAULT_LOCALE,
             WIKI_MATERIAL_ACTOR_KEY: external_actor(sender_id),
         }
 

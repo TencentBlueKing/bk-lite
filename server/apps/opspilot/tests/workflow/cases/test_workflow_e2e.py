@@ -348,6 +348,7 @@ def test_notification_node_optimizes_email_content_before_sending(mocker):
     variable_manager = VariableManager()
     variable_manager.set_variable("execution_id", "exec-notify")
     variable_manager.set_variable("last_message", "ignored")
+    variable_manager.set_variable("flow_input", {"locale": "en"})
     optimizer_mock = mocker.patch(
         "apps.opspilot.utils.chat_flow_utils.nodes.action.action.optimize_email_content_with_llm",
         return_value="优化后的邮件正文",
@@ -377,7 +378,7 @@ def test_notification_node_optimizes_email_content_before_sending(mocker):
         {"last_message": "ignored"},
     )
 
-    optimizer_mock.assert_called_once_with(model_id=8, title="Daily Report", content="ignored", node_id="notify_node")
+    optimizer_mock.assert_called_once_with(model_id=8, title="Daily Report", content="ignored", node_id="notify_node", locale="en")
     assert send_mock.call_args.kwargs["content"] == "优化后的邮件正文"
     info_mock.assert_any_call("通知节点 notify_node 邮件正文已完成 LLM 优化: model_id=8")
 
@@ -445,6 +446,41 @@ def test_email_content_optimizer_requests_html_output(mocker):
     system_prompt = messages[0].content
     assert "HTML" in system_prompt
     assert "Markdown" in system_prompt
+    assert "保留全部事实信息" in system_prompt
+    assert "请用简体中文回复" in system_prompt
+    assert "<p>" in result
+
+
+def test_email_content_optimizer_requests_english_for_en_locale(mocker):
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://example.com/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    filter_mock = mocker.patch("apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMModel.objects.filter")
+    filter_mock.return_value.select_related.return_value.first.return_value = llm_model
+
+    llm_client = mocker.Mock()
+    llm_client.invoke.return_value = mocker.Mock(content="<p>Optimized</p>")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMClientFactory.create_client",
+        return_value=llm_client,
+    )
+
+    result = optimize_email_content_with_llm(
+        model_id=8,
+        title="Daily Report",
+        content="**cause**: FailedScheduling",
+        node_id="notify_node",
+        locale="en",
+    )
+
+    system_prompt = llm_client.invoke.call_args.args[0][0].content
+    assert "HTML" in system_prompt
+    assert "保留全部事实信息" in system_prompt
+    assert "Reply in English" in system_prompt
+    assert "请用简体中文回复" not in system_prompt
     assert "<p>" in result
 
 

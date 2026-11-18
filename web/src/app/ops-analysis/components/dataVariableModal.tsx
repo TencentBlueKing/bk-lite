@@ -491,7 +491,10 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   const editTitle = String(watchedName ?? selected?.name ?? '').trim()
     || `${t('common.new')}${t('dataVariable.title')}`;
   const previewRows = rowsOf(previewPayload).slice(0, 20);
-  const previewColumns = Object.keys(previewRows[0] ?? {}).slice(0, 12).map((key) => ({
+  const previewColumns = (Object.keys(previewRows[0] ?? {}).length > 0
+    ? Object.keys(previewRows[0] ?? {})
+    : fieldOptions.map((item) => String(item.value))
+  ).slice(0, 12).map((key) => ({
     title: key,
     dataIndex: key,
     key,
@@ -502,7 +505,16 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
   return (
     <>
       <Modal
-        title={view === 'list' ? t('dataVariable.title') : editTitle}
+        title={view === 'list' ? (
+          <div className="pr-6">
+            <span className="block text-base font-semibold leading-6 text-[var(--color-text-1)]">
+              {t('dataVariable.title')}
+            </span>
+            <span className="mt-2 block text-xs font-normal leading-5 text-[var(--color-text-3)]">
+              {t('dataVariable.intro')}
+            </span>
+          </div>
+        ) : editTitle}
         open={open}
         onCancel={() => {
           if (view === 'edit') leaveEditor();
@@ -526,13 +538,13 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
             </Button>
           </div>
         )}
-        width={view === 'list' ? 600 : 960}
+        width={view === 'list' ? 600 : 840}
         maskClosable={false}
         destroyOnHidden
         centered
         styles={{ body: { overflow: 'hidden' } }}
       >
-        <div className={`mt-5 flex h-[min(440px,calc(100vh-220px))] min-h-[280px] ${view === 'list' ? 'flex-col' : 'gap-4'}`}>
+        <div className={`mt-5 flex h-[min(440px,calc(100vh-220px))] min-h-[280px] ${view === 'list' ? 'flex-col' : ''}`}>
           {view === 'list' ? (
             <>
               <div className="mb-3 flex justify-end">
@@ -597,13 +609,13 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
             </>
           ) : selected ? (
             <Form form={form} layout="vertical" className="contents" onValuesChange={markDirty}>
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
                 <Form.Item
                   label={t('dataVariable.name')}
                   name="name"
                   rules={[{ required: true, message: t('dataVariable.missingName') }]}
                 >
-                  <Input maxLength={40} />
+                  <Input maxLength={40} placeholder={t('common.inputTip')} />
                 </Form.Item>
                 <Form.Item label={t('dashboard.dataSource')} required>
                   <Input
@@ -667,14 +679,6 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                 ) : null}
               </div>
               <div className="flex min-h-0 w-[460px] shrink-0 flex-col overflow-hidden border-l border-(--color-border-1) pl-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="m-0 text-sm font-semibold leading-6 text-(--color-text-1)">
-                    {t('dataVariable.queryResult')}
-                  </h3>
-                  <Button size="small" loading={previewLoading} onClick={() => { void handlePreview(); }}>
-                    {t('dataVariable.preview')}
-                  </Button>
-                </div>
                 <Form.Item
                   label={t('dataVariable.valueField')}
                   tooltip={t('dataVariable.valueFieldTip')}
@@ -694,20 +698,31 @@ const DataVariableModal: React.FC<DataVariableModalProps> = ({
                     }}
                   />
                 </Form.Item>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="m-0 text-sm font-semibold leading-6 text-(--color-text-1)">
+                    {t('dataVariable.queryResult')}
+                  </h3>
+                  <Button size="small" loading={previewLoading} onClick={() => { void handlePreview(); }}>
+                    {t('dataVariable.preview')}
+                  </Button>
+                </div>
                 <div className="min-h-0 flex-1 overflow-auto">
-                  {previewReason ? (
-                    <div className="text-sm text-(--color-text-2)">{reasonText(previewReason, t)}</div>
-                  ) : null}
-                  {previewRows.length > 0 ? (
-                    <Table
-                      size="small"
-                      pagination={false}
-                      rowKey={(_row, index) => String(index)}
-                      dataSource={previewRows}
-                      columns={previewColumns}
-                      scroll={{ x: true }}
-                    />
-                  ) : null}
+                  <Table
+                    size="small"
+                    pagination={false}
+                    loading={previewLoading}
+                    rowKey={(_row, index) => String(index)}
+                    dataSource={previewLoading ? undefined : previewRows}
+                    columns={previewColumns.length > 0 ? previewColumns : [{
+                      title: '',
+                      dataIndex: '__empty',
+                      key: '__empty',
+                    }]}
+                    scroll={{ x: true }}
+                    locale={previewReason && previewReason !== 'nodata'
+                      ? { emptyText: reasonText(previewReason, t) }
+                      : undefined}
+                  />
                 </div>
               </div>
             </Form>

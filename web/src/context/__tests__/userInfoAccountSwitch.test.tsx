@@ -43,13 +43,15 @@ const loginInfo = (userId: string, username: string, groups = [defaultGroup, ken
 });
 
 const Probe = () => {
-  const { loading, selectedGroup, username } = useUserInfoContext();
+  const { loading, selectedGroup, username, isSuperUser, groupTree } = useUserInfoContext();
 
   return (
     <>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="selected-group">{selectedGroup?.name || ''}</span>
       <span data-testid="username">{username}</span>
+      <span data-testid="is-superuser">{String(isSuperUser)}</span>
+      <span data-testid="group-tree">{groupTree.map((group) => group.name).join(',')}</span>
     </>
   );
 };
@@ -198,5 +200,24 @@ describe('UserInfoProvider account-scoped current team', () => {
     });
     expect(screen.getByTestId('selected-group').textContent).toBe('Default');
     expect(Cookies.get('current_team_owner')).toBe('admin');
+  });
+
+  it('lets auditors keep the full org tree without marking them superuser', async () => {
+    const guestGroup = { id: '3', name: 'OpsPilotGuest' };
+    mocks.sessionUser.id = 'aud';
+    mocks.sessionUser.username = 'aud';
+    mocks.getLoginInfo.mockResolvedValue({
+      ...loginInfo('aud', 'aud', [defaultGroup, kentGroup, guestGroup]),
+      is_superuser: false,
+      is_auditor: true,
+    });
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    expect(screen.getByTestId('is-superuser').textContent).toBe('false');
+    expect(screen.getByTestId('group-tree').textContent).toBe('Default,Kent,OpsPilotGuest');
   });
 });

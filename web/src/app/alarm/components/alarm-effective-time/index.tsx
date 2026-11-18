@@ -5,6 +5,7 @@ import {
   alarmEffectiveTimeIntervals as timeInterval,
   alarmEffectiveTimeWeekList as weekList,
 } from '@/app/alarm/constants/alarm-defaults';
+import { useTranslation } from '@/utils/i18n';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -34,6 +35,7 @@ const AlarmEffectiveTime: React.FC<AlarmEffectiveTimeProps> = ({
   onChange,
 }) => {
   const form = value || defaultValue;
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!value) {
@@ -73,7 +75,7 @@ const AlarmEffectiveTime: React.FC<AlarmEffectiveTimeProps> = ({
         >
           {timeInterval.map((item) => (
             <Option key={item.value} value={item.value}>
-              {item.name}
+              {t(item.labelKey, item.name)}
             </Option>
           ))}
         </Select>
@@ -89,7 +91,7 @@ const AlarmEffectiveTime: React.FC<AlarmEffectiveTimeProps> = ({
           >
             {weekList.map((item) => (
               <Option key={item.value} value={item.value}>
-                {item.name}
+                {t(item.labelKey, item.name)}
               </Option>
             ))}
           </Select>

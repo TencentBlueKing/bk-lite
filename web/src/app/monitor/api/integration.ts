@@ -136,6 +136,9 @@ const useIntegrationApi = () => {
       createPolicyGroup: async (payload: { name: string; template_ids: number[] }) => {
         return await post(`/monitor/api/policy_group/create_from_templates/`, payload);
       },
+      setPolicyGroupTemplates: async (payload: { group_id: number; template_ids: number[] }) => {
+        return await post(`/monitor/api/policy_group/set_templates/`, payload);
+      },
       createStandalonePolicy: async (instanceId: string, templateId: number) => {
         return await post(`/monitor/api/policy_group/create_standalone/`, {
           instance_id: instanceId,
