@@ -277,6 +277,30 @@ email:
   password_expired_body: '<p>尊敬的 {name}：</p><p>您的密码已过期，请立即修改密码。</p>'
 channel:
   opspilot_nats_trigger_description: OpsPilot 工作流自动创建的 NATS 触发通道
+  send_parameter:
+    channel_id: '固定填写 {channel_id}，对应渠道「{channel_name}」。'
+    channel_type: '固定填写 {channel_type}。'
+    channel_type_im: 固定填写 im_notification，用来和同号的普通渠道区分。
+    title_email: 邮件主题。可以留空。
+    title_enterprise_wechat: 企微应用消息不使用标题，传空字符串即可。
+    title_enterprise_wechat_bot: 企微机器人只发送正文，标题不会出现在消息里，传空字符串即可。
+    title_feishu_bot: 飞书卡片标题。留空时渠道侧显示为「通知」。
+    title_dingtalk_bot: 钉钉 markdown 标题。留空时渠道侧显示为「通知」。
+    title_custom_webhook: 自定义 Webhook 不使用标题，传空字符串即可。
+    title_im_notification: IM 应用通知标题。可以留空。最长 512 个字符。
+    title_default: 标题。可以留空。最长 512 个字符。
+    content_email: 邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。
+    content_enterprise_wechat: 企微应用文本消息正文。
+    content_enterprise_wechat_bot: 企微机器人 markdown 正文。接收人名会追加在正文后面。
+    content_feishu_bot: 飞书卡片 markdown 正文。接收人名会追加在正文后面。
+    content_dingtalk_bot: 钉钉 markdown 正文。接收人名会追加在正文后面。
+    # format() 把 {{{{content}}}} 还原成字面量 {{content}}
+    content_custom_webhook: '通知正文，会替换该渠道模板中的 {{{{content}}}}。接收人名会追加在正文后面。'
+    content_im_notification: IM 应用通知正文，不能为空。最长 20000 个字符。
+    content_default: 通知正文，不能为空。最长 20000 个字符。
+    receivers_system_user: 平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。
+    receivers_free_text: 渠道侧接收人名，原样附在消息里，不是平台用户 ID。1 到 100 个，每个最长 150 个字符，不能重复。
+    receivers_default: 接收人列表。
 tag:
   # job
   job_execution: 作业执行

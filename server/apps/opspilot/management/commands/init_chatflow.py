@@ -1,15 +1,11 @@
 from django.core.management import BaseCommand
 
-from apps.opspilot.services.chatflow_init_service import ChatFlowInitService
+from apps.opspilot.services.skill_template_catalog import SkillTemplateCatalogService
 
 
 class Command(BaseCommand):
-    help = "初始化内置 ChatFlow Bot（从 chatflow_data 目录读取配置）"
+    help = "同步内置智能体模板（旧命令入口，不再自动创建工作台）"
 
     def handle(self, *args, **options):
-        self.stdout.write("开始初始化 ChatFlow")
-
-        service = ChatFlowInitService()
-        service.init()
-
-        self.stdout.write(self.style.SUCCESS("ChatFlow 初始化完成"))
+        SkillTemplateCatalogService().sync()
+        self.stdout.write(self.style.SUCCESS("内置智能体模板已同步"))

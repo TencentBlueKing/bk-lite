@@ -105,19 +105,13 @@ class JobActionHandler(ActionHandler):
         execution.save()
 
     def _callback_url(self):
-        """构造作业平台完成后的回调 URL；空时返回 None，不传 callback 字段。
+        """构造作业平台完成后的回调 URL。
 
-        SELF_BASE_URL 必须是对 job_mgmt 网络可达的入口；不允许默认到 localhost，
-        因为 job_mgmt 的 SSRFValidator 会拦截 loopback。
+        SELF_BASE_URL 必须是对 job_mgmt 网络可达的入口。未设置或留空时默认
+        http://server:8000（K8s Service 名与 Docker Compose 服务名相同）。
+        不允许默认到 localhost：job_mgmt 的 SSRFValidator 会拦截 loopback。
         """
-        base = (getattr(settings, "SELF_BASE_URL", "") or "").rstrip("/")
-        if not base:
-            logger.warning(
-                "[ActionEngine] SELF_BASE_URL 未设置 — 告警触发作业后将无法回调，"
-                "ActionExecution.status 会停在 running 而不会自动变为 success/failed。"
-                "请在 .env 里显式配置，比如 SELF_BASE_URL=http://10.0.0.1:8011"
-            )
-            return None
+        base = (getattr(settings, "SELF_BASE_URL", "") or "").strip().rstrip("/") or "http://server:8000"
         return f"{base}/api/v1/alerts/api/action_callback/"
 
     def _job_url(self, task_id):

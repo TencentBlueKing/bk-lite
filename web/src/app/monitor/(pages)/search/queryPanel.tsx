@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef
 } from 'react';
-import { Select, Button, Tooltip, AutoComplete, Input, Card, message } from 'antd';
+import { Select, Button, Tag, Tooltip, AutoComplete, Input, Card, message } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -60,10 +60,13 @@ import {
 } from './savedQueryMetricMerge';
 import {
   generateSearchId,
+  getInstanceSelectLabel,
+  getInstanceSelectTooltip,
   getMetricsMapKey,
   extractDimensionLabelValues,
   intersectMetricDimensionLabels,
   listSelectedMetricIds,
+  matchInstanceSelectOption,
   normalizeMonitorEntityId,
   resolveInitialPlugin,
   resolveMetricSelection
@@ -74,6 +77,14 @@ const { Option } = Select;
 export type { QueryGroup, SearchPayload, QueryPanelRef, QueryPanelProps };
 
 const generateGroupName = (index: number) => `查询条件 ${index + 1}`;
+
+const INSTANCE_SELECT_TOOLTIP_STYLES = {
+  body: {
+    maxWidth: 480,
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-all' as const,
+  },
+};
 
 const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
   ({ onSearch }, ref) => {
@@ -1103,21 +1114,55 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                 disabled={!group.object || !group.plugin}
                 maxTagCount="responsive"
                 showSearch
-                filterOption={(input, option) =>
-                  String(option?.children || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                optionFilterProp="label"
+                filterOption={matchInstanceSelectOption}
+                optionRender={(option) => (
+                  <Tooltip
+                    title={option.data.title}
+                    styles={INSTANCE_SELECT_TOOLTIP_STYLES}
+                    getPopupContainer={() => document.body}
+                  >
+                    <span className="block min-w-0 truncate">{option.label}</span>
+                  </Tooltip>
+                )}
+                tagRender={({ label, value, closable, onClose }) => {
+                  const item = groupInstances.find(
+                    (row) => row.instance_id === value
+                  );
+                  const title = item
+                    ? getInstanceSelectTooltip(item)
+                    : String(label ?? value);
+                  return (
+                    <Tag
+                      closable={closable}
+                      onClose={onClose}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      className="inline-flex max-w-full items-center"
+                    >
+                      <Tooltip
+                        title={title}
+                        styles={INSTANCE_SELECT_TOOLTIP_STYLES}
+                        getPopupContainer={() => document.body}
+                      >
+                        <span className="inline-block max-w-[180px] truncate align-bottom">
+                          {label}
+                        </span>
+                      </Tooltip>
+                    </Tag>
+                  );
+                }}
+                options={groupInstances.map((item) => ({
+                  value: item.instance_id,
+                  label: getInstanceSelectLabel(item),
+                  title: getInstanceSelectTooltip(item),
+                }))}
                 onChange={(val) =>
                   updateQueryGroup(group.id, { instanceIds: val })
                 }
-              >
-                {groupInstances.map((item) => (
-                  <Option key={item.instance_id} value={item.instance_id}>
-                    {item.instance_name}
-                  </Option>
-                ))}
-              </Select>
+              />
             </div>
             {/* 指标选择 */}
             <div>

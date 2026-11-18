@@ -23,10 +23,12 @@ from apps.base.models import UserAPISecret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Channel, ChannelChoices, Group, GroupDataRule, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
+from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
 from apps.system_mgmt.services.user_profile import (
     ProfileInputError,
     custom_field_details,
@@ -277,7 +279,7 @@ class UserViewSet(ViewSetUtils):
         Returns:
             tuple: (is_valid, error_response)
         """
-        if getattr(request.user, "is_superuser", False):
+        if has_unrestricted_org_scope(request.user):
             return True, None
 
         user_group_ids = self._get_user_group_ids(request.user)
@@ -300,7 +302,7 @@ class UserViewSet(ViewSetUtils):
         Returns:
             QuerySet: 筛选后的查询集
         """
-        if getattr(user, "is_superuser", False):
+        if has_unrestricted_org_scope(user):
             return queryset
 
         user_group_ids = self._get_user_group_ids(user)
@@ -509,10 +511,19 @@ class UserViewSet(ViewSetUtils):
         locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
         loader = LanguageLoader(app="system_mgmt", default_lang=locale)
 
+        is_superuser = kwargs.pop("is_superuser", False)
+        is_auditor = kwargs.pop("is_auditor", False)
+        privileged = bool(is_superuser) or bool(is_auditor)
+
         groups = kwargs.get("groups", [])
-        group_validation_error = _validate_selected_groups(groups, loader)
-        if group_validation_error:
-            return JsonResponse({"result": False, "message": group_validation_error})
+        if not privileged:
+            group_validation_error = _validate_selected_groups(groups, loader)
+            if group_validation_error:
+                return JsonResponse({"result": False, "message": group_validation_error})
+        elif groups:
+            group_validation_error = _validate_selected_groups(groups, loader)
+            if group_validation_error:
+                return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
         synced_group_error = _validate_local_user_group_changes(groups, loader=loader)
         if synced_group_error:
@@ -523,7 +534,7 @@ class UserViewSet(ViewSetUtils):
 
         # 校验 roles ID 是否真实存在
         roles = kwargs.get("roles", [])
-        if roles:
+        if roles and not privileged:
             valid_role_ids = set(Role.objects.filter(id__in=roles).values_list("id", flat=True))
             invalid_role_ids = set(roles) - valid_role_ids
             if invalid_role_ids:
@@ -531,9 +542,13 @@ class UserViewSet(ViewSetUtils):
                 return JsonResponse({"result": False, "message": message})
         if not self._is_valid_phone(kwargs.get("phone")):
             return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
-        is_superuser = kwargs.pop("is_superuser", False)
         if is_superuser:
             roles = [Role.objects.get(name="admin", app="").id]
+        elif is_auditor:
+            roles = [ensure_platform_auditor_role().id]
+        else:
+            excluded = set(Role.objects.filter(name__in=["admin", "auditor"], app="").values_list("id", flat=True))
+            roles = [rid for rid in (kwargs.get("roles") or []) if rid not in excluded]
 
         initial_password_settings = dict(
             SystemSettings.objects.filter(
@@ -915,11 +930,19 @@ class UserViewSet(ViewSetUtils):
             return error_response
 
         is_synced_user = target_user.sync_source_id is not None
+        is_superuser = params.pop("is_superuser", False)
+        is_auditor = params.pop("is_auditor", False)
+        privileged = bool(is_superuser) or bool(is_auditor)
         submitted_groups = target_user.group_list if is_synced_user else params.get("groups", [])
         groups_to_validate = _filter_active_group_ids(submitted_groups) if is_synced_user else submitted_groups
-        group_validation_error = _validate_selected_groups(groups_to_validate, loader)
-        if group_validation_error:
-            return JsonResponse({"result": False, "message": group_validation_error})
+        if not privileged:
+            group_validation_error = _validate_selected_groups(groups_to_validate, loader)
+            if group_validation_error:
+                return JsonResponse({"result": False, "message": group_validation_error})
+        elif groups_to_validate:
+            group_validation_error = _validate_selected_groups(groups_to_validate, loader)
+            if group_validation_error:
+                return JsonResponse({"result": False, "message": group_validation_error})
         submitted_ids, _ = _normalize_group_ids(groups_to_validate if is_synced_user else submitted_groups)
         if is_synced_user:
             groups = submitted_ids
@@ -932,8 +955,8 @@ class UserViewSet(ViewSetUtils):
         if group_scope_error:
             return group_scope_error
         params["groups"] = groups
-        is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
+        auditor_role_id = ensure_platform_auditor_role().id
         if "email" in params:
             email_value = params.get("email")
             if not isinstance(email_value, str) or not email_value.strip():
@@ -951,9 +974,11 @@ class UserViewSet(ViewSetUtils):
             return _profile_error_response(loader, error)
         if is_superuser:
             params["roles"] = [admin_role_id]
+        elif is_auditor:
+            params["roles"] = [auditor_role_id]
         else:
             role_ids = params.get("roles") or []
-            params["roles"] = [role_id for role_id in role_ids if role_id != admin_role_id]
+            params["roles"] = [role_id for role_id in role_ids if role_id not in {admin_role_id, auditor_role_id}]
         with transaction.atomic():
             # 删除旧的规则
             UserRule.objects.filter(

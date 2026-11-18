@@ -214,6 +214,8 @@ instances/结果快照、Operation snapshot/未成功 Outbox；不迁变更历�
 
 ## Agent 修改检查清单
 
+OpsPilot 的 `batch_init` 只调用 `init_skill_templates` 播种可移植模板，不再调用 `init_chatflow` 创建成品智能体与工作台。模板目录在数据库事务中同步，仅访问发布文件和本地 ORM，不等待 Supervisor 消费者。升级不删除或改写已有智能体和工作台；历史内置实例的标识、配置、关联和历史数据均原样保留，不以是否使用作为处理条件。旧手动命令 `init_llm`、`init_chatflow` 也统一同步模板，不再恢复旧成品。
+
 新增或调整初始化操作前，必须逐项确认：
 
 1. 标明调用方和被调用方分别属于启动期、运行期还是独立基础设施。

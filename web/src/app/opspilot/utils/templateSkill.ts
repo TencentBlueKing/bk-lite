@@ -1,3 +1,5 @@
+import type { CreateSkillPayload, SkillTemplate } from '@/app/opspilot/types/skill';
+
 export interface TemplateToolRef {
   name: string;
 }
@@ -62,4 +64,29 @@ export async function collectSkillNames(
     page += 1;
   } while (names.length < count);
   return names;
+}
+
+export function buildTemplateSkillPayload(
+  template: SkillTemplate,
+  takenNames: Iterable<string>,
+  catalog: CatalogToolRef[],
+): CreateSkillPayload {
+  return {
+    name: nextTemplateSkillName(template.name, takenNames),
+    introduction: template.introduction,
+    skill_type: template.skill_type,
+    skill_prompt: template.skill_prompt,
+    guide: template.guide,
+    enable_conversation_history: template.enable_conversation_history,
+    conversation_window_size: template.conversation_window_size,
+    run_model_call_limit: template.run_model_call_limit,
+    temperature: template.temperature,
+    show_think: template.show_think,
+    enable_suggest: template.enable_suggest,
+    enable_query_rewrite: template.enable_query_rewrite,
+    force_wiki_grounded: template.force_wiki_grounded,
+    allow_wiki_material_write: template.allow_wiki_material_write,
+    memory_write_rounds: template.memory_write_rounds,
+    tools: bindTemplateTools(template.tools, catalog),
+  };
 }

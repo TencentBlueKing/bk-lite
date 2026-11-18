@@ -1376,6 +1376,60 @@ def test_historical_version_restores_only_draft_without_changing_live_version(su
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("connected_case", ["true", "false"])
+def test_publish_keeps_single_exit_notification_in_its_condition_case(superuser, mocker, connected_case):
+    _enable_notification()
+    workflow = Workflow.objects.create(
+        name="单出口条件通知",
+        team=[7],
+        definition={
+            "tasks": [
+                {
+                    "name": "condition",
+                    "taskReferenceName": "condition",
+                    "type": "SWITCH",
+                    "inputParameters": {"left_0": "${workflow.input.matches}", "right_0": True},
+                    "evaluatorType": "javascript",
+                    "expression": "($.left_0 == $.right_0) ? 'true' : 'false'",
+                    "decisionCases": {"true": [], "false": []},
+                    "defaultCase": [],
+                },
+                _notification_task("notify"),
+            ]
+        },
+        canvas_metadata={
+            "control_flow_mode": "EDGES",
+            "trigger_nodes": [
+                {
+                    "id": "trigger_form",
+                    "name": "开始",
+                    "trigger_type": "FORM",
+                    "input_schema": {"type": "object", "properties": {"matches": {"type": "boolean"}}},
+                    "config": {},
+                }
+            ],
+            "edges": [
+                {"source": "trigger_form", "target": "condition"},
+                {"source": "condition", "sourceHandle": connected_case, "target": "notify"},
+            ],
+        },
+    )
+    client = mocker.patch("apps.workflow.views.ConductorClient").return_value
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(_request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser), pk=workflow.id)
+
+    assert response.status_code == 200, response.data
+    registered = client.register_workflow.call_args.args[0]
+    version = WorkflowVersion.objects.get(workflow=workflow)
+    assert version.definition == registered
+    assert [task["taskReferenceName"] for task in registered["tasks"]] == ["condition"]
+    cases = registered["tasks"][0]["decisionCases"]
+    assert [task["taskReferenceName"] for task in cases[connected_case]] == ["notify"]
+    assert cases["false" if connected_case == "true" else "true"] == []
+
+
+@pytest.mark.django_db
 def test_publish_records_atom_keys(superuser, mocker):
     _enable_notification()
     definition = {"tasks": [_notification_task("notify")]}

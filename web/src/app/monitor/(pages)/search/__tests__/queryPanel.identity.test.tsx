@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { invalidateMonitorPluginCache } from '@/app/monitor/utils/monitorPluginCache';
+
 import QueryPanel from '../queryPanel';
 import { transformToFrontendFormat } from '../savedQueryDrawer';
 
@@ -65,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  invalidateMonitorPluginCache();
   vi.clearAllMocks();
 });
 
@@ -117,5 +120,45 @@ describe('监控搜索实体 ID 与下拉选项保持同一类型', () => {
     expect(group.object).toBe(12);
     expect(group.plugin).toBe(279);
     expect(group.metric).toEqual([301]);
+  });
+
+  it('资产下拉对长 Pod 身份展示末段名称，悬停可见完整 ID', async () => {
+    const user = userEvent.setup();
+    monitorApi.getMonitorObject.mockResolvedValue([
+      { id: 8, name: 'Pod', display_name: 'Pod', description: '', type: 'k8s' },
+    ]);
+    monitorApi.getMonitorPlugin.mockResolvedValue([
+      { id: 90, name: 'K8S', display_name: 'K8S' },
+    ]);
+    monitorApi.getInstanceList.mockResolvedValue({
+      results: [
+        {
+          instance_id: "('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')",
+          instance_name: "('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')",
+          instance_id_values: [
+            'af28df4ad8ef4fdea63abfa5bab49f54',
+            'coredns-7db6d8ff4-abcde',
+          ],
+        },
+      ],
+    });
+
+    const { container } = render(<QueryPanel onSearch={vi.fn()} />);
+    await waitFor(() => expect(monitorApi.getMonitorObject).toHaveBeenCalled());
+    const selects = container.querySelectorAll('.ant-select-selector');
+    await user.click(selects[0]);
+    await user.click(await screen.findByText('Pod'));
+
+    await waitFor(() => expect(monitorApi.getInstanceList).toHaveBeenCalled());
+    const instanceSelect = container.querySelectorAll('.ant-select-selector')[1];
+    await user.click(instanceSelect);
+    const option = await screen.findByText('coredns-7db6d8ff4-abcde');
+    expect(option.textContent).toBe('coredns-7db6d8ff4-abcde');
+    await user.hover(option);
+    await waitFor(() => {
+      expect(screen.getByRole('tooltip').textContent).toContain(
+        "('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')"
+      );
+    });
   });
 });
