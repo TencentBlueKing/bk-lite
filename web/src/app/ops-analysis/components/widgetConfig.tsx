@@ -1716,7 +1716,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             setPreviewLoading(false);
           }
         }}
-        liveDescription={watchedFormValues?.description}
         onRefresh={handlePreview}
         onCreateDataVariable={
           onCreateDataVariable && selectedDataSource ? openDataVariableFromQuery : undefined

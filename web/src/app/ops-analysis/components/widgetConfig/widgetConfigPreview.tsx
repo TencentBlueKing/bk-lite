@@ -45,7 +45,6 @@ interface WidgetConfigPreviewProps {
   sampleTicket?: InteractionSampleTicket;
   onRawData: (data: unknown, ticket?: InteractionSampleTicket) => void;
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
-  liveDescription?: string;
   onRefresh?: () => void;
   onCreateDataVariable?: () => void;
 }
@@ -79,7 +78,6 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   sampleTicket,
   onRawData,
   onRenderStatus,
-  liveDescription,
   onRefresh,
   onCreateDataVariable,
 }) => {
@@ -115,8 +113,6 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
   }, []);
 
   const jsonText = useMemo(() => formatRawJson(rawData), [rawData]);
-  const description = liveDescription ?? config?.description;
-  const descriptionText = description?.trim() ?? '';
   const showDataVariableAction = Boolean(onCreateDataVariable) && tab === 'json';
 
   const handleCopyJson = useCallback(async () => {
@@ -221,16 +217,8 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
-          {descriptionText || showDataVariableAction ? (
-          <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
-            <div className="min-w-0">
-              {descriptionText ? (
-                <p className="line-clamp-2 text-xs leading-normal text-(--color-text-3)">
-                  {descriptionText}
-                </p>
-              ) : null}
-            </div>
-            {showDataVariableAction ? (
+          {showDataVariableAction ? (
+            <div className="flex shrink-0 justify-end px-4 pt-3">
               <Button
                 type="link"
                 size="small"
@@ -240,8 +228,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
               >
                 {t('dashboard.configPreviewSaveAsDataVariable')}
               </Button>
-            ) : null}
-          </div>
+            </div>
           ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">

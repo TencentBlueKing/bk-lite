@@ -556,8 +556,16 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert distribution["chart_type"] == ["pie", "bar", "line", "table", "topN", "multiValue", "cardList"]
     assert field_keys(distribution) == ["group_value", "alert_count"]
     assert _param(distribution, "group_by")["required"] is True
-    assert _param(distribution, "monitor_object_id")["inputConfig"]["multiple"] is True
+    for rest_api in (
+        "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
+    ):
+        assert _param(sources[rest_api], "monitor_object_id")["inputConfig"]["multiple"] is True
+        assert "也可以多选" in sources[rest_api]["desc"]
     assert _param(distribution, "instance_ids")["inputConfig"]["multiple"] is True
+    assert _param(sources["monitor/query_monitor_instances"], "monitor_object_id")["inputConfig"].get("multiple") is not True
+    assert _param(sources["monitor/query_monitor_metric"], "monitor_object_id")["inputConfig"].get("multiple") is not True
     cmdb_alert = sources["monitor/query_cmdb_alert_distribution"]
     assert cmdb_alert["name"] == "CMDB 资源监控告警分布"
     assert cmdb_alert["chart_type"] == ["pie", "bar", "line", "table", "topN", "multiValue", "cardList"]
