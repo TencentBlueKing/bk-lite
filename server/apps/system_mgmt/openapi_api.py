@@ -23,7 +23,7 @@ from apps.system_mgmt.services.capability_contract_service import get_integratio
 from apps.system_mgmt.services.im_notification_service import send_im_notification
 from apps.system_mgmt.services.notification_tag import channel_tag_tokens
 from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.system_mgmt.utils.i18n import localized_channel_description
+from apps.system_mgmt.utils.i18n import localized_channel_description, system_mgmt_message
 
 _ORG_SCOPE = (
     "组织口径：系统令牌授权范围为单个 Acting-Team；不传 group_id 时从该组织查起；"
@@ -56,26 +56,6 @@ _CHANNEL_CATALOG_SUMMARY = (
     "渠道类型不同，标题是否生效、接收人怎么填会不一样。渠道实例以本接口实时返回为准，"
     "新增或停用渠道不新增、不删除网关路径。不返回连接配置。NATS 等内部通道不在此目录。" + _ORG_SCOPE
 )
-_TITLE_PARAMETER_DESCRIPTION = {
-    ChannelChoices.EMAIL: "邮件主题。可以留空。",
-    ChannelChoices.ENTERPRISE_WECHAT: "企微应用消息不使用标题，传空字符串即可。",
-    ChannelChoices.ENTERPRISE_WECHAT_BOT: "企微机器人只发送正文，标题不会出现在消息里，传空字符串即可。",
-    ChannelChoices.FEISHU_BOT: "飞书卡片标题。留空时渠道侧显示为「通知」。",
-    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 标题。留空时渠道侧显示为「通知」。",
-    ChannelChoices.CUSTOM_WEBHOOK: "自定义 Webhook 不使用标题，传空字符串即可。",
-}
-_CONTENT_PARAMETER_DESCRIPTION = {
-    ChannelChoices.EMAIL: "邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。",
-    ChannelChoices.ENTERPRISE_WECHAT: "企微应用文本消息正文。",
-    ChannelChoices.ENTERPRISE_WECHAT_BOT: "企微机器人 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.FEISHU_BOT: "飞书卡片 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.DINGTALK_BOT: "钉钉 markdown 正文。接收人名会追加在正文后面。",
-    ChannelChoices.CUSTOM_WEBHOOK: "通知正文，会替换该渠道模板中的 {{content}}。接收人名会追加在正文后面。",
-}
-_RECEIVER_PARAMETER_DESCRIPTION = {
-    "system_user": "平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。",
-    "free_text": "渠道侧接收人名，原样附在消息里，不是平台用户 ID。1 到 100 个，每个最长 150 个字符，不能重复。",
-}
 _CHANNEL_SEND_SUMMARY = (
     "按通知渠道目录中的 channel_id 和 channel_type 投递一条消息。channel_type 必填，取目录返回的原值。"
     "im_notification 投递 IM 应用通知，其他值投递对应的普通渠道。"
@@ -115,6 +95,11 @@ def _load_actor(user_info):
     if not username:
         return None
     return SystemUser.objects.filter(username=username, domain=domain).first()
+
+
+def _openapi_locale(user_info):
+    actor = _load_actor(user_info)
+    return getattr(actor, "locale", None) or "zh-Hans"
 
 
 def _group_unavailable(group_id):
@@ -499,27 +484,58 @@ def _send_parameter(name, value_type, required, description):
     return {"name": name, "type": value_type, "required": required, "description": description}
 
 
-def _notification_send_parameters(channel):
+def _send_parameter_text(locale, name, **values):
+    return system_mgmt_message(locale, f"channel.send_parameter.{name}", **values)
+
+
+def _typed_send_parameter_name(prefix, value, known):
+    if value in known:
+        return f"{prefix}_{value}"
+    return f"{prefix}_default"
+
+
+def _notification_send_parameters(channel, locale):
     capability = _notification_channel_capabilities(channel)
+    recipient_mode = capability["recipient_mode"]
     return [
-        _send_parameter("channel_id", "integer", True, f"固定填写 {channel.id}，对应渠道「{channel.name}」。"),
-        _send_parameter("channel_type", "string", True, f"固定填写 {channel.channel_type}。"),
-        _send_parameter("title", "string", False, _TITLE_PARAMETER_DESCRIPTION.get(channel.channel_type, "标题。可以留空。最长 512 个字符。")),
-        _send_parameter("content", "string", True, _CONTENT_PARAMETER_DESCRIPTION.get(channel.channel_type, "通知正文，不能为空。最长 20000 个字符。")),
+        _send_parameter(
+            "channel_id",
+            "integer",
+            True,
+            _send_parameter_text(locale, "channel_id", channel_id=channel.id, channel_name=channel.name),
+        ),
+        _send_parameter(
+            "channel_type",
+            "string",
+            True,
+            _send_parameter_text(locale, "channel_type", channel_type=channel.channel_type),
+        ),
+        _send_parameter(
+            "title",
+            "string",
+            False,
+            _send_parameter_text(locale, _typed_send_parameter_name("title", channel.channel_type, _EXTERNAL_NOTIFICATION_CHANNEL_TYPES)),
+        ),
+        _send_parameter(
+            "content",
+            "string",
+            True,
+            _send_parameter_text(locale, _typed_send_parameter_name("content", channel.channel_type, _EXTERNAL_NOTIFICATION_CHANNEL_TYPES)),
+        ),
         _send_parameter(
             "receivers",
             "string[]",
             True,
-            _RECEIVER_PARAMETER_DESCRIPTION.get(capability["recipient_mode"], "接收人列表。"),
+            _send_parameter_text(locale, _typed_send_parameter_name("receivers", recipient_mode, {"system_user", "free_text"})),
         ),
     ]
 
 
-def _openapi_notification_channel(channel):
+def _openapi_notification_channel(channel, locale):
     if isinstance(channel, IMNotificationChannel):
-        return _openapi_im_notification_channel(channel)
+        return _openapi_im_notification_channel(channel, locale)
     item = _notification_channel_capabilities(channel)
-    item["send_parameters"] = _notification_send_parameters(channel)
+    item["send_parameters"] = _notification_send_parameters(channel, locale)
     item["tag"] = channel_tag_tokens(channel)
     return item
 
@@ -532,7 +548,7 @@ def _im_notification_is_available(channel):
     return bool(availability.get("available"))
 
 
-def _openapi_im_notification_channel(channel):
+def _openapi_im_notification_channel(channel, locale):
     return {
         "id": channel.id,
         "name": channel.name,
@@ -542,11 +558,16 @@ def _openapi_im_notification_channel(channel):
         "recipient_mode": "system_user",
         "availability": "available" if _im_notification_is_available(channel) else "unavailable",
         "send_parameters": [
-            _send_parameter("channel_id", "integer", True, f"固定填写 {channel.id}，对应渠道「{channel.name}」。"),
-            _send_parameter("channel_type", "string", True, "固定填写 im_notification，用来和同号的普通渠道区分。"),
-            _send_parameter("title", "string", False, "IM 应用通知标题。可以留空。最长 512 个字符。"),
-            _send_parameter("content", "string", True, "IM 应用通知正文，不能为空。最长 20000 个字符。"),
-            _send_parameter("receivers", "string[]", True, _RECEIVER_PARAMETER_DESCRIPTION["system_user"]),
+            _send_parameter(
+                "channel_id",
+                "integer",
+                True,
+                _send_parameter_text(locale, "channel_id", channel_id=channel.id, channel_name=channel.name),
+            ),
+            _send_parameter("channel_type", "string", True, _send_parameter_text(locale, "channel_type_im")),
+            _send_parameter("title", "string", False, _send_parameter_text(locale, "title_im_notification")),
+            _send_parameter("content", "string", True, _send_parameter_text(locale, "content_im_notification")),
+            _send_parameter("receivers", "string[]", True, _send_parameter_text(locale, "receivers_system_user")),
         ],
         "tag": channel_tag_tokens(channel),
     }
@@ -603,7 +624,7 @@ def _channels_for_catalog_keys(keys):
     return loaded
 
 
-def _notification_channel_page(query_ids, tag_pairs, page, page_size):
+def _notification_channel_page(query_ids, tag_pairs, page, page_size, locale):
     team_q = _team_overlap_q(query_ids)
     if not team_q:
         return _page_window([], page, page_size, 0)
@@ -622,7 +643,7 @@ def _notification_channel_page(query_ids, tag_pairs, page, page_size):
     count = merged.count()
     start = (page - 1) * page_size
     keys = list(merged[start : start + page_size])
-    results = [_openapi_notification_channel(channel) for channel in _channels_for_catalog_keys(keys)]
+    results = [_openapi_notification_channel(channel, locale) for channel in _channels_for_catalog_keys(keys)]
     return _page_window(results, page, page_size, count)
 
 
@@ -681,7 +702,7 @@ def openapi_list_notification_channels(
         return error
     if not query_ids:
         return _page_window([], page, page_size, 0)
-    return _notification_channel_page(query_ids, tag, page, page_size)
+    return _notification_channel_page(query_ids, tag, page, page_size, _openapi_locale(user_info))
 
 
 @openapi_expose(

@@ -192,6 +192,53 @@ def test_system_tenant_lists_own_external_channels_only(tenants, local_docs_cata
     assert "实时返回" in catalog["summary"]
 
 
+def test_send_parameter_descriptions_follow_acting_user_locale(tenants):
+    from apps.system_mgmt.models import IMNotificationChannel
+
+    actor = tenants.a.system_user
+    actor.locale = "en"
+    actor.save(update_fields=["locale"])
+    im = IMNotificationChannel.objects.create(
+        name="飞书EN",
+        integration_instance=_im_instance("feishu-en"),
+        enabled=True,
+        description="飞书EN 说明",
+        team=[tenants.a.team.id],
+    )
+
+    response = APIClient().get(LIST_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    items = response.json()["data"]["results"]
+    email = next(item for item in items if item["channel_type"] == "email" and item["id"] == tenants.a.email.id)
+    webhook = next(item for item in items if item["id"] == tenants.a.webhook.id)
+    im_item = next(item for item in items if item["channel_type"] == "im_notification" and item["id"] == im.id)
+    email_parameters = {item["name"]: item["description"] for item in email["send_parameters"]}
+    webhook_parameters = {item["name"]: item["description"] for item in webhook["send_parameters"]}
+    im_parameters = {item["name"]: item["description"] for item in im_item["send_parameters"]}
+
+    assert email_parameters["channel_id"] == f'Always set this to {tenants.a.email.id}, for the "{tenants.a.email.name}" channel.'
+    assert email_parameters["channel_type"] == "Always set this to email."
+    assert email_parameters["title"] == "Email subject. Can be left empty."
+    assert email_parameters["content"] == (
+        "Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags."
+    )
+    assert email_parameters["receivers"].startswith("Platform user ID strings")
+    assert webhook_parameters["channel_id"] == f'Always set this to {tenants.a.webhook.id}, for the "{tenants.a.webhook.name}" channel.'
+    assert webhook_parameters["channel_type"] == "Always set this to custom_webhook."
+    assert webhook_parameters["title"] == "Custom webhooks do not use a title; pass an empty string."
+    assert webhook_parameters["content"] == (
+        "Notification body; it replaces {{content}} in the channel template. Recipient names are appended to the body."
+    )
+    assert "{{content}}" in webhook_parameters["content"]
+    assert webhook_parameters["receivers"].startswith("Channel-side recipient names")
+    assert im_parameters["channel_id"] == f'Always set this to {im.id}, for the "{im.name}" channel.'
+    assert im_parameters["channel_type"] == "Always set this to im_notification, to distinguish it from a regular channel with the same ID."
+    assert im_parameters["title"] == "IM app notification title. Can be left empty. Maximum 512 characters."
+    assert im_parameters["content"] == "IM app notification body. Required. Maximum 20,000 characters."
+    assert im_parameters["receivers"].startswith("Platform user ID strings")
+
+
 def test_list_page_is_limited_in_the_database(tenants):
     from django.db import connection
     from django.test.utils import CaptureQueriesContext
