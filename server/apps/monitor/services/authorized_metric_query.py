@@ -219,7 +219,9 @@ def _dimension_matcher_groups(metric: Metric, filters) -> list[list[str]]:
 
 
 def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggregation, grouping=None) -> str:
-    template = metric.query or ""
+    from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
+    template = scope_script_metric_query(metric.query or "", getattr(metric, "monitor_plugin", None))
     if "__$labels__" not in template:
         raise AuthorizedMetricQueryError(
             "监控指标不支持受控实例查询",
@@ -463,7 +465,7 @@ class AuthorizedMetricQueryService:
             )
         else:
             metric = (
-                Metric.objects.select_related("monitor_object")
+                Metric.objects.select_related("monitor_object", "monitor_plugin")
                 .filter(
                     id=metric_id,
                     monitor_object_id=monitor_object.id,

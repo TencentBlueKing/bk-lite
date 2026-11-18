@@ -7,8 +7,11 @@ from apps.monitor.models.monitor_metrics import Metric
 
 
 def build_metric_query(metric, filters: list[dict]) -> str:
+    from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
     vm_filter = format_to_vm_filter(filters or [])
-    return (metric.query or "").replace("__$labels__", vm_filter)
+    query = scope_script_metric_query(metric.query or "", getattr(metric, "monitor_plugin", None))
+    return query.replace("__$labels__", vm_filter)
 
 
 def build_formula_query(

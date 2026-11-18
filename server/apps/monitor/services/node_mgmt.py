@@ -290,7 +290,7 @@ class InstanceConfigService:
         return Metric.objects.filter(monitor_object_id=child_obj.id).first()
 
     @staticmethod
-    def _sync_existing_instance_attrs(existing_instances, actor_context=None):
+    def _sync_existing_instance_attrs(existing_instances, actor_context=None, keep_interval_ids=None):
         """同步复用实例的可变属性（除主键外）
 
         通过页面接入链路复用的实例应视为手动接入实例，
@@ -300,6 +300,7 @@ class InstanceConfigService:
             return 0
 
         instances_to_update = []
+        kept_intervals = {str(instance_id) for instance_id in (keep_interval_ids or [])}
         existing_map = {obj.id: obj for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])}
         maintainer = maintainer_kwargs(actor_context, include_created=False)
         for instance in existing_instances:
@@ -314,7 +315,9 @@ class InstanceConfigService:
                     id=instance["instance_id"],
                     name=instance.get("instance_name", ""),
                     summary_facts=summary_facts,
-                    interval=normalize_collect_interval(
+                    interval=current.interval
+                    if str(instance["instance_id"]) in kept_intervals
+                    else normalize_collect_interval(
                         instance.get("interval"),
                         default=current.interval,
                     ),
@@ -744,6 +747,7 @@ class InstanceConfigService:
             updated_count = InstanceConfigService._sync_existing_instance_attrs(
                 existing_instances,
                 actor_context=actor_context,
+                keep_interval_ids=preserve_organization_ids,
             )
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}")
 
@@ -1231,12 +1235,24 @@ class InstanceConfigService:
                 preserve_organization_ids = []
                 if is_script_collect_type(collect_type) and existing_instances and monitor_plugin_id not in (None, ""):
                     existing_ids = [instance["instance_id"] for instance in existing_instances]
-                    occupied = CollectConfig.objects.filter(
+                    native_ids = list(
+                        CollectConfig.objects.filter(monitor_instance_id__in=existing_ids)
+                        .exclude(collect_type__iexact="script")
+                        .values_list("monitor_instance_id", flat=True)
+                        .distinct()
+                    )
+                    if native_ids:
+                        raise BaseAppException("不能把脚本采集挂到已有的监控实例上")
+                    occupied = {}
+                    for instance_id, plugin_id in CollectConfig.objects.filter(
                         monitor_instance_id__in=existing_ids,
                         collect_type__iexact="script",
-                    ).values_list("monitor_instance_id", "monitor_plugin_id")
+                    ).values_list("monitor_instance_id", "monitor_plugin_id"):
+                        occupied.setdefault(instance_id, set()).add(str(plugin_id) if plugin_id not in (None, "") else "")
+                    current_plugin = str(monitor_plugin_id)
+                    # 这次是新挂的模板才保留组织；同一模板重新接入仍按本次选择更新。
                     preserve_organization_ids = [
-                        instance_id for instance_id, plugin_id in occupied if plugin_id not in (None, "") and str(plugin_id) != str(monitor_plugin_id)
+                        instance_id for instance_id, plugin_ids in occupied.items() if current_plugin not in plugin_ids and any(plugin_ids)
                     ]
                 created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
                     new_instances,

@@ -165,7 +165,10 @@ class MetricSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"name": "同模板内指标 ID 不能重复"})
 
         if "query" in attrs and attrs.get("query") is not None:
+            from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
             attrs["query"] = ensure_metric_labels_placeholder(attrs.get("query"))
+            attrs["query"] = scope_script_metric_query(attrs["query"], monitor_plugin)
 
         metric_group = attrs.get("metric_group", getattr(self.instance, "metric_group", None))
         if metric_group is not None:

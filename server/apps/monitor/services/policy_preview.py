@@ -104,8 +104,10 @@ class PolicyPreviewService:
                 cards.append(self._preview_formula_condition(condition, step, api, start, end))
                 continue
             metric = metrics[condition["metric_id"]]
+            from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
             base_query = compile_filter_to_query(
-                metric.query or "",
+                scope_script_metric_query(metric.query or "", getattr(metric, "monitor_plugin", None)),
                 deepcopy(condition.get("filter") or []),
                 base_filters=filters_by_ref.get(condition.get("ref")) or None,
             )
@@ -235,8 +237,10 @@ class PolicyPreviewService:
         if not self.metric:
             raise BaseAppException(f"metric does not exist [{metric_id}]")
 
+        from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
         return compile_filter_to_query(
-            self.metric.query or "",
+            scope_script_metric_query(self.metric.query or "", getattr(self.metric, "monitor_plugin", None)),
             deepcopy(query_condition.get("filter") or []),
             base_filters=self._build_instance_filters(),
         )

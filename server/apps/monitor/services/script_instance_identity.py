@@ -36,9 +36,14 @@ def script_extra_identity_tags(raw_keys) -> list[tuple[str, str]]:
 
 
 def script_storage_identity(instance_id, raw_keys) -> dict:
-    """把接入页传来的实例 ID 收成脚本实例的存储键。"""
+    """把接入页传来的实例 ID 收成脚本实例的存储键。
+
+    主键必须带脚本接入生成的 _script_ 段，避免把脚本配置挂到已有的原生实例上。
+    """
     incoming = normalize_instance_identity(instance_id)
     primary = incoming["logical_instance_value"]
+    if "_script_" not in primary:
+        raise ValueError("脚本实例标识不合法")
     tags = script_extra_identity_tags(raw_keys)
     values = [primary, *[value for _, value in tags]]
     identity = normalize_instance_identity(tuple(values) if len(values) > 1 else values[0])
@@ -78,10 +83,14 @@ def include_script_instances_requested(value) -> bool:
 
 
 def apply_script_instance_visibility(queryset, include: bool):
-    """默认列表不含脚本实例。要求包含时给每行标 is_script。"""
+    """默认列表不含脚本实例。要求包含时只给脚本实例标 is_script。"""
+    from django.db.models import BooleanField, Case, Value, When
+
     marker = script_instance_exists()
     if include:
-        return queryset.annotate(is_script=marker)
+        return queryset.annotate(
+            is_script=Case(When(marker, then=Value(True)), default=Value(False), output_field=BooleanField()),
+        )
     return queryset.exclude(marker)
 
 
@@ -109,15 +118,24 @@ def scope_memberships_for_policy(policy, memberships):
 
 
 def script_instance_exists(instance_ref="id"):
-    """实例名下有脚本采集配置，即为脚本实例。"""
+    """只挂了脚本采集、没有其它采集配置的实例。
+
+    原生实例即使被塞进一份脚本配置，仍然算原生实例，树计数、专业盘和原告警范围不变。
+    """
+    from django.db.models import Q
+
     from apps.monitor.models.collect_config import CollectConfig
 
-    return Exists(
+    has_script = Exists(
         CollectConfig.objects.filter(
             monitor_instance_id=OuterRef(instance_ref),
             collect_type__iexact=SCRIPT_COLLECT_TYPE,
         )
     )
+    has_other = Exists(
+        CollectConfig.objects.filter(monitor_instance_id=OuterRef(instance_ref)).exclude(collect_type__iexact=SCRIPT_COLLECT_TYPE)
+    )
+    return Q(has_script) & ~Q(has_other)
 
 
 def inject_script_identity_tags(rendered: str, tags: list[tuple[str, str]]) -> str:

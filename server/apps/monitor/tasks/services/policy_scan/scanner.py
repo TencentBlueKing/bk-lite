@@ -1,5 +1,7 @@
 """监控策略扫描执行器 - 主流程编排"""
 
+from django.db import transaction
+
 from apps.core.logger import celery_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorInstanceOrganization, PolicyInstanceBaseline
@@ -176,7 +178,56 @@ class MonitorPolicyScan:
         """处理无数据告警"""
         no_data_events = self.alert_detector.detect_no_data_alerts()
         recovered_events = self.alert_detector.recover_no_data_alerts() or []
+        recovered_events.extend(self._close_no_data_alerts_outside_scope())
         return no_data_events, recovered_events
+
+    def _close_no_data_alerts_outside_scope(self):
+        """实例已经不在策略范围内时，关掉它名下还开着的无数据告警。"""
+        if not self.policy.source:
+            return []
+        from apps.monitor.models.monitor_policy import MonitorEvent
+        from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
+        from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+
+        outside_ids = list(
+            MonitorAlert.objects.filter(policy_id=self.policy.id, status="new", alert_type="no_data")
+            .exclude(monitor_instance_id__in=list(self.instances_map))
+            .values_list("id", flat=True)
+        )
+        if not outside_ids:
+            return []
+        end_time = self.policy.last_run_time
+        operation_log = {
+            "action": "recovered",
+            "reason": "out_of_scope",
+            "operator": "system",
+            "time": end_time.isoformat() if end_time else None,
+        }
+        notifier = AlertLifecycleNotifier(self.policy)
+        with transaction.atomic():
+            alerts = list(MonitorAlert.objects.select_for_update().filter(id__in=outside_ids, status="new", alert_type="no_data").order_by("id"))
+            if not alerts:
+                return []
+            for alert in alerts:
+                alert.status = "recovered"
+                alert.end_event_time = end_time
+                alert.operator = "system"
+                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                alert.alert_center_notified = False
+            MonitorAlert.objects.bulk_update(
+                alerts,
+                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+            )
+            recovered_events = record_lifecycle_events(
+                alerts,
+                MonitorEvent.Action.RECOVERED,
+                event_time=end_time,
+                operator="system",
+                reason="out_of_scope",
+            )
+            notifier.enqueue_alert_center_deliveries(alerts, "recovered", operator="system", reason="out_of_scope")
+            transaction.on_commit(lambda alerts=tuple(alerts): notifier.notify_alerts(alerts, "recovered", operator="system", reason="out_of_scope"))
+        return recovered_events or []
 
     def _create_events_alerts_and_notify(self, events):
         """创建事件、告警并发送通知"""

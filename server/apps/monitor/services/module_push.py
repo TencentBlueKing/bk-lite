@@ -68,6 +68,10 @@ class MonitorToCmdbPushService:
         instance = MonitorInstance.objects.filter(id=str(inst_id), is_deleted=False).select_related("monitor_object").first()
         if not instance:
             raise ValueError(f"monitor instance not found: {inst_id}")
+        from apps.monitor.services.script_instance_identity import script_instance_exists
+
+        if MonitorInstance.objects.filter(id=instance.id).filter(script_instance_exists()).exists():
+            raise ValueError("脚本实例不是该对象的资产，不同步")
 
         envelope = cls._build_envelope(instance)
         allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])

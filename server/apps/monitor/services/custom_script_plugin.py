@@ -579,6 +579,7 @@ class CustomScriptPluginService:
             ) or ["instance_id"]
 
             for item in SCRIPT_HEALTH_METRICS:
+                scoped_query = scope_script_metric_query(item["query"], plugin)
                 Metric.objects.update_or_create(
                     monitor_object=monitor_object,
                     monitor_plugin=plugin,
@@ -586,7 +587,7 @@ class CustomScriptPluginService:
                     defaults={
                         "metric_group": metric_group,
                         "display_name": item["display_name"],
-                        "query": item["query"],
+                        "query": scoped_query,
                         "unit": item["unit"],
                         "data_type": item["data_type"],
                         "description": item["description"],

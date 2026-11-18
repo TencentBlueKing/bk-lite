@@ -15,12 +15,14 @@ class RuleGrouping:
     @staticmethod
     def get_query(rule):
         try:
-            metric = Metric.objects.filter(id=rule["metric_id"]).first()
+            metric = Metric.objects.filter(id=rule["metric_id"]).select_related("monitor_plugin").first()
             if not metric:
                 logger.warning(f"规则中的指标不存在，metric_id: {rule.get('metric_id')}")
                 return None
 
-            query = metric.query
+            from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
+            query = scope_script_metric_query(metric.query, metric.monitor_plugin)
             # 纬度条件
             vm_filter_str = format_to_vm_filter(rule.get("filter", []))
             vm_filter_str = f"{vm_filter_str}" if vm_filter_str else ""

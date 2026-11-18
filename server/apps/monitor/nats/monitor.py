@@ -869,7 +869,9 @@ def monitor_object_instance_count(*args, **kwargs):
         kwargs,
     )
     user_info = kwargs.get("user_info")
-    queryset = MonitorInstance.objects.filter(is_deleted=False)
+    from apps.monitor.services.script_instance_identity import script_instance_exists
+
+    queryset = MonitorInstance.objects.filter(is_deleted=False).exclude(script_instance_exists())
     if _has_instance_count_actor(user_info):
         _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
         if error:
@@ -889,12 +891,14 @@ def license_monitor_instance_count(*args, **kwargs):
     """许可管理专用：已启用且属于收费对象目录的监控资产实例数量。"""
     from apps.monitor.constants.license_catalog import MONITOR_LICENSE_OBJECT_NAMES
 
+    from apps.monitor.services.script_instance_identity import script_instance_exists
+
     queryset = (
         MonitorInstance.objects.filter(
             is_deleted=False,
             is_active=True,
             monitor_object__name__in=MONITOR_LICENSE_OBJECT_NAMES,
-        )
+        ).exclude(script_instance_exists())
         .values("monitor_object__name")
         .annotate(instance_count=Count("id"))
     )
@@ -1031,7 +1035,9 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
     qs = _get_authorized_instance_queryset(permission)
 
     # 过滤指定监控对象的活跃实例
-    instances = qs.filter(monitor_object=monitor_obj, is_deleted=False, is_active=True).select_related("monitor_object")
+    from apps.monitor.services.script_instance_identity import script_instance_exists
+
+    instances = qs.filter(monitor_object=monitor_obj, is_deleted=False, is_active=True).exclude(script_instance_exists()).select_related("monitor_object")
 
     # 获取实例权限映射
     inst_permission_map = _get_instance_permission_map(permission)
@@ -3155,11 +3161,17 @@ def get_monitor_instance_list(*args, **kwargs):
     if error:
         return error
     allowed_names = set(object_names)
-    selected = [
+    from apps.monitor.services.script_instance_identity import script_instance_exists
+
+    candidates = [
         instance
         for instance in authorized_instances.values()
         if str(getattr(getattr(instance, "monitor_object", None), "name", "") or "") in allowed_names
     ]
+    script_ids = set(
+        MonitorInstance.objects.filter(id__in=[instance.id for instance in candidates]).filter(script_instance_exists()).values_list("id", flat=True)
+    )
+    selected = [instance for instance in candidates if instance.id not in script_ids]
     return {
         "result": True,
         "data": build_monitor_instance_rows(
