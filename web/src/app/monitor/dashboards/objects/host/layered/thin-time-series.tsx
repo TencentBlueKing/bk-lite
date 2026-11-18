@@ -124,8 +124,6 @@ interface ThinTimeSeriesProps {
   formatReading?: (value: number) => string;
   /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
   plotHeight?: number;
-  /** 画在同一张白卡里、图的下方。用来放维度列表，不另起一块灰底。 */
-  footer?: React.ReactNode;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -475,8 +473,7 @@ export default function ThinTimeSeries({
   keepSeriesColor = false,
   markZeroCount = false,
   formatReading,
-  plotHeight,
-  footer
+  plotHeight
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -893,7 +890,6 @@ export default function ThinTimeSeries({
           <div ref={containerRef} className="h-full w-full" />
         )}
       </div>
-      {footer}
     </>
   );
 

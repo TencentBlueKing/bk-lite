@@ -183,8 +183,15 @@ export default function BufferPane({
             data={clerks.data}
             legends={clerks.legends}
             formatReading={clerks.formatReading}
-            footer={clerks.data.length > 0 ? <MssqlSeriesReadout items={clerks.legends} /> : null}
           />
+          {clerks.data.length > 0 ? (
+            <div
+              className="mt-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]"
+              data-mssql-series-frame=""
+            >
+              <MssqlSeriesReadout items={clerks.legends} />
+            </div>
+          ) : null}
         </div>
       </ProSection>
     </div>

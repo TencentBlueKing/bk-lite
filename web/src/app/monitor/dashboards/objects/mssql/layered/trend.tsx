@@ -34,14 +34,14 @@ export function MssqlSeriesReadout({
   if (!items.length) return null;
   return (
     <ul
-      className="m-0 flex w-full list-none flex-col overflow-y-auto border-t border-[var(--color-border)] bg-[var(--color-bg)] p-0"
+      className="m-0 flex w-full list-none flex-col overflow-y-auto bg-[var(--color-bg)] p-0"
       style={{ maxHeight: MSSQL_CLERK_LIST_MAX_PX }}
       data-mssql-series-readout="rows"
     >
       {items.map((item) => (
         <li
           key={item.label}
-          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-1 text-[13px]"
+          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[13px] last:border-b-0"
           style={{ height: MSSQL_LIST_ROW_PX }}
         >
           <span className="flex min-w-0 flex-1 items-center gap-2">

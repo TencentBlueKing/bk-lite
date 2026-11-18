@@ -26,13 +26,22 @@ import { MssqlTrend } from './trend';
 
 const VOLUME_BODY = '数据与日志所在卷已使用空间占总容量的比例。\n已用 ÷ 总量 × 100%\n分母为 0 时显示 —，不用 0% 顶替。';
 
-const RANK_LABEL = {
-  read_latency: '读取延迟',
-  write_latency: '写入延迟',
-  io_rate: '读写繁忙'
+const RANK_COPY = {
+  read_latency: {
+    label: '读取延迟',
+    body: '按数据库列出读取延迟靠前的对象，便于定位读得慢的库。'
+  },
+  write_latency: {
+    label: '写入延迟',
+    body: '按数据库列出写入延迟靠前的对象，便于定位写得慢的库。'
+  },
+  io_rate: {
+    label: '读写繁忙',
+    body: '按数据库列出每秒读写次数靠前的对象，便于定位访问最忙的库。'
+  }
 } as const;
 
-type RankKey = keyof typeof RANK_LABEL;
+type RankKey = keyof typeof RANK_COPY;
 
 const tightenRankDisplay = (display: string) => display.replace(/\.00(?=\D|$)/, '');
 
@@ -126,7 +135,8 @@ export default function IoPane({
       mssqlDeferEmpty(items.length > 0, rankPhase === 'loading', batchLoading),
       items.length > 0
     );
-    return { key: query.key as RankKey, label: RANK_LABEL[query.key as RankKey], items, face };
+    const copy = RANK_COPY[query.key as RankKey];
+    return { key: query.key as RankKey, label: copy.label, body: copy.body, items, face };
   });
   const volumePeak = Math.max(Math.abs(usage.used ?? 0), Math.abs(usage.total ?? 0));
   const volumeFormat = mssqlLockedReading('bytes', volumePeak);
@@ -285,43 +295,37 @@ export default function IoPane({
         </div>
       </ProSection>
       <ProSection title="数据库压力排行">
-        <section
-          id="mssql-db-rank"
-          className={`${classic.panel} ${host.chartPanel}`}
-          data-mssql-chart="db-rank"
-          data-mssql-rank-layout="all"
-        >
-          <div className={host.chartHead}>
-            <div className={host.chartTitle}>
-              <span className="inline-flex items-center gap-1">
-                数据库压力排行
-                <MssqlHint
-                  kind="mssql-db-rank"
-                  title="数据库压力排行"
-                  body="按数据库同时列出读取延迟、写入延迟和读写繁忙。读写繁忙是每秒次数，不是时长。"
-                />
-              </span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-4 min-[1440px]:grid-cols-3" data-mssql-rank-groups="3">
-            {rankGroups.map((group) => (
-              <div key={group.key} data-mssql-rank={group.key} data-mssql-face={group.face} className="min-w-0">
-                <div className="text-[13px] font-semibold text-[var(--color-text-1)]">{group.label}</div>
-                {group.face === 'loading' ? (
-                  <div className="flex h-16 items-center justify-center">
-                    <ProDashLoading />
-                  </div>
-                ) : group.face === 'empty' ? (
-                  <div className="flex h-16 items-center text-[13px] font-semibold text-[var(--color-text-2)]">
-                    本窗口暂无数据
-                  </div>
-                ) : (
-                  <BarList items={group.items} styles={{ ...styles, barsFull: '' }} />
-                )}
+        <div id="mssql-db-rank" className={host.chartGrid3} data-mssql-rank-groups="3" data-mssql-rank-layout="cards">
+          {rankGroups.map((group) => (
+            <section
+              key={group.key}
+              className={`${classic.panel} ${host.chartPanel} h-full`}
+              data-mssql-chart={group.key}
+              data-mssql-rank={group.key}
+              data-mssql-face={group.face}
+            >
+              <div className={host.chartHead}>
+                <div className={host.chartTitle}>
+                  <span className="inline-flex items-center gap-1">
+                    {group.label}
+                    <MssqlHint kind={`mssql-db-rank-${group.key}`} title={group.label} body={group.body} />
+                  </span>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
+              {group.face === 'loading' ? (
+                <div className="flex min-h-16 flex-1 items-center justify-center">
+                  <ProDashLoading />
+                </div>
+              ) : group.face === 'empty' ? (
+                <div className="flex min-h-16 flex-1 items-center text-[13px] font-semibold text-[var(--color-text-2)]">
+                  本窗口暂无数据
+                </div>
+              ) : (
+                <BarList items={group.items} styles={{ ...styles, barsFull: '' }} />
+              )}
+            </section>
+          ))}
+        </div>
       </ProSection>
     </div>
   );
