@@ -101,6 +101,7 @@ def invoke_trigger(
     idempotency_key: str,
     started_by: str,
     domain: str,
+    caller_identity: dict | None = None,
     client: ConductorClient | None = None,
 ) -> tuple[WorkflowExecution, bool]:
     if not trigger.enabled:
@@ -168,6 +169,7 @@ def invoke_trigger(
             inputs=validated_inputs,
             started_by=started_by,
             domain=domain,
+            caller_identity=caller_identity,
             client=conductor,
             trigger_type=trigger_type,
             trigger_id=str(trigger_pk),

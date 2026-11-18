@@ -54,6 +54,13 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         return runtime_inputs
     if execution is None or not execution.team:
         raise ValueError("原子缺少可信的流程执行上下文")
+    agent_context = {}
+    if task_type == "bklite_agent":
+        if atom_execution:
+            agent_context["task_reference"] = atom_execution.task_reference
+        identity = execution.caller_identity
+        if identity and identity["team_id"] == execution.team[0]:
+            agent_context["caller_identity"] = identity
     return {
         **runtime_inputs,
         "__execution_id": str(execution.id),
@@ -64,7 +71,7 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
             "organization_id": execution.team[0],
             "actor": {"username": execution.started_by, "domain": execution.domain},
             "trigger_type": execution.trigger_type,
-            **({"task_reference": atom_execution.task_reference} if task_type == "bklite_agent" and atom_execution else {}),
+            **agent_context,
         },
     }
 

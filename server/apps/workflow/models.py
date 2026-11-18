@@ -161,6 +161,7 @@ class WorkflowExecution(TimeInfo):
     mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.PRODUCTION, db_index=True)
     debug_kind = models.CharField(max_length=16, choices=DebugKind.choices, blank=True, default="")
     debug_task_reference = models.CharField(max_length=100, blank=True, default="")
+    caller_identity = models.JSONField(null=True, blank=True, editable=False)
     started_by = models.CharField(max_length=32, default="", db_index=True)
     domain = models.CharField(max_length=100, default="domain.com")
     finished_at = models.DateTimeField(null=True, blank=True)

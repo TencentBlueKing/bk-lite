@@ -138,6 +138,18 @@ def _identity(request):
     return getattr(request.user, "username", ""), getattr(request.user, "domain", "domain.com")
 
 
+def _workflow_caller_identity(request) -> dict | None:
+    """编排使用单组织执行范围，身份仅从发起本次运行的请求捕获。"""
+    from apps.opspilot.services.caller_identity import CallerIdentityError, capture_caller_identity
+
+    try:
+        identity = capture_caller_identity(request)
+    except CallerIdentityError:
+        # 普通编排仍可运行，需要调用者身份的工具会在调用时拒绝。
+        return None
+    return {**identity, "include_children": False}
+
+
 def _has_menu_permission(request, name: str) -> bool:
     if getattr(request.user, "is_superuser", False):
         return True
@@ -913,6 +925,7 @@ class WorkflowViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 definition_override=compiled_definition,
                 canvas_metadata_override=compiled_metadata,
@@ -1169,6 +1182,7 @@ class WorkflowViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=version.version,
                 launch_token_hash=launch_token_digest(launch_token),
@@ -2069,6 +2083,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=original.workflow_version,
                 parent_execution=original,
@@ -2355,6 +2370,7 @@ class WorkflowTriggerViewSet(AuthViewSet):
                 idempotency_key=request.data.get("idempotency_key") or "",
                 started_by=username,
                 domain=domain,
+                caller_identity=_workflow_caller_identity(request),
             )
         except DefinitionValidationError as error:
             return Response(

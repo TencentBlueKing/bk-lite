@@ -96,6 +96,8 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "trigger_type": str(context.get("trigger_type") or ""),
         "unattended": context.get("trigger_type") in {"SCHEDULE", "NATS", "WEBHOOK"},
     }
+    if context.get("caller_identity") is not None:
+        flow_input["caller_identity"] = context["caller_identity"]
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
     manager.set_variable("execution_id", str(context.get("execution_id") or ""))

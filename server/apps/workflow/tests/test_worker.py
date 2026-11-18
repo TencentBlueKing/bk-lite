@@ -408,15 +408,27 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
 
 
-def test_agent_node_reference_comes_from_claimed_atom_not_input():
+@pytest.mark.parametrize("caller_identity", [None, {"username": "alice", "domain": "example.com", "team_id": 8, "include_children": False}])
+def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_identity):
     execution = SimpleNamespace(
-        id="run-1", workflow_id="flow-1", workflow_version=1, team=[7], started_by="alice", domain="example.com", trigger_type="NATS"
+        id="run-1",
+        workflow_id="flow-1",
+        workflow_version=1,
+        team=[7],
+        started_by="alice",
+        domain="example.com",
+        trigger_type="NATS",
+        caller_identity=caller_identity,
     )
     atom = SimpleNamespace(pk=3, output={}, task_reference="agent-real")
     payload = _build_runtime_inputs(
-        inputs={"__bklite_context": {"task_reference": "agent-forged"}}, atom_execution=atom, task_type="bklite_agent", execution=execution
+        inputs={"__bklite_context": {"task_reference": "agent-forged", "caller_identity": {"username": "forged", "team_id": 7}}},
+        atom_execution=atom,
+        task_type="bklite_agent",
+        execution=execution,
     )
     assert payload["__bklite_context"]["task_reference"] == "agent-real"
+    assert "caller_identity" not in payload["__bklite_context"]
 
 
 @pytest.mark.django_db
