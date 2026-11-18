@@ -6,7 +6,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from 
 
 import { Button, Input, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -93,7 +93,7 @@ export default function Page() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.admin.editNotice') : t('itsm.admin.newNotice')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{title,content}} title={editing ? t('itsm.admin.editNotice') : t('itsm.admin.newNotice')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.admin.noticeTitle')}>
             <Input placeholder={t('itsm.admin.noticeTitle')} value={title} onChange={(event) => setTitle(event.target.value)} />

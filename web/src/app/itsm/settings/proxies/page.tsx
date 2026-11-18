@@ -3,7 +3,7 @@
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { message } from 'antd';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import { FieldRow } from '../../components/field-row';
 import { useCallback, useEffect, useState } from 'react';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -63,7 +63,7 @@ export default function Page() {
           ]}
         />
       </div>
-      <OperateModal title="新建" open={open} onCancel={() => setOpen(false)} confirmLoading={saving} onOk={async () => {
+      <OperateModal formValue={{principal,agent}} title="新建" open={open} onCancel={() => setOpen(false)} confirmLoading={saving} onOk={async () => {
         if (!principal[0] || !agent[0]) { message.warning(t('itsm.admin.needBoth')); return; }
         setSaving(true);
         try { await api.createResource('proxies',{principal:principal[0],agent:agent[0],is_enabled:true}); setOpen(false);setPrincipal([]);setAgent([]);await load(); } catch(error) { message.error(error instanceof Error ? error.message : '保存失败'); } finally { setSaving(false); }

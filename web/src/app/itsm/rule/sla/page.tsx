@@ -4,7 +4,7 @@ import { ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-co
 
 import { Switch, Input, InputNumber, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -89,7 +89,7 @@ export default function SlaRulePage() {
           ]}
         />
       </div>
-      <OperateModal title={t('itsm.rule.newPolicy')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{name,category,target,minutes,calendarId}} title={t('itsm.rule.newPolicy')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.portal.name')} value={name} onChange={(event) => setName(event.target.value)} />

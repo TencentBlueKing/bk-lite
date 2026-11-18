@@ -6,7 +6,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/co
 
 import { Button, ColorPicker, Input, Select, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -114,7 +114,7 @@ export default function Page() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.rule.editStatus') : t('itsm.rule.newStatus')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{name,key,color,description}} title={editing ? t('itsm.rule.editStatus') : t('itsm.rule.newStatus')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.rule.statusName')}>
             <Input value={name} onChange={(event) => setName(event.target.value)} />

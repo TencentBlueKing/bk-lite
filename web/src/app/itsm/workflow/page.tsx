@@ -5,8 +5,9 @@ import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 import { ItsmListToolbar, ItsmListTabs, ItsmCreateButton, ItsmRowActions } from '@/app/itsm/components/list-controls';
 
 import { Alert, Button, Empty, Popconfirm, Spin, Tag, Tooltip, message } from 'antd';
-import { ImportOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import OperateModal from '@/components/operate-modal';
+import { ImportDialog } from '../components/import-dialog';
+import { PlayCircleOutlined } from '@ant-design/icons';
+import { ItsmDrawer as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -20,7 +21,6 @@ const report = (error: unknown) => message.error(error instanceof Error ? error.
 export default function WorkflowListPage() {
   const api = useItsmApi();
   const router = useRouter();
-  const input = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
   const [data, setData] = useState<ListResult>({});
   const [keyword, setKeyword] = useState('');
@@ -55,8 +55,8 @@ export default function WorkflowListPage() {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('请选择有效的流程 JSON 文件');
       const bundle = parsed as Record<string, unknown>;
       await api.importWorkflow(bundle.design ? bundle : {design:bundle});
-      await load(); message.success('导入成功');
-    } catch (error) { report(error); } finally { setBusy(false); }
+      await load(); message.success('导入成功'); return true;
+    } catch (error) { report(error); return false; } finally { setBusy(false); }
   };
   const exportFile = async (record: WorkflowListItem) => {
     try {
@@ -75,9 +75,8 @@ export default function WorkflowListPage() {
     <ItsmListToolbar leading={<ItsmListTabs activeKey={status} onChange={setStatus} items={[
       {key:'all',label:'全部'}, {key:'published',label:'已发布'}, {key:'unpublished',label:'未发布'},
     ]} />} search={{value: keyword, onChange: setKeyword, label: '搜索流程', placeholder: '搜索名称或标识'}} actions={<>
-<input ref={input} aria-label="流程文件" hidden type="file" accept=".json,application/json" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importFile(file);}} />
 {data.can_add && <>
-  <Button aria-label="导入" icon={<ImportOutlined />} loading={busy} onClick={() => input.current?.click()}>导入</Button>
+  <ImportDialog accept=".json,application/json" onImport={importFile} />
   <ItsmCreateButton aria-label="新建流程" loading={busy} onClick={() => void create()} />
 </>}
 </>} />

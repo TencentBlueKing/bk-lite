@@ -6,7 +6,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/co
 
 import { Checkbox, Input, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -82,7 +82,7 @@ export default function CalendarsPage() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.rule.editCalendar') : t('itsm.rule.newCalendar')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{name,days,start,end}} title={editing ? t('itsm.rule.editCalendar') : t('itsm.rule.newCalendar')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.rule.windowName')} value={name} onChange={(event) => setName(event.target.value)} />

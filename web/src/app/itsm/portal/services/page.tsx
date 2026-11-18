@@ -9,7 +9,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/co
 import { Alert, Button, Input, Select, Switch, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { UserSelector } from '../../components/user-selector';
-import OperateModal from '@/components/operate-modal';
+import { ItsmDrawer as OperateModal, ItsmModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
@@ -210,7 +210,7 @@ export default function ServiceManagePage() {
           />
         </div>
       </div>
-      <OperateModal title={editingCatalog ? t('itsm.portal.editCatalog') : t('itsm.portal.newCatalog')} open={catalogOpen} onCancel={() => setCatalogOpen(false)} onOk={() => { void saveCatalog(); }}>
+      <ItsmModal formValue={{catalogName,parentId}} title={editingCatalog ? t('itsm.portal.editCatalog') : t('itsm.portal.newCatalog')} open={catalogOpen} onCancel={() => setCatalogOpen(false)} onOk={saveCatalog}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.portal.catalogName')} value={catalogName} onChange={(event) => setCatalogName(event.target.value)} />
@@ -226,8 +226,8 @@ export default function ServiceManagePage() {
             />
           </FieldRow>
         </div>
-      </OperateModal>
-      <OperateModal title={editingService ? t('itsm.common.edit') : t('itsm.portal.newService')} open={serviceOpen} onCancel={() => setServiceOpen(false)} onOk={() => { void saveService(); }}>
+      </ItsmModal>
+      <OperateModal formValue={{serviceName,serviceCatalogId,workflowId,description,isHot,visibility,visibleUsers,visibleGroups}} title={editingService ? t('itsm.common.edit') : t('itsm.portal.newService')} open={serviceOpen} onCancel={() => setServiceOpen(false)} onOk={saveService}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.portal.serviceName')} value={serviceName} onChange={(event) => setServiceName(event.target.value)} />

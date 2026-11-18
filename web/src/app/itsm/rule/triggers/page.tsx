@@ -6,7 +6,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/co
 
 import { Input, Select, Switch, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmDrawer as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { FieldRow } from '../../components/field-row';
@@ -125,7 +125,7 @@ export default function Page() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.rule.editTrigger') : t('itsm.rule.newTrigger')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{name,event,action,field,op,value,response}} title={editing ? t('itsm.rule.editTrigger') : t('itsm.rule.newTrigger')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.portal.name')}>
             <Input value={name} onChange={(event) => setName(event.target.value)} />

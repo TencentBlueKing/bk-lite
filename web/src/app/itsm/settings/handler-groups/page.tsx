@@ -6,7 +6,7 @@ import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/co
 
 import { Input, Tag, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useItsmApi } from '../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
@@ -83,7 +83,7 @@ export default function HandlerGroupsPage() {
           ]}
         />
       </div>
-      <OperateModal title={editing ? t('itsm.admin.editGroup') : t('itsm.admin.newGroup')} open={open} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={{name,members}} title={editing ? t('itsm.admin.editGroup') : t('itsm.admin.newGroup')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.admin.groupName')} value={name} onChange={(event) => setName(event.target.value)} />
