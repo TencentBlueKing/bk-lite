@@ -808,6 +808,13 @@
     },
     "pageTitle": "Workbench",
     "pageDescription": "Manage bot apps, channel publishing, and conversation capabilities",
+    "retirementNotice": {
+      "title": "Workbench is scheduled for retirement in January 2027",
+      "description": "The Workflow Center now supports all Workbench capabilities. Please migrate your AI workflows to the Workflow Center as soon as possible and verify the results.",
+      "openWorkflow": "Go to Workflow Center",
+      "muteInBrowser": "Don't remind me again",
+      "acknowledge": "I understand"
+    },
     "settings": {
       "selectSkills": "Select Skills",
       "enableSsl": "enable SSL",
