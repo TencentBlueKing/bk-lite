@@ -22,7 +22,7 @@ it('公共新建打开独立表单，取消不写入，保存使用原业务接�
   fireEvent.click(screen.getByRole('button',{name:'新建',exact:true}));
   fireEvent.change(screen.getByRole('textbox',{name:'名称'}),{target:{value:'[Review] 新对象'}});
   fireEvent.change(screen.getByRole('textbox',{name:'标识'}),{target:{value:'new'}});
-  fireEvent.click(screen.getByRole('button',{name:/OK|确\s*定/}));
+  fireEvent.click(screen.getByRole('button',{name:/保\s*存/}));
   await waitFor(()=>expect(api.createResource).toHaveBeenCalledWith('biz_objects',{name:'[Review] 新对象',key:'new'}));
 });
 it('应用列表搜索过滤且无配置的操作不会出现', async () => {

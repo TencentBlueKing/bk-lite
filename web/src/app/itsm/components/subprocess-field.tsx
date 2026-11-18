@@ -1,6 +1,7 @@
 'use client';
+import { ItsmDrawer as Modal } from '@/app/itsm/components/interaction-surfaces';
 
-import { Button, Form, Modal, Select, message } from 'antd';
+import { Button, Form, Select, message } from 'antd';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
@@ -25,6 +26,7 @@ export function SubProcessField({ field, value = [], onChange, disabled = false 
   const api = useItsmApi();
   const [form] = Form.useForm();
   const [open, setOpen] = useState(false);
+  const formValues = Form.useWatch([], form);
   const [schema, setSchema] = useState<FormSchema>({ version: 1, fields: [] });
   const [fieldPerm, setFieldPerm] = useState<Record<string, 'hidden' | 'read' | 'edit'>>({});
   const versionId = Number(field.props?.workflow_version_id || 0);
@@ -45,8 +47,8 @@ export function SubProcessField({ field, value = [], onChange, disabled = false 
     </div>)}
     {!disabled && <Button disabled={!versionId || rows.length >= 20} onClick={() => { void add(); }}>新增子申请</Button>}
     {!versionId && <span className="text-xs text-[var(--color-text-3)]">请先在表单设计中绑定子流程</span>}
-    <Modal title="填写子申请" open={open} onCancel={() => setOpen(false)} onOk={() => {
-      void form.validateFields().then((values) => { onChange?.([...rows, { form_data: values }]); setOpen(false); }).catch(() => undefined);
+    <Modal formValue={formValues || {}} title="填写子申请" okText="添加子申请" open={open} onCancel={() => setOpen(false)} onOk={() => {
+      return form.validateFields().then((values) => { onChange?.([...rows, { form_data: values }]); setOpen(false); }).catch(() => undefined);
     }}>
       <FormRenderer form={form} schema={schema} fieldPerm={fieldPerm} hideSubmit onSubmit={() => undefined} />
     </Modal>

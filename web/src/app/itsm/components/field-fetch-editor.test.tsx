@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Modal } from 'antd';
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import type { FormFieldSchema } from '../types';
@@ -87,6 +88,7 @@ it('专用人员字段隐藏取数，旧错误配置可移除', async () => {
 });
 
 it('弹窗修改先保留草稿，取消不应用，确定才保存', async () => {
+  const confirm=vi.spyOn(Modal,'confirm').mockReturnValue({destroy:vi.fn(),update:vi.fn()});
   function ModalEditor() {
     const [field, setField] = useState<FormFieldSchema>({ key: 'r', type: 'radio', label: '单选', fetch: { source: 'dictionary', mode: 'options', resource_key: 'd' } });
     return <><FieldFetchEditor field={field} fields={[field]} patch={(_, next) => setField({ ...field, ...next })} /><output data-testid="saved">{JSON.stringify(field)}</output></>;
@@ -97,6 +99,9 @@ it('弹窗修改先保留草稿，取消不应用，确定才保存', async () =
   fireEvent.change(screen.getAllByLabelText('选项来源').at(-1)!, { target: { value: 'api' } });
   expect(JSON.parse(screen.getByTestId('saved').textContent!).fetch.source).toBe('dictionary');
   fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+  expect(confirm).toHaveBeenCalled();
+  confirm.mock.calls.at(-1)![0].onOk?.();
+  confirm.mockRestore();
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   fireEvent.click(screen.getByRole('button', { name: /设\s*置/ }));
   expect(await screen.findByLabelText('数据字典')).toBeTruthy();

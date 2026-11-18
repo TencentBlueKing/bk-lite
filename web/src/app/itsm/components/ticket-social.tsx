@@ -1,4 +1,5 @@
 'use client';
+import { ItsmDrawer } from './interaction-surfaces';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -71,6 +72,7 @@ export function CopyTicketNumber({ sn }: { sn: string }) {
 }
 
 export function TicketRelations({ ticketId }: { ticketId: number }) {
+  const [selectOpen,setSelectOpen]=useState(false);
   const api = useItsmApi();
   const { message } = App.useApp();
   const [data, setData] = useState<RelationsData>({ items: [], can_manage: false });
@@ -84,7 +86,7 @@ export function TicketRelations({ ticketId }: { ticketId: number }) {
   const load = useCallback(async () => { setData(await api.listRelations(ticketId) as RelationsData); setLoaded(true); setError(''); }, [api.listRelations, ticketId]);
   useEffect(() => { if (api.ready) void load().catch((e: unknown) => setError(errorText(e))); }, [api.ready, load]);
   useEffect(() => {
-    if (!data.can_manage || !api.ready) return;
+    if (!data.can_manage || !api.ready || !selectOpen) return;
     let active = true;
     setSearching(true);
     const timer = window.setTimeout(() => {
@@ -93,15 +95,15 @@ export function TicketRelations({ ticketId }: { ticketId: number }) {
       }).catch((e: unknown) => { if (active) { setOptions([]); message.error(errorText(e)); } }).finally(() => { if (active) setSearching(false); });
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [api.ready, api.listTickets, keyword, ticketId, data, message]);
+  }, [api.ready, api.listTickets, keyword, ticketId, data, message, selectOpen]);
   const mutate = async (operation: () => Promise<unknown>) => {
     setBusy(true);
-    try { await operation(); setSelected(undefined); await load(); } catch (e) { message.error(errorText(e)); } finally { setBusy(false); }
+    try { await operation(); setSelected(undefined); setSelectOpen(false); await load(); } catch (e) { message.error(errorText(e)); } finally { setBusy(false); }
   };
   if (error) return <Alert type="error" message={error} action={<Button onClick={() => void load().catch((e: unknown) => setError(errorText(e)))}>重试</Button>} />;
   if (!loaded) return <Spin />;
   return <div className="flex flex-col gap-4 py-2">
-    {data.can_manage ? <div className="flex flex-col gap-2"><span className="text-sm font-medium">添加关联单</span><Select aria-label="搜索关联工单" showSearch filterOption={false} placeholder="按单号或标题搜索" searchValue={keyword} onSearch={setKeyword} loading={searching} value={selected} onChange={setSelected} options={options} virtual={false} optionRender={(option) => <div className="flex flex-col gap-1 py-1"><span className="whitespace-normal break-words text-sm">{option.data.title}</span><span className="text-xs text-[var(--color-text-3)]">{option.data.sn}</span></div>} notFoundContent={searching ? <Spin size="small" /> : '没有可关联的工单'} className="w-full" /><Button disabled={!selected} loading={busy} onClick={() => selected && void mutate(() => api.addRelation(ticketId, selected))}>建立关联</Button></div> : null}
+    {data.can_manage ? <><Button onClick={()=>setSelectOpen(true)}>添加关联单</Button><ItsmDrawer title="选择关联工单" open={selectOpen} onCancel={()=>setSelectOpen(false)} confirmLoading={busy} footer={null}><div className="flex flex-col gap-2"><Select aria-label="搜索关联工单" showSearch filterOption={false} placeholder="按单号或标题搜索" searchValue={keyword} onSearch={setKeyword} loading={searching} value={selected} onChange={setSelected} options={options} virtual={false} optionRender={(option) => <div className="flex flex-col gap-1 py-1"><span className="whitespace-normal break-words text-sm">{option.data.title}</span><span className="text-xs text-[var(--color-text-3)]">{option.data.sn}</span></div>} notFoundContent={searching ? <Spin size="small" /> : '没有可关联的工单'} className="w-full" /><Button disabled={!selected} loading={busy} onClick={() => selected && void mutate(() => api.addRelation(ticketId, selected))}>建立关联</Button></div></ItsmDrawer></> : null}
     {data.items.length ? data.items.map((item) => <div key={item.id} className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3"><Link href={`/itsm/tickets/${item.related_id}`} className="break-words text-sm text-[var(--color-primary)]">{item.related_sn}<span className="mt-1 block text-[var(--color-text-1)]">{item.related_title}</span></Link><div className="flex items-center justify-between"><Tag>{item.relation_type === 'related' ? '关联工单' : item.relation_type === 'child' ? '子流程关联' : '业务关联'}</Tag>{item.can_remove ? <Popconfirm title="解除这两张工单的关联？" description="两端同时解除，不删除工单。" onConfirm={() => mutate(() => api.removeRelation(ticketId, item.id))}><Button size="small" type="text" danger disabled={busy}>解除关联</Button></Popconfirm> : null}</div></div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联工单" />}
   </div>;
 }

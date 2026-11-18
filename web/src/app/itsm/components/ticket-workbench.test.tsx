@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
@@ -9,6 +9,8 @@ vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => ke
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
 vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { tableProps.current = props; const { rowSelection, dataSource } = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
+// 列配置加载后还会触发防抖查询，给并行运行时的真实异步渲染留出时间。
+configure({ asyncUtilTimeout: 3000 });
 afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();

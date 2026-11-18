@@ -5,7 +5,7 @@ import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Input, message } from 'antd';
-import OperateModal from '@/components/operate-modal';
+import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import { FieldRow } from './field-row';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
 import { useCallback, useEffect, useState } from 'react';
@@ -161,8 +161,8 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
           ]}
         />
       </div>
-      <OperateModal title={editingId == null ? `${createLabel}${title}` : `编辑${title}`} open={open}
-        confirmLoading={saving} onCancel={() => setOpen(false)} onOk={() => { void save(); }}>
+      <OperateModal formValue={draft} title={editingId == null ? `${createLabel}${title}` : `编辑${title}`} open={open}
+        confirmLoading={saving} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-4">{fields.map(field => <FieldRow key={field} label={labelOf(field)}>
           {['content', 'body', 'prompt'].includes(field)
             ? <Input.TextArea aria-label={labelOf(field)} rows={4} value={draft[field] || ''} onChange={event => setDraft(current => ({ ...current, [field]: event.target.value }))} />

@@ -42,6 +42,7 @@ it('移除标签必须确认', async () => {
 it('搜索请求当前工单的可关联候选', async () => {
   api.listRelations.mockResolvedValue({ items: [], can_manage: true });
   render(<TicketRelations ticketId={8} />);
+  fireEvent.click(await screen.findByRole('button',{name:'添加关联单'}));
   await screen.findByRole('combobox', { name: '搜索关联工单' });
   await waitFor(() => expect(api.listTickets).toHaveBeenCalledWith(expect.objectContaining({ relation_for: 8, page_size: 20 })), { timeout: 2000 });
 });
@@ -50,6 +51,7 @@ it('部分单号搜索展示名称与单号，选定后才可关联', async () =
   api.listRelations.mockResolvedValue({ items: [], can_manage: true });
   api.listTickets.mockResolvedValue({ items: [{ id: 9, sn: 'REQ202611130009', title: '数据库扩容申请' }] });
   render(<TicketRelations ticketId={8} />);
+  fireEvent.click(await screen.findByRole('button',{name:'添加关联单'}));
   const input = await screen.findByRole('combobox', { name: '搜索关联工单' });
   expect((screen.getByRole('button', { name: '建立关联' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(input, { target: { value: '130009' } });

@@ -1,12 +1,13 @@
 'use client';
 
 import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+import { ItsmModal as Modal } from '@/app/itsm/components/interaction-surfaces';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
 import dayjs from 'dayjs';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
-import { Alert, App, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Checkbox, DatePicker, Input, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { CloseOutlined, FilterOutlined, PlusOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
@@ -185,11 +186,11 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
       onChange={(_pagination, _filters, sort, extra) => { if (extra.action === 'sort') { const value = Array.isArray(sort) ? sort[0] : sort; apply({ ...query, ordering: value.order ? `${value.order === 'descend' ? '-' : ''}${String(value.columnKey)}` : '-created_at' }); } }}
       locale={{ emptyText: '暂无符合条件的工单' }} />
     </div>
-    <Modal title="个性化展示字段" open={columnOpen} onCancel={() => !saving && setColumnOpen(false)} footer={<div className="flex justify-between"><Button disabled={saving} onClick={() => void saveColumns(null)}>恢复默认</Button><Button type="primary" loading={saving} onClick={() => void saveColumns(columnDraft)}>保存配置</Button></div>}>
+    <Modal confirmLoading={saving} formValue={columnDraft} title="个性化展示字段" open={columnOpen} onCancel={() => !saving && setColumnOpen(false)} footer={<div className="flex justify-between"><Button disabled={saving} onClick={() => void saveColumns(null)}>恢复默认</Button><Button type="primary" loading={saving} onClick={() => void saveColumns(columnDraft)}>保存配置</Button></div>}>
       <p className="mb-4 text-sm text-[var(--color-text-3)]">仅对当前账号生效；单号和标题始终显示。</p>
       <Checkbox.Group className="grid grid-cols-2 gap-3" value={columnDraft} options={Object.entries(FIELD_LABELS).map(([value, label]) => ({ value, label, disabled: ['sn', 'title'].includes(value) }))} onChange={value => setColumnDraft(value as string[])} />
     </Modal>
-    <Modal title="新增筛选分组" width={600} open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() }}>
+    <Modal formValue={{groupName,groupFilters}} title="新增筛选分组" width={600} open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() }}>
       <p className="mb-3 text-sm text-[var(--color-text-3)]">工单需同时满足以下条件；同一状态字段内可匹配任一选项。保存后自动更新分组结果。</p>
       <div className="grid grid-cols-2 gap-4">
         <label className="col-span-2 flex flex-col gap-1">分组名称<Input aria-label="分组名称" placeholder="例如：我关注的处理中工单" value={groupName} maxLength={40} onChange={event => setGroupName(event.target.value)} /></label>
@@ -203,7 +204,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
       </div>
     </Modal>
     {selected.length > 0 && batchReason ? <Alert className="mb-3" type="warning" message={batchReason} /> : null}
-    <Modal title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={optionsLoading || !batchOptions.includes(action)} onClick={() => void runBatch()}>确认执行</Button>}>
+    <Modal confirmLoading={batchBusy} formValue={results ? undefined : opinion} title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={optionsLoading || !batchOptions.includes(action)} onClick={() => void runBatch()}>确认执行</Button>}>
       {results ? <><Alert className="mb-3" type={results.every(item => item.ok) ? 'success' : 'warning'} message={`成功 ${results.filter(item => item.ok).length} 项，失败 ${results.filter(item => !item.ok).length} 项`} /><Table size="small" rowKey="id" pagination={false} dataSource={results} columns={[{ title: '工单', render: (_value, record: BatchResult) => batchNames[record.id] || record.id }, { title: '结果', render: (_value, record: BatchResult) => record.ok ? <Tag color="success">成功</Tag> : record.error }]} /></> : <><Alert type="info" className="mb-3" message={`将对选中的 ${selected.length} 张工单执行操作，逐单校验权限、节点和必填字段。`} /><div className="mb-3 max-h-36 overflow-auto text-sm">{selected.map(id => <div key={id} className="py-1">{batchNames[Number(id)]}</div>)}</div>{!['follow', 'unfollow'].includes(action) ? <Input.TextArea aria-label="批量操作意见" placeholder="操作意见（可选）" maxLength={1000} rows={3} value={opinion} onChange={event => setOpinion(event.target.value)} /> : null}</>}
     </Modal>
   </div>;

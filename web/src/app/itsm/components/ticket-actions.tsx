@@ -1,6 +1,7 @@
 'use client';
+import { ItsmModal as Modal } from '@/app/itsm/components/interaction-surfaces';
 
-import { Button, Dropdown, Input, Modal, Radio, Select } from 'antd';
+import { Button, Dropdown, Input, Radio, Select } from 'antd';
 import { useState } from 'react';
 import { UserSelector } from './user-selector';
 import type { TicketDetail, TicketTaskItem } from '../types';
@@ -40,7 +41,7 @@ export function TicketActions({ ticket, busy, operate }: Props) {
       {more.length ? <Dropdown disabled={busy} menu={{ items: more.map((value) => ({ key: value, label: LABELS[value] || value, danger: ['terminate', 'close'].includes(value), onClick: () => select(value) })) }}><Button disabled={busy}>更多操作</Button></Dropdown> : null}
       {primary ? <Button type="primary" loading={busy} onClick={() => select(primary)}>{LABELS[primary]}</Button> : null}
     </div>
-    <Modal title={`${LABELS[action] || ''}工单`} open={Boolean(action)} confirmLoading={busy} okText="确认" cancelText="取消" onCancel={() => { if (!busy) setAction(''); }} okButtonProps={{ disabled: action === 'transfer' && !target.length }} onOk={async () => {
+    <Modal formValue={{target,opinion,returnMode}} title={`${LABELS[action] || ''}工单`} open={Boolean(action)} confirmLoading={busy} okText={`确认${LABELS[action] || '操作'}`} cancelText="取消" onCancel={() => { if (!busy) setAction(''); }} okButtonProps={{ disabled: action === 'transfer' && !target.length }} onOk={async () => {
       if (await operate(action, taskActions.includes(action) ? task : undefined, { target: target[0], return_mode: returnMode, opinion })) setAction('');
     }}>
       <div className="flex flex-col gap-4 py-3">

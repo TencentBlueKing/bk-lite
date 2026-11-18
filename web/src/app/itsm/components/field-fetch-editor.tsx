@@ -1,6 +1,7 @@
 'use client';
+import { ItsmModal as Modal } from '@/app/itsm/components/interaction-surfaces';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Input, Modal, Select } from 'antd';
+import { Alert, Button, Checkbox, Input, Select } from 'antd';
 import { useItsmApi } from '../api/useItsmApi';
 import { FieldFetchGuide } from './field-fetch-guide';
 import { FieldParameterBindings, type ParameterSchema } from './field-parameter-bindings';
@@ -49,7 +50,7 @@ export function FieldFetchEditor({ field, fields, patch }: EditorProps) {
     }} />
     {cfg && <><span className="truncate text-xs text-[var(--color-text-3)]" title={resource}>{resource || '尚未选择资源'}</span><Button onClick={() => setDraft(structuredClone(field))}>设置</Button></>}
     {!cfg && capability.mode === 'options' && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
-    {draft && <Modal title={capability.mode === 'options' ? '设置选项' : capability.mode === 'table' ? '设置行数据' : '设置自动填值'} open={!!draft} width={1000} centered destroyOnHidden maskClosable={false} okText="确定" cancelText="取消" styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 4px' } }} onCancel={() => setDraft(undefined)} onOk={() => { if (draft) { patch(field.key, { fetch: draft.fetch, source: draft.source }); setDraft(undefined); } }}>
+    {draft && <Modal formValue={draft} title={capability.mode === 'options' ? '设置选项' : capability.mode === 'table' ? '设置行数据' : '设置自动填值'} open={!!draft} width={1000} centered destroyOnHidden maskClosable={false} okText="确定" cancelText="取消" styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 4px' } }} onCancel={() => setDraft(undefined)} onOk={() => { if (draft) { patch(field.key, { fetch: draft.fetch, source: draft.source }); setDraft(undefined); } }}>
       {draft && <FieldFetchSettings key={draft.key} initialCatalog={catalog} field={draft} fields={replaceDraft(fields)} patch={(_, next) => setDraft(current => current ? { ...current, ...next } : current)} />}
     </Modal>}
   </div>;
