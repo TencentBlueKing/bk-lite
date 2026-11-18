@@ -20,6 +20,7 @@ import Icon from '@/components/icon';
 import AppTopNav from './appTopNav';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import HomepageBrandLink from '@/app/ops-analysis/components/homepageBrandLink';
+import { showStudioRetirementNotice } from '@/app/opspilot/utils/studioRetirementNotice';
 
 const TOUR_VIEWED_KEY_PREFIX = 'tour_viewed';
 
@@ -277,7 +278,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
         </div>
       </div>
       <Tour
-        open={tourOpen && pathname !== '/opspilot/studio'}
+        open={tourOpen && (!showStudioRetirementNotice || pathname !== '/opspilot/studio')}
         onClose={handleCloseTour}
         steps={tourStep}
         current={currentStep}
