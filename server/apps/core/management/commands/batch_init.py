@@ -272,7 +272,6 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.WARNING(f"CMDB 实例形态清洗注册跳过: {type(exc).__name__}"))
 
-
     def _schedule_ci_context_rebuild(self) -> None:
         """ci_context 全量重摊是可重建投影，启动期只入队，不扫图。"""
         try:
@@ -310,6 +309,15 @@ class Command(BaseCommand):
         """监控资源初始化"""
         self.stdout.write("初始化监控资源...")
         call_command("plugin_init")
+        try:
+            call_command("init_default_policy_groups")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning(
+                "event=policy_group_default_init_failed failed_stage=init_default_policy_groups error_type=%s",
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
+            self.stdout.write(self.style.WARNING(f"默认策略组初始化跳过（{type(error).__name__}），可运行 init_default_policy_groups 重试"))
 
     def _init_node_mgmt(self):
         """节点管理初始化"""

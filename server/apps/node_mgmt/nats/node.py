@@ -1,9 +1,11 @@
 import threading
 import uuid
 from collections import defaultdict
+from datetime import timedelta
 
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, F
+from django.utils import timezone as dj_timezone
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 import nats_client
@@ -31,6 +33,7 @@ from apps.node_mgmt.serializers.installer import ControllerInstallRequestSeriali
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.node_status_filter import ACTIVE_WINDOW_SECONDS
 from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
 from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
 from apps.node_mgmt.tasks.installer import install_controller as install_controller_task
@@ -605,6 +608,7 @@ class NatsService:
         except BaseAppException:
             return []
 
+        cutoff = dj_timezone.now() - timedelta(seconds=ACTIVE_WINDOW_SECONDS)
         rows = (
             ChildConfig.objects.filter(
                 id__in=normalized_ids,
@@ -614,19 +618,57 @@ class NatsService:
                 "id",
                 node_id=F("collector_config__nodes__id"),
                 node_name=F("collector_config__nodes__name"),
+                node_updated_at=F("collector_config__nodes__updated_at"),
             )
             .order_by("id", "node_name", "node_id")
             .distinct()
         )
         nodes_by_config = defaultdict(list)
         for row in rows:
+            updated_at = row["node_updated_at"]
             nodes_by_config[row["id"]].append(
                 {
                     "id": row["node_id"],
                     "name": row["node_name"],
+                    "active": updated_at is not None and updated_at > cutoff,
                 }
             )
         return [{"id": config_id, "nodes": nodes_by_config[config_id]} for config_id in sorted(nodes_by_config)]
+
+    @staticmethod
+    def _node_in_organization_scope(node_id, organization_ids):
+        """目标节点必须落在调用方给出的组织范围内，否则拒绝。"""
+        if not isinstance(organization_ids, (list, tuple, set, frozenset)):
+            raise BaseAppException("采集节点不在组织范围内")
+        normalized_organization_ids = _normalize_organization_ids(organization_ids)
+        node_key = str(node_id or "").strip()
+        if not node_key:
+            raise BaseAppException("采集节点不在组织范围内")
+        node = (
+            Node.objects.filter(
+                id=node_key,
+                nodeorganization__organization__in=normalized_organization_ids,
+            )
+            .select_related("cloud_region")
+            .distinct()
+            .first()
+        )
+        if node is None:
+            raise BaseAppException("采集节点不在组织范围内")
+        return node
+
+    def delete_owned_child_configs(self, config_ids):
+        """删除调用方拥有的子配置；父配置没有剩余子配置时一并删除。"""
+        from apps.node_mgmt.services.node_collection_exit import NodeCollectionExitService
+
+        NodeCollectionExitService.delete_owned_configs(config_ids)
+
+    def move_child_configs_to_node(self, config_ids, node_id, owner_config_ids, organization_ids):
+        """把子配置挂到组织范围内的目标节点。"""
+        from apps.node_mgmt.services.node_collection_exit import NodeCollectionExitService
+
+        target = self._node_in_organization_scope(node_id, organization_ids)
+        NodeCollectionExitService.move_configs_to_node(config_ids, target, owner_config_ids)
 
     def get_configs_by_ids(self, ids: list):
         """根据配置ID列表获取配置对象"""
@@ -1053,6 +1095,18 @@ def run_telegraf_child_configs_once(data: dict):
 def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
     """按子配置 ID 批量获取授权组织范围内的采集节点。"""
     return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
+
+
+@nats_client.register
+def delete_owned_child_configs(config_ids: list):
+    """删除调用方拥有的子配置；父配置没有剩余子配置时一并删除。"""
+    NatsService().delete_owned_child_configs(config_ids)
+
+
+@nats_client.register
+def move_child_configs_to_node(config_ids: list, node_id: str, owner_config_ids: list, organization_ids: list):
+    """把子配置挂到组织范围内的目标节点；目标不在范围内则拒绝。"""
+    NatsService().move_child_configs_to_node(config_ids, node_id, owner_config_ids, organization_ids)
 
 
 @nats_client.register

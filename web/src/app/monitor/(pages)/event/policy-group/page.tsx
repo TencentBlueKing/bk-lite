@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import Cookies from 'js-cookie';
 import { Alert, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Pagination as AntPagination, Popconfirm, Popover, Segmented, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
@@ -20,6 +21,13 @@ import CustomTable from '@/components/custom-table';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
+import { CURRENT_TEAM_COOKIE } from '@/utils/userTeamPreference';
+import {
+  candidateBelongsToOtherOrganization,
+  joinCandidateCheckboxDisabled,
+  joinCandidateGroupLabel,
+} from './joinCandidate';
+import { policyGroupListEmptyText } from './policyGroupListEmpty';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { MODULE_OBJECT_QUERY_PARAM, resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
@@ -96,6 +104,7 @@ interface InstanceCandidate {
   id?: string;
   name?: string;
   ip?: string | null;
+  organization?: Array<string | number>;
   summary_facts?: { 'asset.ip'?: string };
   policy_group_id?: number | null;
   policy_group_name?: string;
@@ -904,6 +913,26 @@ const PolicyGroupPage: React.FC = () => {
     (rulePagination.current - 1) * rulePagination.pageSize,
     rulePagination.current * rulePagination.pageSize
   );
+  const listEmptyText = policyGroupListEmptyText({
+    objectSelected: Boolean(objectId),
+    search: appliedSearch,
+  });
+  const joinCandidateState = (record: InstanceCandidate) => {
+    const belongsToOtherOrganization = candidateBelongsToOtherOrganization(
+      record.organization,
+      Cookies.get(CURRENT_TEAM_COOKIE)
+    );
+    const joinedHere = members.some((item) => String(item.instance_id) === String(record.instance_id));
+    return {
+      belongsToOtherOrganization,
+      joinedHere,
+      label: joinCandidateGroupLabel({
+        belongsToOtherOrganization,
+        policyGroupName: record.policy_group_name,
+        joinedHere,
+      }),
+    };
+  };
 
   const currentGroup = groups.find((g) => g.id === selectedGroupId) || groups[0] || null;
   const currentGroupRules = currentGroup?.rules || [];
@@ -1221,6 +1250,7 @@ const PolicyGroupPage: React.FC = () => {
                   dataSource={groups}
                   loading={loading}
                   scroll={{ x: 'max-content' }}
+                  locale={listEmptyText ? { emptyText: <span className="text-[var(--color-text-3)]">{listEmptyText}</span> } : undefined}
                   pagination={pagination}
                   onChange={(next: Pagination) => {
                     setPagination((prev) => ({
@@ -1305,9 +1335,16 @@ const PolicyGroupPage: React.FC = () => {
               scroll={{ y: 'auto' }}
               rowSelection={{
                 selectedRowKeys: joinSelected,
-                onChange: (keys) => setJoinSelected(keys.map(String)),
+                onChange: (keys) => {
+                  const blocked = new Set(
+                    joinRows
+                      .filter((row) => joinCandidateCheckboxDisabled(joinCandidateState(row)))
+                      .map((row) => String(row.instance_id || row.id || ''))
+                  );
+                  setJoinSelected(keys.map(String).filter((id) => !blocked.has(id)));
+                },
                 getCheckboxProps: (record: InstanceCandidate) => ({
-                  disabled: members.some((item) => String(item.instance_id) === String(record.instance_id)),
+                  disabled: joinCandidateCheckboxDisabled(joinCandidateState(record)),
                 }),
               }}
               onChange={(next: Pagination) => {
@@ -1330,15 +1367,14 @@ const PolicyGroupPage: React.FC = () => {
                   key: 'policy_group_name',
                   width: 180,
                   render: (_, record) => {
-                    const joinedHere = members.some((item) => String(item.instance_id) === String(record.instance_id));
-                    if (joinedHere) return <Tag>已在组</Tag>;
-                    if (!record.policy_group_name) {
-                      return <span className="text-[var(--color-text-3)]">未加入</span>;
+                    const { label } = joinCandidateState(record);
+                    if (label.kind === 'joined-here') return <Tag>已在组</Tag>;
+                    if (label.kind === 'empty' || label.kind === 'other-empty') {
+                      return <span className="text-[var(--color-text-3)]">{label.text}</span>;
                     }
-                    const text = `已在 ${record.policy_group_name}`;
                     return (
-                      <span className="block min-w-0 truncate" title={text}>
-                        {text}
+                      <span className="block min-w-0 truncate" title={label.text}>
+                        {label.text}
                       </span>
                     );
                   },

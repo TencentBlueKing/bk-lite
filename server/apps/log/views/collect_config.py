@@ -693,7 +693,18 @@ class CollectInstanceViewSet(ViewSet):
         instances, error_response = self._authorize_instances(request, [instance_id])
         if error_response:
             return error_response
-        LogCollectorNodeExit.reassign(instances[0].id, request.data.get("node_id"))
+        scope = LogAccessScopeService.get_data_scope(request)
+        LogCollectorNodeExit.reassign(
+            instances[0].id,
+            request.data.get("node_id"),
+            {
+                "username": scope.username,
+                "domain": scope.domain,
+                "current_team": scope.current_team,
+                "include_children": scope.include_children,
+                "is_superuser": scope.is_superuser,
+            },
+        )
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="instance_update")

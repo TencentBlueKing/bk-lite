@@ -1,9 +1,13 @@
+from datetime import timedelta
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from apps.node_mgmt.models import ChildConfig, CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization
 from apps.node_mgmt.nats.node import NatsService
+from apps.node_mgmt.services.node_status_filter import ACTIVE_WINDOW_SECONDS
 
 pytestmark = pytest.mark.django_db
 
@@ -56,6 +60,8 @@ def test_get_child_config_nodes_by_ids_batches_filters_and_orders(db):
         collector_config=parent,
     )
 
+    Node.objects.filter(id="node-2").update(updated_at=timezone.now() - timedelta(seconds=ACTIVE_WINDOW_SECONDS + 5))
+
     with CaptureQueriesContext(connection) as queries:
         result = NatsService().get_child_config_nodes_by_ids(
             ["child-b", "child-a", "child-a"],
@@ -67,15 +73,15 @@ def test_get_child_config_nodes_by_ids_batches_filters_and_orders(db):
         {
             "id": "child-a",
             "nodes": [
-                {"id": "node-1", "name": "Alpha"},
-                {"id": "node-2", "name": "Beta"},
+                {"id": "node-1", "name": "Alpha", "active": True},
+                {"id": "node-2", "name": "Beta", "active": False},
             ],
         },
         {
             "id": "child-b",
             "nodes": [
-                {"id": "node-1", "name": "Alpha"},
-                {"id": "node-2", "name": "Beta"},
+                {"id": "node-1", "name": "Alpha", "active": True},
+                {"id": "node-2", "name": "Beta", "active": False},
             ],
         },
     ]

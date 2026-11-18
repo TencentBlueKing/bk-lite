@@ -1515,10 +1515,17 @@ def uninstall_controller(task_id):
                 targets = list(Node.objects.filter(id=node_obj.node_id, cloud_region_id=task_obj.cloud_region_id))
             else:
                 targets = list(Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip))
+            from apps.node_mgmt.services.module_push import ModulePushService
+            from apps.node_mgmt.services.module_push_contract import actor_scope_with_instance_orgs
             from apps.node_mgmt.services.node_collection_exit import NodeCollectionExitService
 
             for target in targets:
                 NodeCollectionExitService.apply(target, operator=task_obj.created_by or "system")
+                organizations = list(target.nodeorganization_set.values_list("organization", flat=True))
+                ModulePushService.best_effort_unlink_cmdb(
+                    target,
+                    actor_scope=actor_scope_with_instance_orgs(None, organizations),
+                )
                 target.delete()
             _update_step_status(node_obj, "success", "Node record removed")
 
