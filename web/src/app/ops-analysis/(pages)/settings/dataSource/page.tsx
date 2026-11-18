@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
 import PermissionWrapper from '@/components/permission';
-import { Button, message, Modal, Space, Tag } from 'antd';
+import { Button, message, Modal, Select, Space, Tag } from 'antd';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import OpsAnalysisSettingsListShell from '@/app/ops-analysis/components/ops-analysis-settings-list-shell';
 import { useTranslation } from '@/utils/i18n';
@@ -78,7 +78,6 @@ const Datasource: React.FC = () => {
     value: string;
     label: string;
   }> = [
-    { value: ALL_SOURCE_TYPES, label: t('dataSource.allSourceTypes') },
     { value: SOURCE_TYPE_NATS, label: sourceTypeLabels.nats },
     { value: SOURCE_TYPE_REST_API, label: sourceTypeLabels.rest_api },
     { value: SOURCE_TYPE_POSTGRESQL, label: sourceTypeLabels.postgresql },
@@ -142,12 +141,13 @@ const Datasource: React.FC = () => {
     fetchDataSources(key, newPagination, sourceTypeFilter);
   };
 
-  const handleSourceTypeFilter = (type: string) => {
-    if (type === sourceTypeFilter) return;
-    setSourceTypeFilter(type);
+  const handleSourceTypeFilter = (type?: string | null) => {
+    const nextType = !type || type === 'all' ? ALL_SOURCE_TYPES : type;
+    if (nextType === sourceTypeFilter) return;
+    setSourceTypeFilter(nextType);
     const newPagination = { current: 1, pageSize: pagination.pageSize };
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchDataSources(searchKey, newPagination, type);
+    fetchDataSources(searchKey, newPagination, nextType);
   };
 
   const handleEdit = (type: 'add' | 'edit' | 'view', row?: DatasourceItem) => {
@@ -392,25 +392,14 @@ const Datasource: React.FC = () => {
       onSearch={(value) => handleFilter(value)}
       onSearchClear={() => handleFilter('')}
       filters={(
-        <div className="flex flex-wrap items-center gap-2">
-          {sourceTypeFilterOptions.map((option) => {
-            const active = sourceTypeFilter === option.value;
-            return (
-              <button
-                key={option.value || 'all'}
-                type="button"
-                className={`inline-flex h-8 items-center rounded px-3 text-sm transition-all duration-150 select-none cursor-pointer ${
-                  active
-                    ? 'border border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary)] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-                    : 'border border-[var(--color-border-2)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] active:scale-[0.98]'
-                }`}
-                onClick={() => handleSourceTypeFilter(option.value)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
+        <Select
+          allowClear
+          placeholder={t('dataSource.sourceType')}
+          value={sourceTypeFilter || undefined}
+          onChange={(value) => handleSourceTypeFilter(value)}
+          options={sourceTypeFilterOptions}
+          className="w-[160px]"
+        />
       )}
       actions={(
         <Space>

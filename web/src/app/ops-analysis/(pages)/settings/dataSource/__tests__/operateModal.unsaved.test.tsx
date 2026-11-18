@@ -158,6 +158,12 @@ describe('data source drawer unsaved guard', () => {
       expect(screen.getByDisplayValue('验收-级联指标图')).toBeTruthy();
     });
 
+    const natsCard = screen.getByRole('button', {
+      name: 'dataSource.sourceTypes.nats',
+    });
+    expect(natsCard.getAttribute('aria-disabled')).toBe('true');
+    expect(natsCard.getAttribute('aria-pressed')).toBe('true');
+
     await user.click(screen.getByRole('button', { name: 'common.cancel' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -209,6 +215,13 @@ describe('data source drawer unsaved guard', () => {
     const onClose = vi.fn();
 
     render(<OperateModal open mode="add" onClose={onClose} />);
+
+    const natsCard = await screen.findByRole('button', {
+      name: 'dataSource.sourceTypes.nats',
+    });
+    expect(natsCard.getAttribute('aria-disabled')).not.toBe('true');
+
+    await user.click(natsCard);
 
     await waitFor(() => {
       const checkbox = screen.getByRole('checkbox', { name: 'PERM-NS-1' }) as HTMLInputElement;
