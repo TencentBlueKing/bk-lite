@@ -286,6 +286,54 @@ def test_return_notification_failure_does_not_block_heartbeat(monkeypatch, caplo
 
 
 @pytest.mark.django_db
+def test_later_heartbeat_retries_collector_return(monkeypatch):
+    called = []
+    monkeypatch.setattr(Sidecar, "_notify_collectors_node_returned", lambda node: called.append(node.id))
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    region = CloudRegion.objects.create(name="returned-retry-region")
+
+    Sidecar.update_node_client(_heartbeat(region, "returned-retry-node", "10.44.44.48"), "returned-retry-node")
+    Sidecar.update_node_client(_heartbeat(region, "returned-retry-node", "10.44.44.48"), "returned-retry-node")
+
+    assert called == ["returned-retry-node", "returned-retry-node"]
+
+
+@pytest.mark.django_db
+def test_return_keeps_other_hosts_when_node_id_is_taken():
+    from apps.monitor.services.collector_node_exit import MonitorCollectorNodeExit
+    from apps.node_mgmt.models import NodeOrganization
+
+    region = CloudRegion.objects.create(name="returned-collision-region")
+    node = _node("returned-collision-node", region, "10.44.44.49")
+    NodeOrganization.objects.create(node=node, organization=1)
+    host_object, _ = MonitorObject.objects.get_or_create(name="Host", defaults={"level": "base"})
+    first = MonitorInstance.objects.create(id="returned-collision-a", name="a", monitor_object=host_object)
+    second = MonitorInstance.objects.create(id="returned-collision-b", name="b", monitor_object=host_object)
+    for instance, config_id in ((first, "returned-collision-cfg-a"), (second, "returned-collision-cfg-b")):
+        CollectConfig.objects.create(
+            id=config_id,
+            monitor_instance=instance,
+            collector="Telegraf",
+            collect_type="host",
+            config_type="cpu",
+            file_type="toml",
+            is_child=True,
+            executor_node_removed=True,
+            executor_node_id=node.id,
+            executor_node_name=node.name,
+        )
+
+    returned = MonitorCollectorNodeExit.on_node_returned(node, [1])
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    linked = [item for item in (first, second) if item.node_id == node.id]
+    assert len(linked) == 1
+    assert returned == linked[0].id
+    assert CollectConfig.objects.filter(executor_node_removed=True).count() == 0
+
+
+@pytest.mark.django_db
 def test_registered_environment_identity_does_not_reattach(monkeypatch):
     def _reject(node_id, details):
         raise PermissionError("installation identity already registered; explicit recovery required")
