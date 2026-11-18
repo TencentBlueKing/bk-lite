@@ -143,6 +143,7 @@ const Asset = () => {
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
+  const scriptInstanceIdsRef = useRef<Set<string>>(new Set());
   const [searchText, setSearchText] = useState<string>(() => (
     deepInstanceId ? instanceConfigSearchKeyword(deepInstanceId, deepInstanceName) : ''
   ));
@@ -975,6 +976,9 @@ const Asset = () => {
         signal: abortController.signal
       });
       if (currentRequestId !== assetRequestIdRef.current) return;
+      (data?.results || []).forEach((row: TableDataItem) => {
+        if (row.is_script) scriptInstanceIdsRef.current.add(String(row.instance_id));
+      });
       setTableData(data?.results || []);
       const totalCount = data?.count || 0;
       setPagination((prev: Pagination) => ({
@@ -1410,7 +1414,17 @@ const Asset = () => {
   };
 
   const batchSyncCmdbConfirm = () => {
-    const monitorIds = selectedRowKeys.map((key) => String(key));
+    // 勾选可能留有其它页的行，按已加载过的脚本实例 ID 判断，不依赖当前页数据。
+    const selectedIds = selectedRowKeys.map((key) => String(key));
+    const monitorIds = selectedIds.filter(
+      (key) => !scriptInstanceIdsRef.current.has(key)
+    );
+    const scriptCount = selectedIds.length - monitorIds.length;
+    if (scriptCount) {
+      message.warning(
+        t('monitor.integrations.scriptCmdbSkipped', '', { count: scriptCount })
+      );
+    }
     if (!monitorIds.length) return;
     const currentObjectName = findByMonitorId(objects, objectId)?.name || '';
     if (!currentObjectName) {

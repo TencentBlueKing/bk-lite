@@ -10,6 +10,7 @@ _STAGE = {
     "unauthorized": "没有这条实例的操作权限",
     "missing_instance": "监控实例不存在或已删除",
     "object_mismatch": "监控对象与当前任务不一致",
+    "script_instance": "脚本实例不是该对象的资产，不同步",
     "missing_entity": "配置项不存在",
     "query_entity": "查询配置项失败",
     "query_identity": "按身份查询配置项失败",

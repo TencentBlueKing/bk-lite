@@ -1449,7 +1449,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       width: 180,
       render: () => (joining && selectedGroup?.name ? selectedGroup.name : '--')
     };
-    return [...dataColumns, policyGroupColumn, ...collectDetectStatusColumn, actionColumn];
+    return [
+      ...dataColumns,
+      ...(isScriptTemplate ? [] : [policyGroupColumn]),
+      ...collectDetectStatusColumn,
+      actionColumn,
+    ];
   }, [
     configLoading,
     currentConfig,
@@ -1961,10 +1966,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        params.policy_group = {
-          join: values.policy_group_join !== false,
-          group_id: values.policy_group_id
-        };
+        if (!isScriptTemplate) {
+          params.policy_group = {
+            join: values.policy_group_join !== false,
+            group_id: values.policy_group_id
+          };
+        }
         if (
           isScriptTemplate &&
           scriptDebugHasBusinessMetrics &&
@@ -2149,7 +2156,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   // 判断是否显示空状态
   const selectedPolicyGroup = policyGroups.find((item) => item.id === policyGroupId);
   const policyGroupNote =
-    policyGroupJoin !== false && selectedPolicyGroup
+    !isScriptTemplate && policyGroupJoin !== false && selectedPolicyGroup
       ? policyGroupAccessNotes(selectedPolicyGroup.rules, pluginId, pluginMetricNames)
       : null;
 
@@ -2243,6 +2250,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <GuideEntryButton />
       </div>
       {visibleFormItems}
+      {!isScriptTemplate && (
+        <>
       <Form.Item
         name="policy_group_join"
         valuePropName="checked"
@@ -2269,6 +2278,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           '只作用于本次新建的实例。已经接入的实例保持原策略组。'
         )}
       </div>
+        </>
+      )}
       {policyGroupNote?.kind === 'no-plugin-rules' ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
           {t(

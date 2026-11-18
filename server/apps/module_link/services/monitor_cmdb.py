@@ -557,8 +557,22 @@ class MonitorCmdbTaskService:
         }
         node_cloud_by_id, node_cloud_by_ip, node_ip_by_id = _load_node_cloud_maps(list(instances.values()))
         allowed = _authorized_monitor_ids(request, monitor_ids)
+        # 脚本实例挂在对象名下，但不是这个对象的资产。页面已剔除，这里拦住直接调接口的情况。
+        from apps.monitor.services.script_instance_identity import script_instance_exists
+
+        script_ids = set(MonitorInstance.objects.filter(id__in=list(instances)).filter(script_instance_exists()).values_list("id", flat=True))
         prepared: list[dict[str, Any]] = []
         for monitor_id in monitor_ids:
+            if monitor_id in script_ids:
+                prepared.append(
+                    {
+                        "snapshot": _empty_snapshot(monitor_id),
+                        "status": ITEM_FAILED,
+                        "cmdb_id": "",
+                        "message": item_message(stage="script_instance"),
+                    }
+                )
+                continue
             if monitor_id not in allowed:
                 prepared.append(
                     {

@@ -323,7 +323,8 @@ class InstanceSearch:
         if not objs_map:
             return dict(count=0, results=[])
         vm_metrics = self.get_vm_metrics()
-        if not vm_metrics:
+        # 对象下只有脚本实例时默认指标没有序列，不能在这里直接返回空。
+        if not vm_metrics and not self._include_script_instances():
             return dict(count=0, results=[])
         items = []
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
@@ -344,7 +345,10 @@ class InstanceSearch:
                 time=last_sample or "",
                 value=metric["value"][1],
             )
+            if getattr(obj, "is_script", False):
+                item["is_script"] = True
             items.append(item)
+        self._append_script_instances(items, objs_map)
         present_list_asset_ips(items, getattr(self.monitor_obj, "name", None))
 
         vm_params = self.query_data.get("vm_params") or {}
@@ -1069,12 +1073,50 @@ class InstanceSearch:
             host_q |= Q(id__startswith=f"('{parts[0]}',")
         return host_q if matched else None
 
-    def get_objs(self):
+    def _include_script_instances(self, default=False):
+        from apps.monitor.services.script_instance_identity import include_script_instances_requested
+
+        raw = self.query_data.get("include_script_instances")
+        return default if raw is None else include_script_instances_requested(raw)
+
+    def _base_instance_qs(self, include_script_by_default=False):
+        from apps.monitor.services.script_instance_identity import apply_script_instance_visibility
+
         qs = self.qs.filter(
             monitor_object_id=self.monitor_obj.id,
             is_deleted=False,
             is_active=True,
         )
+        return apply_script_instance_visibility(qs, self._include_script_instances(include_script_by_default))
+
+    def _append_script_instances(self, items, objs_map):
+        """/search 只保留和对象默认指标有交集的实例。脚本序列对不上，从库里补进来。"""
+        if not self._include_script_instances():
+            return
+        present = {item.get("instance_id") for item in items}
+        missing = [(instance_id, obj) for instance_id, obj in objs_map.items() if getattr(obj, "is_script", False) and instance_id not in present]
+        if not missing:
+            return
+        status_map = MonitorObjectService.script_instance_status_map(self.monitor_obj)
+        for instance_id, obj in missing:
+            status = status_map.get(instance_id, {})
+            items.append(
+                {
+                    "instance_id": instance_id,
+                    "instance_id_values": list(parse_instance_id(instance_id)),
+                    "instance_name": obj.name or obj.id,
+                    "interval": obj.interval,
+                    "ip": obj.ip,
+                    "summary_facts": summary_facts_with_model_ip(obj.summary_facts, obj.ip),
+                    "agent_id": status.get("agent_id") or "",
+                    "time": status.get("time", ""),
+                    "value": "",
+                    "is_script": True,
+                }
+            )
+
+    def get_objs(self):
+        qs = self._base_instance_qs()
         qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
 
@@ -1085,11 +1127,8 @@ class InstanceSearch:
         return objs_map
 
     def get_objs_v2(self):
-        qs = self.qs.filter(
-            monitor_object_id=self.monitor_obj.id,
-            is_deleted=False,
-            is_active=True,
-        )
+        # 资产列表是管理入口，改配置、解绑、删除都从这里走，默认带上脚本实例。
+        qs = self._base_instance_qs(include_script_by_default=True)
         qs = InstanceSearch.apply_keyword_search(qs, self.monitor_obj, self.query_data.get("name"))
         qs = self._apply_process_filters(qs)
         from apps.monitor.services.collect_config_update import CollectConfigUpdateService
@@ -1133,6 +1172,8 @@ class InstanceSearch:
                 "node_id": obj.node_id or "",
                 "cmdb_id": obj.cmdb_id or "",
                 "organizations": list(org_map.get(obj.id, [])),
+                # 只有脚本实例带这个键，原生实例的行与改动前完全相同。
+                **({"is_script": True} if getattr(obj, "is_script", False) else {}),
             }
             for obj in results
         ]

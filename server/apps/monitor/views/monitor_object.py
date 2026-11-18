@@ -74,10 +74,16 @@ def _build_instance_count_queryset(instance_permissions, cur_team):
             candidate_teams.update(_normalize_candidate_team_ids(permission.get("team", [])))
             candidate_instance_ids.update(_normalize_candidate_values(permission.get("instance", [])))
 
-    queryset = MonitorInstance.objects.filter(
-        is_deleted=False,
-        is_active=True,
-    ).prefetch_related("monitorinstanceorganization_set")
+    from apps.monitor.services.script_instance_identity import script_instance_exists
+
+    queryset = (
+        MonitorInstance.objects.filter(
+            is_deleted=False,
+            is_active=True,
+        )
+        .exclude(script_instance_exists())
+        .prefetch_related("monitorinstanceorganization_set")
+    )
     if not candidate_teams and not candidate_instance_ids:
         return queryset.none()
 

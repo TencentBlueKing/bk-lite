@@ -537,12 +537,21 @@ export const getBaseInstanceColumn = (config: {
       }),
       key: 'instance_name',
       render: (_: unknown, record: TableDataItem) => {
-        const instanceName = showInstName(config.row, record, config.objects);
+        const instanceName = record.is_script
+          ? record.instance_name || '--'
+          : showInstName(config.row, record, config.objects);
         return (
-          <EllipsisWithTooltip
-            text={instanceName}
-            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-          ></EllipsisWithTooltip>
+          <span className="inline-flex max-w-full items-center gap-1">
+            <EllipsisWithTooltip
+              text={instanceName}
+              className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+            ></EllipsisWithTooltip>
+            {record.is_script ? (
+              <span className="shrink-0 rounded bg-[var(--color-fill-2)] px-1 text-xs text-[var(--color-text-2)]">
+                {config.t('monitor.integrations.script')}
+              </span>
+            ) : null}
+          </span>
         );
       }
     }

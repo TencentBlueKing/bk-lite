@@ -21,7 +21,7 @@ def build_formula_query(
         raise BaseAppException(str(exc)) from exc
 
     metric_ids = [item["metric_id"] for item in query_condition.get("queries") or []]
-    metrics = Metric.objects.filter(id__in=metric_ids)
+    metrics = Metric.objects.filter(id__in=metric_ids).select_related("monitor_plugin")
     by_id = {metric.id: metric for metric in metrics}
     missing = [metric_id for metric_id in metric_ids if metric_id not in by_id]
     if missing:

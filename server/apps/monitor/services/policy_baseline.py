@@ -122,12 +122,13 @@ class PolicyBaselineService:
             return source_values
 
         if source_type == "organization":
-            return list(
-                MonitorInstanceOrganization.objects.filter(
-                    monitor_instance__monitor_object_id=self.policy.monitor_object_id,
-                    organization__in=source_values,
-                ).values_list("monitor_instance_id", flat=True)
+            from apps.monitor.services.script_instance_identity import scope_memberships_for_policy
+
+            memberships = MonitorInstanceOrganization.objects.filter(
+                monitor_instance__monitor_object_id=self.policy.monitor_object_id,
+                organization__in=source_values,
             )
+            return list(scope_memberships_for_policy(self.policy, memberships).values_list("monitor_instance_id", flat=True))
 
         return []
 

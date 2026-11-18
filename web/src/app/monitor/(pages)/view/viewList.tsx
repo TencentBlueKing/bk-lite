@@ -611,6 +611,7 @@ const ViewList: React.FC<ViewListProps> = ({
       // 展示指标由限流异步批回填，主列表只返回实例行。
       add_metrics: false,
       name: searchTextRef.current,
+      include_script_instances: true,
       vm_params,
       ...(unassignedOnlyRef.current ? { unassigned: true } : {})
     };
@@ -960,14 +961,17 @@ const ViewList: React.FC<ViewListProps> = ({
       objectId: String(objectId || ''),
       objectName: String(monitorItem?.display_name || monitorItem?.name || '')
     });
-    const professionalDashboardUrl = resolveDashboardUrl({
-      monitorObjectName: monitorItem?.name,
-      monitorObjectDisplayName: monitorItem?.display_name,
-      instancePlugins: Array.isArray(app.plugins) ? app.plugins : undefined,
-      queryString: params.toString(),
-    });
+    const queryString = params.toString();
+    const professionalDashboardUrl = app.is_script
+      ? ''
+      : resolveDashboardUrl({
+        monitorObjectName: monitorItem?.name,
+        monitorObjectDisplayName: monitorItem?.display_name,
+        instancePlugins: Array.isArray(app.plugins) ? app.plugins : undefined,
+        queryString,
+      });
     const targetUrl =
-      professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
+      professionalDashboardUrl || `/monitor/view/detail?${queryString}`;
     router.push(targetUrl);
   };
 

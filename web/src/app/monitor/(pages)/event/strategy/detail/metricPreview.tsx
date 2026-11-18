@@ -301,7 +301,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         {
           page: 1,
           page_size: -1,
-          name: ''
+          name: '',
+          include_script_instances: true,
         },
         {
           signal: abortController.signal

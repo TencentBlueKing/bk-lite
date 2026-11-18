@@ -295,7 +295,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             if not authorized_qs.exists():
                 raise ForbiddenException("无权访问该监控实例")
 
-        metric = Metric.objects.filter(id=metric_id, monitor_object_id=monitor_object_id).select_related("monitor_object").first()
+        metric = Metric.objects.filter(id=metric_id, monitor_object_id=monitor_object_id).select_related("monitor_object", "monitor_plugin").first()
         if not metric:
             raise BaseAppException("Metric not found")
 
@@ -317,8 +317,10 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         # 多取 1 条用于判断是否截断。
         fetch_limit = preview_limit + 1 if preview_limit and preview_limit > 0 else series_limit
 
+        from apps.monitor.services.custom_script_plugin import scope_script_metric_query
+
         data = MetricsService.query_metric_by_instance(
-            metric_query=metric.query,
+            metric_query=scope_script_metric_query(metric.query, metric.monitor_plugin),
             instance_id=instance_id,
             instance_id_keys=effective_instance_id_keys,
             dimensions=metric.dimensions,

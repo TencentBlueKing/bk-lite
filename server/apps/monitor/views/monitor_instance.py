@@ -24,6 +24,7 @@ from apps.monitor.services.module_push import MonitorToCmdbPushService, build_mo
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.script_instance_identity import include_script_instances_requested
 from apps.monitor.services.monitor_plugin_unbind import MonitorPluginUnbindService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.user_query_slots import with_user_query_slot
@@ -416,6 +417,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             instance_ids=instance_ids,
             ordering=request.GET.get("ordering"),
             order=request.GET.get("order", "asc"),
+            include_script_instances=include_script_instances_requested(request.GET.get("include_script_instances")),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}

@@ -2,7 +2,6 @@
 
 import React, {
   forwardRef,
-  useEffect,
   useImperativeHandle,
   useMemo,
   useState
@@ -11,11 +10,6 @@ import { Button, Form, Input, Radio, Select, Alert, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ObjectItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
-
-const OS_MONITOR_OBJECT_TYPE = 'OS';
-
-const isOsMonitorObjectType = (type: unknown) =>
-  String(type || '').trim().toUpperCase() === OS_MONITOR_OBJECT_TYPE;
 
 interface CreateTemplateModalProps {
   objects: ObjectItem[];
@@ -39,8 +33,6 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
     >(undefined);
     const templateType = Form.useWatch('template_type', form);
 
-    const isScriptTemplate = templateType === 'script';
-
     const objectTypeOptions = useMemo(() => {
       const typeMap = new Map<string, string>();
 
@@ -52,61 +44,20 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
 
       return Array.from(typeMap.entries()).map(([value, label]) => ({
         value,
-        label,
-        disabled: isScriptTemplate && !isOsMonitorObjectType(value)
+        label
       }));
-    }, [objects, isScriptTemplate]);
+    }, [objects]);
 
     const monitorObjectOptions = useMemo(
       () =>
         objects
-          .filter((item) => {
-            if (isScriptTemplate) {
-              return isOsMonitorObjectType(item.type);
-            }
-            return !selectedObjectType || item.type === selectedObjectType;
-          })
+          .filter((item) => !selectedObjectType || item.type === selectedObjectType)
           .map((item) => ({
             value: item.id,
             label: item.display_name || item.name
           })),
-      [objects, selectedObjectType, isScriptTemplate]
+      [objects, selectedObjectType]
     );
-
-    const lockScriptMonitorObject = () => {
-      if (mode !== 'add') {
-        return false;
-      }
-      let clearedObject = false;
-      const currentType = form.getFieldValue('monitor_object_type');
-      if (!isOsMonitorObjectType(currentType)) {
-        form.setFieldValue('monitor_object_type', OS_MONITOR_OBJECT_TYPE);
-        setSelectedObjectType(OS_MONITOR_OBJECT_TYPE);
-      }
-      const currentObject = form.getFieldValue('monitor_object');
-      const objectOk = objects.some(
-        (item) => item.id === currentObject && isOsMonitorObjectType(item.type)
-      );
-      if (currentObject && !objectOk) {
-        form.setFieldValue('monitor_object', undefined);
-        clearedObject = true;
-      }
-      return clearedObject;
-    };
-
-    useEffect(() => {
-      if (!visible || !isScriptTemplate) {
-        return;
-      }
-      const clearedObject = lockScriptMonitorObject();
-      void form
-        .validateFields(
-          clearedObject
-            ? ['monitor_object_type', 'monitor_object']
-            : ['monitor_object_type']
-        )
-        .catch(() => undefined);
-    }, [visible, isScriptTemplate, mode, objects, form]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ form: initialForm = {}, type }) => {
@@ -200,19 +151,6 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
         <Form
           form={form}
           layout="vertical"
-          onValuesChange={(changed) => {
-            if (changed.template_type !== 'script') {
-              return;
-            }
-            const clearedObject = lockScriptMonitorObject();
-            void form
-              .validateFields(
-                clearedObject
-                  ? ['monitor_object_type', 'monitor_object']
-                  : ['monitor_object_type']
-              )
-              .catch(() => undefined);
-          }}
         >
           <Form.Item
             label={t('monitor.integrations.templateType')}
@@ -241,36 +179,10 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               className="mb-[16px]"
             />
           )}
-          {isScriptTemplate && (
-            <Alert
-              message={t('monitor.integrations.scriptTemplateHint')}
-              type="info"
-              showIcon
-              className="mb-[16px]"
-            />
-          )}
           <Form.Item
             label={t('monitor.integrations.monitorObjectType')}
             name="monitor_object_type"
-            dependencies={['template_type']}
-            rules={[
-              { required: true, message: t('common.required') },
-              {
-                validator: async (_, value) => {
-                  if (
-                    form.getFieldValue('template_type') === 'script' &&
-                    !isOsMonitorObjectType(value)
-                  ) {
-                    throw new Error(
-                      t(
-                        'monitor.integrations.scriptTemplateOsOnly',
-                        '仅操作系统可创建脚本采集模板'
-                      )
-                    );
-                  }
-                }
-              }
-            ]}
+            rules={[{ required: true, message: t('common.required') }]}
           >
             <Select
               disabled={mode === 'edit'}

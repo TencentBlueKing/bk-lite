@@ -221,7 +221,9 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
           id: monitorObjectId,
           name: assetNameQuery,
           page: assetPagination.current,
-          page_size: assetPagination.pageSize
+          page_size: assetPagination.pageSize,
+          // 策略模板针对原插件的指标，脚本实例套上去只会报无数据。
+          include_script_instances: false
         }, {
           signal: abortController.signal
         });

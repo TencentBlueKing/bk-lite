@@ -667,8 +667,8 @@ class InstanceConfigService:
         # 提取将要创建的 config_type 列表
         config_types_to_create = {config.get("type") for config in configs if config.get("type")}
 
-        # 检查已存在的配置（避免重复创建相同采集配置）。
-        # 脚本采集同一实例+script 走更新而非拒绝，由 Controller 复用已有 CollectConfig。
+        # 非脚本：同一实例已有相同采集配置则拒绝。
+        # 脚本：冲突只看当前模板。另一个模板的配置不挡这次接入，由 Controller 另存一行。
         allow_script_upsert = str(collect_type or "").casefold() == "script"
         if config_types_to_create:
             existing_qs = CollectConfig.objects.filter(
@@ -731,7 +731,7 @@ class InstanceConfigService:
         return new_instances, existing_instances, reclaimable_id_list
 
     @staticmethod
-    def _create_instances_in_db(new_instances, existing_instances, monitor_object_id, actor_context=None):
+    def _create_instances_in_db(new_instances, existing_instances, monitor_object_id, actor_context=None, preserve_organization_ids=None):
         """在数据库事务中创建实例、更新已存在实例、规则和关联关系
 
         Returns:
@@ -747,14 +747,16 @@ class InstanceConfigService:
             )
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}")
 
-            # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
-            all_existing_ids = [inst["instance_id"] for inst in existing_instances]
-            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=all_existing_ids).delete()
+            # 再挂另一个脚本模板时保留原组织。同一模板重新接入仍按本次选择重写。
+            preserved_ids = {str(instance_id) for instance_id in (preserve_organization_ids or [])}
+            resetting_instances = [inst for inst in existing_instances if str(inst["instance_id"]) not in preserved_ids]
+            all_existing_ids = [inst["instance_id"] for inst in resetting_instances]
+            if all_existing_ids:
+                MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=all_existing_ids).delete()
 
-            # 以当前 group_ids 重建组织关联
             org_objs = [
                 MonitorInstanceOrganization(monitor_instance_id=inst["instance_id"], organization=group_id)
-                for inst in existing_instances
+                for inst in resetting_instances
                 for group_id in inst["group_ids"]
             ]
             if org_objs:
@@ -1128,7 +1130,7 @@ class InstanceConfigService:
         )
 
         # 对需要统一实例身份的对象应用 identity adapter，统一 storage/logical/raw 三层 ID
-        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name", "instance_id_keys").first()
         monitor_object_name = monitor_object.name if monitor_object else ""
         is_host_monitoring_onboarding = HostDeploymentStatus.applies_to(
             monitor_object_name,
@@ -1147,7 +1149,21 @@ class InstanceConfigService:
                 raise BaseAppException(f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}")
             deployment_status.release_unbound_child_configs(requested_node_ids)
         prepared_instances = sanitized_instances
-        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
+        from apps.monitor.services.custom_script_plugin import is_script_collect_type
+        from apps.monitor.services.script_instance_identity import prepare_script_identity_instances
+
+        if is_script_collect_type(collect_type):
+            # 脚本实例不走对象适配器。Process 会因缺少 process_name 失败，
+            # 网络设备会按云区域和 IP 把脚本实例并进已有设备。
+            try:
+                prepared_instances = prepare_script_identity_instances(
+                    sanitized_instances,
+                    getattr(monitor_object, "instance_id_keys", None),
+                )
+            except ValueError as e:
+                logger.error("event=script_instance_identity_failed error_type=%s", type(e).__name__)
+                raise BaseAppException(f"实例识别失败：{e}")
+        elif InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
             except ValueError as e:
@@ -1212,11 +1228,22 @@ class InstanceConfigService:
                     MonitorInstanceRemovalService.remove(reclaimable_ids)
 
                 # 阶段2：数据库操作（使用外层事务）
+                preserve_organization_ids = []
+                if is_script_collect_type(collect_type) and existing_instances and monitor_plugin_id not in (None, ""):
+                    existing_ids = [instance["instance_id"] for instance in existing_instances]
+                    occupied = CollectConfig.objects.filter(
+                        monitor_instance_id__in=existing_ids,
+                        collect_type__iexact="script",
+                    ).values_list("monitor_instance_id", "monitor_plugin_id")
+                    preserve_organization_ids = [
+                        instance_id for instance_id, plugin_id in occupied if plugin_id not in (None, "") and str(plugin_id) != str(monitor_plugin_id)
+                    ]
                 created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
                     new_instances,
                     existing_instances,
                     monitor_object_id,
                     actor_context=actor_context,
+                    preserve_organization_ids=preserve_organization_ids,
                 )
                 logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 
@@ -1240,12 +1267,14 @@ class InstanceConfigService:
                     collect_type,
                 )
                 logger.info("采集配置创建成功")
-                policy_group_context = {
-                    "new_instances": new_instances,
-                    "existing_instances": existing_instances,
-                    "created_ids": set(created_instance_ids),
-                    "choice": data.get("policy_group"),
-                }
+                policy_group_context = None
+                if not is_script_collect_type(collect_type):
+                    policy_group_context = {
+                        "new_instances": new_instances,
+                        "existing_instances": existing_instances,
+                        "created_ids": set(created_instance_ids),
+                        "choice": data.get("policy_group"),
+                    }
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]

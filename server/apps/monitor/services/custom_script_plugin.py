@@ -12,24 +12,36 @@ from apps.monitor.utils.plugin_controller import Controller
 
 SCRIPT_COLLECT_TYPE = "script"
 SCRIPT_CONFIG_TYPE = "script"
-# 脚本采集模板只允许绑在「操作系统」分类（id 在库内为 os / OS）。
-SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID = "os"
-SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES = frozenset({"操作系统", "os", "operating system"})
-SCRIPT_COLLECT_OBJECT_TYPE_ERROR = "脚本采集模板仅允许绑定「操作系统」监控对象"
 
 
 def is_script_collect_type(collect_type) -> bool:
     return str(collect_type or "").casefold() == SCRIPT_COLLECT_TYPE
 
 
-def is_script_collect_allowed_object(monitor_object) -> bool:
-    """创建脚本采集模板时，绑定对象必须属于操作系统分类。"""
-    type_id = str(getattr(monitor_object, "type_id", None) or "").strip().casefold()
-    if type_id == SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID:
-        return True
-    obj_type = getattr(monitor_object, "type", None)
-    type_name = str(getattr(obj_type, "name", None) or "").strip().casefold()
-    return type_name in SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES
+def script_series_plugin_label(plugin) -> str:
+    """序列上 plugin_id 标签的值：模板 ID，没有模板 ID 时用插件主键。"""
+    if plugin is None or not is_script_collect_type(getattr(plugin, "collect_type", None)):
+        return ""
+    return str(getattr(plugin, "template_id", None) or plugin.id or "")
+
+
+def scope_script_metric_query(metric_query, plugin) -> str:
+    """同一实例上多个脚本模板的同名指标按模板分开。查询里已有 plugin_id 时不动。"""
+    label = script_series_plugin_label(plugin)
+    if not label or not metric_query or "plugin_id=" in metric_query:
+        return metric_query
+    escaped = label.replace("\\", "\\\\").replace('"', '\\"')
+    matcher = f'plugin_id="{escaped}"'
+    if "__$labels__" in metric_query:
+        return metric_query.replace("__$labels__", f"{matcher},__$labels__")
+    return metric_query
+
+
+def script_plugin_base_filter(plugin) -> dict | None:
+    label = script_series_plugin_label(plugin)
+    if not label:
+        return None
+    return {"name": "plugin_id", "method": "=", "value": label}
 
 
 # 平台保留标签。stdout / [inputs.bklite_script.tags] 不得作为最终来源。
@@ -510,11 +522,18 @@ class CustomScriptPluginService:
 
     @staticmethod
     def render_child_template(context: dict) -> str:
-        return Controller({}).render_template(
+        render_context = _child_render_context(context)
+        identity_tags = list(render_context.pop("script_identity_tags", None) or [])
+        rendered = Controller({}).render_template(
             DEFAULT_SCRIPT_CHILD_TEMPLATE,
-            _child_render_context(context),
+            render_context,
             escape_toml_strings=True,
         )
+        if not identity_tags:
+            return rendered
+        from apps.monitor.services.script_instance_identity import inject_script_identity_tags
+
+        return inject_script_identity_tags(rendered, identity_tags)
 
     @staticmethod
     def initialize_templates(plugin: MonitorPlugin):

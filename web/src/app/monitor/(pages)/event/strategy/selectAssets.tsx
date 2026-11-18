@@ -233,6 +233,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
               page_size: batch.length,
               instance_id_in: batch,
               add_metrics: false,
+              include_script_instances: true,
             });
             return (data?.results || []) as TableDataItem[];
           } catch {
@@ -286,6 +287,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           page_size: pageSize,
           name: name || '',
           add_metrics: false,
+          include_script_instances: true,
         });
         const results = data?.results || [];
         if (generation !== fetchGenerationRef.current) {

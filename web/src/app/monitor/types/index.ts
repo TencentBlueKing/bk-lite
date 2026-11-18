@@ -223,6 +223,8 @@ export interface InstanceParam {
   order?: 'asc' | 'desc';
   /** 超级用户未归属目录，替换当前组织列表 */
   unassigned?: boolean;
+  /** 视图、资产和策略选实例需要看到脚本实例。专业盘不传，后端默认排除。 */
+  include_script_instances?: boolean;
 }
 
 export interface GroupInfo {

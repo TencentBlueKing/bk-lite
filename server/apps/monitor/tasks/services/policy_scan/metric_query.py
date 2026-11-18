@@ -114,7 +114,7 @@ class MetricQueryService:
 
         # Metric类型: 从metric配置中获取instance_id_keys
         metric_id = self.policy.query_condition["metric_id"]
-        self.metric = Metric.objects.filter(id=metric_id).first()
+        self.metric = Metric.objects.filter(id=metric_id).select_related("monitor_plugin").first()
 
         if not self.metric:
             raise BaseAppException(f"metric does not exist [{metric_id}]")
@@ -160,10 +160,16 @@ class MetricQueryService:
                 return self._ensure_formula_compiled().query
             return self._compile_scoped_formula(base_filters).query
 
+        from apps.monitor.services.custom_script_plugin import script_plugin_base_filter
+
+        plugin_filter = script_plugin_base_filter(getattr(self.metric, "monitor_plugin", None))
+        scoped_filters = list(base_filters or [])
+        if plugin_filter and not any(item.get("name") == "plugin_id" for item in scoped_filters):
+            scoped_filters.append(plugin_filter)
         return compile_filter_to_query(
             self.metric.query,
             query_condition.get("filter", []),
-            base_filters=base_filters or None,
+            base_filters=scoped_filters or None,
         )
 
     def _scope_instance_id_keys(self):
@@ -533,7 +539,7 @@ class MetricQueryService:
         metric_ids = []
         for condition in conditions:
             metric_ids.extend(item.get("metric_id") for item in condition_metric_items(condition))
-        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids)}
+        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids).select_related("monitor_plugin")}
         missing = [metric_id for metric_id in metric_ids if metric_id not in metrics]
         if missing:
             raise BaseAppException(f"metric does not exist [{missing[0]}]")
@@ -574,10 +580,16 @@ class MetricQueryService:
                     base_filters_by_ref={item.get("ref"): base_filters or [] for item in operands if item.get("ref")},
                 )
                 return compiled.query
+            from apps.monitor.services.custom_script_plugin import script_plugin_base_filter
+
+            plugin_filter = script_plugin_base_filter(getattr(metric, "monitor_plugin", None))
+            scoped_filters = list(base_filters or [])
+            if plugin_filter and not any(item.get("name") == "plugin_id" for item in scoped_filters):
+                scoped_filters.append(plugin_filter)
             return compile_filter_to_query(
                 metric.query or "",
                 condition.get("filter") or [],
-                base_filters=base_filters or None,
+                base_filters=scoped_filters or None,
             )
 
         def build_query(base_query, step, policy_like=policy_like, group_by=group_by):

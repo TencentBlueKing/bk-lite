@@ -241,6 +241,7 @@ class MonitorObjectService:
         instance_ids=None,
         ordering=None,
         order="asc",
+        include_script_instances=False,
     ):
         """获取监控对象实例"""
         from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, parse_ordering_params
@@ -251,10 +252,15 @@ class MonitorObjectService:
         if not monitor_obj:
             raise BaseAppException("Monitor object does not exist")
 
-        qs = qs.filter(
-            monitor_object_id=monitor_object_id,
-            is_deleted=False,
-            is_active=True,
+        from apps.monitor.services.script_instance_identity import apply_script_instance_visibility
+
+        qs = apply_script_instance_visibility(
+            qs.filter(
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+                is_active=True,
+            ),
+            include_script_instances,
         )
         # 可选精确主键过滤（存储键形态，如 "('h1',)"）；与 name 模糊互不干扰。
         # instance_ids 优先于单值 instance_id，供已选资产回填等批量场景使用。
@@ -306,6 +312,11 @@ class MonitorObjectService:
         )
         if monitor_plugin_id:
             qs = qs.filter(id__in=instance_map.keys())
+        if include_script_instances:
+            # 并进同一张状态表，脚本行的上报时间、状态筛选和按时间排序才一致。不改缓存里的原表。
+            script_map = MonitorObjectService.script_instance_status_map(monitor_obj)
+            if script_map:
+                instance_map = {**script_map, **instance_map}
 
         status_raw = None
         if isinstance(vm_params, dict):
@@ -739,7 +750,7 @@ class MonitorObjectService:
 
     @staticmethod
     def _serialize_instance_list_item(obj, instance_map, org_map):
-        return {
+        item = {
             "instance_id": obj.id,
             "instance_id_values": list(parse_instance_id(obj.id)),
             "instance_name": obj.name or obj.id,
@@ -754,6 +765,32 @@ class MonitorObjectService:
             "cmdb_id": obj.cmdb_id or "",
             "organizations": list(org_map.get(obj.id, [])),
         }
+        # 只有脚本实例带这个键，原生实例的行与改动前完全相同。
+        if getattr(obj, "is_script", False):
+            item["is_script"] = True
+        return item
+
+    @staticmethod
+    def script_instance_status_map(monitor_obj):
+        """对象下全部脚本模板的上报状态，同一实例取最近一次。
+
+        脚本序列的 instance_type 是对象名原样，对不上对象默认指标，所以改取脚本模板自己的状态查询。
+        对象没有脚本模板时不发任何查询。
+        """
+        keys = [str(key) for key in (monitor_obj.instance_id_keys or []) if key not in (None, "")] or ["instance_id"]
+        queries = {
+            (query or "").strip()
+            for query in MonitorPlugin.objects.filter(monitor_object=monitor_obj, collect_type__iexact="script").values_list("status_query", flat=True)
+        }
+        merged = {}
+        for query in sorted(queries):
+            if not query or not MonitorObjectService.plugin_status_query_covers_identity(query, keys):
+                continue
+            for instance_id, info in MonitorObjectService._safe_get_instances_by_metric(query, keys).items():
+                current = merged.get(instance_id)
+                if current is None or info["time"] > current["time"]:
+                    merged[instance_id] = info
+        return merged
 
     @staticmethod
     def _escape_promql_label_value(value):

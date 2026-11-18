@@ -26,6 +26,7 @@ interface AssetViewRow {
   instance_id?: unknown;
   instance_name?: unknown;
   instance_id_values?: unknown;
+  is_script?: boolean;
   plugins?: FlowDashboardPlugin[];
 }
 
@@ -72,6 +73,9 @@ export const buildAssetViewUrl = ({
     source: 'integration'
   });
   const queryString = dashboardParams.toString();
+  if (row.is_script) {
+    return `/monitor/view/detail?${queryString}`;
+  }
   const professionalDashboardUrl =
     resolveProfessionalDashboardUrl?.(
       monitorItem?.name,

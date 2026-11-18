@@ -184,13 +184,16 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       const instancePlugins = Array.isArray(viewConfig.plugins)
         ? viewConfig.plugins
         : undefined;
-      const professionalDashboardUrl = resolveDashboardUrl({
-        monitorObjectName: monitorName,
-        monitorObjectDisplayName: monitorItem?.display_name,
-        instancePlugins,
-        queryString: params.toString(),
-      });
-      const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
+      const queryString = params.toString();
+      const professionalDashboardUrl = viewConfig.is_script
+        ? ''
+        : resolveDashboardUrl({
+          monitorObjectName: monitorName,
+          monitorObjectDisplayName: monitorItem?.display_name,
+          instancePlugins,
+          queryString,
+        });
+      const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${queryString}`;
       router.push(targetUrl);
     };
 

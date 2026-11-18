@@ -15,6 +15,10 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     config_type = models.CharField(max_length=50, verbose_name="配置类型")
     file_type = models.CharField(max_length=50, verbose_name="文件类型")
     is_child = models.BooleanField(default=True, verbose_name="是否子配置")
+    # 只参与唯一键。脚本配置写模板 ID，同一实例上每个脚本模板各存一行；
+    # 其他采集类型恒为空串，唯一性与加这一列之前相同。
+    # 不用带条件的唯一约束：MySQL、达梦、OceanBase、GoldenDB 不支持，约束会被静默跳过。
+    plugin_scope = models.CharField(max_length=32, blank=True, default="", verbose_name="唯一键里的模板范围")
     applied_content_sha256 = models.CharField(
         max_length=64,
         blank=True,
@@ -49,4 +53,4 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "采集配置"
         verbose_name_plural = "采集配置"
-        unique_together = ("monitor_instance", "collector", "collect_type", "config_type")
+        unique_together = ("monitor_instance", "collector", "collect_type", "config_type", "plugin_scope")

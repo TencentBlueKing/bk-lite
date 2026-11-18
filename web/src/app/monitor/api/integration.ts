@@ -366,6 +366,8 @@ const useIntegrationApi = () => {
           unassigned?: boolean;
           need_update?: boolean;
           monitor_plugin_id?: React.Key;
+          /** 资产列表默认带脚本实例；只要原生实例时传 false。 */
+          include_script_instances?: boolean;
         } = {},
         config?: AxiosRequestConfig
       ) => {

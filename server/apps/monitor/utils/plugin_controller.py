@@ -509,10 +509,9 @@ class Controller:
         return str(collect_type or "").casefold() == "script"
 
     def _lookup_existing_script_collect_configs(self, configs, collect_type, plugin_id):
-        """脚本采集复用已有 CollectConfig：同一实例+script 不得再创建。
+        """同一脚本实例上，只更新当前模板自己的配置。另一个模板另存一行。
 
-        unique_together 是 (instance, collector, collect_type, config_type)，不含 plugin。
-        按 plugin 优先匹配，否则复用已有行做 update，避免再走创建撞唯一键。
+        没有记录模板的旧配置仍由本次接入接管，和改动前一致；已属于别的模板的配置不动。
         """
         if not self._is_script_collect(collect_type):
             return {}
@@ -525,12 +524,14 @@ class Controller:
             collect_type__iexact=str(collect_type or ""),
             config_type__in=config_types,
         )
+        current_plugin_id = None if plugin_id in (None, "") else str(plugin_id)
         existing = {}
-        preferred_plugin_id = None if plugin_id in (None, "") else str(plugin_id)
         for obj in qs:
+            owner = None if obj.monitor_plugin_id is None else str(obj.monitor_plugin_id)
+            if owner is not None and owner != current_plugin_id:
+                continue
             key = (obj.monitor_instance_id, obj.config_type, bool(obj.is_child))
-            same_plugin = preferred_plugin_id is not None and str(obj.monitor_plugin_id or "") == preferred_plugin_id
-            if same_plugin or key not in existing:
+            if owner is not None or key not in existing:
                 existing[key] = obj
         return existing
 
@@ -761,6 +762,7 @@ class Controller:
                         config_type=config_info["type"],
                         file_type=template["file_type"],
                         is_child=is_child,
+                        plugin_scope=str(plugin_id) if self._is_script_collect(collect_type) and plugin_id not in (None, "") else "",
                         applied_content_sha256=plugin_content_fingerprint(plugin_obj),
                         applied_rendered_sha256=sha256_text(template_config),
                         applied_pack_version=getattr(plugin_obj, "pack_version", "") or "",

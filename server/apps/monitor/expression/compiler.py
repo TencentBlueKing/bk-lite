@@ -62,10 +62,16 @@ class FormulaCompiler:
     def _compile_variable(self, ref: str) -> _CompiledNode:
         item = self.inputs[ref]
         metric = self.metrics_by_id[item["metric_id"]]
+        from apps.monitor.services.custom_script_plugin import script_plugin_base_filter
+
+        base_filters = list(self.base_filters_by_ref.get(ref) or [])
+        plugin_filter = script_plugin_base_filter(getattr(metric, "monitor_plugin", None))
+        if plugin_filter and not any(item.get("name") == "plugin_id" for item in base_filters):
+            base_filters.append(plugin_filter)
         base_query = compile_filter_to_query(
             metric.query,
             item.get("filter") or [],
-            base_filters=self.base_filters_by_ref.get(ref) or [],
+            base_filters=base_filters,
         )
         group_by = item.get("group_by") or []
         group_by_clause = ",".join(group_by)
