@@ -1,8 +1,10 @@
 """飞书长连接的外部行为。不连接真实飞书。"""
 
+import json
 import logging
 import threading
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -25,7 +27,7 @@ from apps.opspilot.services.skill_channel_feishu_long_connection import (
     FeishuInbound,
     FeishuLongConnectionLeader,
 )
-from apps.opspilot.services.skill_channel_feishu_long_connection_sdk import inbound_from_event
+from apps.opspilot.services.skill_channel_feishu_long_connection_sdk import LarkFeishuTransport, inbound_from_event
 
 SECRET_SENTINEL = "feishu-secret-should-not-be-logged"
 
@@ -77,13 +79,13 @@ class FakeGateway:
     def bot_open_id(self):
         return self.bot
 
-    def reply_text(self, message_id, text):
+    def reply_markdown(self, message_id, text):
         self._seq += 1
         reply_id = f"om_{self._seq}"
         self.replies.append((message_id, text, reply_id))
         return reply_id
 
-    def update_text(self, message_id, text):
+    def update_markdown(self, message_id, text):
         if self.fail_updates:
             self.fail_updates -= 1
             raise FeishuDeliveryError("update")
@@ -333,6 +335,34 @@ def test_text_updates_the_same_bubble_then_finishes():
     agent.requests[0].finish()
     assert gateway.updates[-1] == ("om_1", "磁盘使用率 70%")
     assert [item[1] for item in gateway.replies] == [PROCESSING_TEXT]
+
+
+def test_feishu_reply_and_updates_render_markdown_on_the_same_message():
+    gateway = object.__new__(LarkFeishuTransport)
+    gateway._api = Mock()
+    messages = gateway._api.im.v1.message
+    messages.reply.return_value.data.message_id = "om_answer"
+    agent = RecordingAgent()
+    session, _, clock = _session(_channel(), agent, gateway)
+
+    session.handle(_text())
+    partial = "**账号统计**"
+    agent.requests[0].publish(partial)
+    clock.advance(2)
+    session.tick()
+    final = partial + "\n\n- 合计 **5999**\n- [下载报告](https://example.com/report.md)"
+    agent.requests[0].publish(final + '\n<at user_id="all"></at>')
+    agent.requests[0].finish()
+
+    messages.reply.assert_called_once()
+    initial = messages.reply.call_args.args[0]
+    assert initial.paths["message_id"] == "om_user"
+    updates = [call.args[0] for call in messages.update.call_args_list]
+    assert [update.paths["message_id"] for update in updates] == ["om_answer", "om_answer"]
+    safe_final = final + '\n&lt;at user_id="all">&lt;/at>'
+    for request, markdown in zip([initial, *updates], [PROCESSING_TEXT, partial, safe_final], strict=True):
+        assert request.body.msg_type == "post"
+        assert json.loads(request.body.content)["zh_cn"]["content"] == [[{"tag": "md", "text": markdown}]]
 
 
 def test_update_failure_sends_the_current_text_once():
