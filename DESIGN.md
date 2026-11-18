@@ -24,6 +24,10 @@
 - 参考实现（Pilot 旁路、图表截图与按问题收窄）：[web/src/app/monitor/(pages)/view/dashboard/dashboard.pilot.ts](web/src/app/monitor/(pages)/view/dashboard/dashboard.pilot.ts)
 - 登记路由：[web/src/components/ai-page-context/pilots.ts](web/src/components/ai-page-context/pilots.ts)
 
+## 交互容器选型
+
+按钮、Popover、弹窗、抽屉和独立页面的统一基准见 [web/DESIGN.md → Modals / Drawers](web/DESIGN.md#modals--drawers)。ITSM 按该规则复用公共容器，并保持权限与业务校验。
+
 ## 改设计前的三条规矩
 
 1. **token 不硬编码**:前端任何颜色取自语义 token（`globals.css` / `web/DESIGN.md`）；布局与间距优先 Tailwind `className`，不以大段行内 `style` 表达。
