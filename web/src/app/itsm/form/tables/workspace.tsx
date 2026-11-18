@@ -49,7 +49,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
     const data=await api.listDataTables() as {items:TableItem[];can_add:boolean;can_edit:boolean};
     setItems(data.items||[]);setPermissions({can_add:!!data.can_add,can_edit:!!data.can_edit});
   },[api.listDataTables]);
-  useEffect(()=>{if(api.ready) void load().catch(notify);},[api.ready,load]);
+  useEffect(()=>{if(api.ready && !tableId) void load().catch(notify);},[api.ready,load,tableId]);
 
   const openRows=async(item:TableItem)=>{
     const seq=++rowsRequest.current;setActive(item);setRows([]);setFields([]);setRowsError('');setCanEditRows(false);setRowsLoading(true);

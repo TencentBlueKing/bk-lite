@@ -68,3 +68,11 @@ it('新增与编辑数据提交类型化值，并使用字段显示名称', asyn
   fireEvent.click(screen.getByRole('button',{name:/保\s*存/}));
   await waitFor(()=>expect(api.saveDataRow).toHaveBeenCalledWith(1,{amount:30},1));
 });
+
+it('数据页直接读取目标表及数据，不加载全部数据表目录', async () => {
+  render(<Workspace tableId={1} />);
+  await screen.findByText('服务器一');
+  expect(api.listDataTables).not.toHaveBeenCalled();
+  expect(api.getDataTable).toHaveBeenCalledTimes(1);
+  expect(api.listDataRows).toHaveBeenCalledTimes(1);
+});

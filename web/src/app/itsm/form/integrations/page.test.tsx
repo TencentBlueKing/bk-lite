@@ -61,3 +61,17 @@ it('外部 API 配置入口与平台网关分开', async () => {
   fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
   await waitFor(() => expect(api.saveIntegration).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ transport: 'external', method: 'GET', url: 'https://api.example.com/items' }) }), undefined));
 });
+
+it('列表不预加载网关目录，调试页仅加载一次所需目录', async () => {
+  render(<Page />); await screen.findByText('查询工单');
+  expect(api.integrationCatalog).not.toHaveBeenCalled();
+  cleanup(); render(<Workspace integrationId="1" mode="records" />);
+  await screen.findByRole('textbox', { name: '调试参数' });
+  await waitFor(() => expect(api.integrationCatalog).toHaveBeenCalledTimes(1));
+});
+it('Python 调试不读取无关的网关目录', async () => {
+  api.getIntegration.mockResolvedValue({ ...item, kind: 'python', config: { script: '' }, runs: [], deliveries: [] });
+  render(<Workspace integrationId="1" mode="records" />);
+  await screen.findByRole('textbox', { name: '调试参数' });
+  expect(api.integrationCatalog).not.toHaveBeenCalled();
+});

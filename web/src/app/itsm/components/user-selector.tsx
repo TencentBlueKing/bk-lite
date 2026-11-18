@@ -26,6 +26,7 @@ const PAGE_SIZE = 10;
 export function UserSelector({ value = [], onChange, multiple = true, placeholder, disabled, ariaLabel, allowClear = false }: UserSelectorProps) {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const [opened, setOpened] = useState(false);
   const [options, setOptions] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(false);
   const pageRef = useRef(1);
@@ -70,11 +71,11 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
   };
 
   useEffect(() => {
-    if (!api.ready) {
+    if (!api.ready || !opened || disabled) {
       return;
     }
     load(1, '', false);
-  }, [api.ready, api.searchUsers]);
+  }, [api.ready, api.searchUsers, opened, disabled]);
 
   return (
     <Select
@@ -89,6 +90,7 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
       options={options}
       loading={loading}
       filterOption={false}
+      onOpenChange={open => { if (open) setOpened(true); }}
       onSearch={(text) => {
         loadingRef.current = false;
         load(1, text.trim(), false);

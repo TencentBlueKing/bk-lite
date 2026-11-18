@@ -50,14 +50,14 @@ export function FieldFetchEditor({ field, fields, patch }: EditorProps) {
     {cfg && <><span className="truncate text-xs text-[var(--color-text-3)]" title={resource}>{resource || '尚未选择资源'}</span><Button onClick={() => setDraft(structuredClone(field))}>设置</Button></>}
     {!cfg && capability.mode === 'options' && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
     {draft && <Modal title={capability.mode === 'options' ? '设置选项' : capability.mode === 'table' ? '设置行数据' : '设置自动填值'} open={!!draft} width={1000} centered destroyOnHidden maskClosable={false} okText="确定" cancelText="取消" styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 4px' } }} onCancel={() => setDraft(undefined)} onOk={() => { if (draft) { patch(field.key, { fetch: draft.fetch, source: draft.source }); setDraft(undefined); } }}>
-      {draft && <FieldFetchSettings key={draft.key} field={draft} fields={replaceDraft(fields)} patch={(_, next) => setDraft(current => current ? { ...current, ...next } : current)} />}
+      {draft && <FieldFetchSettings key={draft.key} initialCatalog={catalog} field={draft} fields={replaceDraft(fields)} patch={(_, next) => setDraft(current => current ? { ...current, ...next } : current)} />}
     </Modal>}
   </div>;
 }
 
-export function FieldFetchSettings({ field, fields, patch }: { field: FormFieldSchema; fields: FormFieldSchema[]; patch: (key: string, next: Partial<FormFieldSchema>) => void }) {
+export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { field: FormFieldSchema; fields: FormFieldSchema[]; patch: (key: string, next: Partial<FormFieldSchema>) => void; initialCatalog?: Catalog }) {
   const api = useItsmApi();
-  const [catalog, setCatalog] = useState<Catalog>({ integrations: [], tables: [], dictionaries: [] });
+  const [catalog, setCatalog] = useState<Catalog>(initialCatalog || { integrations: [], tables: [], dictionaries: [] });
   const [error, setError] = useState('');
   const [testValues, setTestValues] = useState<Record<string, unknown>>({});
   const [sample, setSample] = useState<{ data: unknown }>();
@@ -65,7 +65,7 @@ export function FieldFetchSettings({ field, fields, patch }: { field: FormFieldS
   const [busy, setBusy] = useState(false);
   const request = useRef(0);
   const cfg = field.fetch;
-  useEffect(() => { if (api.ready) void api.fieldCatalog().then(result => setCatalog(result as Catalog)).catch(() => setError('加载来源失败，请检查表单编辑权限')); }, [api.ready, api.fieldCatalog]);
+  useEffect(() => { if (api.ready && !initialCatalog) void api.fieldCatalog().then(result => setCatalog(result as Catalog)).catch(() => setError('加载来源失败，请检查表单编辑权限')); }, [api.ready, api.fieldCatalog, initialCatalog]);
   useEffect(() => () => { request.current++; }, []);
   const reset = () => { request.current++; setSample(undefined); setOutput(undefined); setError(''); setBusy(false); };
   const update = (next: Partial<FieldFetchBinding>) => { request.current++; setBusy(false); setOutput(undefined); setError(''); patch(field.key, { fetch: { ...cfg!, ...next } }); };

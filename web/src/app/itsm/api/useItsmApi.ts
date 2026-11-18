@@ -5,8 +5,17 @@ import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
 import useApiClient from '@/utils/request';
 
+// Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
+// 仅规范本模块路径，查询串和外部地址保持原样。
+export const itsmRequestPath = (url: string) => url.startsWith('/itsm/') ? url.replace(/^([^?#]*)\/(?=[?#]|$)/, '$1') : url;
+
 export function useItsmApi() {
-  const { get, post, put, del, isLoading } = useApiClient();
+  const client = useApiClient();
+  const { isLoading } = client;
+  const get = useCallback<typeof client.get>((url, config) => client.get(itsmRequestPath(url), config), [client.get]);
+  const post = useCallback<typeof client.post>((url, body, config) => client.post(itsmRequestPath(url), body, config), [client.post]);
+  const put = useCallback<typeof client.put>((url, body, config) => client.put(itsmRequestPath(url), body, config), [client.put]);
+  const del = useCallback<typeof client.del>((url, config) => client.del(itsmRequestPath(url), config), [client.del]);
 
   const fetchField = useCallback((body: Record<string, unknown>) => post('/itsm/api/fields/fetch/', body), [post]);
   const bindFieldGateway = useCallback((body: Record<string, unknown>) => post('/itsm/api/fields/gateway/', body), [post]);
@@ -47,7 +56,7 @@ export function useItsmApi() {
     (id: number, schema: unknown) => post(`/itsm/api/forms/${id}/publish/`, { schema }),
     [post],
   );
-  const listWorkflows = useCallback(() => readListPages(page => get('/itsm/api/workflows/', { params: { page, page_size: 100 } })), [get]);
+  const listWorkflows = useCallback(() => readListPages(page => get('/itsm/api/workflows', { params: { page, page_size: 100 } })), [get]);
   const createWorkflow = useCallback(
     (body: { name: string; key: string; form_id?: number }) => post('/itsm/api/workflows/', body),
     [post],

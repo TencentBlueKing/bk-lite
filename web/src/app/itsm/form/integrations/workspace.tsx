@@ -48,7 +48,13 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
     const data = await api.listIntegrations() as { items: IntegrationItem[]; can_add: boolean; can_edit: boolean };
     setItems(data.items); setPermissions(data);
   }, [api.listIntegrations]);
-  useEffect(() => { if (api.ready) { void load().catch(notifyError); void api.integrationCatalog().then(value => setCatalog(value as OpenAPIDocsCatalog)).catch(notifyError); } }, [api.ready, load, api.integrationCatalog, notifyError]);
+  useEffect(() => { if (api.ready) void load().catch(notifyError); }, [api.ready, load, notifyError]);
+  useEffect(() => {
+    if (!api.ready || mode === 'records' || draft?.kind !== 'api') return;
+    let live = true;
+    void api.integrationCatalog().then(value => { if (live) setCatalog(value as OpenAPIDocsCatalog); }).catch(error => { if (live) notifyError(error); });
+    return () => { live = false; };
+  }, [api.ready, api.integrationCatalog, mode, draft?.kind, notifyError]);
 
   const patchConfig = (value: IntegrationItem['config']) => setDraft(current => current ? { ...current, config: { ...current.config, ...value } } : current);
   const save = async () => {
@@ -75,7 +81,7 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
         const detail=value as IntegrationItem;
         if (mode==='records') {
           setSelected(detail);setResult(undefined);
-          const catalog=await api.integrationCatalog() as OpenAPIDocsCatalog;
+          const catalog=detail.kind === 'api' && detail.config.transport !== 'external' ? await api.integrationCatalog() as OpenAPIDocsCatalog : { services: [] };
           if(!live)return;
           const definition=flattenOpenApiCatalog(catalog).find(row=>row.path===`/openapi/v1/${detail.config.path}` && row.method===detail.config.method);
           const sample=detail.kind==='python'?{rows:[{amount:100}],params:{rate:2}}:detail.kind==='todo'?{event:'test',event_id:crypto.randomUUID(),title:'待办对接测试',assignees:[]}:generateSamplePayload(detail.config.transport==='external'?detail.config.request_schema:definition?.requestSchema)||{};
@@ -85,7 +91,7 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
       }).catch(error=>{if(live)setPageError(error instanceof Error?error.message:'加载失败');});
     }
     return ()=>{live=false;};
-  },[api.ready,integrationId,mode,api.getIntegration]);
+  },[api.ready,integrationId,mode,api.getIntegration,api.integrationCatalog]);
   const test = async () => {
     if (!selected) return;
     setBusy(true); setResult(undefined);

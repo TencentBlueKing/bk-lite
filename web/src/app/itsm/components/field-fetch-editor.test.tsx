@@ -116,3 +116,12 @@ it('未创建集成的网关接口可直接选择并使用其参数定义', asyn
   await waitFor(() => expect(JSON.parse(screen.getByTestId('schema').textContent!).fetch.integration_id).toBe(99));
   expect(screen.getByText('keyword')).toBeTruthy();
 });
+
+it('打开取数设置复用已加载目录，不重复查询', async () => {
+  const field: FormFieldSchema = { key: 'x', type: 'radio', label: '单选', fetch: { source: 'integration', integration_kind: 'api', mode: 'options', integration_id: 1 } };
+  render(<FieldFetchEditor field={field} fields={[field]} patch={vi.fn()} />);
+  await screen.findByText('查询接口');
+  fireEvent.click(screen.getByRole('button', { name: /设\s*置/ }));
+  await screen.findByRole('dialog');
+  expect(api.fieldCatalog).toHaveBeenCalledTimes(1);
+});
