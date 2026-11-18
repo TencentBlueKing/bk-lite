@@ -21,6 +21,7 @@ from apps.job_mgmt.constants import ExecutionStatus, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_service import ExecutionAuthorizationError, ExecutionDispatchError, ExecutionService
+from apps.job_mgmt.services.opspilot_execution_history import list_executions
 from apps.job_mgmt.services.param_crypto import MASKED_DEFAULT, ParamCrypto
 from apps.job_mgmt.services.target_list_v2 import query_target_list_v2
 from apps.job_mgmt.utils.team_authz import is_team_authorized
@@ -30,6 +31,7 @@ from apps.rpc.job_opspilot import (
     ACTION_DESCRIBE_SCRIPT,
     ACTION_DISTRIBUTE,
     ACTION_EXECUTE,
+    ACTION_LIST_EXECUTIONS,
     ACTION_LIST_PLAYBOOK_SCRIPTS,
     ACTION_LIST_SCRIPTS,
     ACTION_LIST_TARGETS,
@@ -858,6 +860,7 @@ def run_opspilot_action(action, token, user_info, body=None):
         ACTION_SEARCH_TARGETS: search_targets,
         ACTION_LIST_TARGETS: list_targets,
         ACTION_EXECUTE: execute_script,
+        ACTION_LIST_EXECUTIONS: list_executions,
         ACTION_QUERY: query_execution,
     }
     handler = handlers.get(action)

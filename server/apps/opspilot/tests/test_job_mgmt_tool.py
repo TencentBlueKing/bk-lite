@@ -1084,3 +1084,63 @@ def test_opspilot_does_not_import_the_job_app():
                 if module == "apps.job_mgmt" or module.startswith("apps.job_mgmt."):
                     offenders.append(f"{path}:{getattr(node, 'lineno', 0)}:{module}")
     assert offenders == []
+
+
+def test_list_historical_executions_from_new_session_and_read_selected_output():
+    from apps.job_mgmt.models import ScheduledTask
+    from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+    from apps.system_mgmt.models import Group, Menu, Role, User
+
+    tools = {tool.name: tool for tool in ToolsLoader.load_tools("langchain:job_mgmt")}
+    history = tools["job_mgmt_list_executions"]
+    Group.objects.get_or_create(pk=1, defaults={"name": "历史查询组织"})
+    menu, _ = Menu.objects.get_or_create(app="job", name="job_record-View")
+    role = Role.objects.create(app="job", name="历史查询", menu_list=[menu.pk])
+    User.objects.create(username="alice", domain="domain.com", group_list=[1], role_list=[role.pk])
+    script = _script()
+    schedule = ScheduledTask.objects.create(name="每日巡检", job_type="script", script=script, team=[1])
+    now = timezone.now()
+
+    def execution(team, age, script_id=script.id, schedule_id=schedule.id):
+        record = JobExecution.objects.create(
+            team=[team],
+            script_id=script_id,
+            scheduled_task_id=schedule_id,
+            job_type="script",
+            status=ExecutionStatus.SUCCESS,
+            started_at=now - timedelta(days=age),
+            total_count=1,
+            success_count=1,
+            execution_results=[{"stdout": "巡检输出", "exit_code": 0}],
+        )
+        JobExecution.objects.filter(pk=record.pk).update(created_at=record.started_at)
+        return record.pk
+
+    older = execution(1, 6)
+    latest = execution(1, 1)
+    manual = execution(1, 1, schedule_id=None)
+    execution(1, 1, script_id=None)
+    old = execution(1, 9)
+    execution(2, 1)
+    cfg = _config(session="fresh-history")
+    filters = {"script_id": script.id, "scheduled_task_id": schedule.id, "days": 7, "limit": 1}
+    page = history.invoke(filters, config=cfg)["data"]
+    assert [item["task_id"] for item in page["items"]] == [latest]
+    assert page["items"][0]["success_count"] == 1
+    assert "巡检输出" not in json.dumps(page, ensure_ascii=False)
+    next_page = {**filters, "cursor": page["next_cursor"], "start_time": page["start_time"], "end_time": page["end_time"]}
+    second = history.invoke(next_page, config=cfg)["data"]
+    assert [item["task_id"] for item in second["items"]] == [older]
+    assert second["next_cursor"] is None
+    by_script = history.invoke({"script_id": script.id}, config=cfg)["data"]
+    assert [item["task_id"] for item in by_script["items"]] == [manual, latest, older]
+    window = {
+        "scheduled_task_id": schedule.id,
+        "start_time": (now - timedelta(days=9)).isoformat(),
+        "end_time": (now - timedelta(days=6)).isoformat(),
+    }
+    historical = history.invoke(window, config={"configurable": {"caller_identity": cfg["configurable"]["caller_identity"]}})
+    assert [item["task_id"] for item in historical["data"]["items"]] == [old]
+    assert history.invoke({}, config={"configurable": {}})["result"] is False
+    detail = json.loads(tools["job_mgmt_query"].invoke({"task_id": latest}, config=cfg))
+    assert detail["targets"][0]["stdout"] == "巡检输出"

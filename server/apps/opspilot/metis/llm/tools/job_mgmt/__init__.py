@@ -8,6 +8,7 @@
 from apps.opspilot.metis.llm.tools.job_mgmt.tools import (
     job_mgmt_describe_script,
     job_mgmt_distribute,
+    job_mgmt_list_executions,
     job_mgmt_list_playbook_scripts,
     job_mgmt_list_scripts,
     job_mgmt_list_targets,
@@ -21,6 +22,7 @@ from apps.opspilot.utils.db_cleanup import wrap_langchain_tool
 
 _JOB_TOOLS = (
     job_mgmt_list_scripts,
+    job_mgmt_list_executions,
     job_mgmt_list_playbook_scripts,
     job_mgmt_describe_script,
     job_mgmt_search_targets,
@@ -40,6 +42,7 @@ CONSTRUCTOR_PARAMS = []
 __all__ = [
     "CONSTRUCTOR_PARAMS",
     "job_mgmt_list_scripts",
+    "job_mgmt_list_executions",
     "job_mgmt_list_playbook_scripts",
     "job_mgmt_describe_script",
     "job_mgmt_search_targets",
