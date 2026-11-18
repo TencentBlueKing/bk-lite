@@ -1164,7 +1164,9 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame__title {
           min-width: 0;
-          width: 100%;
+          flex: 0 1 auto;
+          width: auto;
+          max-width: 100%;
           overflow: hidden;
           padding-right: 0;
           text-overflow: ellipsis;
@@ -1182,11 +1184,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           gap: calc(6px * var(--screen-widget-ui-scale));
           min-width: 0;
           width: 100%;
-        }
-
-        .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {
-          width: auto;
-          flex: 1 1 auto;
         }
 
         .screen-widget-frame--editable:hover .screen-widget-frame__header:has(.screen-widget-frame__title-link),

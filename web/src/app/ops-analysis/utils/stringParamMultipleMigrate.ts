@@ -15,7 +15,9 @@ export const LEGACY_STRING_LIST_TYPE = 'stringList';
 export interface StringParamMigrationWarning {
   code:
     | 'string_list_component_switch_conflict'
-    | 'string_list_dual_id_incompatible';
+    | 'string_list_dual_id_incompatible'
+    | 'component_switch_unsupported_chart'
+    | 'component_switch_extra_dropped';
   key?: string;
   message: string;
   fields?: string[];

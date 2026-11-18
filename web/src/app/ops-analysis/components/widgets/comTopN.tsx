@@ -36,7 +36,6 @@ interface TopNProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
-  componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
 }
 
@@ -86,7 +85,6 @@ const TopN: React.FC<TopNProps> = ({
   dataSource,
   screenRenderContext,
   onReady,
-  componentSwitchControl,
   errorMessage,
 }) => {
   const themeName = resolveOpsChartThemeName();
@@ -292,11 +290,6 @@ const TopN: React.FC<TopNProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {componentSwitchControl ? (
-        <div className="shrink-0 overflow-x-auto overflow-y-hidden px-3 py-px pt-2">
-          {componentSwitchControl}
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
