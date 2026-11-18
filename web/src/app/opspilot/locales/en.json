@@ -1996,7 +1996,14 @@
       "introEnd": " top YAML frontmatter, or derives basics from the title and directory name.",
       "uploadText": "Click or drop a ZIP skill package here",
       "uploadHint": "This version accepts a local ZIP. Public Git import will use the same importer."
-    }
+    },
+    "templatesTitle": "Templates",
+    "templatesDescription": "Create your own agent from a built-in template, then select a model and finish configuration.",
+    "searchTemplates": "Search templates",
+    "templatesLoadFailed": "Unable to load templates. Please try again.",
+    "templateCreateFailed": "Unable to create the agent. Please try again.",
+    "noMatchingTemplates": "No matching templates",
+    "noTemplates": "No templates available"
   },
   "chatflow": {
     "lock": "Lock canvas",

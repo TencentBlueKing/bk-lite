@@ -1,6 +1,54 @@
 {
   "zh": [
     {
+      "title": "智能体",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "tour": {
+        "title": "第三步: 创建自己的智能体",
+        "description": "可以使用LLM大模型,引用私域知识,使用内置工具,让您的智能体技能更加丰富。",
+        "target": "skill_list",
+        "order": 3
+      },
+      "children": [
+        {
+          "title": "设置",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "发布",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "历史",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web对话",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "模版",
+          "url": "/opspilot/skill/templates",
+          "name": "skill_templates",
+          "withParentPermission": true,
+          "isNotMenuItem": true
+        }
+      ],
+      "hasDetail": true
+    },
+    {
       "title": "工作台",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
@@ -47,47 +95,6 @@
           "title": "对话",
           "url": "/opspilot/studio/chat",
           "name": "studio_chat",
-          "isNotMenuItem": true
-        }
-      ]
-    },
-    {
-      "title": "智能体",
-      "icon": "weibiaoti3",
-      "url": "/opspilot/skill",
-      "name": "skill_list",
-      "tour": {
-        "title": "第三步: 创建自己的智能体",
-        "description": "可以使用LLM大模型,引用私域知识,使用内置工具,让您的智能体技能更加丰富。",
-        "target": "skill_list",
-        "order": 3
-      },
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "设置",
-          "url": "/opspilot/skill/detail/settings",
-          "icon": "shezhi",
-          "name": "skill_setting"
-        },
-        {
-          "title": "发布",
-          "url": "/opspilot/skill/detail/channel",
-          "icon": "channel1",
-          "name": "skill_channel",
-          "withParentPermission": true
-        },
-        {
-          "title": "历史",
-          "url": "/opspilot/skill/detail/history",
-          "icon": "talk-line",
-          "name": "skill_history",
-          "withParentPermission": true
-        },
-        {
-          "title": "Web对话",
-          "url": "/opspilot/skill/chat",
-          "name": "skill_chat",
           "isNotMenuItem": true
         }
       ]
@@ -168,6 +175,54 @@
   ],
   "en": [
     {
+      "title": "Agent",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "tour": {
+        "title": "The Third Step: Create Your Own Agent",
+        "description": "You can use the LLM large model, reference private domain knowledge, use built-in tools, and make your agent skills more abundant.",
+        "target": "skill_list",
+        "order": 3
+      },
+      "children": [
+        {
+          "title": "Setting",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "Channel Publish",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "History",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web Chat",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Templates",
+          "url": "/opspilot/skill/templates",
+          "name": "skill_templates",
+          "withParentPermission": true,
+          "isNotMenuItem": true
+        }
+      ],
+      "hasDetail": true
+    },
+    {
       "title": "Studio",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
@@ -208,47 +263,6 @@
           "title": "Chat",
           "url": "/opspilot/studio/chat",
           "name": "studio_chat",
-          "isNotMenuItem": true
-        }
-      ]
-    },
-    {
-      "title": "Agent",
-      "icon": "weibiaoti3",
-      "url": "/opspilot/skill",
-      "name": "skill_list",
-      "tour": {
-        "title": "The Third Step: Create Your Own Agent",
-        "description": "You can use the LLM large model, reference private domain knowledge, use built-in tools, and make your agent skills more abundant.",
-        "target": "skill_list",
-        "order": 3
-      },
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "Setting",
-          "url": "/opspilot/skill/detail/settings",
-          "icon": "shezhi",
-          "name": "skill_setting"
-        },
-        {
-          "title": "Channel Publish",
-          "url": "/opspilot/skill/detail/channel",
-          "icon": "channel1",
-          "name": "skill_channel",
-          "withParentPermission": true
-        },
-        {
-          "title": "History",
-          "url": "/opspilot/skill/detail/history",
-          "icon": "talk-line",
-          "name": "skill_history",
-          "withParentPermission": true
-        },
-        {
-          "title": "Web Chat",
-          "url": "/opspilot/skill/chat",
-          "name": "skill_chat",
           "isNotMenuItem": true
         }
       ]

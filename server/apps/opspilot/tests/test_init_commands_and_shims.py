@@ -21,21 +21,21 @@ def test_compat_shims_reexport_services():
     assert wechat_official_chat_flow_utils.WechatOfficialChatFlowUtils is not None
 
 
-def test_init_bot_llm_chatflow_commands(monkeypatch):
+def test_old_initialization_commands_only_sync_templates(monkeypatch):
     bot = MagicMock()
     llm = MagicMock()
     flow = MagicMock()
     monkeypatch.setattr("apps.opspilot.management.commands.init_bot.BotInitService", lambda owner: bot)
-    monkeypatch.setattr("apps.opspilot.management.commands.init_llm.ModelProviderInitService", lambda owner="admin": llm)
-    monkeypatch.setattr("apps.opspilot.management.commands.init_chatflow.ChatFlowInitService", lambda: flow)
+    monkeypatch.setattr("apps.opspilot.management.commands.init_llm.SkillTemplateCatalogService", lambda: llm)
+    monkeypatch.setattr("apps.opspilot.management.commands.init_chatflow.SkillTemplateCatalogService", lambda: flow)
     call_command("init_bot")
     bot.init.assert_called_once_with()
     call_command("init_llm")
-    llm.init.assert_called_once_with()
+    llm.sync.assert_called_once_with()
     stdout = StringIO()
     call_command("init_chatflow", stdout=stdout)
-    flow.init.assert_called_once_with()
-    assert "ChatFlow 初始化完成" in stdout.getvalue()
+    flow.sync.assert_called_once_with()
+    assert "内置智能体模板已同步" in stdout.getvalue()
 
 
 def test_user_create_signal_inits_bot_and_channel(monkeypatch):
