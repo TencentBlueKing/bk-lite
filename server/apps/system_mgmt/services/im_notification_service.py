@@ -1,9 +1,14 @@
+import os
 import re
 from collections import defaultdict
+from datetime import timedelta
+from threading import Event, Thread
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db.utils import OperationalError
 from django.utils import timezone
 
+from apps.core.logger import safe_exception_info
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import (
     IMAccountAssociation,
@@ -49,6 +54,12 @@ SYNC_COMPLETED = (
     "total_external_users=%s, matched=%s, unmatched=%s, conflict=%s"
 )
 UPDATE_NO_LONGER_RUNNING = "IM account association update is no longer running"
+APPLY_LOCAL_FAILED = "event=im_account_association_sync_apply_failed run_id=%s association_id=%s failed_stage=%s error_type=%s"
+APPLY_FAILED_SUMMARY = "IM account association update failed"
+STALE_RELEASE_SUMMARY = "IM account association update timed out and was released automatically"
+STALE_RELEASE_WARNING = "Released %s stale IM account association sync run(s): association_id=%s"
+DEFAULT_IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS = 6 * 60 * 60
+MAX_IM_ACCOUNT_ASSOCIATION_SYNC_HEARTBEAT_INTERVAL_SECONDS = 60
 
 CRITICAL_ASSOCIATION_FIELDS = (
     "platform_match_field",
@@ -63,42 +74,209 @@ MAX_DIAGNOSTIC_ISSUES = 50
 SENSITIVE_FIELD_TOKENS = ("password", "secret", "token", "credential", "private")
 
 
+def _get_im_account_association_sync_stale_timeout_seconds() -> int:
+    raw_value = os.getenv(
+        "IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS",
+        str(DEFAULT_IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS),
+    )
+    try:
+        timeout_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS=%r; using default %s",
+            raw_value,
+            DEFAULT_IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS
+    return max(timeout_seconds, 60)
+
+
+def _supports_im_notification_sync_row_locks() -> bool:
+    return connection.features.has_select_for_update
+
+
+def _supports_im_notification_sync_skip_locked() -> bool:
+    return connection.features.has_select_for_update_skip_locked
+
+
+def _release_stale_im_notification_sync_runs(association: IMAccountAssociation) -> int:
+    if not _supports_im_notification_sync_row_locks():
+        now = timezone.now()
+        stale_before = now - timedelta(seconds=_get_im_account_association_sync_stale_timeout_seconds())
+        try:
+            # SQLite 等无行锁数据库依靠条件 UPDATE 竞争写锁。活跃心跳持有写锁时，
+            # 回收遇到锁竞争则 fail closed，避免误杀仍在拉取的 run。
+            return IMNotificationSyncRun.objects.filter(
+                account_association=association,
+                status=SYNC_RUN_STATUS_RUNNING,
+                updated_at__lt=stale_before,
+            ).update(
+                status=SYNC_RUN_STATUS_FAILED,
+                summary=STALE_RELEASE_SUMMARY,
+                finished_at=now,
+                updated_at=now,
+            )
+        except OperationalError as error:
+            if "locked" in str(error).lower() or "busy" in str(error).lower():
+                logger.info(
+                    "Skipped stale IM account association sync release because the database is busy: association_id=%s",
+                    association.id,
+                )
+                return 0
+            raise
+
+    with transaction.atomic():
+        select_for_update_kwargs = {}
+        if _supports_im_notification_sync_skip_locked():
+            select_for_update_kwargs["skip_locked"] = True
+        locked_association = IMAccountAssociation.objects.select_for_update(**select_for_update_kwargs).filter(pk=association.pk).first()
+        # 落库阶段持有 association 行锁。SKIP LOCKED 立即跳过；其余数据库等该事务提交后
+        # 再用最新 heartbeat 判断，两种都不会把仍在写的 run 收掉。
+        if locked_association is None:
+            return 0
+        now = timezone.now()
+        stale_before = now - timedelta(seconds=_get_im_account_association_sync_stale_timeout_seconds())
+        stale_run_ids = list(
+            IMNotificationSyncRun.objects.select_for_update()
+            .filter(
+                account_association=association,
+                status=SYNC_RUN_STATUS_RUNNING,
+                updated_at__lt=stale_before,
+            )
+            .values_list("id", flat=True)
+        )
+        if not stale_run_ids:
+            return 0
+        return IMNotificationSyncRun.objects.filter(
+            id__in=stale_run_ids,
+            status=SYNC_RUN_STATUS_RUNNING,
+            updated_at__lt=stale_before,
+        ).update(
+            status=SYNC_RUN_STATUS_FAILED,
+            summary=STALE_RELEASE_SUMMARY,
+            finished_at=now,
+            updated_at=now,
+        )
+
+
+class IMNotificationSyncRunExpired(RuntimeError):
+    pass
+
+
+def _lock_running_im_notification_sync_run(run_id: int) -> IMNotificationSyncRun:
+    if not _supports_im_notification_sync_row_locks():
+        updated_count = IMNotificationSyncRun.objects.filter(
+            pk=run_id,
+            status=SYNC_RUN_STATUS_RUNNING,
+        ).update(updated_at=timezone.now())
+        if not updated_count:
+            raise IMNotificationSyncRunExpired("IM account association update expired before applying provider result")
+        return IMNotificationSyncRun.objects.get(pk=run_id)
+
+    run = IMNotificationSyncRun.objects.select_for_update().get(pk=run_id)
+    if run.status != SYNC_RUN_STATUS_RUNNING:
+        raise IMNotificationSyncRunExpired("IM account association update expired before applying provider result")
+    return run
+
+
+def _touch_running_im_notification_sync_run(run_id: int) -> IMNotificationSyncRun:
+    run = _lock_running_im_notification_sync_run(run_id)
+    run.updated_at = timezone.now()
+    run.save(update_fields=["updated_at"])
+    return run
+
+
+def _get_im_account_association_sync_heartbeat_interval_seconds() -> float:
+    timeout_seconds = _get_im_account_association_sync_stale_timeout_seconds()
+    return max(min(timeout_seconds / 3, MAX_IM_ACCOUNT_ASSOCIATION_SYNC_HEARTBEAT_INTERVAL_SECONDS), 1)
+
+
+def _heartbeat_im_notification_sync_run(run_id: int, stop_event: Event, interval_seconds: float) -> None:
+    """Provider 阻塞调用期间用独立数据库连接续租；进程退出时心跳自然停止。"""
+    close_old_connections()
+    try:
+        while not stop_event.wait(interval_seconds):
+            try:
+                with transaction.atomic():
+                    _touch_running_im_notification_sync_run(run_id)
+            except IMNotificationSyncRunExpired:
+                return
+            except Exception as error:
+                logger.warning(
+                    "Failed to refresh IM account association sync heartbeat: run_id=%s error_type=%s",
+                    run_id,
+                    type(error).__name__,
+                )
+    finally:
+        close_old_connections()
+
+
+def _start_im_notification_sync_run_heartbeat(run_id: int) -> tuple[Event, Thread]:
+    stop_event = Event()
+    thread = Thread(
+        target=_heartbeat_im_notification_sync_run,
+        args=(run_id, stop_event, _get_im_account_association_sync_heartbeat_interval_seconds()),
+        name=f"im-sync-heartbeat-{run_id}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
+def _stop_im_notification_sync_run_heartbeat(stop_event: Event, thread: Thread) -> None:
+    stop_event.set()
+    thread.join(timeout=5)
+    if thread.is_alive():
+        logger.warning("IM account association sync heartbeat thread did not stop promptly: thread=%s", thread.name)
+
+
 def create_account_association_sync_run(association_id: int, trigger_mode: str = IMNotificationTriggerModeChoices.MANUAL):
+    association = IMAccountAssociation.objects.select_related("integration_instance").filter(id=association_id).first()
+    if not association:
+        logger.warning(
+            "create_account_association_sync_run: association not found, association_id=%s, trigger_mode=%s",
+            association_id,
+            trigger_mode,
+        )
+        return {"result": False, "message": "IM account association not found"}
+
+    instance = association.integration_instance
+    if not get_integration_capability_availability(instance, "im_notification")["available"]:
+        logger.warning(
+            "create_account_association_sync_run: capability not ready, association_id=%s, provider_key=%s, trigger_mode=%s",
+            association_id,
+            instance.provider_key,
+            trigger_mode,
+        )
+        return {"result": False, "message": "IM notification capability is not ready"}
+
+    released_count = _release_stale_im_notification_sync_runs(association)
+    if released_count:
+        logger.warning(STALE_RELEASE_WARNING, released_count, association.id)
+
     try:
         with transaction.atomic():
-            association = IMAccountAssociation.objects.select_related("integration_instance").select_for_update().filter(id=association_id).first()
-            if not association:
+            locked_association = IMAccountAssociation.objects.select_for_update().filter(pk=association_id).first()
+            if locked_association is None:
                 logger.warning(
                     "create_account_association_sync_run: association not found, association_id=%s, trigger_mode=%s",
                     association_id,
                     trigger_mode,
                 )
                 return {"result": False, "message": "IM account association not found"}
-
-            instance = association.integration_instance
-            if not get_integration_capability_availability(instance, "im_notification")["available"]:
-                logger.warning(
-                    "create_account_association_sync_run: capability not ready, association_id=%s, provider_key=%s, trigger_mode=%s",
-                    association_id,
-                    instance.provider_key,
-                    trigger_mode,
-                )
-                return {"result": False, "message": "IM notification capability is not ready"}
-
-            if IMNotificationSyncRun.objects.filter(account_association=association, status=SYNC_RUN_STATUS_RUNNING).exists():
+            if IMNotificationSyncRun.objects.filter(account_association=locked_association, status=SYNC_RUN_STATUS_RUNNING).exists():
                 logger.warning(
                     "create_account_association_sync_run: sync already running, association_id=%s, trigger_mode=%s",
                     association_id,
                     trigger_mode,
                 )
                 return {"result": False, "message": "IM account association update is already running"}
-
             run = IMNotificationSyncRun.objects.create(
-                account_association=association,
+                account_association=locked_association,
                 trigger_mode=trigger_mode,
                 status=SYNC_RUN_STATUS_RUNNING,
                 summary="IM account association update started",
-                locked_config_snapshot=_build_locked_config_snapshot(association),
+                locked_config_snapshot=_build_locked_config_snapshot(locked_association),
             )
     except IntegrityError:
         logger.warning(
@@ -145,14 +323,18 @@ def execute_im_notification_sync_run(run_id: int):
         return _fail_sync_run(run, "IM notification channel is not ready")
 
     runtime_service = RuntimeApplicationService()
-    result = runtime_service.execute(
-        provider_key=config_snapshot.get("provider_key") or instance.provider_key,
-        capability_key="im_notification",
-        operation="list_external_users",
-        config=instance.get_runtime_config(),
-        account_association=run.account_association,
-        run=run,
-    )
+    heartbeat_stop, heartbeat_thread = _start_im_notification_sync_run_heartbeat(run.id)
+    try:
+        result = runtime_service.execute(
+            provider_key=config_snapshot.get("provider_key") or instance.provider_key,
+            capability_key="im_notification",
+            operation="list_external_users",
+            config=instance.get_runtime_config(),
+            account_association=run.account_association,
+            run=run,
+        )
+    finally:
+        _stop_im_notification_sync_run_heartbeat(heartbeat_stop, heartbeat_thread)
     if not result.success:
         logger.error(
             EXTERNAL_CALL_FAILED,
@@ -165,78 +347,91 @@ def execute_im_notification_sync_run(run_id: int):
         )
         return _fail_sync_run(run, result.summary, payload=result.to_dict())
 
-    manifest = runtime_service.get_provider_manifest(config_snapshot.get("provider_key") or instance.provider_key)
-    template = manifest.business_templates.get("im_notification_form")
-    external_users = list(result.payload.get("external_users") or [])
-    matched_relations, unmatched_issues, conflict_issues = _match_external_users(
-        external_users=external_users,
-        platform_match_field=config_snapshot.get("platform_match_field") or run.account_association.platform_match_field,
-        external_match_field=config_snapshot.get("external_match_field") or run.account_association.external_match_field,
-        external_receive_field=config_snapshot.get("external_receive_field") or run.account_association.external_receive_field,
-        identity_fields=(template.identity_fields if template else []) or [],
-        snapshot_fields=_resolve_external_snapshot_fields(template),
-    )
-
-    matched_count = len(matched_relations)
-    unmatched_count = len(unmatched_issues)
-    conflict_count = len(conflict_issues)
-    status = _completed_sync_run_status(matched_count, unmatched_count, conflict_count)
-    summary = ""
-    now = timezone.now()
-    result_applied = False
-
-    with transaction.atomic():
-        locked_run = _locked_running_sync_run(run_id)
-        if locked_run is None:
-            return {"result": False, "message": UPDATE_NO_LONGER_RUNNING}
-        association = (
-            IMAccountAssociation.objects.select_for_update().select_related("integration_instance").get(pk=locked_run.account_association_id)
+    try:
+        manifest = runtime_service.get_provider_manifest(config_snapshot.get("provider_key") or instance.provider_key)
+        template = manifest.business_templates.get("im_notification_form")
+        external_users = list(result.payload.get("external_users") or [])
+        matched_relations, unmatched_issues, conflict_issues = _match_external_users(
+            external_users=external_users,
+            platform_match_field=config_snapshot.get("platform_match_field") or run.account_association.platform_match_field,
+            external_match_field=config_snapshot.get("external_match_field") or run.account_association.external_match_field,
+            external_receive_field=config_snapshot.get("external_receive_field") or run.account_association.external_receive_field,
+            identity_fields=(template.identity_fields if template else []) or [],
+            snapshot_fields=_resolve_external_snapshot_fields(template),
         )
-        if _snapshot_still_current(association, config_snapshot):
-            result_applied = True
-            IMNotificationUserMapping.objects.filter(account_association=association).delete()
-            if matched_relations:
-                IMNotificationUserMapping.objects.bulk_create(
-                    [IMNotificationUserMapping(account_association=association, synced_at=now, **relation) for relation in matched_relations],
-                    batch_size=200,
-                )
-            association.status = ASSOCIATION_STATUS_READY if matched_count > 0 else ASSOCIATION_STATUS_NEEDS_RESYNC
-            association.save(update_fields=["status", "updated_at"])
-            refresh_notification_channel_status(association)
-        else:
-            if association.status == ASSOCIATION_STATUS_READY:
-                association.status = ASSOCIATION_STATUS_NEEDS_RESYNC
+
+        matched_count = len(matched_relations)
+        unmatched_count = len(unmatched_issues)
+        conflict_count = len(conflict_issues)
+        status = _completed_sync_run_status(matched_count, unmatched_count, conflict_count)
+        summary = ""
+        now = timezone.now()
+        result_applied = False
+
+        with transaction.atomic():
+            association = (
+                IMAccountAssociation.objects.select_for_update()
+                .select_related("integration_instance")
+                .get(pk=run.account_association_id)
+            )
+            locked_run = _locked_running_sync_run(run_id)
+            if locked_run is None:
+                return {"result": False, "message": UPDATE_NO_LONGER_RUNNING}
+            if _snapshot_still_current(association, config_snapshot):
+                result_applied = True
+                IMNotificationUserMapping.objects.filter(account_association=association).delete()
+                if matched_relations:
+                    IMNotificationUserMapping.objects.bulk_create(
+                        [IMNotificationUserMapping(account_association=association, synced_at=now, **relation) for relation in matched_relations],
+                        batch_size=200,
+                    )
+                association.status = ASSOCIATION_STATUS_READY if matched_count > 0 else ASSOCIATION_STATUS_NEEDS_RESYNC
                 association.save(update_fields=["status", "updated_at"])
                 refresh_notification_channel_status(association)
-            logger.warning(
-                RESULT_DISCARDED,
-                run_id,
-                association.id,
-                "apply_result",
-                "config_changed",
-            )
+            else:
+                if association.status == ASSOCIATION_STATUS_READY:
+                    association.status = ASSOCIATION_STATUS_NEEDS_RESYNC
+                    association.save(update_fields=["status", "updated_at"])
+                    refresh_notification_channel_status(association)
+                logger.warning(
+                    RESULT_DISCARDED,
+                    run_id,
+                    association.id,
+                    "apply_result",
+                    "config_changed",
+                )
 
-        locked_run.status = status
-        locked_run.summary = summary
-        locked_run.total_external_user_count = len(external_users)
-        locked_run.matched_count = matched_count
-        locked_run.unmatched_count = unmatched_count
-        locked_run.conflict_count = conflict_count
-        locked_run.payload = _build_sync_run_payload(result, unmatched_issues, conflict_issues)
-        locked_run.finished_at = now
-        locked_run.save(
-            update_fields=[
-                "status",
-                "summary",
-                "total_external_user_count",
-                "matched_count",
-                "unmatched_count",
-                "conflict_count",
-                "payload",
-                "finished_at",
-                "updated_at",
-            ]
+            locked_run.status = status
+            locked_run.summary = summary
+            locked_run.total_external_user_count = len(external_users)
+            locked_run.matched_count = matched_count
+            locked_run.unmatched_count = unmatched_count
+            locked_run.conflict_count = conflict_count
+            locked_run.payload = _build_sync_run_payload(result, unmatched_issues, conflict_issues)
+            locked_run.finished_at = now
+            locked_run.save(
+                update_fields=[
+                    "status",
+                    "summary",
+                    "total_external_user_count",
+                    "matched_count",
+                    "unmatched_count",
+                    "conflict_count",
+                    "payload",
+                    "finished_at",
+                    "updated_at",
+                ]
+            )
+    except Exception as error:
+        logger.error(
+            APPLY_LOCAL_FAILED,
+            run.id,
+            run.account_association_id,
+            "apply_local_result",
+            type(error).__name__,
+            exc_info=safe_exception_info(error),
         )
+        return _fail_sync_run(run, APPLY_FAILED_SUMMARY)
 
     if result_applied:
         logger.info(
@@ -486,6 +681,9 @@ def _locked_running_sync_run(run_id: int) -> IMNotificationSyncRun | None:
 def _fail_sync_run(run: IMNotificationSyncRun, summary: str, payload: dict | None = None):
     now = timezone.now()
     with transaction.atomic():
+        association = (
+            IMAccountAssociation.objects.select_for_update().select_related("integration_instance").get(pk=run.account_association_id)
+        )
         locked_run = _locked_running_sync_run(run.id)
         if locked_run is None:
             return {"result": False, "message": UPDATE_NO_LONGER_RUNNING}
@@ -494,9 +692,6 @@ def _fail_sync_run(run: IMNotificationSyncRun, summary: str, payload: dict | Non
         locked_run.payload = payload or {}
         locked_run.finished_at = now
         locked_run.save(update_fields=["status", "summary", "payload", "finished_at", "updated_at"])
-        association = (
-            IMAccountAssociation.objects.select_for_update().select_related("integration_instance").get(pk=locked_run.account_association_id)
-        )
         snapshot = locked_run.locked_config_snapshot or {}
         if association.status == ASSOCIATION_STATUS_READY and _snapshot_still_current(association, snapshot):
             return {"result": False, "message": summary}
