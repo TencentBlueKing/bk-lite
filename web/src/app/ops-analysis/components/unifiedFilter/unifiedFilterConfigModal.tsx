@@ -486,7 +486,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.filterName'),
       dataIndex: 'name',
-      width: 140,
+      width: 150,
       onCell: fillCell,
       render: (value: string, record: UnifiedFilterDefinition) => (
         <Input
@@ -500,7 +500,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('paramInput.controlType'),
       dataIndex: 'inputMode',
-      width: 140,
+      width: 150,
       onCell: fillCell,
       render: (_: unknown, record: UnifiedFilterDefinition) => {
         const renderControlCombo = (
@@ -764,7 +764,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={900}
+      width={920}
       maskClosable={false}
       centered
       destroyOnHidden

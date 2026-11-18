@@ -231,7 +231,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
             </div>
           ) : null}
 
-          <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+          <div className="flex min-h-0 flex-1 flex-col p-3">
             {tab === 'json' ? (
               <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-(--color-bg)">
                 {loading ? (
