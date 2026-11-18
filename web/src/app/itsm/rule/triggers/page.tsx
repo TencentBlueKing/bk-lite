@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Input, Select, Switch, message } from 'antd';
@@ -103,7 +105,7 @@ export default function Page() {
           dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyTrigger') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: TriggerItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.rule.event'), dataIndex: 'event', key: 'event', render: (value: string) => eventOptions.find((item) => item.value === value)?.label || value },
             { title: t('itsm.rule.response'), dataIndex: 'action', key: 'action', render: (value: string) => actionOptions.find((item) => item.value === value)?.label || value },
             {

@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { useRouter } from 'next/navigation';
@@ -102,7 +104,7 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
 {permissions.can_add && <ItsmCreateButton onClick={() => router.push(`/itsm/form/integrations/new-${kind}/configure`)}>新建</ItsmCreateButton>}
 </>} />
     <CustomTable storageKey="itsm:integration:position" queryKey={`${kind}:${keyword}`} rowKey="id" dataSource={items.filter(item => item.kind === kind && `${item.name} ${item.config.path || ''}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
-      { title: '名称', dataIndex: 'name', key: 'name' },
+      { title: '名称', dataIndex: 'name', key: 'name', render: (value: string, item: IntegrationItem) => <ItsmListEntry href={`/itsm/form/integrations/${item.id}/configure`}>{value}</ItsmListEntry> },
       { title: kind === 'api' ? '接口地址' : kind === 'python' ? '文件' : '接收地址', key: 'target', render: (_: unknown, item: IntegrationItem) => item.config.path ? <span className="font-mono text-xs">{item.config.method} {item.config.path}</span> : item.config.filename || item.config.url },
       { title: '状态', key: 'enabled', render: (_: unknown, item: IntegrationItem) => <Tag color={item.is_enabled ? 'green' : 'default'}>{item.is_enabled ? '启用' : '停用'}</Tag> },
       { title: '维护人', dataIndex: 'updated_by', key: 'owner' },

@@ -480,6 +480,8 @@ OpsPilot 与系统管理已接入上述抽象。域内差异（置顶、厂商�
 
 #### 可点击反馈（The Visible Affordance Rule）
 
+- ITSM 列表名称使用 `ItsmListEntry` 作为主要入口：流程/表单进入设计，集成进入配置，字典进入字典项，数据表进入数据管理，工单进入详情，其余复用已有编辑入口。没有对应入口或权限时显示普通文本；名称点击不触发行勾选。
+
 - **表格行可钻取：** `onRow` 必须给 `cursor-pointer transition-colors hover:bg-[var(--color-fill-2)]`；主入口列（名称、ID、消息）默认 `text-1` 常规字重，hover `text-[var(--color-primary)] underline`。不要靠「整行变色」以外的猜测让用户发现能点。
 - **卡片可钻取：** 与 KPI 可点击规则一致（边框变主色 + 微阴影 + label 变主色）。
 - **图标小动作：** 幽灵图标按钮 hover 要有底色或下划线反馈，配 `aria-label`。

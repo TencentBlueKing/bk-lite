@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ImportOutlined, ExportOutlined } from '@ant-design/icons';
 
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
@@ -142,7 +144,7 @@ export default function DictionariesPage() {
           dataSource={items.filter(item => `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyDictionary') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: DictionaryItem) => <ItsmListEntry onClick={() => { void openItems(item); }}>{value}</ItsmListEntry> },
             { title: t('itsm.admin.key'), dataIndex: 'key', key: 'key' },
             { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),

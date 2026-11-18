@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Button, Input, Select, message } from 'antd';
@@ -114,7 +116,7 @@ export default function Page() {
           dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyDecision') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: DecisionItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',

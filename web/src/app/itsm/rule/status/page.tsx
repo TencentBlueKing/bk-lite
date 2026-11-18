@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Button, ColorPicker, Input, Select, message } from 'antd';
@@ -94,7 +96,7 @@ export default function Page() {
           dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyStatus') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: StatusItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.rule.keyword'), dataIndex: 'key', key: 'key' },
             { title: t('itsm.rule.color'), dataIndex: 'color', key: 'color', render: (value: string) => <span className="inline-block h-3 w-3 rounded-full" style={{ background: value }} /> },
             { title: t('itsm.rule.kind'), dataIndex: 'kind', key: 'kind', render: (value: string) => value === 'builtin' ? t('itsm.rule.builtin') : t('itsm.rule.custom') },

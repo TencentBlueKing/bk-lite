@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ImportOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import OperateModal from '@/components/operate-modal';
@@ -108,7 +110,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
 {permissions.can_add&&<><Upload accept=".xlsx" showUploadList={false} beforeUpload={file=>{void upload(file);return false;}}><Button icon={<ImportOutlined />} loading={busy}>导入</Button></Upload><ItsmCreateButton onClick={()=>{setFormError('');setBaseline(JSON.stringify({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]}));setDraft({name:'',key:'',fields:[{key:'name',label:'名称',type:'string'}],fixedKeys:[]});}}>新建</ItsmCreateButton></>}
 </>} />
     <CustomTable storageKey="itsm:tables:position" queryKey={keyword} rowKey="id" dataSource={items.filter(i=>`${i.name} ${i.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
-      {title:'名称',dataIndex:'name',key:'name'},{title:'标识',dataIndex:'key',key:'key'},
+      {title:'名称',dataIndex:'name',key:'name',render:(value:string,item:TableItem)=><ItsmListEntry href={`/itsm/form/tables/${item.id}`}>{value}</ItsmListEntry>},{title:'标识',dataIndex:'key',key:'key'},
       { fixed: 'right' as const, width: 120,title:'操作',key:'actions',render:(_:unknown,item:TableItem)=><ItsmRowActions items={[{key: 'action-0', label: t('itsm.admin.data'), kind: 'data' as const, onClick: ()=>router.push(`/itsm/form/tables/${item.id}`)},
         ...(permissions.can_edit ? [{key: 'action-1', label: "字段配置", kind: 'configure' as const, onClick: ()=>void editFields(item)}] : []),
         {key: 'action-2', label: "导出", kind: 'export' as const, onClick: ()=>void download(item.id), more: true}]} />},

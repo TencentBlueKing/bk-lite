@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Input, message } from 'antd';
@@ -129,7 +131,10 @@ export function ResourceBoard({ title, kind, fields, actions = [], createLabel =
               dataIndex: field,
               key: field,
               ellipsis: true,
-              render: (value: unknown) => (value == null || value === '' ? '—' : typeof value === 'string' ? value : JSON.stringify(value)),
+              render: (value: unknown, item: Record<string, unknown>) => {
+                const text = value == null || value === '' ? '—' : typeof value === 'string' ? value : JSON.stringify(value);
+                return (field === 'name' || field === 'title') && actions.includes('edit') ? <ItsmListEntry onClick={() => startEdit(item)}>{text}</ItsmListEntry> : text;
+              },
             })),
             ...(actions.length ? [{ fixed: 'right' as const, width: 120,
               title: '操作',

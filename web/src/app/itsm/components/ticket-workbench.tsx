@@ -1,8 +1,9 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Key } from 'react';
-import Link from 'next/link';
 import dayjs from 'dayjs';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { Alert, App, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
@@ -140,7 +141,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
     sorter: sortable.has(key), sortOrder: query.ordering.replace('-', '') === key ? query.ordering.startsWith('-') ? 'descend' : 'ascend' : null,
     ellipsis: true,
     render: (value: unknown, record: TicketListItem) => {
-      if (key === 'sn' || key === 'title') return <Link href={`/itsm/tickets/${record.id}`} className="text-[var(--color-primary)]">{String(value || '—')}</Link>;
+      if (key === 'sn' || key === 'title') return <ItsmListEntry href={`/itsm/tickets/${record.id}`}>{String(value || '—')}</ItsmListEntry>;
       if (key === 'status') { const status = STATUS.find(item => item.value === value); return <Tag color={status?.color}>{status?.label || String(value || '—')}</Tag>; }
       if (key === 'node') return record.tasks?.map(task => task.node_name || task.node_id).join('、') || '—';
       if (key === 'assignees') return [...new Set(record.tasks?.map(task => task.assignee).filter(Boolean))].map(name => <Tag key={name}>{name}</Tag>);

@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Checkbox, Input, message } from 'antd';
@@ -73,7 +75,7 @@ export default function CalendarsPage() {
           dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptyCalendar') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: CalendarItem) => <ItsmListEntry onClick={() => startEdit(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.rule.workdays'), dataIndex: 'work_days', key: 'work_days', render: (value: number[]) => (value || []).map((day) => daysOptions.find((item) => item.value === day)?.label).filter(Boolean).join('、') },
             { title: t('itsm.rule.range'), key: 'range', render: (_value: unknown, item: CalendarItem) => `${item.work_start}-${item.work_end}` },
             { fixed: 'right' as const, width: 120, title: t('itsm.ticket.action'), key: 'actions', render: (_value: unknown, item: CalendarItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => startEdit(item)}]} /> },

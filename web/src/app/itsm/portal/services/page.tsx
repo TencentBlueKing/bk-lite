@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { PlusOutlined } from '@ant-design/icons';
 
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
@@ -179,7 +181,7 @@ export default function ServiceManagePage() {
             dataSource={shown}
             locale={{ emptyText: t('itsm.portal.emptyServices') }}
             columns={[
-              { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+              { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: ServiceItem) => <ItsmListEntry onClick={() => startService(item)}>{value}</ItsmListEntry> },
               { title: t('itsm.ticket.flow'), dataIndex: 'workflow_name', key: 'workflow_name', render: (value: string) => value || '—' },
               { title: t('itsm.portal.description'), dataIndex: 'description', key: 'description', render: (value: string) => value || '—' },
               {

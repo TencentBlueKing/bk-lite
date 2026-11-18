@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { DatePicker, Input, Radio, Select, Switch, message } from 'antd';
@@ -119,7 +121,7 @@ export default function Page() {
           dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.rule.emptySchedule') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: ScheduleItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.rule.mode'), key: 'mode', render: (_value: unknown, item: ScheduleItem) => parseAction(item.action).mode === 'once' ? t('itsm.rule.once') : t('itsm.rule.cron') },
             { title: t('itsm.rule.period'), dataIndex: 'cron', key: 'cron', render: (value: string) => value || '—' },
             { title: t('itsm.rule.taskType'), key: 'task', render: (_value: unknown, item: ScheduleItem) => parseAction(item.action).task === 'remind' ? t('itsm.rule.remind') : t('itsm.rule.createTicket') },

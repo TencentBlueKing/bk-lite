@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmListToolbar, ItsmCreateButton, ItsmRowActions } from '@/app/itsm/components/list-controls';
 
 import { Input, message } from 'antd';
@@ -53,7 +55,7 @@ export default function FormListPage() {
           dataSource={items.filter((item) => !keyword.trim() || `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyForm') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: NamedItem) => <ItsmListEntry href={`/itsm/form/designer/${item.id}`}>{value}</ItsmListEntry> },
             { title: t('itsm.admin.key'), dataIndex: 'key', key: 'key' },
             {
               title: t('itsm.ticket.action'),

@@ -33,6 +33,7 @@ it('只读用户不能新增或执行', async () => {
   api.listIntegrations.mockResolvedValue({ items: [item], can_add: false, can_edit: false });
   render(<Page />); await screen.findByText('查询工单');
   expect(screen.queryByRole('button', { name: '新建' })).toBeNull();
+  expect(screen.getByRole('link', { name: '查询工单' }).getAttribute('href')).toBe('/itsm/form/integrations/1/configure');
   fireEvent.click(screen.getByRole('button', { name: '记录' }));
   expect(router.push).toHaveBeenCalledWith('/itsm/form/integrations/1/records');cleanup();render(<Workspace integrationId="1" mode="records" />);
   const run = await screen.findByRole('button', { name: /执行测试/ });

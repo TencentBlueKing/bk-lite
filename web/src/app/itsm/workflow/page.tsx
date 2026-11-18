@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmListToolbar, ItsmListTabs, ItsmCreateButton, ItsmRowActions } from '@/app/itsm/components/list-controls';
 
 import { Alert, Button, Empty, Popconfirm, Spin, Tag, Tooltip, message } from 'antd';
@@ -80,7 +82,7 @@ export default function WorkflowListPage() {
 </>}
 </>} />
     <CustomTable queryKey={`${status}:${keyword}`} rowKey="id" dataSource={(data.items || []).filter(item=>(status === 'all' || (status === 'published' ? !!item.current_version_id : !item.current_version_id)) && `${item.name} ${item.key}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
-      {title:'流程名称',dataIndex:'name',key:'name'}, {title:'标识',dataIndex:'key',key:'key'},
+      {title:'流程名称',dataIndex:'name',key:'name',render:(value:string,row:WorkflowListItem)=><ItsmListEntry allowed={Boolean(data.can_edit)} href={`/itsm/workflow/designer/${row.id}`}>{value}</ItsmListEntry>}, {title:'标识',dataIndex:'key',key:'key'},
       {title:'当前版本',key:'status',render:(_,row:WorkflowListItem)=><Tag color={row.current_version_id?'processing':'default'}>{row.current_version_id?`V${row.current_version_no}`:'未发布'}</Tag>},
       {title:'操作',key:'action',fixed:'right',width:120,render:(_,row:WorkflowListItem)=><ItsmRowActions items={[
         {key:'design',label:'设计',kind:'edit',hidden:!data.can_edit,onClick:()=>router.push(`/itsm/workflow/designer/${row.id}`)},

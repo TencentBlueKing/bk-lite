@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Input, Tag, message } from 'antd';
@@ -69,7 +71,7 @@ export default function HandlerGroupsPage() {
           dataSource={shown}
           locale={{ emptyText: t('itsm.admin.emptyGroup') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name' },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: HandlerGroupItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.admin.leader'), dataIndex: 'leaders', key: 'leaders', render: (leaders: string[]) => leaders?.length ? leaders.map((user) => <Tag key={user}>{user}</Tag>) : '—' },
             { title: t('itsm.admin.members'), dataIndex: 'members', key: 'members', render: (value: string[]) => value?.join('、') || '—' },
             { fixed: 'right' as const, width: 120,

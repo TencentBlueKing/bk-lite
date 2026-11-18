@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Button, Input, message } from 'antd';
@@ -76,7 +78,7 @@ export default function Page() {
           dataSource={items.filter(item => (status === 'all' || (status === 'enabled' ? item.is_enabled : !item.is_enabled)) && item.title.toLowerCase().includes(keyword.trim().toLowerCase()))}
           locale={{ emptyText: t('itsm.admin.emptyNotice') }}
           columns={[
-            { title: t('itsm.admin.noticeTitle'), dataIndex: 'title', key: 'title' },
+            { title: t('itsm.admin.noticeTitle'), dataIndex: 'title', key: 'title', render: (value: string, item: NoticeItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.admin.content'), dataIndex: 'content', key: 'content', ellipsis: true },
             { title: t('itsm.admin.state'), key: 'enabled', render: (_value: unknown, item: NoticeItem) => (item.is_enabled ? t('itsm.admin.enable') : t('itsm.admin.disable')) },
             { fixed: 'right' as const, width: 120,

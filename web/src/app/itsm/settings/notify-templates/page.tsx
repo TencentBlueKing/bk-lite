@@ -1,5 +1,7 @@
 'use client';
 
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
 import { Input, Tag, message } from 'antd';
@@ -70,7 +72,7 @@ export default function NotifyTemplatesPage() {
           locale={{ emptyText: t('itsm.admin.emptyNotify') }}
           columns={[
             { title: t('itsm.admin.event'), dataIndex: 'event', key: 'event', render: (value: string) => <Tag>{value}</Tag> },
-            { title: t('itsm.admin.noticeTitle'), dataIndex: 'title_tpl', key: 'title_tpl' },
+            { title: t('itsm.admin.noticeTitle'), dataIndex: 'title_tpl', key: 'title_tpl', render: (value: string, item: TemplateItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
             { fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
