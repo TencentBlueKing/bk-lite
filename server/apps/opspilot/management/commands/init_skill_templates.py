@@ -4,8 +4,8 @@ from apps.opspilot.services.skill_template_catalog import SkillTemplateCatalogSe
 
 
 class Command(BaseCommand):
-    help = "用 Kubernetes 助手和 Postgres DB 助手替换智能体模板"
+    help = "同步内置智能体模板，保留已有智能体和工作台"
 
     def handle(self, *args, **options):
-        SkillTemplateCatalogService().replace()
-        self.stdout.write(self.style.SUCCESS("智能体模板已替换为 Kubernetes 助手和 Postgres DB 助手"))
+        templates = SkillTemplateCatalogService().sync()
+        self.stdout.write(self.style.SUCCESS(f"内置智能体模板已同步，共 {len(templates)} 个"))

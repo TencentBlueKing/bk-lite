@@ -1993,7 +1993,14 @@
       "introEnd": " 顶部 YAML frontmatter，或从标题和目录名推导基础信息。",
       "uploadText": "点击或拖拽 ZIP 技能包到这里",
       "uploadHint": "第一版支持本地 ZIP 上传；公开 Git 仓库导入后续接入同一导入器。"
-    }
+    },
+    "templatesTitle": "模版",
+    "templatesDescription": "从内置模版创建自己的智能体，再选择模型并完善配置。",
+    "searchTemplates": "搜索模版",
+    "templatesLoadFailed": "模版加载失败，请重试。",
+    "templateCreateFailed": "智能体创建失败，请重试。",
+    "noMatchingTemplates": "没有匹配的模版",
+    "noTemplates": "暂无可用模版"
   },
   "chatflow": {
     "lock": "锁定画布",
