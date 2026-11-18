@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useState, type Key } from 'react';
-import { Segmented } from 'antd';
 import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
 import { ProDashLoading, ProSection } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import classic from '../../host/index.module.scss';
-import { HorizontalBarPanel } from '../../../shared/widgets';
+import { BarList } from '../../../shared/widgets';
 import type { BarItem } from '../../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
 import { MSSQL_TOP_DB_QUERIES } from '../queries';
@@ -35,6 +34,8 @@ const RANK_LABEL = {
 
 type RankKey = keyof typeof RANK_LABEL;
 
+const tightenRankDisplay = (display: string) => display.replace(/\.00(?=\D|$)/, '');
+
 export default function IoPane({
   metricMap,
   pendingMetricNames,
@@ -59,7 +60,6 @@ export default function IoPane({
   reloadKey: number;
 }) {
   const { getInstanceQuery } = useViewApi();
-  const [rankKey, setRankKey] = useState<RankKey>('read_latency');
   const [bars, setBars] = useState<Record<string, BarItem[]>>({});
   const [rankPhase, setRankPhase] = useState<'loading' | 'ready'>('loading');
   const usage = readVolumeUsage(metricMap);
@@ -114,17 +114,20 @@ export default function IoPane({
     timeValues
   ]);
 
-  const selected = MSSQL_TOP_DB_QUERIES.find((item) => item.key === rankKey) || MSSQL_TOP_DB_QUERIES[0];
-  const rawRank = bars[selected.key] || [];
-  const rankPeak = rawRank.reduce((max, item) => Math.max(max, Math.abs(item.value)), 0);
-  const rankFormat = selected.unit === 'ms' ? mssqlLockedReading('ms', rankPeak) : null;
-  const rankItems = rankFormat
-    ? rawRank.map((item) => ({ ...item, display: rankFormat(item.value) }))
-    : rawRank;
-  const rankFace = mssqlCardFace(
-    mssqlDeferEmpty(rankItems.length > 0, rankPhase === 'loading', batchLoading),
-    rankItems.length > 0
-  );
+  const rankGroups = MSSQL_TOP_DB_QUERIES.map((query) => {
+    const raw = bars[query.key] || [];
+    const peak = raw.reduce((max, item) => Math.max(max, Math.abs(item.value)), 0);
+    const format = query.unit === 'ms' ? mssqlLockedReading('ms', peak) : null;
+    const items = raw.map((item) => ({
+      ...item,
+      display: format ? format(item.value) : tightenRankDisplay(item.display)
+    }));
+    const face = mssqlCardFace(
+      mssqlDeferEmpty(items.length > 0, rankPhase === 'loading', batchLoading),
+      items.length > 0
+    );
+    return { key: query.key as RankKey, label: RANK_LABEL[query.key as RankKey], items, face };
+  });
   const volumePeak = Math.max(Math.abs(usage.used ?? 0), Math.abs(usage.total ?? 0));
   const volumeFormat = mssqlLockedReading('bytes', volumePeak);
   const usedText = usage.used == null || !volumeFormat ? '' : volumeFormat(usage.used);
@@ -201,7 +204,7 @@ export default function IoPane({
             anchor="tempdb"
             title="TempDB 健康"
             body="TempDB 当前可用空间，以及版本存储占用的大小。可用空间持续下降或版本存储持续增大，说明临时对象或长事务压力在升高。"
-            dualAxis
+            holdSeriesColor
             series={[
               {
                 name: MSSQL_PRO_NAMES.tempdbFree,
@@ -282,37 +285,43 @@ export default function IoPane({
         </div>
       </ProSection>
       <ProSection title="数据库压力排行">
-        <div id="mssql-db-rank" data-mssql-chart="db-rank">
-          <HorizontalBarPanel
-            styles={styles}
-            className={styles.span12}
-            title={(
+        <section
+          id="mssql-db-rank"
+          className={`${classic.panel} ${host.chartPanel}`}
+          data-mssql-chart="db-rank"
+          data-mssql-rank-layout="all"
+        >
+          <div className={host.chartHead}>
+            <div className={host.chartTitle}>
               <span className="inline-flex items-center gap-1">
                 数据库压力排行
                 <MssqlHint
                   kind="mssql-db-rank"
                   title="数据库压力排行"
-                  body="按数据库查看读取延迟、写入延迟或读写繁忙程度靠前的对象，便于定位压力集中在哪些库。"
+                  body="按数据库同时列出读取延迟、写入延迟和读写繁忙。读写繁忙是每秒次数，不是时长。"
                 />
               </span>
-            )}
-            headerAction={(
-              <Segmented
-                size="small"
-                value={rankKey}
-                onChange={(value) => setRankKey(value as RankKey)}
-                options={(Object.keys(RANK_LABEL) as RankKey[]).map((key) => ({
-                  label: RANK_LABEL[key],
-                  value: key
-                }))}
-              />
-            )}
-            items={rankFace === 'ready' ? rankItems : []}
-            placeholder={rankFace === 'loading' ? <ProDashLoading /> : rankFace === 'empty' ? (
-              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
-            ) : undefined}
-          />
-        </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 min-[1440px]:grid-cols-3" data-mssql-rank-groups="3">
+            {rankGroups.map((group) => (
+              <div key={group.key} data-mssql-rank={group.key} data-mssql-face={group.face} className="min-w-0">
+                <div className="text-[13px] font-semibold text-[var(--color-text-1)]">{group.label}</div>
+                {group.face === 'loading' ? (
+                  <div className="flex h-16 items-center justify-center">
+                    <ProDashLoading />
+                  </div>
+                ) : group.face === 'empty' ? (
+                  <div className="flex h-16 items-center text-[13px] font-semibold text-[var(--color-text-2)]">
+                    本窗口暂无数据
+                  </div>
+                ) : (
+                  <BarList items={group.items} styles={{ ...styles, barsFull: '' }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
       </ProSection>
     </div>
   );

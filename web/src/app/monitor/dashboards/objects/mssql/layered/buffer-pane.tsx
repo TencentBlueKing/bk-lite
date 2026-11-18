@@ -166,12 +166,12 @@ export default function BufferPane({
       <ProSection title="构成">
         <div id="mssql-clerks" className="min-w-0 scroll-mt-3" data-mssql-chart="clerks">
           <ThinTimeSeries
-            title="内存 Clerk 构成"
+            title="内存用途构成"
             hintNode={(
               <MssqlHint
                 kind="mssql-clerks"
-                title="内存 Clerk 构成"
-                body="各类内存办事员占用的内存大小，用于查看内存主要花在哪些用途。"
+                title="内存用途构成"
+                body="按用途查看各类内存占用的大小，便于判断内存主要花在哪里。"
               />
             )}
             unit="kibibytes"
@@ -183,8 +183,8 @@ export default function BufferPane({
             data={clerks.data}
             legends={clerks.legends}
             formatReading={clerks.formatReading}
+            footer={clerks.data.length > 0 ? <MssqlSeriesReadout items={clerks.legends} /> : null}
           />
-          {clerks.data.length > 0 ? <MssqlSeriesReadout items={clerks.legends} /> : null}
         </div>
       </ProSection>
     </div>

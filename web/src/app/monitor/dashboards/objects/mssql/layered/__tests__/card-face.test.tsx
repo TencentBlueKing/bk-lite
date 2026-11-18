@@ -77,9 +77,14 @@ describe('mssql clerk readout', () => {
     expect(list?.getAttribute('style')).toContain('max-height');
     expect(list?.querySelector('li')?.getAttribute('style')).toContain('height: 36px');
     expect(container.querySelector('select')).toBeNull();
+    expect(list?.className).toContain('bg-[var(--color-bg)]');
     expect(list?.querySelectorAll('li')).toHaveLength(2);
+    const value = screen.getByText('12 MiB');
+    const swatch = value.closest('li')?.querySelector<HTMLElement>('[data-mssql-readout-swatch]');
+    expect(value.style.color).toBe('rgb(51, 102, 255)');
+    expect(swatch?.style.backgroundColor).toBe(value.style.color);
+    expect(value.className).not.toContain('text-[var(--color-text-1)]');
     expect(screen.getByText('CACHESTORE_SQLCP')).toBeTruthy();
-    expect(screen.getByText('12 MiB')).toBeTruthy();
     expect(screen.getByText('MEMORYCLERK_SQLBUFFERPOOL')).toBeTruthy();
   });
 

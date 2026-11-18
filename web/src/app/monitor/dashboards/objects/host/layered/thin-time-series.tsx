@@ -124,6 +124,8 @@ interface ThinTimeSeriesProps {
   formatReading?: (value: number) => string;
   /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
   plotHeight?: number;
+  /** 画在同一张白卡里、图的下方。用来放维度列表，不另起一块灰底。 */
+  footer?: React.ReactNode;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -473,7 +475,8 @@ export default function ThinTimeSeries({
   keepSeriesColor = false,
   markZeroCount = false,
   formatReading,
-  plotHeight
+  plotHeight,
+  footer
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -715,11 +718,14 @@ export default function ThinTimeSeries({
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
         // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
         const zeroCountLine = markedZeroSeries(markZeroCount, samples);
-        const onFloor = !zeroCountLine && !keepSeriesColor && Boolean(
+        const sitsOnFloor = !zeroCountLine && Boolean(
           axisColor
           && extent
           && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
         );
+        const onFloor = sitsOnFloor && !keepSeriesColor;
+        // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
+        const coloredFloor = sitsOnFloor && keepSeriesColor;
         const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
         return {
           type: 'line' as const,
@@ -728,9 +734,10 @@ export default function ThinTimeSeries({
           showSymbol: zeroCountLine,
           symbol: zeroCountLine ? 'circle' as const : 'none' as const,
           ...(zeroCountLine ? { showAllSymbol: true, symbolSize: ZERO_COUNT_SYMBOL_SIZE, large: false } : {}),
-          smooth: onFloor || zeroCountLine ? 0 : 0.15,
+          smooth: onFloor || coloredFloor || zeroCountLine ? 0 : 0.15,
           connectNulls: true,
           ...(onFloor ? { clip: false as const, z: 8 } : {}),
+          ...(coloredFloor ? { clip: false as const, z: 5 } : {}),
           ...(zeroCountLine ? { clip: false as const, z: 4 } : {}),
           itemStyle: { color },
           data: plotted.map((point) => {
@@ -747,12 +754,21 @@ export default function ThinTimeSeries({
               shadowBlur: 0,
               shadowOffsetY: floorLineLift(index)
             }
-            : {
-              width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
-              color,
-              ...(showArea ? { opacity: 1 } : {}),
-              type: dashed ? 'dashed' as const : 'solid' as const
-            }
+            : coloredFloor
+              ? {
+                width: dashed ? 1.2 : 2,
+                color,
+                type: dashed ? 'dashed' as const : 'solid' as const,
+                shadowColor: color,
+                shadowBlur: 0,
+                shadowOffsetY: -2
+              }
+              : {
+                width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
+                color,
+                ...(showArea ? { opacity: 1 } : {}),
+                type: dashed ? 'dashed' as const : 'solid' as const
+              }
         };
       })
     };
@@ -877,6 +893,7 @@ export default function ThinTimeSeries({
           <div ref={containerRef} className="h-full w-full" />
         )}
       </div>
+      {footer}
     </>
   );
 

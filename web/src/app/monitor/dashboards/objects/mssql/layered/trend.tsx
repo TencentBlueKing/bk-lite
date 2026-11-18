@@ -34,18 +34,30 @@ export function MssqlSeriesReadout({
   if (!items.length) return null;
   return (
     <ul
-      className="m-0 mt-2 flex w-full list-none flex-col overflow-y-auto border-t border-[var(--color-border)] p-0"
+      className="m-0 flex w-full list-none flex-col overflow-y-auto border-t border-[var(--color-border)] bg-[var(--color-bg)] p-0"
       style={{ maxHeight: MSSQL_CLERK_LIST_MAX_PX }}
       data-mssql-series-readout="rows"
     >
       {items.map((item) => (
         <li
           key={item.label}
-          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] px-1 text-[13px]"
+          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-1 text-[13px]"
           style={{ height: MSSQL_LIST_ROW_PX }}
         >
-          <span className="min-w-0 flex-1 truncate text-[var(--color-text-1)]">{item.label}</span>
-          <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--color-text-1)]">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span
+              aria-hidden
+              data-mssql-readout-swatch=""
+              className="inline-block h-2 w-2 shrink-0 rounded-full"
+              style={{ background: item.color }}
+            />
+            <span className="min-w-0 truncate text-[var(--color-text-1)]">{item.label}</span>
+          </span>
+          <span
+            data-mssql-readout-value=""
+            className="shrink-0 text-right font-semibold tabular-nums"
+            style={{ color: item.color }}
+          >
             {item.reading || '—'}
           </span>
         </li>
@@ -63,7 +75,7 @@ export function MssqlTrend({
   pending,
   percent = false,
   counts = false,
-  dualAxis = false,
+  holdSeriesColor = false,
   data,
   loading = false,
   batchLoading = false,
@@ -77,8 +89,8 @@ export function MssqlTrend({
   pending: ReadonlySet<string>;
   percent?: boolean;
   counts?: boolean;
-  /** 单位相同但量级差得大时也分轴，避免一条线把另一条压扁。 */
-  dualAxis?: boolean;
+  /** 贴在共用轴底部的序列仍用自己的颜色，不另开右轴。 */
+  holdSeriesColor?: boolean;
   data?: ChartData[];
   /** 本卡相关查询仍在进行，且还没有点时只显示加载中。 */
   loading?: boolean;
@@ -89,7 +101,7 @@ export function MssqlTrend({
 }) {
   const items = series.map((item) => ({ name: item.name, label: item.label }));
   const plotted = data ?? (counts ? mssqlCountMerged(metricMap, items) : mssqlMerged(metricMap, items));
-  const mixedUnits = new Set(series.map((item) => item.unit)).size > 1 || dualAxis;
+  const mixedUnits = new Set(series.map((item) => item.unit)).size > 1;
   const multi = series.length > 1;
   const awaiting = mssqlDeferEmpty(
     plotted.length > 0,
@@ -130,6 +142,7 @@ export function MssqlTrend({
       id={`mssql-${anchor}`}
       className="min-w-0 scroll-mt-3"
       data-mssql-chart={anchor}
+      data-mssql-axes={mixedUnits ? 'dual' : 'shared'}
       data-mssql-face={awaiting ? 'loading' : plotted.length > 0 ? 'ready' : 'empty'}
     >
       <ThinTimeSeries
@@ -142,7 +155,7 @@ export function MssqlTrend({
         independentAxes={mixedUnits}
         keepLegend={multi}
         markZeroCount={Boolean((counts && countBounds) || percentZero)}
-        keepSeriesColor={Boolean((counts && countBounds) || percentZero)}
+        keepSeriesColor={Boolean((counts && countBounds) || percentZero || holdSeriesColor)}
         loading={awaiting}
         emptyText="本窗口暂无数据"
         data={plotted}

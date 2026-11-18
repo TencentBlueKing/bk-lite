@@ -207,8 +207,8 @@ export const MSSQL_PRO_METRICS: SimpleMetricConfig[] = [
   ),
   metric(
     'mssql_pro_clerks',
-    '内存 Clerk 构成',
-    '各类内存办事员占用的内存大小。',
+    '内存用途构成',
+    '按用途查看各类内存占用的大小，便于判断内存主要花在哪里。',
     'kibibytes',
     'topk(8, sum by (clerk_type) (sqlserver_memory_clerks_size_kb{__$labels__}))',
     MSSQL_PRO_PALETTE.indigo,

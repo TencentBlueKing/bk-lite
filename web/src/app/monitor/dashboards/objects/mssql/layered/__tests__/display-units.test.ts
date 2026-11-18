@@ -21,6 +21,7 @@ const series = (name: string, points: MetricSeries['viewData']): MetricSeries =>
 
 describe('mssql card units', () => {
   it('时延按本卡峰值换算，整数不补 .00', () => {
+    expect(formatMssqlDuration(6448, 6448)).toBe('6.45 s');
     expect(formatMssqlDuration(5551, 5551)).toBe('5.55 s');
     expect(formatMssqlDuration(53599, 53599)).toBe('53.60 s');
     expect(formatMssqlDuration(788756, 788756)).toBe('13.15 min');

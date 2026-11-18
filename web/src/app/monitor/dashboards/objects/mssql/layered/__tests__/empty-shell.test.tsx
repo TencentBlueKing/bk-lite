@@ -95,6 +95,8 @@ describe('mssql empty shell口径', () => {
     expect(zh.container.textContent).toContain('当前');
     expect(zh.container.textContent).toContain('目标');
     expect(zh.container.textContent).toContain('内存');
+    expect(zh.container.textContent).toContain('内存用途构成');
+    expect(zh.container.textContent).not.toContain('内存 Clerk 构成');
     expect(zh.container.textContent).not.toContain('Server Memory');
     expect(zh.container.textContent).not.toContain('服务器内存');
     zh.unmount();
@@ -108,6 +110,8 @@ describe('mssql empty shell口径', () => {
     expect(en.container.textContent).toContain('Instance Memory');
     expect(en.container.textContent).toContain('Current');
     expect(en.container.textContent).toContain('Target');
+    expect(en.container.textContent).toContain('内存用途构成');
+    expect(en.container.textContent).not.toContain('内存 Clerk 构成');
     expect(en.container.textContent).not.toContain('Server Memory');
     expect(en.container.textContent).not.toContain('实例内存');
   });

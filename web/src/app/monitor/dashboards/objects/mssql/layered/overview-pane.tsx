@@ -2,7 +2,6 @@
 
 import React, { useMemo } from 'react';
 import type { MetricUnit } from '../../../shared/types';
-import { alertEventInsideWindow } from '../../../shared/utils/pro-chart-window';
 import {
   EVENT_RAIL_HINT_LINES,
   KpiTileRow,
@@ -18,7 +17,6 @@ import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-r
 import FocusShortcutTitle from '../../host/layered/focus-shortcut-title';
 import { describeFocusAxis, formatFocusHeadline, seriesSampleValues } from '../../host/layered/focus-axis';
 import host from '../../host/layered/layered.module.scss';
-import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { MssqlHint } from './hint';
 import { mssqlFocusJump, mssqlKpiJump } from './ia';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
@@ -84,12 +82,6 @@ export default function OverviewPane({
   onOpenFocus,
   onFocusAlert
 }: OverviewPaneProps) {
-  const proTime = useProTimeWindow();
-  const chartWindow = proTime?.window ?? null;
-  const railEvents = useMemo(
-    () => alertEvents.filter((event) => alertEventInsideWindow(event.at, chartWindow)),
-    [alertEvents, chartWindow]
-  );
   const hit = mssqlLatest(metricMap, MSSQL_PRO_NAMES.hit);
   const connections = mssqlLatest(metricMap, MSSQL_PRO_NAMES.connections);
   const batch = mssqlLatest(metricMap, MSSQL_PRO_NAMES.batch);
@@ -171,9 +163,9 @@ export default function OverviewPane({
       <ProSection title="健康概览">
         <KpiTileRow items={cards} columns={6} />
       </ProSection>
-      {railEvents.length > 0 ? (
+      {(alertCount ?? 0) > 0 ? (
         <ProSection title="事件" hint={<ProInfoHint kind="events" lines={EVENT_RAIL_HINT_LINES} />}>
-          <EventsRail events={railEvents} onFocusAlert={onFocusAlert} />
+          <EventsRail events={alertEvents} clipToWindow={false} onFocusAlert={onFocusAlert} />
         </ProSection>
       ) : null}
       <ProSection title="重点关注">
