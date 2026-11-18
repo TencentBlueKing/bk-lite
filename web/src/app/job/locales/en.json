@@ -386,6 +386,7 @@
     "cronDescWeek": "Week {week}",
     "cronDescHour": "at {hour}:00",
     "cronDescHourInterval": "every {interval} hour(s)",
+    "cronDescMinuteInterval": "every {interval} minute(s)",
     "cronDescEveryHour": "every hour",
     "cronDescMinute": "at minute {minute}",
     "cronNextRun": "Next run:",
