@@ -1,8 +1,8 @@
 'use client';
 
 import { Alert, App, Form, Button, Empty, Input, Rate, Tag } from 'antd';
-import Link from 'next/link';
-import { ArrowLeftOutlined, LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import { ItsmBackButton } from './back-button';
+import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
@@ -99,7 +99,7 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
       <header className="sticky top-0 z-20 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <Link href={serviceId ? "/itsm/portal" : "/itsm/tickets"} aria-label={serviceId ? "返回服务门户" : "返回工单列表"} title={serviceId ? "返回服务门户" : "返回工单列表"} className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-text-2)] hover:bg-[var(--color-fill-1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"><ArrowLeftOutlined /></Link>
+            <ItsmBackButton href={serviceId ? "/itsm/portal" : "/itsm/tickets"} label={serviceId ? "返回服务门户" : "返回工单列表"} />
             <Tag color={status?.color || 'default'}>{serviceId ? '待提单' : status ? t(status.id) : ticket.status}</Tag>
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
             <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}

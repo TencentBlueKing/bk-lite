@@ -278,7 +278,8 @@ export const resolveSegmentedSelectedUrl = (
   const exact = items.find((menu) => menu.url === pathname)?.url;
   if (exact) return exact;
 
-  const prefix = items.find((menu) => menu.url && pathname.startsWith(menu.url))?.url;
+  const prefix = items.filter((menu) => menu.url && isMenuPathMatch(menu.url, pathname))
+    .reduce<string | undefined>((best, menu) => !best || menu.url.length > best.length ? menu.url : best, undefined);
   if (prefix) return prefix;
 
   const lastSegment = pathname.split('/').filter(Boolean).pop();

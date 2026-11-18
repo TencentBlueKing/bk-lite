@@ -1,7 +1,8 @@
 'use client';
 
+import { usePageLeave } from '@/app/itsm/components/page-leave';
 import { Button, Drawer, Empty, Tag, message } from 'antd';
-import Link from 'next/link';
+import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../../../api/useItsmApi';
@@ -26,6 +27,7 @@ export default function FormDesignerPage() {
   const [preview, setPreview] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  usePageLeave(!!detail && JSON.stringify(fields)!==JSON.stringify(detail.schema?.fields || []));
 
   const load = useCallback(async () => {
     const data = await api.getForm(formId) as FormDetail;
@@ -73,9 +75,7 @@ export default function FormDesignerPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/itsm/form">
-            <Button size="small">{t('itsm.design.backList')}</Button>
-          </Link>
+          <ItsmBackButton href="/itsm/form" label="返回表单列表" />
           <div className="h-4 w-px bg-[var(--color-border)]" />
           <span className="text-sm font-medium text-[var(--color-text-1)]">{detail?.name || t('itsm.design.formDesigner')}</span>
         </div>

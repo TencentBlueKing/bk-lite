@@ -1,12 +1,13 @@
 'use client';
 
 import { Alert, Button, Select, Tabs, message } from 'antd';
-import Link from 'next/link';
+import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useItsmApi } from '../../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
+import { usePageLeave } from '@/app/itsm/components/page-leave';
 import { flattenNodeFields } from '../../../components/node-settings';
 import { FlowDesigner } from '../../../components/flow-designer';
 import { publishDesignedWorkflow } from '../../../components/publish-designed-workflow';
@@ -40,6 +41,8 @@ export default function WorkflowDesignerPage() {
   const [formId, setFormId] = useState<number | null>(null);
   const [fields, setFields] = useState<FormFieldSchema[]>([]);
   const [design, setDesign] = useState<FlowDesign>(DEMO_FLOW);
+  const [baseline,setBaseline]=useState('');
+  usePageLeave(!!baseline && JSON.stringify({design,fields})!==baseline);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [tab, setTab] = useState('form');
   const [preview, setPreview] = useState(false);
@@ -74,11 +77,14 @@ export default function WorkflowDesignerPage() {
     if (data.nodes?.length) {
       setDesign({ nodes: data.nodes, edges: data.edges || [], settings: data.settings });
     }
+    let loadedFields: FormFieldSchema[] = [];
     if (data.form_id) {
       const form = await api.getForm(data.form_id) as { schema?: FormSchema };
-      setFields(form.schema?.fields || []);
+      loadedFields=form.schema?.fields || [];
+      setFields(loadedFields);
       setFormBase(form.schema || {});
     }
+    setBaseline(JSON.stringify({design:data.nodes?.length?{nodes:data.nodes,edges:data.edges || [],settings:data.settings}:DEMO_FLOW,fields:loadedFields}));
   }, [api.getDesign, api.getForm, workflowId]);
 
   useEffect(() => {
@@ -159,9 +165,7 @@ export default function WorkflowDesignerPage() {
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <div className="sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
         <div className="flex items-center gap-3">
-          <Link href="/itsm/workflow">
-            <Button size="small">{t('itsm.common.back')}</Button>
-          </Link>
+          <ItsmBackButton href="/itsm/workflow" label="返回流程列表" />
           <div className="h-4 w-px bg-[var(--color-border)]" />
           <div className="flex items-center gap-2.5">
             <span className="text-sm font-medium text-[var(--color-text-1)]">{name}</span>
