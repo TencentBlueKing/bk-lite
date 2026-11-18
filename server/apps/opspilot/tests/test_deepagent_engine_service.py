@@ -2519,6 +2519,57 @@ def test_summarize_planned_step_for_limit_continue_stitches_carry_over_on_tool_b
     assert "[OPSPILOT_LIMIT:" not in summary
 
 
+def test_summarize_planned_step_carries_row_fields_not_only_counts():
+    """写文件的下一步只有摘要。列表结果按原字段留下短标量，长正文不进摘要。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    def summary_for(tool_name, payload, prose):
+        messages = [
+            AIMessage(content="", tool_calls=[{"id": "1", "name": tool_name, "args": {}}]),
+            ToolMessage(content=json.dumps(payload, ensure_ascii=False), tool_call_id="1", name=tool_name),
+            AIMessage(content=prose),
+        ]
+        return ToolsNodes._summarize_planned_step_messages(messages)
+
+    logs = summary_for(
+        "logs_search",
+        {"success": True, "data": {"items": [{"message": "连接超时", "host": "web-01", "level": "error", "body": "正文" * 800}]}},
+        "日志共 5 条。",
+    )
+    assert "message=连接超时" in logs
+    assert "host=web-01" in logs
+    assert "level=error" in logs
+    assert "正文" * 100 not in logs
+
+    alerts = summary_for(
+        "alerts_list_alerts",
+        {
+            "success": True,
+            "data": {
+                "count": 5,
+                "items": [
+                    {
+                        "alert_id": "SEED-AC-01",
+                        "title": "CPU过高",
+                        "content": "正文" * 800,
+                        "resource_name": "web-01",
+                        "created_at": "2026-11-18 10:00:00",
+                        "owners": ["张三"],
+                    }
+                ],
+            },
+        },
+        "活动告警共 5 条。",
+    )
+    assert "alert_id=SEED-AC-01" in alerts
+    assert "resource_name=web-01" in alerts
+    assert "created_at=2026-11-18 10:00:00" in alerts
+    assert "owners=张三" in alerts
+    assert "正文" * 100 not in alerts
+
+
 def test_summarize_planned_step_carries_instance_id_into_next_step():
     """查全部主机时第 3 步要用第 2 步查到的 instance_id，摘要只留正文会把它丢掉。"""
     import json

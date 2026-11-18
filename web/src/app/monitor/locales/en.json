@@ -679,6 +679,7 @@
       "color": "Color",
       "collectionNode": "Collection Node",
       "collectorNodeRemoved": "Collection node removed",
+      "collectorNodeOffline": "Offline",
       "clearCollectorConfig": "Clear collection config",
       "clearCollectorConfigConfirm": "This removes the collection config and its child config. The instance stays.",
       "reassignCollectorNode": "Change collection node",

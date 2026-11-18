@@ -387,6 +387,7 @@
     "cronDescWeek": "周{week}",
     "cronDescHour": "{hour}点",
     "cronDescHourInterval": "每{interval}小时",
+    "cronDescMinuteInterval": "每{interval}分钟",
     "cronDescEveryHour": "每小时",
     "cronDescMinute": "{minute}分",
     "cronNextRun": "下次执行:",

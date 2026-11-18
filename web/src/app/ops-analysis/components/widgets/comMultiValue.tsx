@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
+import DataLinkHoverMark from '@/app/ops-analysis/components/dataLinkHoverMark';
 import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Spin, Tooltip } from 'antd';
 import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
@@ -68,10 +69,10 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
           return (
           <div
             key={`${index}-${item.label}`}
-            className={`flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1 ${dataLinkActive ? 'cursor-pointer' : ''}`}
+            className={`group/data-link flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1 ${dataLinkActive ? 'cursor-pointer' : ''}`}
             onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
           >
-            <Tooltip title={hoverHint ? <>{item.label}<br />{hoverHint}</> : item.label}>
+            <Tooltip title={item.label}>
               <span
                 className="min-w-0 flex-1 truncate text-left"
                 style={{ color: theme.axisLabelColor }}
@@ -79,7 +80,8 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
                 {item.label}
               </span>
             </Tooltip>
-            <Tooltip title={hoverHint ? <>{display.text}<br />{hoverHint}</> : display.text}>
+            <DataLinkHoverMark show={dataLinkActive} label={hoverHint} />
+            <Tooltip title={display.text}>
               <span
                 className="shrink-0 truncate text-right font-semibold tabular-nums"
                 style={{ color: display.color }}

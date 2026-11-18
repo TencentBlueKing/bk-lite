@@ -116,6 +116,20 @@ def test_get_child_config_nodes_by_ids_转发配置和组织范围(node):
     )
 
 
+def test_delete_owned_child_configs_转发(node):
+    node.delete_owned_child_configs(["cfg-1"])
+    assert _last(node.client) == ("delete_owned_child_configs", (["cfg-1"],), {})
+
+
+def test_move_child_configs_to_node_转发组织范围(node):
+    node.move_child_configs_to_node(["cfg-1"], "node-1", ["cfg-1", "owner-2"], [7])
+    assert _last(node.client) == (
+        "move_child_configs_to_node",
+        (["cfg-1"], "node-1", ["cfg-1", "owner-2"], [7]),
+        {},
+    )
+
+
 def test_get_configs_by_ids_转发(node):
     node.get_configs_by_ids([3])
     assert _last(node.client) == ("get_configs_by_ids", ([3],), {})

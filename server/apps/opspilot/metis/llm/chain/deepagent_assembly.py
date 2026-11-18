@@ -26,10 +26,14 @@ _STEP_SUMMARY_MAX_CHARS = 1200
 _CARRY_OVER_MARKER = "【本步已取得的结构化结果，后续步骤直接引用】"
 _CARRY_OVER_MAX_CHARS = 8000
 
-# 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
+# 监控工具额外标出后续调用要用的 id，不把别的工具的 id 改写成 instance_id。
+# 任意列表再按原字段名保留短标量，写文件的下一步才能展开明细，而不是只看到总数。
 _MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
 _MONITOR_INSTANCE_TOOLS = frozenset({"monitor_list_object_instances"})
 _MONITOR_METRIC_TOOLS = frozenset({"monitor_list_object_metrics"})
+_ROW_FACT_LIMIT = 20
+_ROW_FIELD_LIMIT = 12
+_ROW_VALUE_LIMIT = 80
 
 
 class DeepAgentAssemblyMixin:
@@ -224,7 +228,10 @@ class DeepAgentAssemblyMixin:
             name = str(getattr(message, "name", "") or "tool")
             tool_bits.append(f"{name}: {str(getattr(message, 'content', '') or '')[:400]}")
         if tool_bits:
-            return "；".join(tool_bits)[:1200]
+            tool_summary = "；".join(tool_bits)[:1200]
+            if carry_over:
+                return cls._join_step_summary(tool_summary, carry_over)
+            return tool_summary
         if ai_text:
             return ai_text[:200]
         return "步骤已完成"
@@ -346,7 +353,7 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _tool_result_structured_facts(cls, tool_name: str, content) -> list[str]:
-        """按工具类型提关键字段。监控带实例 id，仪表盘检索带数据源目录。"""
+        """监控和仪表盘保留调用链要用的 id。其余列表按原字段名留下短标量。"""
         payload = cls._parse_tool_result_payload(content)
         if payload is None:
             return []
@@ -374,7 +381,57 @@ class DeepAgentAssemblyMixin:
                 metric = str(row.get("name") or "").strip()
                 if metric:
                     facts.append(f"metric={metric}")
+        facts.extend(cls._record_row_facts(payload))
         return facts
+
+    @classmethod
+    def _record_row_facts(cls, payload: dict) -> list[str]:
+        """列表里的短标量按原字段名带走。长正文和嵌套对象不进摘要。"""
+        rows = [row for row in cls._rows_of(payload) if isinstance(row, dict)]
+        facts = []
+        for row in rows[:_ROW_FACT_LIMIT]:
+            parts = []
+            for key, value in row.items():
+                if not isinstance(key, str) or not key.strip():
+                    continue
+                text = cls._scalar_fact_text(value)
+                if not text:
+                    continue
+                parts.append(f"{key}={text}")
+                if len(parts) >= _ROW_FIELD_LIMIT:
+                    break
+            if parts:
+                facts.append(" ".join(parts))
+        if len(rows) > _ROW_FACT_LIMIT:
+            facts.append(f"rows_truncated=true shown={_ROW_FACT_LIMIT} total={len(rows)}")
+        return facts
+
+    @staticmethod
+    def _scalar_fact_text(value) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        if isinstance(value, str):
+            text = " ".join(value.split())
+            if not text or len(text) > _ROW_VALUE_LIMIT:
+                return ""
+            return text
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+                    continue
+                text = " ".join(str(item).split())
+                if text:
+                    parts.append(text)
+                if len(parts) == 3:
+                    break
+            joined = ",".join(parts)
+            if not joined or len(joined) > _ROW_VALUE_LIMIT:
+                return ""
+            return joined
+        return ""
 
     @staticmethod
     def _rows_of(payload) -> list:

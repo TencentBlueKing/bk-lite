@@ -108,7 +108,8 @@ def test_member_group_names_only_current_org_members():
 
     found = PolicyGroupService.member_group_names([host.id, left.id, outsider.id], organization=1)
 
-    assert found == {host.id: {"id": group.id, "name": "主机默认告警"}}
+    assert found == {host.id: {"id": group.id, "name": "主机默认告警", "organization": 1}}
+    assert PolicyGroupService.member_group_names([host.id, left.id, outsider.id], organization={1}) == found
 
 
 @pytest.mark.django_db(transaction=True)

@@ -8,6 +8,7 @@ import { Studio } from '@/app/opspilot/types/studio';
 import { message, Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import { showStudioRetirementNotice } from '@/app/opspilot/utils/studioRetirementNotice';
 import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
 import { useUserInfoContext } from '@/context/userInfo';
 import StudioRetirementNotice from './StudioRetirementNotice';
@@ -66,7 +67,7 @@ const StudioPage: React.FC = () => {
 
   return (
     <>
-      {userId && <StudioRetirementNotice key={userId} userId={userId} />}
+      {userId && showStudioRetirementNotice && <StudioRetirementNotice key={userId} userId={userId} />}
       <EntityList<Studio>
         endpoint="/opspilot/bot_mgmt/bot/"
         CardComponent={StudioCard}

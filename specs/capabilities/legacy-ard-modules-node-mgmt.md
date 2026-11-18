@@ -33,7 +33,7 @@ REST 路由组：`node`/`cloud_region`/`sidecar_env`/`collector`/`controller`/`c
 
 > 证据来源：server/apps/node_mgmt/models/sidecar.py:50-52，server/apps/node_mgmt/services/module_push.py:129-193,370-400　|　同步基线：d2769559　|　【已实现】
 
-节点退役联动【已实现】：删除节点时必须向 CMDB 发送 lifecycle，只清除该主机上的 `node_id`（实例保留，避免悬挂指针）。卸载不新增 CMDB lifecycle。删除和卸载都软退役 `node_id` / `monitor_id` 对应的那一台监控主机：离开在线列表、停采、关闭活动告警，保留实例行和子配置，并清掉监控实例上的 `node_id`。监控自己创建的采集对象和日志采集实例不删除，只标记采集节点已删除，由用户清除配置或更换节点。默认父配置名「采集器-节点ID」会让出。这些步骤失败不阻断页面删除；卸载步骤失败则留下节点记录。拉同步在源侧节点消失后同样只清 sidecar `node_id`，不删主机。
+节点退役联动【已实现】：删除节点时必须向 CMDB 发送 lifecycle，只清除该主机上的 `node_id`（实例保留，避免悬挂指针）。远程卸载删节点前按节点自身组织调用 `best_effort_unlink_cmdb`，同样只清 `node_id`。删除和卸载都不软删 `node_id` / `monitor_id` 对应的那一台监控主机：只清监控实例 `node_id`，本次全部 `CollectConfig` 写 `executor_node_removed` 快照并关闭活动告警，实例留在列表（停采待处理：至少一条 `CollectConfig` 且全部 `executor_node_removed=True`）。监控自己创建的采集对象和日志采集实例不删除，只标记采集节点已删除，由用户清除配置或更换节点。监控清除与更换经 `NodeMgmt(is_local_client=True)` 本进程调用已注册 NATS 方法读写子配置，不读 `Node` 表。默认父配置名「采集器-节点ID」会让出。这些步骤失败不阻断页面删除；卸载步骤失败则留下节点记录。拉同步在源侧节点消失后同样只清 sidecar `node_id`，不删主机。
 
 > 证据来源：server/apps/node_mgmt/views/node.py，server/apps/node_mgmt/services/node_collection_exit.py，server/apps/node_mgmt/tasks/installer.py，server/apps/monitor/services/collector_node_exit.py，server/apps/log/services/collector_node_exit.py　|　同步基线：d2769559　|　【已实现】
 

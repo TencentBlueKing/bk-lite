@@ -73,6 +73,7 @@ import {
   sameMonitorInstance
 } from './instanceConfigLink';
 import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
+import { CollectorNodeColumn } from './collectorNodes';
 import ReassignCollectorModal from './reassignCollectorModal';
 import { getAssetSearchPlaceholderKey } from '@/app/monitor/utils/assetSearchPlaceholder';
 
@@ -493,6 +494,24 @@ const Asset = () => {
         }
       },
       {
+        title: t('monitor.integrations.collectionNode'),
+        dataIndex: 'collector_nodes',
+        key: 'collector_nodes',
+        onCell: () => ({
+          style: {
+            overflow: 'hidden'
+          }
+        }),
+        render: (_, record) => (
+          <CollectorNodeColumn
+            plugins={record.plugins}
+            notAssociatedText={t('monitor.integrations.notAssociated')}
+            offlineText={t('monitor.integrations.collectorNodeOffline')}
+            removedText={t('monitor.integrations.collectorNodeRemoved')}
+          />
+        )
+      },
+      {
         title: t('monitor.group'),
         dataIndex: 'organization',
         key: 'organization',
@@ -717,6 +736,7 @@ const Asset = () => {
         let width = 150;
         if (key === ASSET_IP_COLUMN_KEY) width = 160;
         else if (column.key === 'plugins') width = 380;
+        else if (column.key === 'collector_nodes') width = 280;
         else if (column.key === 'organization') width = 140;
         else if (column.key === 'instance_name') width = 180;
         withWidth = { ...column, width };

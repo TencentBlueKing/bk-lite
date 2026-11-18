@@ -2,7 +2,6 @@
 
 import json
 import logging
-import traceback
 from pathlib import Path
 
 import pytest
@@ -1141,7 +1140,7 @@ def test_link_conflict_when_ids_disagree(host_object):
 
 
 @pytest.mark.django_db
-def test_lifecycle_retire_soft_deactivates_without_hard_delete(host_object):
+def test_lifecycle_retire_from_node_mgmt_skips_without_deleting(host_object):
     created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret"}))
     inst_id = created["id"]
     assert MonitorInstance.objects.filter(id=inst_id, is_deleted=False, is_active=True).exists()
@@ -1155,14 +1154,13 @@ def test_lifecycle_retire_soft_deactivates_without_hard_delete(host_object):
         )
     )
 
-    assert result["updated"] is True
+    assert result["skipped"] is True
+    assert result["updated"] is False
     assert result["id"] == inst_id
-    # 仍在库中：软删，非物理删除
-    assert MonitorInstance.objects.filter(id=inst_id).count() == 1
     inst = MonitorInstance.objects.get(id=inst_id)
-    assert inst.is_deleted is True
-    assert inst.is_active is False
-    assert MonitorInstance.objects.filter(id=inst_id, is_deleted=False).count() == 0
+    assert inst.is_deleted is False
+    assert inst.is_active is True
+    assert inst.node_id == "n-ret"
 
 
 @pytest.mark.django_db
@@ -1196,76 +1194,30 @@ def test_upsert_still_requires_allowed_org_ids(host_object):
 
 
 @pytest.mark.django_db
-def test_lifecycle_retire_clears_cmdb_id_and_notifies_cmdb(host_object, mocker, caplog):
+def test_lifecycle_retire_from_node_mgmt_keeps_instance_and_cmdb(host_object, mocker):
     created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret-ci", "cmdb_id": "ci-9"}))
     inst_id = created["id"]
     notify = mocker.patch(
         "apps.monitor.services.module_push.MonitorToCmdbPushService.best_effort_notify_on_delete",
     )
 
-    with caplog.at_level(logging.INFO, logger="monitor"):
-        result = MonitorModuleIngestService.ingest(
-            _params(
-                source_id="n-ret-ci",
-                event_type="lifecycle",
-                link_ids={"node_id": "n-ret-ci", "monitor_id": inst_id, "cmdb_id": "ci-9"},
-                raw={"action": "retire"},
-            )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_id="n-ret-ci",
+            event_type="lifecycle",
+            link_ids={"node_id": "n-ret-ci", "monitor_id": inst_id, "cmdb_id": "ci-9"},
+            raw={"action": "retire"},
         )
-
-    assert result["updated"] is True
-    inst = MonitorInstance.objects.get(id=inst_id)
-    assert inst.is_deleted is True
-    assert inst.is_active is False
-    assert inst.cmdb_id in (None, "")
-    notify.assert_called_once()
-    snapshot = notify.call_args.args[0][0]
-    assert snapshot["id"] == inst_id
-    assert snapshot["cmdb_id"] == "ci-9"
-    retire_logs = [r for r in caplog.records if "lifecycle retire soft-deactivated" in r.msg]
-    assert retire_logs
-    assert retire_logs[0].msg == ("[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s cmdb_id_cleared=%s")
-    assert retire_logs[0].args == (inst_id, True)
-    assert "ci-9" not in retire_logs[0].getMessage()
-
-
-@pytest.mark.django_db
-def test_lifecycle_retire_survives_cmdb_notify_failure(host_object, mocker, caplog):
-    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret-fail", "cmdb_id": "ci-fail"}))
-    inst_id = created["id"]
-    mocker.patch(
-        "apps.monitor.services.module_push.MonitorToCmdbPushService.best_effort_notify_on_delete",
-        side_effect=RuntimeError("peer unavailable"),
     )
 
-    with caplog.at_level(logging.ERROR, logger="monitor"):
-        result = MonitorModuleIngestService.ingest(
-            _params(
-                source_id="n-ret-fail",
-                event_type="lifecycle",
-                link_ids={"node_id": "n-ret-fail", "monitor_id": inst_id, "cmdb_id": "ci-fail"},
-                raw={"action": "retire"},
-            )
-        )
-
-    assert result["updated"] is True
+    assert result["skipped"] is True
+    assert result["updated"] is False
     inst = MonitorInstance.objects.get(id=inst_id)
-    assert inst.is_deleted is True
-    assert inst.cmdb_id in (None, "")
-    fail_logs = [r for r in caplog.records if "retire notify cmdb unlink failed" in r.msg]
-    assert fail_logs
-    assert fail_logs[0].msg == ("[MonitorModuleIngest] retire notify cmdb unlink failed monitor_id=%s failed_stage=%s error_type=%s")
-    assert fail_logs[0].args == (inst_id, "cmdb_unlink_notify", "RuntimeError")
-    assert fail_logs[0].exc_info is not None
-    formatted = fail_logs[0].getMessage()
-    assert inst_id in formatted
-    assert "failed_stage=cmdb_unlink_notify" in formatted
-    assert "error_type=RuntimeError" in formatted
-    assert "ci-fail" not in formatted
-    assert "peer unavailable" not in formatted
-    traceback_text = "".join(traceback.format_exception(*fail_logs[0].exc_info))
-    assert "RuntimeError: peer unavailable" in traceback_text
-    assert traceback_text.count("Traceback (most recent call last):") == 1
+    assert inst.is_deleted is False
+    assert inst.is_active is True
+    assert inst.cmdb_id == "ci-9"
+    assert inst.node_id == "n-ret-ci"
+    notify.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -1293,9 +1245,9 @@ def test_lifecycle_from_cmdb_only_clears_cmdb_id(host_object):
 
 
 @pytest.mark.django_db
-def test_lifecycle_idempotent_when_already_retired(host_object):
+def test_lifecycle_retire_from_node_mgmt_repeat_stays_skipped(host_object):
     created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret2"}))
-    MonitorModuleIngestService.ingest(
+    first = MonitorModuleIngestService.ingest(
         _params(
             source_id="n-ret2",
             event_type="lifecycle",
@@ -1311,8 +1263,12 @@ def test_lifecycle_idempotent_when_already_retired(host_object):
             raw={"action": "retire"},
         )
     )
-    assert again["ignored"] is True
-    assert MonitorInstance.objects.filter(id=created["id"]).count() == 1
+    assert first["skipped"] is True
+    assert again["skipped"] is True
+    inst = MonitorInstance.objects.get(id=created["id"])
+    assert inst.is_deleted is False
+    assert inst.is_active is True
+    assert inst.node_id == "n-ret2"
 
 
 # ----- 创建场景分流：模板套用 -----
@@ -1499,7 +1455,7 @@ def test_node_push_reclaim_log_uses_stable_template(host_object, mock_collect_ap
 
 
 @pytest.mark.django_db
-def test_node_push_after_exit_does_not_revive_retired_host(host_object, mock_collect_apply):
+def test_node_push_same_ip_hits_original_instance(host_object, mock_collect_apply):
     canonical = normalize_instance_identity("1_os_10.0.0.1")["storage_instance_key"]
     retired = MonitorInstance.objects.create(
         id=canonical,
@@ -1531,16 +1487,13 @@ def test_node_push_after_exit_does_not_revive_retired_host(host_object, mock_col
     )
 
     retired.refresh_from_db()
-    created = MonitorInstance.objects.get(id=result["id"])
-    assert result["id"] != canonical
-    assert result["created"] is True
-    assert retired.is_deleted is True
-    assert retired.is_active is False
-    assert retired.node_id is None
+    assert result["id"] == canonical
+    assert result["created"] is False
+    assert result["updated"] is True
+    assert MonitorInstance.objects.count() == 1
+    assert retired.node_id == "n2"
     assert retired.cmdb_id == "ci-kept"
-    assert created.node_id == "n2"
-    assert created.cmdb_id in (None, "")
-    assert created.is_deleted is False
+    assert retired.is_deleted is False
     assert CollectConfig.objects.filter(id="retired-host-child", monitor_instance_id=canonical).exists()
 
 
@@ -2417,3 +2370,217 @@ def test_allow_credential_create_without_named_plugin_does_not_create_shell(host
 
     mock_collect_apply.assert_not_called()
     assert MonitorInstance.objects.count() == 0
+
+
+def _collector_node(node_id, ip, organization_id=1):
+    from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization
+    from apps.node_mgmt.models.sidecar import ChildConfig
+
+    region = CloudRegion.objects.create(name=f"ingest-region-{node_id}")
+    collector = Collector.objects.create(
+        id=f"ingest-telegraf-{node_id}",
+        name="Telegraf",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/telegraf",
+        execute_parameters="-c",
+    )
+    node = Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip=ip,
+        operating_system="linux",
+        collector_configuration_directory="/etc/telegraf",
+        cloud_region=region,
+    )
+    NodeOrganization.objects.create(node=node, organization=organization_id)
+    parent = CollectorConfiguration.objects.create(
+        name=f"Telegraf-old-{node_id}",
+        collector=collector,
+        cloud_region=region,
+        is_pre=True,
+    )
+    return region, node, parent, ChildConfig, collector
+
+
+@pytest.mark.django_db
+def test_same_ip_push_reattaches_removed_host_outside_transaction(host_object, mock_collect_apply, monkeypatch):
+    from django.db import connection
+
+    from apps.node_mgmt.models import Collector, CollectorConfiguration
+    from apps.node_mgmt.models.sidecar import ChildConfig, NodeCollectorConfiguration
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    region, node, parent, _child_model, collector = _collector_node("ingest-new-node", "10.8.8.8")
+    host_child = ChildConfig.objects.create(
+        id="ingest-host-cpu",
+        collect_type="host",
+        config_type="cpu",
+        content="[[inputs.cpu]]",
+        collector_config=parent,
+    )
+    mysql_collector = Collector.objects.create(
+        id="ingest-mysql-collector",
+        name="MysqlCollector",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/mysql",
+        execute_parameters="-c",
+    )
+    mysql_parent = CollectorConfiguration.objects.create(
+        name="Mysql-old-ingest",
+        collector=mysql_collector,
+        cloud_region=region,
+        is_pre=True,
+    )
+    mysql_child = ChildConfig.objects.create(
+        id="ingest-mysql",
+        collect_type="database",
+        config_type="mysql",
+        content="[[inputs.mysql]]",
+        collector_config=mysql_parent,
+    )
+    instance = MonitorInstance.objects.create(
+        id="('ingest-parked-host',)",
+        name="parked-host",
+        monitor_object=host_object,
+        ip="10.8.8.8",
+        cloud_region_id=region.id,
+        node_id=None,
+        is_deleted=False,
+        is_active=True,
+    )
+    CollectConfig.objects.create(
+        id=host_child.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+        executor_node_id="old-ingest-node",
+        executor_node_name="old-ingest-node",
+    )
+    CollectConfig.objects.create(
+        id=mysql_child.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="database",
+        config_type="mysql",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+        executor_node_id="old-ingest-node",
+        executor_node_name="old-ingest-node",
+    )
+    before = len(connection.atomic_blocks)
+    depths = []
+    original_move = NodeMgmt.move_child_configs_to_node
+
+    def _move(self, config_ids, node_id, owner_config_ids, organization_ids):
+        depths.append(len(connection.atomic_blocks))
+        return original_move(self, config_ids, node_id, owner_config_ids, organization_ids)
+
+    monkeypatch.setattr(NodeMgmt, "move_child_configs_to_node", _move)
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_id=node.id,
+            link_ids={"node_id": node.id},
+            raw={
+                "ip": "10.8.8.8",
+                "name": "parked-host",
+                "cloud_region_id": region.id,
+                "organization_ids": [1],
+            },
+        )
+    )
+
+    assert before >= 1
+    assert depths == [before]
+    assert result["updated"] is True
+    assert result["id"] == instance.id
+    assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
+    instance.refresh_from_db()
+    host_child.refresh_from_db()
+    mysql_child.refresh_from_db()
+    host_config = CollectConfig.objects.get(id=host_child.id)
+    mysql_config = CollectConfig.objects.get(id=mysql_child.id)
+    assert instance.node_id == node.id
+    assert host_config.executor_node_removed is False
+    assert host_config.executor_node_id == ""
+    assert list(host_child.collector_config.nodes.values_list("id", flat=True)) == [node.id]
+    assert NodeCollectorConfiguration.objects.filter(node_id=node.id, collector_config_id=host_child.collector_config_id).exists()
+    assert mysql_child.collector_config_id == mysql_parent.id
+    assert mysql_config.executor_node_removed is True
+    mock_collect_apply.assert_not_called()
+    assert collector.id
+
+
+@pytest.mark.django_db
+def test_same_ip_push_does_not_reattach_when_any_host_config_is_live(host_object, mock_collect_apply, monkeypatch):
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    region, node, parent, child_model, _collector = _collector_node("ingest-live-node", "10.8.8.9")
+    cpu = child_model.objects.create(
+        id="ingest-live-cpu",
+        collect_type="host",
+        config_type="cpu",
+        content="[[inputs.cpu]]",
+        collector_config=parent,
+    )
+    mem = child_model.objects.create(
+        id="ingest-live-mem",
+        collect_type="host",
+        config_type="mem",
+        content="[[inputs.mem]]",
+        collector_config=parent,
+    )
+    instance = MonitorInstance.objects.create(
+        id="('ingest-partial-host',)",
+        name="partial-host",
+        monitor_object=host_object,
+        ip="10.8.8.9",
+        cloud_region_id=region.id,
+        is_deleted=False,
+        is_active=True,
+    )
+    CollectConfig.objects.create(
+        id=cpu.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+    )
+    CollectConfig.objects.create(
+        id=mem.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="mem",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=False,
+    )
+
+    def _move(*args, **kwargs):
+        raise AssertionError("move")
+
+    monkeypatch.setattr(NodeMgmt, "move_child_configs_to_node", _move)
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_id=node.id,
+            link_ids={"node_id": node.id},
+            raw={"ip": "10.8.8.9", "cloud_region_id": region.id, "organization_ids": [1]},
+        )
+    )
+
+    assert result["id"] == instance.id
+    assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
+    assert CollectConfig.objects.get(id=cpu.id).executor_node_removed is True
+    mock_collect_apply.assert_not_called()

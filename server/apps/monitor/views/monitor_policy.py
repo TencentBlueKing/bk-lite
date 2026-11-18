@@ -28,11 +28,11 @@ from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
-from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
 from apps.monitor.services.policy_dry_run import PolicyDryRunService
 from apps.monitor.services.policy_preview import PolicyPreviewService
+from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -519,34 +519,16 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         current_tz = timezone.get_current_timezone()
 
         if schedule_type == "min":
-            return CrontabSchedule.objects.get_or_create(
-                minute=f"*/{value}",
-                hour="*",
-                day_of_month="*",
-                month_of_year="*",
-                day_of_week="*",
-                timezone=current_tz,
-            )[0]
+            fields = {"minute": f"*/{value}", "hour": "*", "day_of_month": "*"}
         elif schedule_type == "hour":
-            return CrontabSchedule.objects.get_or_create(
-                minute=0,
-                hour=f"*/{value}",
-                day_of_month="*",
-                month_of_year="*",
-                day_of_week="*",
-                timezone=current_tz,
-            )[0]
+            fields = {"minute": "0", "hour": f"*/{value}", "day_of_month": "*"}
         elif schedule_type == "day":
-            return CrontabSchedule.objects.get_or_create(
-                minute=0,
-                hour=0,
-                day_of_month=f"*/{value}",
-                month_of_year="*",
-                day_of_week="*",
-                timezone=current_tz,
-            )[0]
+            fields = {"minute": "0", "hour": "0", "day_of_month": f"*/{value}"}
         else:
             raise BaseAppException("Invalid schedule type")
+        fields.update(month_of_year="*", day_of_week="*", timezone=current_tz)
+        # CrontabSchedule 没有唯一约束，库里可能已有同值重复行，get_or_create 会抛 MultipleObjectsReturned。
+        return CrontabSchedule.objects.filter(**fields).order_by("id").first() or CrontabSchedule.objects.create(**fields)
 
     def update_or_create_task(self, policy_id, schedule):
         task_name = f"scan_policy_task_{policy_id}"
@@ -557,11 +539,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         # 解析 schedule，并创建相应的调度
         format_crontab = self.format_crontab(schedule)
         # 定时任务开关跟随策略 enable；改 schedule 不能把停用策略重新派发。
-        enabled = (
-            MonitorPolicy.objects.filter(id=policy_id)
-            .values_list("enable", flat=True)
-            .first()
-        )
+        enabled = MonitorPolicy.objects.filter(id=policy_id).values_list("enable", flat=True).first()
         # 创建新的 PeriodicTask
         PeriodicTask.objects.create(
             name=task_name,

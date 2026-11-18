@@ -1,4 +1,4 @@
-"""节点删除时可选 retire_linked → lifecycle 退役已关联模块对象。"""
+"""节点删除时 unlink CMDB，并向已关联模块发送 lifecycle。"""
 
 import logging
 from types import SimpleNamespace
@@ -10,7 +10,7 @@ from apps.core.logger import SafeLogException, safe_log_value
 from apps.core.utils import current_team_scope
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
-from apps.node_mgmt.services.module_push import ModulePushService, parse_retire_linked_flag
+from apps.node_mgmt.services.module_push import ModulePushService
 from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE
 from apps.node_mgmt.services.node_collection_exit import EXIT_FAILED_LOG
 from apps.node_mgmt.views import node as node_view
@@ -64,21 +64,6 @@ def _auth_delete(path, *, query=None, data=None, permissions=("cloud_region_node
     force_authenticate(request, user=user)
     request.user = user
     return request
-
-
-def test_parse_retire_linked_defaults_false():
-    req = SimpleNamespace(query_params={}, data={})
-    assert parse_retire_linked_flag(req) is False
-
-
-def test_parse_retire_linked_from_query():
-    req = SimpleNamespace(query_params={"retire_linked": "true"}, data={})
-    assert parse_retire_linked_flag(req) is True
-
-
-def test_parse_retire_linked_from_body():
-    req = SimpleNamespace(query_params={}, data={"retire_linked": True})
-    assert parse_retire_linked_flag(req) is True
 
 
 def test_retire_linked_pushes_lifecycle_to_cmdb_and_monitor(mocker, linked_node):
@@ -136,26 +121,8 @@ def test_best_effort_unlink_cmdb_even_without_cmdb_id(mocker, linked_node):
     assert monitor.call_count == 0
 
 
-def test_best_effort_retire_only_targets_with_ids(mocker, linked_node):
-    linked_node.monitor_id = ""
-    linked_node.save(update_fields=["monitor_id"])
-    cmdb = mocker.patch("apps.node_mgmt.services.module_push.CMDB")
-    cmdb.return_value.ingest_from_source.return_value = {"id": 42, "updated": True}
-    monitor = mocker.patch("apps.node_mgmt.services.module_push.MonitorLinkage")
-
-    ModulePushService.best_effort_retire_linked(
-        linked_node,
-        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
-        max_attempts=1,
-    )
-
-    cmdb.return_value.ingest_from_source.assert_called_once()
-    assert monitor.call_count == 0
-
-
 def test_destroy_always_exits_collection_and_ignores_retire_linked(mocker, linked_node, monkeypatch):
     unlink = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_unlink_cmdb")
-    retire = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked")
     exit_collection = mocker.patch("apps.node_mgmt.views.node.NodeCollectionExitService.apply")
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     monkeypatch.setattr(
@@ -172,7 +139,6 @@ def test_destroy_always_exits_collection_and_ignores_retire_linked(mocker, linke
 
     assert response.status_code == 200
     unlink.assert_called_once()
-    retire.assert_not_called()
     exit_collection.assert_called_once()
     destroy.assert_called_once_with(linked_node)
 

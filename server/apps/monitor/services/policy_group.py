@@ -505,13 +505,19 @@ class PolicyGroupService:
 
     @staticmethod
     def member_group_names(instance_ids, organization):
-        """当前组织下，这些实例作为成员所在的策略组。未入组或不在本组织的不返回。"""
+        """给定组织范围内，这些实例作为成员所在的策略组。未入组或不在范围内的不返回。"""
         if not instance_ids:
+            return {}
+        if isinstance(organization, (int, str)):
+            organizations = [int(organization)]
+        else:
+            organizations = [int(item) for item in organization]
+        if not organizations:
             return {}
         allowed = set(
             MonitorInstanceOrganization.objects.filter(
                 monitor_instance_id__in=list(instance_ids),
-                organization=organization,
+                organization__in=organizations,
             ).values_list("monitor_instance_id", flat=True)
         )
         if not allowed:
@@ -519,10 +525,17 @@ class PolicyGroupService:
         rows = PolicyGroupMembership.objects.filter(
             state=PolicyGroupMembership.STATE_MEMBER,
             monitor_instance_id__in=allowed,
-            policy_group__organization=organization,
+            policy_group__organization__in=organizations,
             policy_group__isnull=False,
         ).select_related("policy_group")
-        return {row.monitor_instance_id: {"id": row.policy_group_id, "name": row.policy_group.name} for row in rows}
+        return {
+            row.monitor_instance_id: {
+                "id": row.policy_group_id,
+                "name": row.policy_group.name,
+                "organization": row.policy_group.organization,
+            }
+            for row in rows
+        }
 
     @staticmethod
     def list_members(group):

@@ -10,6 +10,17 @@ from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundar
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.utils.i18n import choice_message, serializer_message
 
+_SCHEDULE_ERROR_DETAIL_LIMIT = 300
+
+
+def _schedule_failure_message(serializer, key: str, default: str, exc: BaseException) -> str:
+    """把调度失败的真实异常写进用户可见文案，避免只剩「请检查 Cron」。"""
+    detail = " ".join(str(exc).split()) or type(exc).__name__
+    if len(detail) > _SCHEDULE_ERROR_DETAIL_LIMIT:
+        detail = detail[: _SCHEDULE_ERROR_DETAIL_LIMIT - 1].rstrip() + "…"
+    detail = detail.replace("{", "(").replace("}", ")")
+    return serializer_message(serializer, key, default, detail=detail)
+
 
 class ScheduledTaskListSerializer(serializers.ModelSerializer):
     """定时任务列表序列化器"""
@@ -158,13 +169,29 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             instance = ScheduledTask.objects.create(**validated_data)
 
             # 创建 celery-beat PeriodicTask
-            periodic_task = ScheduledTaskService.create_periodic_task(instance)
+            try:
+                periodic_task = ScheduledTaskService.create_periodic_task(instance)
+            except Exception as exc:
+                raise serializers.ValidationError(
+                    {
+                        "non_field_errors": [
+                            _schedule_failure_message(
+                                self,
+                                "error.schedule_create_failed_detail",
+                                "创建定时调度任务失败：{detail}",
+                                exc,
+                            )
+                        ]
+                    }
+                ) from exc
             if periodic_task:
                 instance.periodic_task_id = periodic_task.id
                 instance.save(update_fields=["periodic_task_id"])
             else:
-                # PeriodicTask 创建失败，回滚整个事务
-                raise serializers.ValidationError({"non_field_errors": [serializer_message(self, "error.schedule_create_failed", "创建定时调度任务失败，请检查 Cron 表达式或计划执行时间")]})
+                # 表达式缺失等可预期失败没有底层异常，仍提示检查 Cron / 计划时间
+                raise serializers.ValidationError(
+                    {"non_field_errors": [serializer_message(self, "error.schedule_create_failed", "创建定时调度任务失败，请检查 Cron 表达式或计划执行时间")]}
+                )
 
         return instance
 
@@ -232,13 +259,29 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
             instance.save()
 
             # 更新 celery-beat PeriodicTask
-            periodic_task = ScheduledTaskService.update_periodic_task(instance)
+            try:
+                periodic_task = ScheduledTaskService.update_periodic_task(instance)
+            except Exception as exc:
+                raise serializers.ValidationError(
+                    {
+                        "non_field_errors": [
+                            _schedule_failure_message(
+                                self,
+                                "error.schedule_update_failed_detail",
+                                "更新定时调度任务失败：{detail}",
+                                exc,
+                            )
+                        ]
+                    }
+                ) from exc
             if periodic_task:
                 instance.periodic_task_id = periodic_task.id
                 instance.save(update_fields=["periodic_task_id"])
             elif instance.is_enabled:
                 # 启用状态下 PeriodicTask 更新失败，回滚
-                raise serializers.ValidationError({"non_field_errors": [serializer_message(self, "error.schedule_update_failed", "更新定时调度任务失败，请检查配置")]})
+                raise serializers.ValidationError(
+                    {"non_field_errors": [serializer_message(self, "error.schedule_update_failed", "更新定时调度任务失败，请检查配置")]}
+                )
 
         return instance
 

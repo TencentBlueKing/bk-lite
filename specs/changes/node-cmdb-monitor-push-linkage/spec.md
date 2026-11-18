@@ -21,6 +21,7 @@ Status: ready
 5. As a 监控用户, I want 手动创建的监控对象可推送到 CMDB 并互存双方 ID, so that 从观测域补配置身份。
 6. As a 平台用户, I want 在节点侧同时勾选并成功推送到 CMDB 与监控后三方都保存 node_id、cmdb_id、monitor_id, so that 完整联动可对齐身份。
 7. As a 节点管理员, I want 删除或卸载节点时确认是否一并退役已关联对象, so that 既可避免幽灵监控也能只删节点。
+   - 已由 `specs/changes/node-exit-monitor-parking/spec.md` 取代。
 8. As a 平台管理员, I want 推送能力上线后关闭 CMDB 拉取节点同步, so that 不会与用户勾选推送双写。
    - **已取代**：见 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md)。
 
@@ -76,6 +77,7 @@ Status: ready
 
 - 任一模块删除实例时，best-effort 通知另外两边的统一 lifecycle ingest（钩子失败不阻断删除）。
 - **节点删除/卸载**：
+  - 下列监控软退役、离开在线列表、不自动捞回旧实例、卸载不新增 CMDB lifecycle，以及 `retire_linked` 决定监控侧行为的描述，已由 `specs/changes/node-exit-monitor-parking/spec.md` 取代。
   - 删除节点时 **必须** 向 CMDB 发 lifecycle：只清除 `node_id`，不删实例（悬挂 `node_id` 视为脏数据）。卸载不新增 CMDB lifecycle。
   - 删除与卸载使用同一套关联检查。页面不再用 `retire_linked` 决定监控侧行为。
   - 联动监控主机（`node_id` / `monitor_id` 对应的那一台）随动软退役：离开在线列表、停采、关闭该实例活动告警；实例行和子配置保留，历史指标仍按原实例 ID 查看；同时清掉监控实例上的 `node_id`。节点以后重新出现按新推送建立关联，不自动捞回旧实例。
@@ -83,7 +85,7 @@ Status: ready
   - 默认父配置名「采集器-节点ID」在节点退出后让出。联动主机退役后，其主机子配置不能被无主主机子配置清理删掉。
   - CMDB：只清除 `node_id`，不删实例。
 - **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。删除通知在操作者组织为空时，用被删对象自身组织作为 lifecycle 授权；lifecycle 按精确 ID 清指针，组织缺失也必须能清掉对端指针。
-- **节点删除不再发送 CMDB 退役**：联动主机软退役只发生在监控侧，不清监控行上的 `cmdb_id`，也不因此通知 CMDB 清 `monitor_id`。CMDB 资产保留，删除节点时仍只清 CMDB 上的 `node_id`。
+- **节点删除不再发送 CMDB 退役**：联动主机软退役只发生在监控侧，不清监控行上的 `cmdb_id`，也不因此通知 CMDB 清 `monitor_id`。CMDB 资产保留，删除节点时仍只清 CMDB 上的 `node_id`。其中监控侧软退役已由 `specs/changes/node-exit-monitor-parking/spec.md` 取代。
 - **修改身份字段**：改 IP / 名称 / 组织不断开既有绑定，也不自动改绑；用户写路径不得覆盖 `monitor_id` / `cmdb_id` / `node_id`。
 - 节点侧 lifecycle 永不删节点，只清本侧关联指针。
 - ~~本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。~~ 已被 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md) 取代：拉同步默认打开，与推送共用 `node_id` + ip/cloud 认实体，禁止双建。

@@ -27,6 +27,7 @@ from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noq
     get_planned_execution_run_model_call_limit,
 )
 from apps.opspilot.services.python_sandbox.result_backend import RESULT_READ_TOOLS, is_result_read
+from apps.opspilot.services.workflow_attachment_service import MINIO_CONNECTION_FAILURE_MESSAGE
 
 # 规划/执行分步模式下禁止暴露给模型的 DeepAgent 内置能力。
 # FS 工具允许在执行步常驻（便于大结果落盘）；write_todos / task / execute 会绕过
@@ -175,9 +176,14 @@ def _is_empty_success(content: str) -> bool:
 
 def _is_service_unreachable(content: str) -> bool:
     """下游服务连不上。成功结果里出现的 connection refused 字样不算。"""
+    text = str(content or "")
+    if text.strip() == MINIO_CONNECTION_FAILURE_MESSAGE:
+        return True
     if not is_tool_result_failure(content):
         return False
-    return _SERVICE_UNREACHABLE_RE.search(str(content or "")) is not None
+    if MINIO_CONNECTION_FAILURE_MESSAGE in text:
+        return True
+    return _SERVICE_UNREACHABLE_RE.search(text) is not None
 
 
 def _retry_denial(name: str, call_id: str, content: str) -> ToolMessage:

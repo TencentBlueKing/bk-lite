@@ -1073,6 +1073,49 @@ class InstanceConfigService:
         return fact_input
 
     @staticmethod
+    def _take_parked_host_instances(instances, actor_context):
+        """主机配置全部停采时挂到所选节点。返回已挂回的实例 ID，以及仍要走创建的实例。"""
+        indexed = []
+        for instance in instances:
+            instance_id = instance.get("storage_instance_key") or instance.get("instance_id")
+            if instance_id:
+                indexed.append((instance_id, instance))
+        if not indexed:
+            return [], instances
+        instance_ids = [instance_id for instance_id, _instance in indexed]
+        removed_flags = {}
+        rows = CollectConfig.objects.filter(
+            monitor_instance_id__in=instance_ids,
+            collector=HostDeploymentStatus.COLLECTOR,
+            collect_type=HostDeploymentStatus.COLLECT_TYPE,
+        ).values_list("monitor_instance_id", "executor_node_removed")
+        for instance_id, removed in rows:
+            removed_flags.setdefault(instance_id, []).append(bool(removed))
+        parked_ids = {instance_id for instance_id, flags in removed_flags.items() if flags and all(flags)}
+        if not parked_ids:
+            return [], instances
+
+        permission_data = None
+        if actor_context is not None:
+            permission_data = InstanceConfigService._build_permission_data(actor_context)
+            permission_data["is_superuser"] = bool(actor_context.get("is_superuser", False))
+        from apps.monitor.services.collector_node_exit import MonitorCollectorNodeExit
+
+        reattached_ids = []
+        for instance_id, instance in indexed:
+            if instance_id not in parked_ids:
+                continue
+            node_ids = InstanceConfigService._process_node_ids(instance)
+            if not node_ids:
+                raise BaseAppException("采集节点不存在")
+            MonitorCollectorNodeExit.reassign(instance_id, node_ids[0], permission_data)
+            MonitorInstance.objects.filter(id=instance_id).update(node_id=node_ids[0])
+            reattached_ids.append(instance_id)
+        remaining = [instance for instance_id, instance in indexed if instance_id not in parked_ids]
+        remaining.extend(instance for instance in instances if not (instance.get("storage_instance_key") or instance.get("instance_id")))
+        return reattached_ids, remaining
+
+    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):  # noqa: C901
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -1186,13 +1229,23 @@ class InstanceConfigService:
         policy_group_context = None
         try:
             with transaction.atomic():
-                new_instances, existing_instances, reclaimable_ids = InstanceConfigService._prepare_instances_for_creation(
-                    prepared_instances,
-                    monitor_object_id,
-                    collect_type,
-                    collector,
-                    data.get("configs", []),
-                )
+                reattached_ids = []
+                creation_instances = prepared_instances
+                if is_host_monitoring_onboarding:
+                    reattached_ids, creation_instances = InstanceConfigService._take_parked_host_instances(
+                        prepared_instances,
+                        actor_context,
+                    )
+                if creation_instances:
+                    new_instances, existing_instances, reclaimable_ids = InstanceConfigService._prepare_instances_for_creation(
+                        creation_instances,
+                        monitor_object_id,
+                        collect_type,
+                        collector,
+                        data.get("configs", []),
+                    )
+                else:
+                    new_instances, existing_instances, reclaimable_ids = [], [], []
                 if is_host_monitoring_onboarding and existing_instances:
                     existing_instance_ids = [instance["instance_id"] for instance in existing_instances]
                     if CollectConfig.objects.filter(
@@ -1201,60 +1254,65 @@ class InstanceConfigService:
                         collect_type=HostDeploymentStatus.COLLECT_TYPE,
                     ).exists():
                         raise BaseAppException("监控实例已存在主机监控配置，无法重复接入")
-                if not new_instances and not existing_instances:
+                if not new_instances and not existing_instances and not reattached_ids:
                     logger.info("没有需要处理的实例")
                     return []
 
-                logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
-                if reclaimable_ids:
-                    from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
+                if new_instances or existing_instances:
+                    logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
+                    if reclaimable_ids:
+                        from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 
-                    MonitorInstanceRemovalService.remove(reclaimable_ids)
+                        MonitorInstanceRemovalService.remove(reclaimable_ids)
 
-                # 阶段2：数据库操作（使用外层事务）
-                created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
-                    new_instances,
-                    existing_instances,
-                    monitor_object_id,
-                    actor_context=actor_context,
-                )
-                logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
+                    # 阶段2：数据库操作（使用外层事务）
+                    created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
+                        new_instances,
+                        existing_instances,
+                        monitor_object_id,
+                        actor_context=actor_context,
+                    )
+                    logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 
-                # 阶段3：调用 Controller 创建采集配置（使用外层事务）
-                # 注意：所有实例（新建+已存在）都需要创建采集配置
-                sanitized_data = {**data}
-                sanitized_data["instances"] = [
-                    {key: value for key, value in instance.items() if key not in {"_summary_fact_source", "summary_facts"}}
-                    for instance in new_instances + existing_instances
-                ]
-                sanitized_data["monitor_plugin_id"] = monitor_plugin_id
-                onboarding_ids = [
-                    str(instance["instance_id"]) for instance in sanitized_data["instances"] if instance.get("instance_id") not in (None, "")
-                ]
-                purge_reused_vault_rows(onboarding_ids, plugin, onboarding_plan)
-                Controller(sanitized_data).controller()
-                InstanceConfigService._validate_expected_collect_configs(
-                    sanitized_data["instances"],
-                    sanitized_data.get("configs", []),
-                    monitor_plugin_id,
-                    collect_type,
-                )
-                logger.info("采集配置创建成功")
-                policy_group_context = {
-                    "new_instances": new_instances,
-                    "existing_instances": existing_instances,
-                    "created_ids": set(created_instance_ids),
-                    "choice": data.get("policy_group"),
-                }
-                processed_instance_ids = [
-                    str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
-                ]
-                finalize_onboarding_credential(
-                    processed_instance_ids,
-                    getattr(plugin, "id", None),
-                    onboarding_plan,
-                    actor_context,
-                )
+                    # 阶段3：调用 Controller 创建采集配置（使用外层事务）
+                    # 注意：所有实例（新建+已存在）都需要创建采集配置
+                    sanitized_data = {**data}
+                    sanitized_data["instances"] = [
+                        {key: value for key, value in instance.items() if key not in {"_summary_fact_source", "summary_facts"}}
+                        for instance in new_instances + existing_instances
+                    ]
+                    sanitized_data["monitor_plugin_id"] = monitor_plugin_id
+                    onboarding_ids = [
+                        str(instance["instance_id"]) for instance in sanitized_data["instances"] if instance.get("instance_id") not in (None, "")
+                    ]
+                    purge_reused_vault_rows(onboarding_ids, plugin, onboarding_plan)
+                    Controller(sanitized_data).controller()
+                    InstanceConfigService._validate_expected_collect_configs(
+                        sanitized_data["instances"],
+                        sanitized_data.get("configs", []),
+                        monitor_plugin_id,
+                        collect_type,
+                    )
+                    logger.info("采集配置创建成功")
+                    policy_group_context = {
+                        "new_instances": new_instances,
+                        "existing_instances": existing_instances,
+                        "created_ids": set(created_instance_ids),
+                        "choice": data.get("policy_group"),
+                    }
+                    processed_instance_ids = [
+                        str(instance["instance_id"])
+                        for instance in new_instances + existing_instances
+                        if instance.get("instance_id") not in (None, "")
+                    ]
+                    finalize_onboarding_credential(
+                        processed_instance_ids,
+                        getattr(plugin, "id", None),
+                        onboarding_plan,
+                        actor_context,
+                    )
+                if reattached_ids:
+                    processed_instance_ids = list(dict.fromkeys([*processed_instance_ids, *reattached_ids]))
 
                 # ✅ 所有操作成功，事务自动提交
 

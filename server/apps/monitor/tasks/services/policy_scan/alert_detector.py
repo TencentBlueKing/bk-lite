@@ -3,10 +3,10 @@
 from string import Template
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Exists, F, OuterRef
 
 from apps.core.logger import celery_logger as logger
-from apps.monitor.models import MonitorAlert, MonitorEvent
+from apps.monitor.models import CollectConfig, MonitorAlert, MonitorEvent, MonitorInstance
 from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.tasks.utils.policy_calculate import calculate_alerts, vm_to_dataframe
@@ -194,12 +194,38 @@ class AlertDetector:
         aggregation_metrics = self.metric_query_service.query_existence_metrics(self.policy.no_data_period)
         aggregation_result = self.metric_query_service.format_aggregation_metrics(aggregation_metrics)
 
-        events = self._build_no_data_events(aggregation_result)
+        events = self._exclude_parked_no_data_events(self._build_no_data_events(aggregation_result))
 
         if events:
             self._log_no_data_events(events, aggregation_metrics)
 
         return events
+
+    @staticmethod
+    def _parked_instance_ids(instance_ids):
+        """停采待处理：至少一条采集配置，且全部标记采集节点已删除。"""
+        candidate_ids = [instance_id for instance_id in instance_ids if instance_id]
+        if not candidate_ids:
+            return set()
+        any_config = CollectConfig.objects.filter(monitor_instance_id=OuterRef("pk"))
+        live_config = CollectConfig.objects.filter(
+            monitor_instance_id=OuterRef("pk"),
+            executor_node_removed=False,
+        )
+        return set(
+            MonitorInstance.objects.filter(id__in=candidate_ids)
+            .annotate(_has_config=Exists(any_config), _has_live_config=Exists(live_config))
+            .filter(_has_config=True, _has_live_config=False)
+            .values_list("id", flat=True)
+        )
+
+    def _exclude_parked_no_data_events(self, events):
+        if not events:
+            return events
+        parked_ids = self._parked_instance_ids(event.get("monitor_instance_id") for event in events)
+        if not parked_ids:
+            return events
+        return [event for event in events if event.get("monitor_instance_id") not in parked_ids]
 
     def _filter_events_by_scope(self, events):
         return [
