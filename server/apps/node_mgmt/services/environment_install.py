@@ -11,6 +11,15 @@ from apps.node_mgmt.models import CloudRegion, EnvironmentInstallAttempt, Enviro
 from apps.system_mgmt.models import SystemAPIToken
 
 INSTALL_ENDPOINTS = ["POST node-mgmt/environment-install", "POST node-mgmt/environment-install-status"]
+HEARTBEAT_FRESHNESS = timedelta(minutes=2)
+
+
+def heartbeat_is_fresh(last_heartbeat_at, created_at, *, now=None):
+    """心跳必须不早于建档时间，并且落在最近两分钟内。"""
+    if last_heartbeat_at is None or created_at is None:
+        return False
+    current = now or timezone.now()
+    return last_heartbeat_at >= max(created_at, current - HEARTBEAT_FRESHNESS)
 
 
 class EnvironmentInstallService:
@@ -199,8 +208,7 @@ class EnvironmentInstallService:
         if (
             not node
             or not attempt.registered_at
-            or not attempt.last_heartbeat_at
-            or attempt.last_heartbeat_at < max(attempt.created_at, timezone.now() - timedelta(minutes=2))
+            or not heartbeat_is_fresh(attempt.last_heartbeat_at, attempt.created_at)
             or f"environment_install:{attempt.id}" not in node.tags
             or f"environment_package_sha256:{grant.package_sha256}" not in node.tags
             or set(NodeOrganization.objects.filter(node_id=attempt.node_id).values_list("organization", flat=True)) != {grant.team}
@@ -230,7 +238,8 @@ class EnvironmentInstallService:
         for row in rows:
             item = dict(row)
             registered = bool(row.get("registered_at"))
-            components = EnvironmentInstallService._component_rows(grant, nodes.get(row["node_id"]), registered)
+            fresh = heartbeat_is_fresh(row.get("last_heartbeat_at"), row.get("created_at"))
+            components = EnvironmentInstallService._component_rows(grant, nodes.get(row["node_id"]), registered and fresh)
             item["components"] = components
             item["components_healthy"] = all(component["status"] == "healthy" for component in components)
             executor = next((component for component in components if component.get("name") == "NATS-Executor"), None)
