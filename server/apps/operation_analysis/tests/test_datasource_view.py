@@ -1355,6 +1355,53 @@ def test_list_includes_empty_groups_builtin_for_any_org(authenticated_user):
 
 @pytest.mark.django_db
 @pytest.mark.integration
+def test_catalog_list_hides_inactive_datasource_but_canvas_lookup_keeps_it(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    _grant_view(authenticated_user)
+    retired = DataSourceAPIModel.objects.create(
+        name="retired-builtin",
+        rest_api="monitor/query_monitor_alerts",
+        groups=[],
+        is_build_in=True,
+        is_active=False,
+        chart_type=[],
+        build_in_key="监控告警查询::monitor/query_monitor_alerts",
+    )
+    active = DataSourceAPIModel.objects.create(
+        name="active-builtin",
+        rest_api="monitor/query_monitor_alerts",
+        groups=[],
+        is_build_in=True,
+        is_active=True,
+        chart_type=["table"],
+        build_in_key="监控告警通用查询::monitor/query_monitor_alerts",
+    )
+    factory = APIRequestFactory()
+    catalog = factory.get("/operation_analysis/api/data_source/", {"page_size": -1, "mode": "brief"})
+    catalog.COOKIES["current_team"] = "1"
+    force_authenticate(catalog, user=authenticated_user)
+    catalog_response = datasource_view.DataSourceAPIModelViewSet.as_view({"get": "list"})(catalog)
+    catalog_response.render()
+    catalog_ids = _list_ids(json.loads(catalog_response.rendered_content))
+    assert active.id in catalog_ids
+    assert retired.id not in catalog_ids
+
+    lookup = factory.get(
+        "/operation_analysis/api/data_source/",
+        {"page_size": -1, "mode": "detail", "ids": f"{retired.id},{active.id}"},
+    )
+    lookup.COOKIES["current_team"] = "1"
+    force_authenticate(lookup, user=authenticated_user)
+    lookup_response = datasource_view.DataSourceAPIModelViewSet.as_view({"get": "list"})(lookup)
+    lookup_response.render()
+    lookup_ids = _list_ids(json.loads(lookup_response.rendered_content))
+    assert retired.id in lookup_ids
+    assert active.id in lookup_ids
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
 def test_superuser_list_includes_restricted_builtin_from_other_org(authenticated_user):
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 

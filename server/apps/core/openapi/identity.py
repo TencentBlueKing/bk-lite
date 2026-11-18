@@ -42,6 +42,7 @@ class CallerIdentity:
     credential_type: str
     team_ids: list = field(default_factory=list)
     is_superuser: bool = False
+    is_auditor: bool = False
     permission: dict = field(default_factory=dict)
     roles: list = field(default_factory=list)
     # JWT 路径带完整组织对象（[{id, name}]）；API 令牌路径为 None，_me 按需补齐名称
@@ -119,6 +120,7 @@ def _authenticate_api_token(token: str) -> CallerIdentity:
         credential_type=CREDENTIAL_API_TOKEN,
         team_ids=[team],
         is_superuser=bool(getattr(user, "is_superuser", False)),
+        is_auditor=bool(getattr(user, "is_auditor", False)) and not bool(getattr(user, "is_superuser", False)),
         permission=raw_permission,
         roles=list(getattr(user, "roles", []) or []),
         groups=None,
@@ -145,6 +147,7 @@ def _authenticate_jwt(token: str) -> CallerIdentity:
         credential_type=CREDENTIAL_JWT,
         team_ids=[int(g["id"]) for g in raw_groups if "id" in g],
         is_superuser=bool(ctx.get("is_superuser")),
+        is_auditor=bool(ctx.get("is_auditor")) and not bool(ctx.get("is_superuser")),
         permission=permission,
         roles=list(ctx.get("roles") or []),
         groups=[{"id": g.get("id"), "name": g.get("name")} for g in raw_groups],
@@ -222,6 +225,7 @@ def _authenticate_system_token(request, token: str) -> CallerIdentity:
         credential_type=CREDENTIAL_SYSTEM_TOKEN,
         team_ids=[team_id],
         is_superuser=bool(getattr(user, "is_superuser", False)),
+        is_auditor=bool(getattr(user, "is_auditor", False)) and not bool(getattr(user, "is_superuser", False)),
         permission=raw_permission,
         roles=list(getattr(user, "roles", []) or []),
         groups=None,

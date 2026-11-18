@@ -130,6 +130,21 @@ class TestAPISecretAuthBackend:
         assert user.is_superuser is False
         assert "view_x" in user.permission.get("cmdb", set())
 
+    def test_api_token_auditor_is_not_django_superuser(self):
+        Menu.objects.create(name="asset_info-View", display_name="V", url="/v", app="cmdb")
+        Menu.objects.create(name="asset_info-Add", display_name="A", url="/a", app="cmdb")
+        BaseUser.objects.create(username="auduser", domain="domain.com")
+        UserAPISecret.objects.create(username="auduser", domain="domain.com", api_secret="audsec", team=5)
+        auditor_role, _ = Role.objects.get_or_create(name="auditor", app="", defaults={"menu_list": []})
+        SysUser.objects.create(username="auduser", domain="domain.com", role_list=[auditor_role.id], email="aud@x.com")
+
+        user = APISecretAuthBackend().authenticate(api_token="audsec")
+        assert user is not None
+        assert user.is_superuser is False
+        assert user.is_auditor is True
+        assert "asset_info-View" in user.permission.get("cmdb", set())
+        assert "asset_info-Add" not in user.permission.get("cmdb", set())
+
     def test_permission_cache_hit(self, mocker):
         BaseUser.objects.create(username="cuser", domain="domain.com")
         SysUser.objects.create(username="cuser", domain="domain.com", email="c@x.com")
@@ -414,6 +429,11 @@ class TestExtractAppNameAndSuperuser:
     def test_no_app_name_returns_false(self):
         req = _Req(path="/health/")
         assert AuthBackend.get_is_superuser(req, {"is_superuser": False, "roles": []}) is False
+
+    def test_get_is_superuser_ignores_auditor_role(self):
+        req = _Req(path="/api/v1/cmdb/x/")
+        info = {"is_superuser": False, "is_auditor": True, "roles": ["auditor"]}
+        assert AuthBackend.get_is_superuser(req, info) is False
 
 
 class TestSetUserInfo:

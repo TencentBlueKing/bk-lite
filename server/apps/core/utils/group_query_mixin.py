@@ -6,6 +6,7 @@
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.logger import logger
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -84,8 +85,7 @@ class GroupQueryMixin:
         :param request: Django request对象
         :return: 用户组织ID列表
         """
-        # 如果是超级用户，获取所有组织
-        if hasattr(request.user, "is_superuser") and request.user.is_superuser:
+        if has_unrestricted_org_scope(request.user):
             return list(GroupUtils.active_queryset().values_list("id", flat=True))
 
         # 普通用户：group_list 可能残留归档 ID，活动投影只保留 is_delete=False

@@ -3,8 +3,8 @@ import type { CheckboxProps, MenuProps } from 'antd';
 import searchFilterStyle from './searchFilter.module.scss';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelector from '@/components/group-tree-select';
-import { Select, Input, InputNumber, Checkbox, DatePicker, Button, Tag, Dropdown, Modal, message, Tooltip } from 'antd';
-import { SearchOutlined, StarFilled, CloseOutlined, DownOutlined } from '@ant-design/icons';
+import { Select, Input, InputNumber, Checkbox, DatePicker, Button, Dropdown, Modal, message, Tooltip } from 'antd';
+import { SearchOutlined, StarFilled, CloseOutlined } from '@ant-design/icons';
 import { UserItem } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import { SearchFilterProps } from '@/app/cmdb/types/assetData';
@@ -47,27 +47,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   userList,
   proxyOptions,
   showExactSearch = true,
-  modelId = '',
   displayFieldKeys,
   allowShrink = false,
   syncSearchAttr = true,
   beforeExactSearch,
   onSearch,
-  onChange,
-  onFilterChange,
 }) => {
   const searchAttr_store = useAssetDataStore((state) => state.searchAttr);
-  const userConfigs = useAssetDataStore((state) => state.user_configs);
-  const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
-  const applySavedFilter = useAssetDataStore((state) => state.applySavedFilter);
-
-  const { saveFilters } = useSavedFiltersApi();
-
-  const savedFilters = useMemo(() => {
-    const allFilters = userConfigs.cmdb_saved_filters as SavedFiltersConfigValue | undefined;
-    return allFilters?.[modelId] || [];
-  }, [userConfigs.cmdb_saved_filters, modelId]);
-
   const [searchAttr, setSearchAttr] = useState<string>("");
   const [searchValue, setSearchValue] = useState<any>('');
   const [isExactSearch, setIsExactSearch] = useState<boolean>(false);
@@ -186,6 +172,10 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     onSearch(condition, value);
   };
 
+  const stageSearchValue = (value: unknown) => {
+    setSearchValue(value);
+  };
+
   const onSearchAttrChange = (attr: string) => {
     setSearchValue('');
     if (syncSearchAttr) {
@@ -210,67 +200,6 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     onSearchValueChange(searchValue, isExactSearch);
   };
 
-  const handleApplySavedFilter = (filter: SavedFilter) => {
-    const newFilters = applySavedFilter(filter);
-    onChange?.(newFilters);
-    onFilterChange?.(newFilters);
-  };
-
-  const handleDeleteSavedFilter = (filter: SavedFilter, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-
-    Modal.confirm({
-      title: t('common.confirm'),
-      content: t('common.delConfirmCxt'),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      okButtonProps: { danger: true },
-      centered: true,
-      onOk: async () => {
-        try {
-          const allSavedFilters = (userConfigs.cmdb_saved_filters ||
-            {}) as SavedFiltersConfigValue;
-          const currentFilters = allSavedFilters[modelId] || [];
-          const updatedFilters = currentFilters.filter(
-            (f) => f.id !== filter.id,
-          );
-          const updatedAllFilters: SavedFiltersConfigValue = {
-            ...allSavedFilters,
-            [modelId]: updatedFilters,
-          };
-
-          await saveFilters(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters, false);
-          updateUserConfig(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters);
-
-          message.success(t('FilterBar.deleteSuccess'));
-        } catch {
-          message.error(t('FilterBar.deleteFailed'));
-        }
-      },
-    });
-  };
-
-  // 显示收藏的筛选条件
-  const visibleSavedFilters = isCompact
-    ? savedFilters.slice(0, 1)
-    : savedFilters.slice(0, 3);
-  const moreSavedFilters = isCompact
-    ? savedFilters.slice(1)
-    : savedFilters.slice(3);
-
-  const moreFiltersMenuItems: MenuProps['items'] = moreSavedFilters.map((filter) => ({
-    key: filter.id,
-    label: (
-      <div className="flex items-center justify-between">
-        <span onClick={() => handleApplySavedFilter(filter)}>{filter.name}</span>
-        <CloseOutlined
-          className="ml-2 text-[10px] text-[var(--color-text-3)]"
-          onClick={(e) => handleDeleteSavedFilter(filter, e)}
-        />
-      </div>
-    ),
-  }));
-
   const renderSearchInput = () => {
     const selectedAttr = attrList.find((attr) => attr.attr_id === searchAttr);
     // 特殊处理-主机的云区域为下拉选项
@@ -282,8 +211,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           showSearch
           className="value w-[200px]"
           value={toCloudSelectValue(searchValue)}
-          onChange={(e) => onSearchValueChange(e, isExactSearch)}
-          onClear={() => onSearchValueChange('', isExactSearch)}
+          onChange={stageSearchValue}
+          onClear={() => stageSearchValue('')}
         >
           {proxyOptions.map((opt) => (
             <Select.Option key={String(opt.proxy_id)} value={Number(opt.proxy_id)}>
@@ -303,8 +232,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             showSearch
             className="value min-w-[200px]"
             value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
-            onChange={(e) => onSearchValueChange(e, isExactSearch)}
-            onClear={() => onSearchValueChange('', isExactSearch)}
+            onChange={stageSearchValue}
+            onClear={() => stageSearchValue([])}
             maxTagCount={2}
             maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
             filterOption={(input, opt: any) => {
@@ -337,8 +266,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               showSearch
               className="value min-w-[200px]"
               value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
-              onChange={(e) => onSearchValueChange(e, isExactSearch)}
-              onClear={() => onSearchValueChange([], isExactSearch)}
+              onChange={stageSearchValue}
+              onClear={() => stageSearchValue([])}
               maxTagCount={2}
               maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
               filterOption={(input, opt: any) => {
@@ -364,8 +293,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             showSearch
             className="value w-[200px]"
             value={searchValue}
-            onChange={(e) => onSearchValueChange(e, isExactSearch)}
-            onClear={() => onSearchValueChange('', isExactSearch)}
+            onChange={stageSearchValue}
+            onClear={() => stageSearchValue('')}
             filterOption={(input, opt: any) => {
               if (typeof opt?.children === 'string') {
                 return opt?.children
@@ -390,8 +319,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             showSearch
             className="value min-w-[260px]"
             value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
-            onChange={(e) => onSearchValueChange(e, true)}
-            onClear={() => onSearchValueChange([], true)}
+            onChange={stageSearchValue}
+            onClear={() => stageSearchValue([])}
             maxTagCount={2}
             maxTagPlaceholder={(omittedValues) => `+${omittedValues.length}`}
             options={getTagOptions(selectedAttr)}
@@ -403,8 +332,8 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             allowClear
             className="value w-[200px]"
             value={searchValue}
-            onChange={(e) => onSearchValueChange(e, isExactSearch)}
-            onClear={() => onSearchValueChange('', isExactSearch)}
+            onChange={stageSearchValue}
+            onClear={() => stageSearchValue('')}
           >
             {[
               { id: true, name: 'Yes' },
@@ -421,7 +350,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           <GroupTreeSelector
             style={{ width: 200 }}
             value={searchValue}
-            onChange={(e) => onSearchValueChange(e, isExactSearch)}
+            onChange={stageSearchValue}
           />
         );
       case 'time':
@@ -517,7 +446,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
   return (
     <>
-      <div className={`${searchFilterStyle.searchFilter} flex items-center${allowShrink ? ' min-w-0 shrink' : ''}`}>
+      <div className={`${searchFilterStyle.searchFilter} flex shrink-0 items-center`}>
         <Select
           className={`${searchFilterStyle.attrList} w-[120px] shrink-0`}
           value={searchAttr}
@@ -549,59 +478,72 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           </span>
         )}
 
-        {/* 收藏的筛选条件写在列表 store 上，弹窗不展示。 */}
-        {syncSearchAttr && savedFilters.length > 0 && (
-          <div className={searchFilterStyle.savedFiltersWrapper}>
-            <div className={searchFilterStyle.savedFiltersLabel}>
-              <StarFilled className={searchFilterStyle.starIcon} />
-              <span>
-                {!isCompact && t('FilterBar.savedFilters')}：
-              </span>
-            </div>
-            <div className={searchFilterStyle.savedFiltersTags}>
-              {visibleSavedFilters.map((filter) => {
-                const displayName =
-                  filter.name.length > 6
-                    ? `${filter.name.slice(0, 6)}...`
-                    : filter.name;
-                const tagContent = (
-                  <Tag
-                    key={filter.id}
-                    className={searchFilterStyle.savedFilterTag}
-                    onClick={() => handleApplySavedFilter(filter)}
-                  >
-                    <span>{displayName}</span>
-                    <CloseOutlined
-                      className={searchFilterStyle.closeIcon}
-                      onClick={(e) => handleDeleteSavedFilter(filter, e)}
-                    />
-                  </Tag>
-                );
-                return filter.name.length > 6 ? (
-                  <Tooltip key={filter.id} title={filter.name}>
-                    {tagContent}
-                  </Tooltip>
-                ) : (
-                  tagContent
-                );
-              })}
-              {moreSavedFilters.length > 0 && (
-                <Dropdown
-                  menu={{ items: moreFiltersMenuItems }}
-                  trigger={['click']}
-                >
-                  <Tag className={searchFilterStyle.moreFiltersTag}>
-                    <span>{t('FilterBar.moreSavedFilters')}</span>
-                    <DownOutlined className={searchFilterStyle.downIcon} />
-                  </Tag>
-                </Dropdown>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </>
   );
 };
+
+export function SavedFiltersMenu({ modelId }: { modelId: string }) {
+  const { t } = useTranslation();
+  const userConfigs = useAssetDataStore((state) => state.user_configs);
+  const updateUserConfig = useAssetDataStore((state) => state.updateUserConfig);
+  const applySavedFilter = useAssetDataStore((state) => state.applySavedFilter);
+  const { saveFilters } = useSavedFiltersApi();
+  const savedFilters = useMemo(() => {
+    const allFilters = userConfigs.cmdb_saved_filters as SavedFiltersConfigValue | undefined;
+    return allFilters?.[modelId] || [];
+  }, [userConfigs.cmdb_saved_filters, modelId]);
+
+  const handleDeleteSavedFilter = (filter: SavedFilter, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    Modal.confirm({
+      title: t('common.confirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      centered: true,
+      onOk: async () => {
+        const allSavedFilters = (userConfigs.cmdb_saved_filters || {}) as SavedFiltersConfigValue;
+        const updatedAllFilters: SavedFiltersConfigValue = {
+          ...allSavedFilters,
+          [modelId]: (allSavedFilters[modelId] || []).filter((item) => item.id !== filter.id),
+        };
+        await saveFilters(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters, false);
+        updateUserConfig(SAVED_FILTERS_CONFIG_KEY, updatedAllFilters);
+        message.success(t('FilterBar.deleteSuccess'));
+      },
+    });
+  };
+
+  const items: MenuProps['items'] = savedFilters.length
+    ? savedFilters.map((filter) => ({
+      key: filter.id,
+      label: (
+        <div className="flex min-w-[180px] items-center justify-between gap-3">
+          <span className="min-w-0 flex-1 truncate" onClick={() => applySavedFilter(filter)}>{filter.name}</span>
+          <CloseOutlined
+            className="shrink-0 text-[10px] text-[var(--color-text-3)]"
+            onClick={(event) => handleDeleteSavedFilter(filter, event)}
+          />
+        </div>
+      ),
+    }))
+    : [{ key: 'empty', disabled: true, label: t('FilterBar.noSavedFilters', '暂无已收藏条件') }];
+
+  return (
+    <Dropdown menu={{ items }} trigger={['hover']}>
+      <Tooltip title={t('FilterBar.savedFilters')}>
+        <Button
+          type="text"
+          className="shrink-0"
+          aria-label={t('FilterBar.savedFilters')}
+          icon={<StarFilled className={searchFilterStyle.starIcon} />}
+        />
+      </Tooltip>
+    </Dropdown>
+  );
+}
 
 export default SearchFilter;

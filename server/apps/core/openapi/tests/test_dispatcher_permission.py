@@ -63,6 +63,18 @@ def test_platform_superuser_still_bypasses_menus():
     assert _check_permission(identity, _endpoint()) is True
 
 
+def test_auditor_passes_view_but_does_not_bypass_write():
+    identity = _identity(
+        is_superuser=False,
+        is_auditor=True,
+        roles=["auditor"],
+        permission={"alarm": {"Alarms-View"}},
+    )
+    assert _check_permission(identity, _endpoint()) is True
+    assert _check_permission(identity, _endpoint(permission="Alarms-Add")) is False
+    assert _check_permission(_identity(is_auditor=True, permission={}), _endpoint()) is False
+
+
 def test_undeclared_permission_skips_app_admin():
     endpoint = _endpoint(permission="", permission_app="")
     assert _check_permission(_identity(roles=[]), endpoint) is True

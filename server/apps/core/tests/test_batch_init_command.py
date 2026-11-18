@@ -66,7 +66,7 @@ def test_opspilot_init_seeds_workbench_skill_templates(calls):
     names = [name for name, _args, _kwargs in calls]
     assert "init_llm" not in names
     assert names[:2] == ["init_skill_templates", "parse_tools_yml"]
-    assert "init_chatflow" in names
+    assert "init_chatflow" not in names
 
 
 class TestHandleDispatch:

@@ -267,6 +267,21 @@ def test_get_client_superuser_sees_all():
     assert any(a["name"] == "app1" for a in result["data"])
 
 
+@pytest.mark.django_db
+def test_get_client_auditor_sees_all_apps():
+    from apps.system_mgmt.nats.clients import get_client
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    App.objects.get_or_create(name="cmdb", defaults={"display_name": "CMDB", "url": "/cmdb"})
+    App.objects.get_or_create(name="monitor", defaults={"display_name": "Monitor", "url": "/monitor"})
+    role = ensure_platform_auditor_role()
+    User.objects.create(username="aud", domain="domain.com", role_list=[role.id], group_list=[], password="x", display_name="aud", email="aud@x.com")
+    result = get_client(username="aud", domain="domain.com")
+    names = {row["name"] for row in result["data"]}
+    assert "cmdb" in names
+    assert "monitor" in names
+
+
 def test_get_client_detail_found_and_missing():
     App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
     ok = nats_api.get_client_detail("dc")
@@ -296,6 +311,30 @@ def test_get_user_menus_with_role_filter():
     # 仅 host-view 被授权
     flat = [c["name"] for grp in result["data"] for c in grp["children"]]
     assert "host" in flat
+
+
+@pytest.mark.django_db
+def test_get_user_menus_auditor_only_view():
+    from apps.system_mgmt.nats.clients import get_user_menus
+
+    Menu.objects.create(app="cmdb", name="asset_info-View", display_name="资产-View", menu_type="asset", order=1)
+    Menu.objects.create(app="cmdb", name="asset_info-Add", display_name="资产-Add", menu_type="asset", order=2)
+    result = get_user_menus("cmdb", roles=[], username="aud", is_superuser=False, is_auditor=True)
+    ops = result["data"][0]["children"][0]["operation"]
+    assert "View" in ops
+    assert "Add" not in ops
+
+
+@pytest.mark.django_db
+def test_get_user_menus_superuser_wins_over_auditor_flag():
+    from apps.system_mgmt.nats.clients import get_user_menus
+
+    Menu.objects.create(app="cmdb", name="asset_info-View", display_name="资产-View", menu_type="asset", order=1)
+    Menu.objects.create(app="cmdb", name="asset_info-Add", display_name="资产-Add", menu_type="asset", order=2)
+    result = get_user_menus("cmdb", roles=[], username="admin", is_superuser=True, is_auditor=True)
+    ops = result["data"][0]["children"][0]["operation"]
+    assert "View" in ops
+    assert "Add" in ops
 
 
 # ---------------------------------------------------------------------------

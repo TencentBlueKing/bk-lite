@@ -18,6 +18,7 @@ from apps.core.utils.permission_cache import API_TOKEN_PERMISSION_CACHE_PREFIX, 
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Menu, Role
 from apps.system_mgmt.models import User as SystemUser
+from apps.system_mgmt.services.platform_roles import is_platform_admin, is_platform_auditor, view_permission_map
 from apps.system_mgmt.services.user_access import is_account_expired
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
@@ -168,6 +169,7 @@ class APISecretAuthBackend(ModelBackend):
                 stored = cached.get("permission", {})
                 user.permission = filter_permission_map({key: set(value) for key, value in stored.items()})
                 user.is_superuser = cached.get("is_superuser", False)
+                user.is_auditor = cached.get("is_auditor", False)
                 user.role_ids = cached.get("role_ids", [])
                 user.group_list = cached.get("group_list", user.group_list)
                 return
@@ -179,12 +181,13 @@ class APISecretAuthBackend(ModelBackend):
             role_list = Role.objects.filter(id__in=all_role_ids)
             role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
 
-            # 判断是否超级用户
-            is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+            is_superuser = is_platform_admin(role_names)
+            is_auditor = (not is_superuser) and is_platform_auditor(role_names)
 
-            # 获取权限（菜单）
             permission: Dict[str, Set[str]] = {}
-            if not is_superuser:
+            if is_auditor:
+                permission = {app: set(names) for app, names in view_permission_map().items()}
+            elif not is_superuser:
                 menu_list = role_list.values_list("menu_list", flat=True)
                 menu_ids: List[int] = []
                 for i in menu_list:
@@ -198,6 +201,7 @@ class APISecretAuthBackend(ModelBackend):
             user.roles = role_names
             user.permission = permission
             user.is_superuser = is_superuser
+            user.is_auditor = is_auditor
             user.role_ids = list(all_role_ids)
 
             try:
@@ -221,6 +225,7 @@ class APISecretAuthBackend(ModelBackend):
                     "roles": role_names,
                     "permission": {k: list(v) for k, v in permission.items()},
                     "is_superuser": is_superuser,
+                    "is_auditor": is_auditor,
                     "role_ids": list(all_role_ids),
                     "group_list": user.group_list,
                 },
@@ -238,6 +243,7 @@ class APISecretAuthBackend(ModelBackend):
             user.roles = []
             user.permission = {}
             user.is_superuser = False
+            user.is_auditor = False
             user.role_ids = []
             if getattr(user, "_api_secret_team_scope", False):
                 user.group_list = []
@@ -509,6 +515,7 @@ class AuthBackend(ModelBackend):
             user.role_ids = user_info.get("role_ids", [])
             user.display_name = user_info.get("display_name", "")
             user.group_tree = user_info.get("group_tree", [])
+            user.is_auditor = bool(user_info.get("is_auditor")) and not is_superuser
             return user
 
         except (OperationalError, InterfaceError):

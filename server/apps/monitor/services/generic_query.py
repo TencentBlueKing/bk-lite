@@ -381,6 +381,7 @@ def query_alert_distribution(
     time_range=None,
     locale: str | None = None,
     include_object_identity: bool = False,
+    monitor_object_ids=None,
 ) -> list[dict]:
     if not _filled(group_by):
         raise GenericQueryError("请选择按什么分布")
@@ -393,7 +394,7 @@ def query_alert_distribution(
         grouped = queryset.values(group_by).annotate(alert_count=Count("id"))
     rows = list(grouped)
     if group_by == "monitor_object_id":
-        rows = _include_zero_alert_objects(rows, instance_ids)
+        rows = _include_zero_alert_objects(rows, instance_ids, monitor_object_ids)
     if len(rows) > STAT_GROUP_MAX:
         raise GenericQueryError(f"分布分组超过 {STAT_GROUP_MAX} 组")
     if group_by == "monitor_object_id":
@@ -506,22 +507,27 @@ def _filter_alerts(queryset, level, status, alert_type, instance_ids, time_field
     return queryset.filter(**{f"{time_field}__gte": start, f"{time_field}__lt": end})
 
 
-def _include_zero_alert_objects(rows: list[dict], instance_ids) -> list[dict]:
-    """按监控对象分布时，这批实例所属、但没有告警的对象也返回 0。"""
-    ids = _id_list(instance_ids)
-    if not ids:
-        return rows
+def _include_zero_alert_objects(rows: list[dict], instance_ids, monitor_object_ids=None) -> list[dict]:
+    """按监控对象分布时，选中的对象，或这批实例所属但没有告警的对象，也返回 0。"""
     present = {str(row.get("_monitor_object_id")) for row in rows if row.get("_monitor_object_id") not in (None, "")}
     missing = []
     seen = set()
-    for object_id in MonitorInstance.objects.filter(id__in=ids).values_list("monitor_object_id", flat=True):
+
+    def add(object_id):
         if object_id in (None, ""):
-            continue
+            return
         text = str(object_id)
         if text in present or text in seen:
-            continue
+            return
         seen.add(text)
         missing.append(object_id)
+
+    ids = _id_list(instance_ids)
+    if ids:
+        for object_id in MonitorInstance.objects.filter(id__in=ids).values_list("monitor_object_id", flat=True):
+            add(object_id)
+    for object_id in _id_list(monitor_object_ids):
+        add(object_id)
     if not missing:
         return rows
     return [*rows, *({"_monitor_object_id": object_id, "alert_count": 0} for object_id in missing)]

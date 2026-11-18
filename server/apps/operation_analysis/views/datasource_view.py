@@ -1284,7 +1284,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             query,
             include_all_builtins=bool(getattr(request.user, "is_superuser", False)),
         )
-        queryset = queryset.filter(query).order_by(self.ORDERING_FIELD)
+        queryset = queryset.filter(query, is_active=True).order_by(self.ORDERING_FIELD)
         if ids:
             queryset = queryset.filter(id__in=ids)
         return self._list(queryset)
