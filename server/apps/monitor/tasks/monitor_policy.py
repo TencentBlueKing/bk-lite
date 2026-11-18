@@ -1,16 +1,17 @@
-from celery import shared_task
-from celery_singleton import Singleton
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+
+from celery import shared_task
+from celery_singleton import Singleton
 from django.db.models import F
-import time
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models import MonitorPolicy
 from apps.core.logger import celery_logger as logger
+from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.models import MonitorPolicy
 from apps.monitor.tasks.services.policy_scan import MonitorPolicyScan
 from apps.monitor.tasks.utils.policy_methods import period_to_seconds, source_has_dispatch_targets
-from apps.monitor.constants.alert_policy import AlertConstants
 
 
 def _run_scan_and_record_success(policy_obj, scan_time):
@@ -26,7 +27,14 @@ def _legacy_alert_center_retry_statuses(*, outbox_enabled, created_retry_enabled
     return ["new", "recovered", "closed"]
 
 
-@shared_task(base=Singleton, raise_on_duplicate=False)
+class _MonitorPolicyScanSingleton(Singleton):
+    """同一策略禁止并行扫描。锁必须过期，避免 worker 被杀后后续 Beat 被永久丢掉。"""
+
+    lock_expiry = AlertConstants.SCAN_POLICY_LOCK_EXPIRY_SECONDS
+    raise_on_duplicate = False
+
+
+@shared_task(base=_MonitorPolicyScanSingleton)
 def scan_policy_task(policy_id):
     """扫描监控策略
 
@@ -40,19 +48,13 @@ def scan_policy_task(policy_id):
     logger.info(f"开始执行监控策略扫描任务，策略ID: {policy_id}")
 
     try:
-        policy_obj = (
-            MonitorPolicy.objects.filter(id=policy_id)
-            .select_related("monitor_object")
-            .first()
-        )
+        policy_obj = MonitorPolicy.objects.filter(id=policy_id).select_related("monitor_object").first()
         if not policy_obj:
             raise BaseAppException(f"未找到ID为 {policy_id} 的监控策略")
 
         if not policy_obj.enable:
             duration = time.time() - start_time
-            logger.info(
-                f"监控策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s"
-            )
+            logger.info(f"监控策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s")
             return {"success": True, "duration": duration, "message": "策略未启用"}
 
         if not source_has_dispatch_targets(policy_obj.source):
@@ -91,15 +93,9 @@ def scan_policy_task(policy_id):
 
                 completed = 0
                 for i in range(planned):
-                    if (
-                        i > 0
-                        and time.time() - start_time
-                        >= AlertConstants.BACKFILL_SOFT_TIME_LIMIT_SECONDS
-                    ):
+                    if i > 0 and time.time() - start_time >= AlertConstants.BACKFILL_SOFT_TIME_LIMIT_SECONDS:
                         break
-                    scan_time = policy_obj.last_run_time + timedelta(
-                        seconds=period_seconds
-                    )
+                    scan_time = policy_obj.last_run_time + timedelta(seconds=period_seconds)
                     _run_scan_and_record_success(policy_obj, scan_time)
                     completed += 1
                     logger.debug(
@@ -125,9 +121,7 @@ def scan_policy_task(policy_id):
 
     except BaseAppException as e:
         duration = time.time() - start_time
-        logger.error(
-            f"监控策略 [{policy_id}] 执行失败（业务异常），耗时: {duration:.2f}s，错误: {str(e)}"
-        )
+        logger.error(f"监控策略 [{policy_id}] 执行失败（业务异常），耗时: {duration:.2f}s，错误: {str(e)}")
         raise
     except Exception as e:
         duration = time.time() - start_time
@@ -161,10 +155,7 @@ def retry_alert_center_lifecycle_notify_task():
             }
 
     from apps.monitor.models import MonitorAlert, MonitorPolicy
-    from apps.monitor.services.alert_lifecycle_notify import (
-        ALERT_CENTER_CREATED_RETRY_ENABLED,
-        AlertLifecycleNotifier,
-    )
+    from apps.monitor.services.alert_lifecycle_notify import ALERT_CENTER_CREATED_RETRY_ENABLED, AlertLifecycleNotifier
 
     retry_statuses = _legacy_alert_center_retry_statuses(
         outbox_enabled=ALERT_CENTER_OUTBOX_ENABLED,
@@ -178,20 +169,14 @@ def retry_alert_center_lifecycle_notify_task():
     if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
         # active 阶段不得按当前状态越过 outbox 中尚未完成的 created 代次；
         # shadow/rollback 阶段仍由 legacy 补偿负责实际送达。
-        retry_alerts = retry_alerts.exclude(
-            alert_center_deliveries__status__in=["pending", "delivering"]
-        )
+        retry_alerts = retry_alerts.exclude(alert_center_deliveries__status__in=["pending", "delivering"])
     alerts = list(retry_alerts.order_by("id")[:200])
     if not alerts:
         return {"success": True, "message": "no alerts to retry"}
 
     logger.info(f"告警中心补偿任务：发现 {len(alerts)} 条待重试告警")
 
-    new_policy_ids = {
-        alert.policy_id
-        for alert in alerts
-        if alert.status == "new" and alert.policy_id
-    }
+    new_policy_ids = {alert.policy_id for alert in alerts if alert.status == "new" and alert.policy_id}
     policies_by_id = MonitorPolicy.objects.in_bulk(new_policy_ids)
 
     groups = defaultdict(list)
@@ -222,17 +207,12 @@ def retry_alert_center_lifecycle_notify_task():
 
     if fail_ids:
         # F() 原子递增，避免与并发的即时层回写（置 0）竞态丢失更新
-        MonitorAlert.objects.filter(id__in=fail_ids).update(
-            alert_center_retry_count=F("alert_center_retry_count") + 1
-        )
+        MonitorAlert.objects.filter(id__in=fail_ids).update(alert_center_retry_count=F("alert_center_retry_count") + 1)
         # 即将达到重试上限（10）的告警在此处汇总告警，否则它们会静默从补偿查询中消失
         alerts_by_id = {a.id: a for a in alerts}
         exhausted_ids = [aid for aid in fail_ids if alerts_by_id[aid].alert_center_retry_count + 1 >= 10]
         if exhausted_ids:
-            logger.error(
-                f"告警中心补偿任务：以下 {len(exhausted_ids)} 条告警已达最大重试次数(10)，"
-                f"将不再补偿，需人工介入：{exhausted_ids}"
-            )
+            logger.error(f"告警中心补偿任务：以下 {len(exhausted_ids)} 条告警已达最大重试次数(10)，" f"将不再补偿，需人工介入：{exhausted_ids}")
 
     logger.info(f"告警中心补偿任务完成：成功 {len(success_ids)} 条，失败 {len(fail_ids)} 条")
     return {"success": True, "total": len(alerts), "succeeded": len(success_ids), "failed": len(fail_ids)}
