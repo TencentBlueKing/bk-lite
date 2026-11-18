@@ -6,7 +6,7 @@ type SwitchableInputConfig = NonNullable<ParamItem['inputConfig']> & {
   componentSwitch?: boolean;
 };
 
-const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'nodeGraph']);
+const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'nodeGraph', 'table']);
 
 export const supportsComponentSwitch = (chartType?: string): boolean =>
   Boolean(chartType && COMPONENT_SWITCH_CHART_TYPES.has(chartType));
@@ -65,6 +65,18 @@ export const reconcileComponentSwitchValue = (
  * 标量与组件切换一致：不在选项里则清空，不落到 options[0]。
  * `options` 未传入表示还在加载，保留现值；空数组表示上游为空或已经没有候选项，清空失效值。
  */
+export const sameParamValue = (
+  left: ParamItem['value'] | undefined,
+  right: ParamItem['value'] | undefined,
+): boolean => {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length
+      && left.every((item, index) => Object.is(item, right[index]));
+  }
+  return false;
+};
+
 export const reconcileComponentParamValue = (
   value: ParamItem['value'] | undefined,
   options?: InputOption[],

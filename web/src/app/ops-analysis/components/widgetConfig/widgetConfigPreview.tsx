@@ -292,7 +292,7 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
                   <div className="flex h-full min-h-0 w-full flex-col">
                     <div
                       ref={runtimeSlotRef}
-                      className="mb-1 max-w-full shrink-0 overflow-x-auto"
+                      className="mb-1 max-w-full shrink-0 overflow-x-auto overflow-y-hidden py-px"
                     />
                     {config ? (
                       <div className="h-full min-h-0 flex-1">

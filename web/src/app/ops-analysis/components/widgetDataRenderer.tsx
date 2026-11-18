@@ -67,6 +67,7 @@ import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import { useRegisterWidgetCsvExport, useWidgetCsvExportRegistry } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { getScreenWidgetScale } from "@/app/ops-analysis/components/widgets/shared/screenMetrics";
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { useDataVariableRuntime } from "@/app/ops-analysis/context/dataVariableRuntime";
@@ -506,12 +507,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       options={optionState.options}
       value={runtimeParamValue as string | number | undefined}
       onChange={handleRuntimeParamChange}
-      block={!headerRuntimeSlot}
+      block={false}
       chartThemeMode={config?.chartThemeMode}
+      scale={getScreenWidgetScale(screenRenderContext)}
     />
   ) : null;
   const runtimeHeaderControl =
-    chartType === "topN" && headerRuntimeSlot && componentSwitchControl
+    (chartType === "topN" || chartType === "table") && headerRuntimeSlot && componentSwitchControl
       ? createPortal(
         componentSwitchControl,
         headerRuntimeSlot,
@@ -1498,6 +1500,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           onReady={handleRendererReady}
           onError={handleRendererError}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
+          paginationResetKey={chartType === "table" ? JSON.stringify(runtimeParams) : undefined}
           componentSwitchControl={inlineComponentSwitchControl}
           errorMessage={
             hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
