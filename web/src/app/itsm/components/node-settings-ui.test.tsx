@@ -32,5 +32,7 @@ it('取消最后一个操作仍提交空操作列表',async()=>{
   fireEvent.click(screen.getByRole('button',{name:'配置节点'}));
   fireEvent.click(await screen.findByRole('tab',{name:'操作按钮'}));
   fireEvent.click(screen.getByRole('checkbox',{name:'同意'}));
-  await waitFor(()=>expect(change).toHaveBeenCalledWith({actions:[]}));
+  expect(change).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'应用到流程草稿'}));
+  await waitFor(()=>expect(change).toHaveBeenCalledWith(expect.objectContaining({actions:[]})));
 });

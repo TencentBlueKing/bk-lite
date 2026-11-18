@@ -1,7 +1,7 @@
 'use client';
 import { Button, Checkbox, Input, Select, Space, Table, Tabs, Tag } from 'antd';
 import { useEffect, useState } from 'react';
-import OperateModal from '@/components/operate-modal';
+import { ItsmDrawer as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import type { CanvasNodeData } from '../constants/demo-flow';
 import type { FormFieldSchema } from '../types';
 import { NODE_ACTIONS } from '../constants/node-catalog';
@@ -12,10 +12,13 @@ import { FormRenderer } from './form-renderer';
 export function flattenNodeFields(fields: FormFieldSchema[]): FormFieldSchema[] {
   return fields.flatMap(field => [field, ...flattenNodeFields(field.children || [])]);
 }
-export function NodeSettings({ data, fields, onChange }: { data: CanvasNodeData; fields: FormFieldSchema[]; onChange: (patch: Partial<CanvasNodeData>) => void }) {
+export function NodeSettings({ data: source, fields, onChange: commit }: { data: CanvasNodeData; fields: FormFieldSchema[]; onChange: (patch: Partial<CanvasNodeData>) => void }) {
+  const [draft, setDraft] = useState<CanvasNodeData>();
+  const data = draft || source;
+  const onChange = (patch: Partial<CanvasNodeData>) => setDraft({ ...data, ...patch });
   const api = useItsmApi();
   const [open, setOpen] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [tab, setTab] = useState('handler');
   const [keyword, setKeyword] = useState('');
   const [groups, setGroups] = useState<{id:number;name:string}[]>([]);
   const [groupError, setGroupError] = useState('');
@@ -42,10 +45,11 @@ export function NodeSettings({ data, fields, onChange }: { data: CanvasNodeData;
   });
   const previewForm = <FormRenderer key={JSON.stringify(data.fieldPerm)} schema={{version:1,fields}} fieldPerm={data.fieldPerm as Parameters<typeof FormRenderer>[0]['fieldPerm']} hideSubmit onSubmit={() => undefined} />;
   return <>
-    <Button type="primary" onClick={() => setOpen(true)}>配置节点</Button>
-    <Button onClick={() => setPreview(true)}>预览该节点</Button>
-    <OperateModal title={`${data.label} · 节点配置`} open={open} onCancel={() => setOpen(false)} width={1000} footer={<Button type="primary" onClick={() => setOpen(false)}>完成配置</Button>}>
-      <Tabs items={[
+    <Button type="primary" onClick={() => { setDraft(source); setTab('handler'); setOpen(true); }}>配置节点</Button>
+    <Button onClick={() => { setDraft(source); setTab('preview'); setOpen(true); }}>预览该节点</Button>
+    <OperateModal title={`${data.label} · 节点配置`} open={open} formValue={data} onCancel={() => { setOpen(false); setDraft(undefined); }} width={1000} onOk={() => { commit(data); setOpen(false); setDraft(undefined); }} okText="应用到流程草稿">
+      <Tabs activeKey={tab} onChange={setTab} items={[
+        {key:"preview", label:"节点预览", children:<>{previewForm}<Space className="mt-4" wrap>{actions.map(action=><Button key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Button>)}</Space></>},
         {key:'handler',label:'处理人',children:<div className="flex flex-col gap-4">
           <Select aria-label="处理人来源" value={data.assigneeSource || 'users'} options={[{value:'users',label:'指定人员'},{value:'handler_group',label:'指定处理组'},{value:'variable',label:'引用人员字段 / 提单人'}]} onChange={source => onChange({assigneeSource:source,assignees:[],assigneeValue:undefined})} />
           {(!data.assigneeSource || data.assigneeSource === 'users') && <UserSelector value={data.assignees} onChange={assignees => onChange({assignees})} />}
@@ -69,13 +73,9 @@ export function NodeSettings({ data, fields, onChange }: { data: CanvasNodeData;
             {title:'必填',render:(_,field)=><Checkbox aria-label={`${field.label}必填`} checked={Boolean(field.required || data.fieldPerm?.[field.key]==='required')} disabled={Boolean(inherited.has(field.key) || field.required || field.children?.length || ['read','readonly','hidden'].includes(data.fieldPerm?.[field.key] || '') || ['readonly','disabled','hidden'].includes(field.state || ''))} onChange={event=>onChange({fieldPerm:{...data.fieldPerm,[field.key]:event.target.checked?'required':'edit'}})} />},
           ]} />
           <span className="text-xs text-[var(--color-text-3)]">分组设置会应用到子字段；隐藏保留已有数据，只读禁止修改。表单本身的隐藏、只读和必填约束继续生效。</span>
-          <Button onClick={()=>setPreview(true)}>预览该节点</Button>
+          <Button onClick={()=>setTab('preview')}>预览该节点</Button>
         </div>},
       ]} />
-    </OperateModal>
-    <OperateModal title={`${data.label} · 节点预览`} open={preview} width={1000} footer={null} destroyOnHidden onCancel={()=>setPreview(false)}>
-      <div className="mb-4 text-xs text-[var(--color-text-3)]">预览仅展示字段权限和按钮，不提交工单或执行外部动作。</div>
-      {previewForm}<Space className="mt-4" wrap>{actions.map(action=><Button key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Button>)}</Space>
     </OperateModal>
   </>;
 }
