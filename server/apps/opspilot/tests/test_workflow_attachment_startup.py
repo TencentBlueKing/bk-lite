@@ -4,8 +4,19 @@ import ast
 from pathlib import Path
 
 import pytest
+from urllib3.exceptions import MaxRetryError, NewConnectionError
 
-from apps.opspilot.services.workflow_attachment_service import _iter_markdown_blocks, build_attachment_bytes, normalize_attachment_file_type
+from apps.opspilot.models import WorkflowAttachmentAsset
+from apps.opspilot.services.attachment_theme import inline_text
+from apps.opspilot.services.workflow_attachment_service import (
+    MINIO_CONNECTION_FAILURE_MESSAGE,
+    _is_minio_connection_error,
+    _iter_markdown_blocks,
+    _minio_http_pool,
+    build_attachment_bytes,
+    create_workflow_attachment_asset,
+    normalize_attachment_file_type,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -30,10 +41,14 @@ def test_nats_api_does_not_import_chat_flow_factory_at_module_level():
 
 def test_workflow_attachment_service_defers_docx_and_reportlab():
     names = _top_level_imported_modules(_OPSPILOT_ROOT / "services" / "workflow_attachment_service.py")
+    theme_names = _top_level_imported_modules(_OPSPILOT_ROOT / "services" / "attachment_theme.py")
     assert "docx" not in names
     assert "openpyxl" not in names
     assert "pptx" not in names
-    assert not any(name == "reportlab" or name.startswith("reportlab.") for name in names)
+    assert "docx" not in theme_names
+    assert "openpyxl" not in theme_names
+    assert "playwright" not in theme_names
+    assert not any(name == "reportlab" or name.startswith("reportlab.") for name in names | theme_names)
 
 
 def test_build_attachment_bytes_md_keeps_utf8():
@@ -88,10 +103,25 @@ def test_build_attachment_bytes_docx_is_office_zip():
     assert len(payload) > 1000
 
 
-def test_build_attachment_bytes_pdf_has_header():
+def test_build_attachment_bytes_pdf_has_header(monkeypatch):
+    seen = {}
+
+    def fake_print(html, title):
+        seen["html"] = html
+        seen["title"] = title
+        return b"%PDF-1.4 themed"
+
+    monkeypatch.setattr("apps.opspilot.services.attachment_theme.print_html_to_pdf", fake_print)
     payload = build_attachment_bytes("hello <tag> & value", "pdf", title="Inspection")
     assert payload.startswith(b"%PDF")
-    assert len(payload) > 200
+    assert seen["title"] == "Inspection"
+    assert "hello &lt;tag&gt; &amp; value" in seen["html"]
+    assert "#F5F7FA" in seen["html"]
+    assert 'class="cover"' in seen["html"]
+    assert "运维分析报告" in seen["html"]
+    assert 'class="subtitle"' in seen["html"]
+    assert ">目录<" in seen["html"]
+    assert "margin: 10pt 0" in seen["html"]
 
 
 def test_build_attachment_bytes_csv_has_utf8_bom():
@@ -135,8 +165,19 @@ def test_refresh_attachment_download_urls_resigns_expired_history_link(monkeypat
     assert resolved.id == asset.id
 
 
+def _plain_block(block):
+    kind = block[0]
+    if kind == "paragraph":
+        return ("paragraph", inline_text(block[1]))
+    if kind in {"ul", "ol"}:
+        return (kind, [inline_text(item) for item in block[1]])
+    if kind == "hr":
+        return ("hr",)
+    return block
+
+
 def test_markdown_paragraph_stops_before_list_or_rule_without_blank_line():
-    blocks = list(_iter_markdown_blocks("介绍\n- 项\n1. 序号\n---\n结尾"))
+    blocks = [_plain_block(block) for block in _iter_markdown_blocks("介绍\n- 项\n1. 序号\n---\n结尾")]
     assert blocks == [
         ("paragraph", "介绍"),
         ("ul", ["项"]),
@@ -144,7 +185,7 @@ def test_markdown_paragraph_stops_before_list_or_rule_without_blank_line():
         ("hr",),
         ("paragraph", "结尾"),
     ]
-    assert list(_iter_markdown_blocks("介绍\n继续")) == [("paragraph", "介绍 继续")]
+    assert _plain_block(next(_iter_markdown_blocks("介绍\n继续"))) == ("paragraph", "介绍 继续")
 
 
 def test_build_attachment_bytes_pptx_splits_each_h1_into_a_slide():
@@ -177,31 +218,23 @@ def test_normalize_attachment_file_type_rewrites_alias_extension():
     assert kept_name == "deck.pptx"
 
 
-def _pdf_plain_text(payload: bytes) -> str | None:
-    try:
-        import fitz
-    except ImportError:
-        return None
-    document = fitz.open(stream=payload, filetype="pdf")
-    try:
-        return "".join(page.get_text() for page in document)
-    finally:
-        document.close()
+def test_build_attachment_bytes_pdf_renders_chinese_markdown_table(monkeypatch):
+    seen = {}
 
+    def fake_print(html, title):
+        seen["html"] = html
+        return b"%PDF-1.4 themed"
 
-def test_build_attachment_bytes_pdf_renders_chinese_markdown_table():
+    monkeypatch.setattr("apps.opspilot.services.attachment_theme.print_html_to_pdf", fake_print)
     content = "| 项目 | 内容 |\n| --- | --- |\n| 城市 | 广州 |\n| 备注 | A & B <C> |\n"
     first = build_attachment_bytes(content, "pdf", title="广州报告")
     second = build_attachment_bytes(content, "pdf", title="广州报告")
-    for payload in (first, second):
-        assert payload.startswith(b"%PDF")
-        assert len(payload) > 200
-        extracted = _pdf_plain_text(payload)
-        assert extracted is not None
-        assert "广州" in extracted
-        assert "城市" in extracted
-        assert "项目" in extracted
-        assert "A & B" in extracted
+    assert first == second == b"%PDF-1.4 themed"
+    assert "广州" in seen["html"]
+    assert "城市" in seen["html"]
+    assert "项目" in seen["html"]
+    assert "A &amp; B &lt;C&gt;" in seen["html"]
+    assert "<th>" in seen["html"]
 
 
 def test_build_attachment_bytes_xlsx_keeps_header_row():
@@ -212,30 +245,91 @@ def test_build_attachment_bytes_xlsx_keeps_header_row():
     payload = build_attachment_bytes("name,count\nweb,2", "xlsx")
     sheet = load_workbook(BytesIO(payload)).active
     assert [cell.value for cell in next(sheet.iter_rows(max_row=1))] == ["name", "count"]
-    assert [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))] == ["web", "2"]
+    assert [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))] == ["web", 2]
 
 
-def test_pdf_renders_chinese_without_system_font_files(monkeypatch, caplog):
-    from reportlab.pdfbase import pdfmetrics, ttfonts
+def test_minio_connection_failure_fails_once_with_user_message(monkeypatch):
+    reason = NewConnectionError(
+        None,
+        "Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。",
+    )
+    error = MaxRetryError(None, "http://localhost:9000/munchkin-private", reason)
+    assert _is_minio_connection_error(error) is True
+    assert _is_minio_connection_error(RuntimeError("db down")) is False
 
-    from apps.opspilot.services.workflow_attachment_service import build_attachment_bytes
+    pool = _minio_http_pool()
+    assert pool.connection_pool_kw["retries"].total is False
+    with pytest.raises(ConnectionRefusedError):
+        pool.connection_pool_kw["retries"].increment(
+            method="HEAD",
+            url="/munchkin-private",
+            error=ConnectionRefusedError(10061, "refused"),
+        )
 
-    def missing_font(*args, **kwargs):
-        raise OSError("font file unavailable")
+    storage = WorkflowAttachmentAsset._meta.get_field("file").storage
+    previous = (
+        getattr(storage, "HTTP_CLIENT", None),
+        getattr(storage, "_MinioBackend__CLIENT", None),
+        getattr(storage, "_MinioBackend__CLIENT_EXT", None),
+    )
+    cached = type("CachedMinio", (), {"_http": object()})()
+    storage._MinioBackend__CLIENT = cached
+    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "filter", lambda *args, **kwargs: type("Query", (), {"first": lambda self: None})())
 
-    monkeypatch.setattr(ttfonts, "TTFont", missing_font)
-    monkeypatch.setattr(pdfmetrics, "getRegisteredFontNames", lambda: [])
+    def _reject(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "update_or_create", _reject)
+    try:
+        with pytest.raises(ValueError, match="连不上 MinIO") as caught:
+            create_workflow_attachment_asset(
+                execution_id="exec-minio-down",
+                attachment_id="file-1",
+                filename="告警.docx",
+                content_bytes=b"doc",
+                mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        message = str(caught.value)
+        assert message == MINIO_CONNECTION_FAILURE_MESSAGE
+        assert caught.value.__cause__ is error
+        assert "localhost" not in message
+        assert "9000" not in message
+        assert "WinError" not in message
+        assert "HTTPConnectionPool" not in message
+        assert storage.HTTP_CLIENT is pool
+        assert cached._http is pool
+    finally:
+        storage.HTTP_CLIENT, storage._MinioBackend__CLIENT, storage._MinioBackend__CLIENT_EXT = previous
+
+
+def test_minio_connection_failure_does_not_hide_other_save_errors(monkeypatch):
+    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "filter", lambda *args, **kwargs: type("Query", (), {"first": lambda self: None})())
+
+    def _reject(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "update_or_create", _reject)
+    with pytest.raises(RuntimeError, match="db down"):
+        create_workflow_attachment_asset(
+            execution_id="exec-minio-down",
+            attachment_id="file-1",
+            filename="告警.docx",
+            content_bytes=b"doc",
+            mime_type="application/octet-stream",
+        )
+
+
+def test_pdf_print_failure_logs_error_type_without_document(monkeypatch, caplog):
     sentinel = "PDF_PRIVATE_SENTINEL"
-    payload = build_attachment_bytes(f"# 集群健康报告\n| 指标 | 状态 |\n| --- | --- |\n| 节点 | 正常 {sentinel} |", "pdf", title="集群健康报告")
-    text = _pdf_plain_text(payload)
-    assert text is not None
-    assert "集群健康报告" in text
-    assert "节点" in text
-    assert "正常" in text
-    assert sentinel in text
-    record = next(record for record in caplog.records if "STSong-Light" in record.getMessage())
-    assert record.msg == "工作流附件 PDF 未找到可嵌入中文字体，使用标准中文字体 STSong-Light"
-    assert record.args == ()
+
+    def explode(html, title):
+        raise OSError("chromium missing")
+
+    monkeypatch.setattr("apps.opspilot.services.attachment_theme._launch_chromium_pdf", explode)
+    with pytest.raises(ValueError, match="PDF 生成失败"):
+        build_attachment_bytes(f"# 集群健康报告\n节点 {sentinel}", "pdf", title="集群健康报告")
+    record = next(record for record in caplog.records if record.msg == "attachment pdf print failed error_type=%s")
+    assert record.args == ("OSError",)
+    assert record.exc_info is not None
     assert "集群健康报告" not in record.getMessage()
     assert sentinel not in record.getMessage()
-    assert record.exc_info is None
