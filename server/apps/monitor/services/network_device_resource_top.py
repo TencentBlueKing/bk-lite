@@ -1,8 +1,8 @@
 """Network-device resource Top10 query and ranking helpers."""
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import math
 from typing import Any
 
 from apps.monitor.utils.dimension import parse_instance_id
@@ -75,16 +75,18 @@ def build_ranked_rows(candidates, device_meta, *, limit=10):
     rows = []
     for rank, item in enumerate(ordered, 1):
         meta = device_meta[item.instance_id]
-        rows.append({
-            "rank": rank,
-            "display_name": meta.get("name") or meta.get("ip") or item.instance_id,
-            "ip": meta.get("ip") or "",
-            "instance_id": item.instance_id,
-            "device_type": meta.get("object_name"),
-            "value": round(float(item.value), 2),
-            "unit": "byteps" if item.metric_type == "traffic" else "percent",
-            "sampled_at": item.sampled_at.isoformat(),
-        })
+        rows.append(
+            {
+                "rank": rank,
+                "display_name": meta.get("name") or meta.get("ip") or item.instance_id,
+                "ip": meta.get("ip") or "",
+                "instance_id": item.instance_id,
+                "device_type": meta.get("object_name"),
+                "value": round(float(item.value), 2),
+                "unit": "byteps" if item.metric_type == "traffic" else "percent",
+                "sampled_at": item.sampled_at.isoformat(),
+            }
+        )
     return rows
 
 
@@ -101,8 +103,10 @@ class NetworkDeviceResourceTopService:
 
     def _query_metric(self, metric_name, lookback_seconds):
         query = f'{{__name__="{metric_name}"}}'
+        # 即时查询的可见窗口是 step。只传 lookback_delta 时客户端仍带默认 step=5m，超过 5 分钟的样本会被丢掉。
+        window = f"{int(lookback_seconds)}s"
         try:
-            response = self.vm_api.query(query, lookback_delta=f"{lookback_seconds}s")
+            response = self.vm_api.query(query, step=window, lookback_delta=window)
         except TypeError:
             response = self.vm_api.query(query)
         if not isinstance(response, dict) or response.get("status") != "success":
@@ -132,7 +136,8 @@ class NetworkDeviceResourceTopService:
                 "interval": getattr(instance, "interval", DEFAULT_INTERVAL_SECONDS),
                 "object_name": getattr(getattr(instance, "monitor_object", None), "name", ""),
             }
-            for instance in authorized_instances if getattr(instance, "id", None)
+            for instance in authorized_instances
+            if getattr(instance, "id", None)
         }
         meta = {key: value for key, value in meta.items() if value["object_name"] in NETWORK_DEVICE_OBJECT_NAMES}
         if not meta:

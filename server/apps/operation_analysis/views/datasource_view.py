@@ -61,6 +61,13 @@ _ONE_HOP_RETIRED_CONDITION_APIS = frozenset(
         "cmdb/query_cmdb_one_hop_distribution",
     }
 )
+_ALERT_INSTANCE_FILTER_RETIRED_APIS = frozenset(
+    {
+        "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
+    }
+)
 
 
 def _normalize_downstream_result(result):
@@ -575,6 +582,9 @@ def _resolve_request_params(instance, request_data):
         sanitized_request.pop("end_filters", None)
         allowed_specs.pop("filters", None)
         allowed_specs.pop("end_filters", None)
+    if rest_api in _ALERT_INSTANCE_FILTER_RETIRED_APIS:
+        sanitized_request.pop("instance_ids", None)
+        allowed_specs.pop("instance_ids", None)
 
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)

@@ -103,20 +103,34 @@ def _count_nested_key(value, target_key):
 def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
-    assert payload["meta"]["object_counts"]["screens"] == 4
+    assert payload["meta"]["object_counts"]["screens"] == 6
     assert payload["meta"]["object_counts"]["topologies"] == 0
     assert [screen["key"] for screen in payload["screens"]] == [
         "screen::告警运营大屏_内置",
         "screen::3D机房大屏_内置",
         "screen::3D应用大屏_内置",
         "screen::应用拓扑大屏_内置",
+        "screen::监控值班总览_内置",
+        "screen::网络设备运行汇总_内置",
     ]
     assert [screen["name"] for screen in payload["screens"]] == [
         "告警运营大屏",
         "3D机房大屏",
         "3D应用大屏",
         "应用拓扑大屏",
+        "监控值班总览",
+        "网络设备运行汇总",
     ]
+    duty = next(screen for screen in payload["screens"] if screen["key"] == "screen::监控值班总览_内置")
+    network = next(screen for screen in payload["screens"] if screen["key"] == "screen::网络设备运行汇总_内置")
+    for screen in (duty, network):
+        organization = next(item for item in screen["view_sets"]["filters"] if item["key"] == "organization")
+        assert organization["defaultValue"] in ("", None)
+        assert all(
+            isinstance(item.get("valueConfig", {}).get("dataSource", ""), str)
+            for item in screen["view_sets"]["items"]
+            if item.get("kind") == "widget"
+        )
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
     assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
 
