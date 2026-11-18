@@ -218,12 +218,12 @@ const WidgetConfigPreview: React.FC<WidgetConfigPreviewProps> = ({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--color-fill-1)/40">
           {showDataVariableAction ? (
-            <div className="flex shrink-0 justify-end px-4 pt-3">
+            <div className="flex h-9 shrink-0 items-center justify-end px-4">
               <Button
                 type="link"
                 size="small"
                 htmlType="button"
-                className="shrink-0 !h-auto !px-0"
+                className="inline-flex shrink-0 items-center !h-6 !min-h-0 !px-0 !py-0 !leading-6"
                 onClick={onCreateDataVariable}
               >
                 {t('dashboard.configPreviewSaveAsDataVariable')}
