@@ -27,12 +27,12 @@ import {
   DesktopOutlined,
   FontColorsOutlined,
   FontSizeOutlined,
-  LeftOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
   LinkOutlined,
   MinusOutlined,
   PictureOutlined,
   QuestionCircleOutlined,
-  RightOutlined,
   SwapOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
@@ -325,6 +325,7 @@ const PaletteThumb: React.FC<{
   heightClass?: string;
   stagePreviewBackground?: string;
   dragPayload?: ScreenChromeDragPayload;
+  onDragStart?: () => void;
   onDragEnd?: () => void;
   onClick: () => void;
   children: React.ReactNode;
@@ -333,6 +334,7 @@ const PaletteThumb: React.FC<{
   heightClass = 'h-10',
   stagePreviewBackground = 'var(--screen-stage-bg, #071422)',
   dragPayload,
+  onDragStart,
   onDragEnd,
   onClick,
   children,
@@ -346,6 +348,7 @@ const PaletteThumb: React.FC<{
       onDragStart={(event) => {
         if (!dragPayload) return;
         draggedRef.current = true;
+        onDragStart?.();
         writeScreenChromeDrag(event.dataTransfer, dragPayload);
       }}
       onDragEnd={() => {
@@ -379,6 +382,9 @@ const PaletteThumb: React.FC<{
 type PaletteGroup = 'text' | 'title' | 'frame' | 'divider' | 'shape';
 
 const CATALOG_FLYOUT_WIDTH = 260;
+const PALETTE_RAIL_WIDTH = 40;
+const PALETTE_PANEL_WIDTH = 162;
+const PALETTE_WIDTH_MS = 320;
 
 const elementListIcon = (item: ScreenItem | undefined) => {
   if (!item) return null;
@@ -433,7 +439,13 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
   const draggingIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  // 默认只留图标轨，画布更宽。悬浮只盖住画布；点顶部按钮才真正占 162 宽。
+  const [pinned, setPinned] = useState(false);
+  const [widthSettled, setWidthSettled] = useState(true);
+  const coverUntilSettledRef = useRef(false);
+  const [hovering, setHovering] = useState(false);
+  const [dragHold, setDragHold] = useState(false);
+  const [hoverDismissed, setHoverDismissed] = useState(false);
   const [paletteGroup, setPaletteGroup] = useState<PaletteGroup | null>(null);
   const [flyoutBox, setFlyoutBox] = useState({ top: 8, maxHeight: 400 });
   const listed = useMemo(
@@ -462,6 +474,22 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
 
   const place = (action: () => void) => {
     action();
+    setPaletteGroup(null);
+  };
+  const pointerInsideRef = useRef(false);
+  const dragHoldRef = useRef(false);
+  const beginDragHold = () => {
+    dragHoldRef.current = true;
+    setDragHold(true);
+  };
+  const endDragHold = () => {
+    dragHoldRef.current = false;
+    setDragHold(false);
+    if (!pointerInsideRef.current) setHoverDismissed(false);
+  };
+  const beginCatalogDrag = () => beginDragHold();
+  const endCatalogDrag = () => {
+    endDragHold();
     setPaletteGroup(null);
   };
 
@@ -513,7 +541,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             heightClass="h-16"
             label={t('opsAnalysis.screen.elementText')}
             dragPayload={{ kind: 'text' }}
-            onDragEnd={() => setPaletteGroup(null)}
+            onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
             onClick={() => place(onAddText)}
           >
             <div
@@ -533,7 +562,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             heightClass="h-16"
             label={t('opsAnalysis.screen.elementClock')}
             dragPayload={{ kind: 'clock' }}
-            onDragEnd={() => setPaletteGroup(null)}
+            onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
             onClick={() => place(onAddClock)}
           >
             <div className="flex h-full items-center justify-center">
@@ -558,7 +588,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
               heightClass="h-20"
               label={t(`opsAnalysis.screen.titleFrame.${preset}`)}
               dragPayload={{ kind: 'titleFrame', preset }}
-              onDragEnd={() => setPaletteGroup(null)}
+              onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
               onClick={() => place(() => onAddTitleFrame(preset))}
             >
               <img
@@ -583,7 +614,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
               heightClass="h-16"
               label={t(`opsAnalysis.screen.panelFrame.${preset}`)}
               dragPayload={{ kind: 'decoration', decorationType: 'panelFrame', preset }}
-              onDragEnd={() => setPaletteGroup(null)}
+              onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
               onClick={() => place(() => onAddDecoration('panelFrame', preset))}
             >
               <DecorationSkin item={{ decorationType: 'panelFrame', preset }} />
@@ -602,7 +634,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
               heightClass="h-10"
               label={t(`opsAnalysis.screen.divider.${preset}`)}
               dragPayload={{ kind: 'decoration', decorationType: 'divider', preset }}
-              onDragEnd={() => setPaletteGroup(null)}
+              onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
               onClick={() => place(() => onAddDecoration('divider', preset))}
             >
               <DecorationSkin
@@ -624,7 +657,8 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
               heightClass="h-16"
               label={t(`opsAnalysis.screen.shape.${shape}`)}
               dragPayload={{ kind: 'shape', shape }}
-              onDragEnd={() => setPaletteGroup(null)}
+              onDragStart={beginCatalogDrag}
+            onDragEnd={endCatalogDrag}
               onClick={() => place(() => onAddShape(shape))}
             >
               <div className="flex h-full items-center justify-center p-2">
@@ -644,8 +678,19 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
     return null;
   })();
 
+  const panelOpen = pinned || (!hoverDismissed && (hovering || dragHold));
+  const overlayOpen =
+    (!pinned && widthSettled && !hoverDismissed && (hovering || dragHold)) ||
+    (pinned && !widthSettled && coverUntilSettledRef.current);
+  const showDockedPanel = (pinned || !widthSettled) && !coverUntilSettledRef.current;
+
+  const settleWidth = () => {
+    coverUntilSettledRef.current = false;
+    setWidthSettled(true);
+  };
+
   useEffect(() => {
-    if (!selectedItemId || collapsed) return;
+    if (!selectedItemId || !panelOpen) return;
     const list = listRef.current;
     if (!list) return;
     const row = list.querySelector(
@@ -661,99 +706,137 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
           ? rowRect.bottom - listRect.bottom
           : 0;
     if (delta !== 0) list.scrollTop += delta;
-  }, [collapsed, listed, selectedItemId]);
+  }, [listed, panelOpen, selectedItemId]);
+
+  useEffect(() => {
+    if (widthSettled) return undefined;
+    const timer = window.setTimeout(() => {
+      coverUntilSettledRef.current = false;
+      setWidthSettled(true);
+    }, PALETTE_WIDTH_MS + 40);
+    return () => window.clearTimeout(timer);
+  }, [pinned, widthSettled]);
 
   const activeGroup = paletteGroups.find((group) => group.id === paletteGroup);
-  const paletteToggleLabel = collapsed
-    ? t('opsAnalysis.screen.expandDisplayElements')
-    : t('opsAnalysis.screen.collapseDisplayElements');
+  const expandLabel = t('opsAnalysis.screen.expandDisplayElements');
+  const collapseLabel = t('opsAnalysis.screen.collapseDisplayElements');
 
-  return (
-    <aside
-      ref={rootRef}
-      className={`relative z-40 h-full shrink-0 transition-[width] duration-300 ${
-        collapsed
-          ? 'w-0 border-r-0'
-          : 'w-[162px] border-r border-(--color-border-1) bg-(--color-bg-1)'
-      }`}
-    >
-      <Tooltip title={paletteToggleLabel} placement="right">
-        <button
-          type="button"
-          aria-label={paletteToggleLabel}
-          className="absolute top-5 z-30 flex h-6 w-6 cursor-pointer items-center justify-center border border-(--color-border-1) bg-(--color-bg-1) text-(--color-text-2) shadow-sm hover:bg-(--color-fill-2)"
-          style={{
-            right: collapsed ? -24 : -12,
-            borderRadius: collapsed ? '0 50% 50% 0' : '50%',
-          }}
-          onClick={() => {
-            setCollapsed((current) => !current);
-            setPaletteGroup(null);
-          }}
-        >
-          {collapsed ? <RightOutlined aria-hidden /> : <LeftOutlined aria-hidden />}
-        </button>
-      </Tooltip>
-      <div
-        className={`flex h-full min-h-0 flex-col bg-(--color-bg-1) ${
-          collapsed ? 'pointer-events-none opacity-0' : ''
-        }`}
-        aria-hidden={collapsed}
+  const openGroup = (groupId: PaletteGroup, anchor: HTMLElement) => {
+    if (paletteGroup === groupId) {
+      setPaletteGroup(null);
+      return;
+    }
+    const root = rootRef.current;
+    const rootTop = root?.getBoundingClientRect().top ?? 0;
+    const rawTop = anchor.getBoundingClientRect().top - rootTop;
+    const room = Math.max(160, (root?.clientHeight ?? 400) - 16);
+    const maxHeight = Math.min(400, room);
+    const top = Math.max(8, Math.min(rawTop, room - maxHeight + 8));
+    setFlyoutBox({ top, maxHeight });
+    setPaletteGroup(groupId);
+  };
+
+  const pinPanel = () => {
+    // 悬浮层已经是 162。收起前先让栏宽跟上，避免面板先缩再张开。
+    coverUntilSettledRef.current = !pinned && widthSettled && (hovering || dragHold);
+    setHoverDismissed(false);
+    setHovering(false);
+    setPinned(true);
+    setWidthSettled(false);
+  };
+
+  const collapsePanel = () => {
+    coverUntilSettledRef.current = false;
+    setPaletteGroup(null);
+    setPinned(false);
+    setHoverDismissed(true);
+    setHovering(false);
+    setWidthSettled(false);
+  };
+
+  const showCollapseIcon = pinned;
+
+  const catalogButtons = (iconOnly: boolean) => (
+    <>
+      <button
+        type="button"
+        aria-label={iconOnly ? t('opsAnalysis.screen.elementChart') : undefined}
+        className={
+          iconOnly
+            ? 'flex h-8 w-8 cursor-pointer items-center justify-center rounded text-(--color-text-2) hover:bg-(--color-fill-1)'
+            : 'mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-(--color-text-2) hover:bg-(--color-fill-1)'
+        }
+        onClick={() => {
+          setPaletteGroup(null);
+          onOpenChartSelector();
+        }}
       >
-        <div className="shrink-0 border-b border-(--color-border-1) px-2 py-2">
-          <div className="mb-1 px-1 text-xs font-semibold text-(--color-text-1)">
-            {t('opsAnalysis.screen.displayElements')}
-          </div>
+        <span className="text-(--color-text-3)">
+          <AreaChartOutlined aria-hidden />
+        </span>
+        {iconOnly ? null : (
+          <span className="min-w-0 flex-1 truncate">
+            {t('opsAnalysis.screen.elementChart')}
+          </span>
+        )}
+      </button>
+      {paletteGroups.map((group) => {
+        const active = paletteGroup === group.id;
+        return (
+          <button
+            key={group.id}
+            type="button"
+            aria-label={iconOnly ? group.label : undefined}
+            aria-expanded={active}
+            className={
+              iconOnly
+                ? `flex h-8 w-8 cursor-pointer items-center justify-center rounded ${
+                    active
+                      ? 'bg-(--color-fill-2) text-(--color-primary)'
+                      : 'text-(--color-text-2) hover:bg-(--color-fill-1)'
+                  }`
+                : `mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-xs ${
+                    active
+                      ? 'bg-(--color-fill-2) font-medium text-(--color-primary)'
+                      : 'text-(--color-text-2) hover:bg-(--color-fill-1)'
+                  }`
+            }
+            onClick={(event) => openGroup(group.id, event.currentTarget)}
+          >
+            <span className={active ? 'text-(--color-primary)' : 'text-(--color-text-3)'}>
+              {group.icon}
+            </span>
+            {iconOnly ? null : (
+              <span className="min-w-0 flex-1 truncate">{group.label}</span>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+
+  const fullPanel = (
+    <div className="flex h-full min-h-0 flex-col bg-(--color-bg-1)">
+      <div className="shrink-0 border-b border-(--color-border-1)">
+        <div className="flex h-8 items-center">
           <button
             type="button"
-            className="mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-(--color-text-2) hover:bg-(--color-fill-1)"
-            onClick={() => {
-              setPaletteGroup(null);
-              onOpenChartSelector();
-            }}
+            aria-label={showCollapseIcon ? collapseLabel : expandLabel}
+            className="flex h-8 w-10 shrink-0 cursor-pointer items-center justify-center text-sm text-(--color-text-3) hover:bg-(--color-fill-1) hover:text-(--color-text-2)"
+            onClick={pinned ? collapsePanel : pinPanel}
           >
-            <span className="text-(--color-text-3)">
-              <AreaChartOutlined aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1 truncate">
-              {t('opsAnalysis.screen.elementChart')}
-            </span>
+            {showCollapseIcon ? (
+              <DoubleLeftOutlined aria-hidden />
+            ) : (
+              <DoubleRightOutlined aria-hidden />
+            )}
           </button>
-          {paletteGroups.map((group) => {
-            const active = paletteGroup === group.id;
-            return (
-              <button
-                key={group.id}
-                type="button"
-                aria-expanded={active}
-                className={`mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-xs ${
-                  active
-                    ? 'bg-(--color-fill-2) font-medium text-(--color-primary)'
-                    : 'text-(--color-text-2) hover:bg-(--color-fill-1)'
-                }`}
-                onClick={(event) => {
-                  if (paletteGroup === group.id) {
-                    setPaletteGroup(null);
-                    return;
-                  }
-                  const root = rootRef.current;
-                  const rootTop = root?.getBoundingClientRect().top ?? 0;
-                  const rawTop = event.currentTarget.getBoundingClientRect().top - rootTop;
-                  const room = Math.max(160, (root?.clientHeight ?? 400) - 16);
-                  const maxHeight = Math.min(400, room);
-                  const top = Math.max(8, Math.min(rawTop, room - maxHeight + 8));
-                  setFlyoutBox({ top, maxHeight });
-                  setPaletteGroup(group.id);
-                }}
-              >
-                <span className={active ? 'text-(--color-primary)' : 'text-(--color-text-3)'}>
-                  {group.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{group.label}</span>
-              </button>
-            );
-          })}
+          <span className="min-w-0 flex-1 truncate pr-2 text-xs font-semibold text-(--color-text-1)">
+            {t('opsAnalysis.screen.displayElements')}
+          </span>
         </div>
+        <div className="px-2 py-2">{catalogButtons(false)}</div>
+      </div>
         <div
           ref={listRef}
           data-screen-element-list=""
@@ -793,6 +876,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
                       onOpenItemMenu(entry.id, { x: event.clientX, y: event.clientY });
                     }}
                     onDragStart={(event) => {
+                      beginDragHold();
                       draggingIdRef.current = entry.id;
                       setDraggingId(entry.id);
                       event.dataTransfer?.setData(SCREEN_LAYER_DRAG_MIME, entry.id);
@@ -816,6 +900,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
                       onReorderItem(itemId, index);
                     }}
                     onDragEnd={() => {
+                      endDragHold();
                       draggingIdRef.current = null;
                       setDraggingId(null);
                       setDropIndex(null);
@@ -845,12 +930,67 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             })
           )}
         </div>
+    </div>
+  );
+
+  return (
+    <aside
+      ref={rootRef}
+      className="relative z-40 h-full shrink-0"
+      onMouseEnter={() => {
+        pointerInsideRef.current = true;
+        if (!hoverDismissed) setHovering(true);
+      }}
+      onMouseLeave={() => {
+        pointerInsideRef.current = false;
+        setHovering(false);
+        if (!dragHoldRef.current) setHoverDismissed(false);
+      }}
+    >
+      <div
+        data-screen-palette-column=""
+        className={`h-full overflow-hidden bg-(--color-bg-1) ${
+          overlayOpen ? 'border-r-0' : 'border-r border-(--color-border-1)'
+        }`}
+        style={{
+          width: pinned ? PALETTE_PANEL_WIDTH : PALETTE_RAIL_WIDTH,
+          transition: `width ${PALETTE_WIDTH_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+        }}
+        onTransitionEnd={(event) => {
+          if (event.target !== event.currentTarget || event.propertyName !== 'width') return;
+          settleWidth();
+        }}
+      >
+        {showDockedPanel ? (
+          <div className="h-full w-[162px]">{fullPanel}</div>
+        ) : overlayOpen ? null : (
+          <div className="flex h-full flex-col items-center">
+            <button
+              type="button"
+              aria-label={expandLabel}
+              className="flex h-8 w-full cursor-pointer items-center justify-center border-b border-(--color-border-1) text-sm text-(--color-text-3) hover:bg-(--color-fill-1) hover:text-(--color-text-2)"
+              onClick={pinPanel}
+            >
+              <DoubleRightOutlined aria-hidden />
+            </button>
+            <div className="flex flex-col items-center gap-0.5 py-1">{catalogButtons(true)}</div>
+          </div>
+        )}
       </div>
-      {activeGroup && !collapsed ? (
+      {overlayOpen ? (
+        <div
+          data-screen-palette-overlay=""
+          className="absolute top-0 left-0 z-40 h-full w-[162px] border-r border-(--color-border-1) bg-(--color-bg-1) opacity-100 shadow-lg transition-opacity duration-300 ease-out starting:opacity-0"
+        >
+          {fullPanel}
+        </div>
+      ) : null}
+      {activeGroup ? (
         <div
           data-screen-catalog-flyout=""
-          className="absolute left-full z-30 ml-1 flex flex-col overflow-y-auto rounded-md border border-(--color-border-1) bg-(--color-bg-1) shadow-lg"
+          className="absolute z-30 ml-1 flex flex-col overflow-y-auto rounded-md border border-(--color-border-1) bg-(--color-bg-1) shadow-lg"
           style={{
+            left: panelOpen ? PALETTE_PANEL_WIDTH : PALETTE_RAIL_WIDTH,
             top: flyoutBox.top,
             width: CATALOG_FLYOUT_WIDTH,
             maxHeight: flyoutBox.maxHeight,

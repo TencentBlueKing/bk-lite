@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.cmdb.constants.constants import OPERATE, VIEW
 from apps.cmdb.views.instance import InstanceViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.system_mgmt.models import Group
@@ -15,12 +16,13 @@ from apps.system_mgmt.models import Group
 VIEWS = "apps.cmdb.views.instance"
 
 
-def _request(*, is_superuser: bool, group_ids: list[int], current_team: int, include_children: str = "0"):
+def _request(*, is_superuser: bool, group_ids: list[int], current_team: int, include_children: str = "0", is_auditor: bool = False):
     return SimpleNamespace(
         user=SimpleNamespace(
             username="tester",
             domain="domain.com",
             is_superuser=is_superuser,
+            is_auditor=is_auditor,
             group_list=[{"id": gid} for gid in group_ids],
         ),
         COOKIES={
@@ -99,3 +101,37 @@ def test_normal_user_without_current_team_permission_raises():
 
     with pytest.raises(BaseAppException):
         InstanceViewSet._get_allowed_org_ids(request)
+
+
+def test_auditor_allowed_org_ids_uses_assignable_groups_via_nats(monkeypatch):
+    request = _request(
+        is_superuser=False,
+        is_auditor=True,
+        group_ids=[],
+        current_team=1,
+        include_children="0",
+    )
+
+    monkeypatch.setattr(
+        f"{VIEWS}.resolve_assignable_organization_ids",
+        lambda req: frozenset({3, 7, 9}),
+    )
+
+    allowed = InstanceViewSet._get_allowed_org_ids(request)
+
+    assert set(allowed) == {3, 7, 9}
+
+
+def test_auditor_layout_permissions_do_not_grant_operate(monkeypatch):
+    request = _request(is_superuser=False, is_auditor=True, group_ids=[], current_team=1)
+    items = [{"model_id": "host", "_creator": "alice"}]
+
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(InstanceViewSet, "add_instance_permission", lambda *args, **kwargs: None)
+
+    InstanceViewSet()._attach_layout_item_permissions(request, items)
+
+    assert items[0].get("permission") != [VIEW, OPERATE]

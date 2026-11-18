@@ -13,27 +13,27 @@ const userModalDataSource = readFileSync(
 
 assert.match(
   userModalSource,
-  /label=\{t\('common\.organization'\)\}[\s\S]*required=\{!isSuperuser\}/,
+  /label=\{t\('common\.organization'\)\}[\s\S]*required=\{userKind === 'normal'\}/,
   'a normal user should always require organization selection'
 );
 assert.match(
   userModalSource,
-  /label=\{t\('system\.user\.form\.role'\)\}[\s\S]*required=\{type === 'edit' && !isSuperuser\}/,
+  /label=\{t\('system\.user\.form\.role'\)\}[\s\S]*required=\{type === 'edit' && userKind === 'normal'\}/,
   'only editing a normal user should mark role as required'
 );
 assert.match(
   userModalDataSource,
-  /if \(!isSuperuser && selectedGroups\.length === 0\)/,
+  /if \(!privileged && selectedGroups\.length === 0\)/,
   'a normal user should always require organization selection'
 );
 assert.match(
   userModalDataSource,
-  /if \(!isSuperuser && !hasNormalGroupSelection\(selectedGroups, groupTreeData\)\)/,
+  /if \(!privileged && !hasNormalGroupSelection\(selectedGroups, groupTreeData\)\)/,
   'a normal user should always require a normal organization'
 );
 assert.match(
   userModalDataSource,
-  /if \(type === 'edit' && !isSuperuser && selectedRoles\.length === 0\)/,
+  /if \(type === 'edit' && !privileged && selectedRoles\.length === 0\)/,
   'only editing a normal user should require role selection'
 );
 

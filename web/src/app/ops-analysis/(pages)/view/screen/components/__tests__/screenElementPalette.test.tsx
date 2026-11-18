@@ -12,6 +12,12 @@ vi.mock('@/utils/i18n', () => ({
 }));
 
 describe('screen element palette', () => {
+  const expandPalette = () => {
+    fireEvent.click(
+      screen.getByRole('button', { name: 'opsAnalysis.screen.expandDisplayElements' }),
+    );
+  };
+
   it('opens a flyout beside the rail and closes it after placing a frame', async () => {
     const user = userEvent.setup();
     const onAddDecoration = vi.fn();
@@ -34,6 +40,7 @@ describe('screen element palette', () => {
         <button type="button">画布</button>
       </div>,
     );
+    expandPalette();
 
     expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
     const collapsePalette = screen.getByRole('button', {
@@ -99,6 +106,7 @@ describe('screen element palette', () => {
         onReorderItem={() => undefined}
       />,
     );
+    expandPalette();
 
     await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.elementShape' }));
     expect(document.querySelector('[data-shape-thumb="circle"]')?.className).toContain(
@@ -129,6 +137,7 @@ describe('screen element palette', () => {
         onReorderItem={() => undefined}
       />,
     );
+    expandPalette();
 
     expect(screen.queryByRole('button', { name: 'common.delete' })).toBeNull();
     fireEvent.contextMenu(screen.getByRole('button', { name: '说明' }));
@@ -153,6 +162,7 @@ describe('screen element palette', () => {
         onReorderItem={() => undefined}
       />,
     );
+    expandPalette();
 
     const chartButton = screen.getByRole('button', {
       name: 'opsAnalysis.screen.elementChart',
@@ -182,6 +192,7 @@ describe('screen element palette', () => {
         onReorderItem={() => undefined}
       />,
     );
+    expandPalette();
 
     const source = document.querySelector('[data-screen-list-item="text-2"]');
     const target = document.querySelector('[data-screen-list-item="text-1"]');
@@ -230,6 +241,7 @@ describe('screen element palette', () => {
         toJSON: () => ({}),
       }) as DOMRect;
     const view = render(<ScreenElementPalette {...props} selectedItemId={null} />);
+    expandPalette();
     const list = document.querySelector('[data-screen-element-list]') as HTMLElement;
     const row = document.querySelector('[data-screen-list-item="text-2"]') as HTMLElement;
     const listRect = vi.spyOn(list, 'getBoundingClientRect').mockReturnValue(box(0, 100));
@@ -245,5 +257,96 @@ describe('screen element palette', () => {
 
     listRect.mockRestore();
     rowRect.mockRestore();
+  });
+
+  it('covers the canvas on hover and only reserves width after pinning', () => {
+    render(
+      <ScreenElementPalette
+        items={[createScreenTextItem([], { id: 'text-1', content: '说明' })]}
+        selectedItemId={null}
+        onSelectItem={() => undefined}
+        onAddText={() => undefined}
+        onAddClock={() => undefined}
+        onAddTitleFrame={() => undefined}
+        onAddDecoration={() => undefined}
+        onAddShape={() => undefined}
+        onOpenChartSelector={() => undefined}
+        onOpenItemMenu={() => undefined}
+        onReorderItem={() => undefined}
+      />,
+    );
+
+    const aside = screen
+      .getByRole('button', { name: 'opsAnalysis.screen.expandDisplayElements' })
+      .closest('aside');
+    const column = aside?.querySelector('[data-screen-palette-column]') as HTMLElement;
+    expect(column.style.width).toBe('40px');
+    expect(column.style.transition).toContain('width');
+    expect(screen.queryByRole('button', { name: '说明' })).toBeNull();
+    expect(screen.queryByText('opsAnalysis.screen.elementList')).toBeNull();
+
+    fireEvent.mouseEnter(aside!);
+    expect(column.style.width).toBe('40px');
+    expect(document.querySelector('[data-screen-palette-overlay]')?.className).toContain(
+      'w-[162px]',
+    );
+    expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'opsAnalysis.screen.expandDisplayElements' }),
+    ).toBeTruthy();
+
+    const row = document.querySelector('[data-screen-list-item="text-1"]');
+    fireEvent.dragStart(row!);
+    fireEvent.mouseLeave(aside!);
+    expect(column.style.width).toBe('40px');
+    expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+    fireEvent.dragEnd(row!);
+    expect(screen.queryByRole('button', { name: '说明' })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'opsAnalysis.screen.expandDisplayElements' }),
+    );
+    expect(column.style.width).toBe('162px');
+    expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+    fireEvent.mouseLeave(aside!);
+    expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'opsAnalysis.screen.collapseDisplayElements' }),
+    );
+    expect(column.style.width).toBe('40px');
+    expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+    fireEvent.transitionEnd(column, { propertyName: 'width' });
+    expect(screen.queryByRole('button', { name: '说明' })).toBeNull();
+  });
+
+  it('opens a catalog from the icon rail without widening the column', () => {
+    render(
+      <ScreenElementPalette
+        items={[]}
+        selectedItemId={null}
+        onSelectItem={() => undefined}
+        onAddText={() => undefined}
+        onAddClock={() => undefined}
+        onAddTitleFrame={() => undefined}
+        onAddDecoration={() => undefined}
+        onAddShape={() => undefined}
+        onOpenChartSelector={() => undefined}
+        onOpenItemMenu={() => undefined}
+        onReorderItem={() => undefined}
+      />,
+    );
+
+    const aside = screen
+      .getByRole('button', { name: 'opsAnalysis.screen.elementShape' })
+      .closest('aside');
+    fireEvent.click(screen.getByRole('button', { name: 'opsAnalysis.screen.elementShape' }));
+    expect(
+      (aside?.querySelector('[data-screen-palette-column]') as HTMLElement | null)?.style.width,
+    ).toBe('40px');
+    expect(document.querySelector('[data-screen-palette-overlay]')).toBeNull();
+    expect(document.querySelector('[data-shape-thumb="circle"]')).toBeTruthy();
+    const flyout = document.querySelector('[data-screen-catalog-flyout]');
+    expect(flyout?.getAttribute('style')).toContain('left: 40px');
   });
 });

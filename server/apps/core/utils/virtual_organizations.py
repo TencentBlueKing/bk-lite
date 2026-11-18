@@ -1,5 +1,6 @@
 from django.db.models import Q
 
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.user_group import normalize_user_group_ids
 
 SPECIAL_VIRTUAL_GROUP_NAMES = frozenset({"OpsPilotGuest", "虚拟团队", "虚拟组织"})
@@ -15,7 +16,7 @@ def authorized_virtual_organization_ids(user) -> set[int]:
 
     named_ids = _named_virtual_organization_ids(getattr(user, "group_list", []))
     query = Q(is_virtual=True) | Q(name__in=SPECIAL_VIRTUAL_GROUP_NAMES, parent_id=0)
-    if getattr(user, "is_superuser", False):
+    if has_unrestricted_org_scope(user):
         return named_ids | set(GroupUtils.active_queryset().filter(query).values_list("id", flat=True))
 
     authorized_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))

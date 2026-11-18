@@ -99,3 +99,22 @@ class TestHasPermissionUserPerms:
         hp = HasPermission("View", app_name="myapp")
         req = _request(_user())
         assert hp._get_user_permissions(req, "myapp") == set()
+
+
+def test_auditor_with_view_passes_view_permission():
+    called = HasPermission("asset_info-View", app_name="cmdb")(lambda req: "ok")
+    user = _user(is_superuser=False, is_auditor=True, permission={"cmdb": {"asset_info-View"}})
+    assert called(_request(user)) == "ok"
+
+
+def test_auditor_denied_add_permission():
+    called = HasPermission("asset_info-Add", app_name="cmdb")(lambda req: "ok")
+    user = _user(is_superuser=False, is_auditor=True, permission={"cmdb": {"asset_info-View"}})
+    resp = called(_request(user))
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_auditor_does_not_bypass_has_role_admin():
+    called = HasRole(["admin"])(lambda req: "ok")
+    resp = called(_request(_user(is_superuser=False, is_auditor=True, roles=["auditor"])))
+    assert resp.status_code == status.HTTP_403_FORBIDDEN

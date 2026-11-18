@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
   buildSearchQueryParams,
   generateSearchId,
+  getInstanceSelectLabel,
+  getInstanceSelectTooltip,
   getMetricsMapKey,
+  matchInstanceSelectOption,
   resolveInitialPlugin,
   resolveMetricSelection,
 } from '../src/app/monitor/(pages)/search/searchQueryLogic';
@@ -179,5 +182,40 @@ assert.deepEqual(parseSearchTimeQueryParams(asParams('')), {
   rangeStart: null,
   rangeEnd: null,
 });
+
+const podInstance = {
+  instance_id: "('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')",
+  instance_name: "('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')",
+  instance_id_values: ['af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde'],
+};
+assert.equal(getInstanceSelectLabel(podInstance), 'coredns-7db6d8ff4-abcde');
+assert.equal(
+  getInstanceSelectTooltip(podInstance),
+  "coredns-7db6d8ff4-abcde\n('af28df4ad8ef4fdea63abfa5bab49f54', 'coredns-7db6d8ff4-abcde')"
+);
+assert.equal(
+  getInstanceSelectLabel({
+    instance_id: 'host-1',
+    instance_name: 'demo-host',
+    instance_id_values: ['host-1'],
+  }),
+  'demo-host'
+);
+assert.equal(
+  matchInstanceSelectOption('af28df4a', {
+    label: 'coredns-7db6d8ff4-abcde',
+    title: getInstanceSelectTooltip(podInstance),
+    value: podInstance.instance_id,
+  }),
+  true
+);
+assert.equal(
+  matchInstanceSelectOption('not-this-pod', {
+    label: 'coredns-7db6d8ff4-abcde',
+    title: getInstanceSelectTooltip(podInstance),
+    value: podInstance.instance_id,
+  }),
+  false
+);
 
 console.log('monitor-search plugin scope validation passed');

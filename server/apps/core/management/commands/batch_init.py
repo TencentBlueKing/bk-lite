@@ -272,6 +272,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.WARNING(f"CMDB 实例形态清洗注册跳过: {type(exc).__name__}"))
 
+
     def _schedule_ci_context_rebuild(self) -> None:
         """ci_context 全量重摊是可重建投影，启动期只入队，不扫图。"""
         try:

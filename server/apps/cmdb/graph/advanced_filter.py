@@ -4,6 +4,8 @@ from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, apply_node_alias
 from apps.cmdb.graph.validators import CQLValidator
 
 MAX_CONDITIONS = 10
+MAX_RELATION_FILTERS = 2
+MAX_RELATION_VALUES = 50
 ADVANCED_FILTER_TIMEOUT_MS = 15000
 ADVANCED_FILTER_TIMEOUT_SECONDS = 15
 
@@ -162,6 +164,60 @@ def resolve_advanced_filter(model_id, payload, associations, visible, attrs_by_m
     return logic, resolved
 
 
+def resolve_relation_filters(model_id, filters, associations, visible):
+    """校验资产列表顶栏的关联实例筛选。每条都是一跳，并且匹配对端 inst_uuid。"""
+    from apps.cmdb.model_migrate.quick_filter import parse_quick_filter_cell, quick_filter_ends
+
+    if not filters:
+        return []
+    if not isinstance(filters, list):
+        _fail(None, "快捷筛选格式不正确")
+    if len(filters) > MAX_RELATION_FILTERS:
+        _fail(None, "快捷筛选不能超过 2 个")
+
+    resolved = []
+    seen = set()
+    for offset, raw in enumerate(filters, start=1):
+        if not isinstance(raw, dict):
+            _fail(offset, "快捷筛选格式不正确")
+        asst_id = raw.get("model_asst_id")
+        values = raw.get("inst_uuids")
+        if not isinstance(asst_id, str) or not asst_id:
+            _fail(offset, "关联关系不存在")
+        if asst_id in seen:
+            _fail(offset, "快捷筛选重复")
+        if not isinstance(values, list) or not values or len(values) > MAX_RELATION_VALUES:
+            _fail(offset, "请选择要筛选的实例")
+        uuids = []
+        for item in values:
+            text = str(item or "").strip()
+            if not text or text in uuids:
+                continue
+            uuids.append(text)
+        if not uuids:
+            _fail(offset, "请选择要筛选的实例")
+        edge = associations.get(asst_id) or {}
+        if not parse_quick_filter_cell(edge.get("quick_filter")):
+            _fail(offset, "该关联未开启快捷筛选")
+        ends = quick_filter_ends(edge.get("src_model_id"), edge.get("dst_model_id"), edge.get("mapping"))
+        if not ends or ends[0] != model_id:
+            _fail(offset, "当前模型不能使用这个快捷筛选")
+        target = ends[1]
+        if target not in visible:
+            _fail(offset, "关联模型不可见")
+        seen.add(asst_id)
+        resolved.append(
+            {
+                "index": offset,
+                "path": [asst_id],
+                "models": [target],
+                "end_model_id": target,
+                "query": {"field": "inst_uuid", "type": "str[]", "value": uuids},
+            }
+        )
+    return resolved
+
+
 def _permission(permission_for, model_id, alias):
     if permission_for is None:
         return ""
@@ -178,6 +234,7 @@ def compile_advanced_filter(
     permission_for,
     base_params,
     case_sensitive=True,
+    pinned=None,
 ):
     """返回 MATCH...WHERE 片段。片段结束时 n 代表去重后的当前模型实例。"""
     validated_label = CQLValidator.validate_label(label)
@@ -194,6 +251,9 @@ def compile_advanced_filter(
         where.append(format_node_conditions([item["query"] for item in self_conditions], "n", "AND", collector, case_sensitive))
     if where:
         lines.append("WHERE " + " AND ".join(where))
+
+    for index, item in enumerate(pinned or []):
+        lines.append(_and_group(f"p{index}", item["path"][0], [item], collector, permission_for, case_sensitive, validated_label))
 
     if logic == "AND":
         groups = {}

@@ -5,6 +5,8 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import (
     CurrentTeamDataScope,
+    _get_actor_context,
+    actor_context_to_wire,
     build_request_push_actor_scope,
     resolve_assignable_organization_ids,
     resolve_current_team_data_scope,
@@ -16,7 +18,7 @@ from apps.core.utils.current_team_scope import (
 pytestmark = pytest.mark.unit
 
 
-def make_request(*, is_superuser=False, current_team=1, include_children=False):
+def make_request(*, is_superuser=False, is_auditor=False, current_team=1, include_children=False):
     return SimpleNamespace(
         COOKIES={
             **({"current_team": str(current_team)} if current_team is not None else {}),
@@ -27,6 +29,7 @@ def make_request(*, is_superuser=False, current_team=1, include_children=False):
             domain="domain.com",
             group_list=[1, 2],
             is_superuser=is_superuser,
+            is_auditor=is_auditor,
         ),
     )
 
@@ -159,3 +162,20 @@ def test_build_request_push_actor_scope_omits_user_info_when_scope_fails():
     scope = build_request_push_actor_scope(make_request(current_team=None))
 
     assert scope == {"allowed_org_ids": [], "operator": "admin"}
+
+
+def test_auditor_actor_context_is_not_marked_superuser():
+    request = make_request(is_auditor=True)
+    ctx = _get_actor_context(request)
+    assert ctx["is_auditor"] is True
+    assert ctx["is_superuser"] is False
+
+    wire = actor_context_to_wire(
+        {
+            **ctx,
+            "current_team": 1,
+            "data_team_ids": [1, 2],
+        }
+    )
+    assert wire["is_auditor"] is True
+    assert wire["is_superuser"] is False

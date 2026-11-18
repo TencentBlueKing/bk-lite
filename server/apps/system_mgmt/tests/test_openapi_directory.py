@@ -16,7 +16,7 @@ USERS_URL = "/openapi/v1/system-mgmt/users"
 GROUPS_URL = "/openapi/v1/system-mgmt/groups"
 SCOPE = {"mode": "all"}
 
-_SENSITIVE_USER_FIELDS = {"password", "otp_secret", "phone", "temporary_pwd", "user_id"}
+_SENSITIVE_USER_FIELDS = {"password", "otp_secret", "temporary_pwd", "user_id"}
 _SENSITIVE_GROUP_FIELDS = {"description", "external_id", "roles", "is_delete"}
 
 
@@ -138,12 +138,51 @@ def test_system_tenant_can_read_own_org_users(tenants):
         "domain": "domain.com",
         "display_name": "Alice",
         "email": "alice@example.com",
+        "phone": "13800000000",
         "disabled": False,
         "locale": "en",
+        "timezone": "Asia/Shanghai",
         "group_list": [str(tenants.a.team.id)],
+        "role_list": [],
+        "job_title": "",
+        "employee_no": "",
+        "manager_id": None,
+        "employment_status": "unspecified",
         "is_superuser": False,
     }
     assert _SENSITIVE_USER_FIELDS.isdisjoint(own)
+
+
+def test_user_directory_returns_profile_fields_without_password(tenants):
+    manager = _create_directory_user(
+        username=f"manager-a-{uuid.uuid4().hex[:8]}",
+        group_ids=[tenants.a.team.id],
+        display_name="Manager",
+    )
+    role = Role.objects.create(name=f"directory-role-{uuid.uuid4().hex[:8]}", app="system-manager")
+    member = tenants.a.member
+    member.manager = manager
+    member.role_list = [role.id, "bad"]
+    member.job_title = "工程师"
+    member.employee_no = "E100"
+    member.employment_status = "employed"
+    member.timezone = "UTC"
+    member.password = "hashed-secret"
+    member.save()
+
+    response = APIClient().get(USERS_URL, {"user_id": member.id}, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    item = response.json()["data"]["results"][0]
+    assert item["phone"] == "13800000000"
+    assert item["timezone"] == "UTC"
+    assert item["role_list"] == [str(role.id)]
+    assert item["job_title"] == "工程师"
+    assert item["employee_no"] == "E100"
+    assert item["manager_id"] == str(manager.id)
+    assert item["employment_status"] == "employed"
+    assert "password" not in item
+    assert "hashed-secret" not in response.content.decode()
 
 
 def test_system_tenant_cannot_read_other_org_users(tenants):
@@ -551,6 +590,48 @@ def test_user_directory_inherited_group_admin_is_superuser(tenants):
     assert by_id[str(tenants.a.member.id)]["is_superuser"] is True
     assert by_id[str(tenants.a.system_user.id)]["is_superuser"] is True
     assert by_id[str(tenants.b.member.id)]["is_superuser"] is False
+
+
+def test_auditor_reads_all_users_but_is_not_marked_superuser(tenants):
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    role_ids = list(tenants.a.system_user.role_list or [])
+    if auditor_role.id not in role_ids:
+        tenants.a.system_user.role_list = role_ids + [auditor_role.id]
+        tenants.a.system_user.save(update_fields=["role_list"])
+
+    response = APIClient().get(USERS_URL, **_acting(tenants.a))
+
+    assert response.status_code == 200, response.json()
+    ids = set(_user_ids(response.json()))
+    assert str(tenants.a.member.id) in ids
+    assert str(tenants.b.member.id) in ids
+    actor = next(item for item in response.json()["data"]["results"] if item["id"] == str(tenants.a.system_user.id))
+    assert actor["is_superuser"] is False
+
+
+def test_auditor_cannot_send_notification(tenants):
+    from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+    auditor_role = ensure_platform_auditor_role()
+    role_ids = list(tenants.a.system_user.role_list or [])
+    if auditor_role.id not in role_ids:
+        tenants.a.system_user.role_list = role_ids + [auditor_role.id]
+        tenants.a.system_user.save(update_fields=["role_list"])
+
+    response = APIClient().post(
+        "/openapi/v1/system-mgmt/notification-channels/send",
+        {
+            "channel_id": 1,
+            "content": "x",
+            "receivers": ["a"],
+            "channel_type": "email",
+        },
+        format="json",
+        **_acting(tenants.a),
+    )
+    assert response.status_code == 403
 
 
 def test_superuser_search_finds_user_outside_acting_team(tenants):
