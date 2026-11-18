@@ -326,14 +326,23 @@ def _minio_http_pool():
     return _MINIO_HTTP_POOL
 
 
-def _install_single_attempt_minio_client(storage) -> None:
-    """django-minio-backend 会缓存 Minio 客户端，默认再重试 5 次。这里换成只连一次的连接池。"""
-    pool = _minio_http_pool()
-    storage.HTTP_CLIENT = pool
-    for attr in ("_MinioBackend__CLIENT", "_MinioBackend__CLIENT_EXT"):
-        client = getattr(storage, attr, None)
-        if client is not None and getattr(client, "_http", None) is not pool:
-            client._http = pool
+def _upload_workflow_attachment_bytes(*, filename: str, content_bytes: bytes, mime_type: str) -> str:
+    """用本次新建的 MinioBackend 上传。
+
+    django-minio-backend 3.6.0 把 Minio 客户端放在实例的 ``_MinioBackend__CLIENT`` 上，
+    初值为 None。``getattr`` 在实例没有该属性时会读到类上的同名缓存。
+    附件字段和其他 ``MinioBackend(bucket_name="munchkin-private")`` 只要共用那个客户端，
+    改 ``_http`` 或字段 storage 的 ``HTTP_CLIENT`` 就会让别的上传也不再重试。
+    这里只给本次上传一个自己的 storage，连接池不装到已有客户端上。
+    """
+    from django_minio_backend import MinioBackend
+
+    field = WorkflowAttachmentAsset._meta.get_field("file")
+    isolated = MinioBackend(bucket_name=field.storage.bucket, http_client=_minio_http_pool())
+    content = ContentFile(content_bytes, name=filename)
+    content.content_type = mime_type
+    object_name = field.generate_filename(WorkflowAttachmentAsset(), filename)
+    return isolated.save(object_name, content)
 
 
 def _is_minio_connection_error(exc: BaseException) -> bool:
@@ -370,11 +379,10 @@ def create_workflow_attachment_asset(
     if not attachment_id:
         raise ValueError("attachment_id 不能为空")
 
-    storage = WorkflowAttachmentAsset._meta.get_field("file").storage
-    _install_single_attempt_minio_client(storage)
     existing_asset = WorkflowAttachmentAsset.objects.filter(execution_id=execution_id, attachment_id=attachment_id).first()
     previous_file_name = existing_asset.file.name if (existing_asset and existing_asset.file) else None
     try:
+        saved_name = _upload_workflow_attachment_bytes(filename=filename, content_bytes=content_bytes, mime_type=mime_type)
         asset, _ = WorkflowAttachmentAsset.objects.update_or_create(
             execution_id=execution_id,
             attachment_id=attachment_id,
@@ -383,7 +391,7 @@ def create_workflow_attachment_asset(
                 "source_node_id": source_node_id,
                 "filename": filename,
                 "mime_type": mime_type,
-                "file": ContentFile(content_bytes, name=filename),
+                "file": saved_name,
                 "created_by": str(created_by or ""),
             },
         )

@@ -519,6 +519,10 @@ def build_xlsx_bytes(content: str, *, header_rows: int = 1, merges: list[str] | 
         for column_index, cell_text in enumerate(padded, start=1):
             value = _excel_value(cell_text)
             cell = sheet.cell(row_index, column_index, value)
+            if isinstance(value, str) and _excel_formula_text(value):
+                # openpyxl 会把 = 开头写成公式；Excel 还会执行 + @ tab 以及非数字的 -。
+                cell.data_type = "s"
+                cell.number_format = "@"
             cell.border = thin
             cell.alignment = Alignment(
                 vertical="center",
@@ -751,9 +755,10 @@ def _html_table(header: list, rows: list) -> str:
     return f"<table><colgroup>{columns}</colgroup><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
 
 
-def _launch_chromium_pdf(html: str, title: str) -> bytes:
-    from playwright.sync_api import sync_playwright
+_PDF_PRINT_TIMEOUT_SECONDS = 60
 
+
+def _launch_chromium_pdf(html: str, title: str) -> bytes:
     header = '<div style="font-family:Microsoft YaHei,sans-serif;font-size:10px;width:100%;' f'padding:0 8px;color:#{MUTED};">{_escape(title)}</div>'
     footer = (
         '<div style="font-family:Microsoft YaHei,sans-serif;font-size:10px;width:100%;'
@@ -761,6 +766,8 @@ def _launch_chromium_pdf(html: str, title: str) -> bytes:
     )
 
     def _print() -> bytes:
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as playwright:
             options = {"headless": True}
             executable = os.environ.get("EXECUTABLE_PATH")
@@ -781,8 +788,15 @@ def _launch_chromium_pdf(html: str, title: str) -> bytes:
             finally:
                 browser.close()
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_print).result()
+    # 超时后不能 wait=True，否则卡住的 Chromium 仍会拖住调用方。
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        try:
+            return executor.submit(_print).result(timeout=_PDF_PRINT_TIMEOUT_SECONDS)
+        except TimeoutError as exc:
+            raise TimeoutError("pdf print timed out") from exc
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _prepare_docx(document, title, OxmlElement, qn, Mm, Pt, RGBColor) -> None:
@@ -1247,6 +1261,12 @@ def _csv_rows(content: str) -> list[list[str]]:
         if any(cell.strip() for cell in row):
             rows.append(row)
     return rows or [[""]]
+
+
+def _excel_formula_text(value: str) -> bool:
+    """Excel 会把这些开头当成公式。已解析成数字的值不会进这里。"""
+    probe = value.lstrip(" \t\r\n")
+    return bool(probe) and probe[0] in "=+@-\t\r"
 
 
 def _excel_value(cell: str):
