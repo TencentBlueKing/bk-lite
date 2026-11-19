@@ -11,7 +11,9 @@ import pytest
 INSTALLER = Path(__file__).resolve().parents[1] / "install-proxy-payload.sh"
 
 
-@pytest.mark.parametrize("failure_stage", ["preflight", "apply", "backup_rename", "rename", "space", "none"])
+@pytest.mark.parametrize(
+    "failure_stage", ["init_txn", "init_stage", "preflight", "apply", "backup_rename", "rename", "space", "none"]
+)
 def test_upgrade_keeps_previous_installation(tmp_path, failure_stage):
     target = tmp_path / "proxy"
     target.mkdir()
@@ -41,6 +43,14 @@ def test_upgrade_keeps_previous_installation(tmp_path, failure_stage):
             'if [[ "$FAILURE_STAGE" == backup_rename && "$3" == */.proxy.installing/previous ]]; then kill -TERM "$PPID"; fi\n'
         ),
     }
+    if failure_stage in {"init_txn", "init_stage"}:
+        commands["mkdir"] = (
+            '#!/bin/bash\n/bin/mkdir "$@" || exit $?\n'
+            'if [[ "$FAILURE_STAGE" == init_txn && "$2" == */.proxy.installing ]] ||\n'
+            '   [[ "$FAILURE_STAGE" == init_stage && "$2" == */.proxy.installing/stage ]]; then\n'
+            '    kill -TERM "$PPID"\n'
+            'fi\n'
+        )
     if failure_stage == "space":
         commands["df"] = '#!/bin/sh\nprintf "%s\\n" "Filesystem 1024-blocks Used Available Capacity Mounted on" "fake 100 99 1 99% /"\n'
         commands["cp"] = '#!/bin/sh\ntouch "$COPY_ATTEMPTED"\nexit 99\n'
@@ -82,10 +92,18 @@ def test_upgrade_keeps_previous_installation(tmp_path, failure_stage):
         "COPY_ATTEMPTED": str(tmp_path / "copy-attempted"),
     }
     result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
+    if failure_stage in {"init_txn", "init_stage"}:
+        assert result.returncode == 143, result.stderr
+        assert (target / ".env").read_text() == old_env
+        assert (retained / "previous/.env").read_text() == "oldest"
+        assert "old service recreated" not in result.stdout
+        assert not (tmp_path / ".proxy.installing").exists()
+        result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env | {"FAILURE_STAGE": "none"})
+
     assert (target / "docker-compose.override.yaml").read_text() == override
     assert (legacy / "readme").read_text() == "operator backup"
     assert not (tmp_path / ".proxy.installing").exists()
-    if failure_stage == "none":
+    if failure_stage in {"none", "init_txn", "init_stage"}:
         assert result.returncode == 0, result.stderr
         installed_env = (target / ".env").read_text()
         assert installed_env == (

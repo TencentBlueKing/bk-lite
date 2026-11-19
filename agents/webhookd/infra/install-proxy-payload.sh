@@ -17,11 +17,10 @@ if [ -e "$retained" ] || [ -L "$retained" ]; then
         exit 1
     fi
 fi
-if ! mkdir -- "$txn"; then
+if [ -e "$txn" ] || [ -L "$txn" ]; then
     printf 'Review any interrupted Proxy installation in %s before retrying\n' "$txn" >&2
     exit 1
 fi
-mkdir -- "$stage"
 apply_started=false
 
 rollback() {
@@ -66,9 +65,13 @@ cleanup() {
     rm -rf -- "$txn"
     exit "$result"
 }
-trap cleanup EXIT
+# Until staging exists, only empty work directories belong to this attempt.
+trap 'rmdir -- "$stage" "$txn" 2>/dev/null || :' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+mkdir -- "$txn"
+mkdir -- "$stage"
+trap cleanup EXIT
 touch "$txn/$marker"
 
 used_kib=0
