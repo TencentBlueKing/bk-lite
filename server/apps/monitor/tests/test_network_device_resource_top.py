@@ -12,9 +12,9 @@ from apps.monitor.services.network_device_resource_top import (
 def test_network_candidates_are_filtered_to_fresh_supported_devices_and_ranked():
     now = datetime(2026, 7, 22, 12, tzinfo=timezone.utc)
     meta = {
-        "sw-1": {"name": "Switch A", "ip": "10.0.0.1", "object_name": "Switch", "interval": 60},
-        "router-1": {"name": "Router A", "ip": "10.0.0.2", "object_name": "Router", "interval": 60},
-        "server-1": {"name": "Server", "ip": "10.0.0.3", "object_name": "Linux", "interval": 60},
+        "sw-1": {"name": "Switch A", "ip": "10.0.0.1", "object_name": "Switch", "object_type_id": "Network Device", "interval": 60},
+        "router-1": {"name": "Router A", "ip": "10.0.0.2", "object_name": "Router", "object_type_id": "Network Device", "interval": 60},
+        "server-1": {"name": "Server", "ip": "10.0.0.3", "object_name": "Switch", "object_type_id": "OS", "interval": 60},
     }
     candidates = [
         NetworkCandidate("sw-1", 80, now - timedelta(seconds=30), "cpu"),
@@ -68,7 +68,7 @@ def test_memory_fallback_is_supported_by_service():
             "name": "Switch A",
             "ip": None,
             "interval": 300,
-            "monitor_object": type("Object", (), {"name": "Switch"})(),
+            "monitor_object": type("Object", (), {"name": "Switch", "type_id": "Network Device"})(),
         },
     )()
     rows = (
@@ -106,7 +106,7 @@ def test_service_matches_tuple_storage_id_with_raw_metric_instance_id():
             "name": "Switch A",
             "ip": "10.0.0.2",
             "interval": 300,
-            "monitor_object": type("Object", (), {"name": "Switch"})(),
+            "monitor_object": type("Object", (), {"name": "Switch", "type_id": "Network Device"})(),
         },
     )()
 
@@ -117,3 +117,49 @@ def test_service_matches_tuple_storage_id_with_raw_metric_instance_id():
 
     assert rows[0]["instance_id"] == "switch-1"
     assert rows[0]["value"] == 55.0
+
+
+def _instance(instance_id, object_name, type_id):
+    return type(
+        "Instance",
+        (),
+        {
+            "id": instance_id,
+            "name": object_name,
+            "ip": "10.0.0.8",
+            "interval": 300,
+            "monitor_object": type("Object", (), {"name": object_name, "type_id": type_id})(),
+        },
+    )()
+
+
+def test_ranking_keeps_sampled_instances_in_the_network_device_category():
+    now = datetime(2026, 7, 22, 12, tzinfo=timezone.utc)
+
+    class FakeVM:
+        def query(self, query, **kwargs):
+            metric = query.split('"')[1]
+            if metric != "device_cpu_usage":
+                return {"status": "success", "data": {"result": []}}
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"instance_id": "ap-1"}, "value": [now.timestamp(), "40"]},
+                        {"metric": {"instance_id": "host-1"}, "value": [now.timestamp(), "99"]},
+                    ]
+                },
+            }
+
+    rows = NetworkDeviceResourceTopService(vm_api=FakeVM(), now=now).run(
+        "cpu",
+        [
+            _instance("sw-1", "Switch", "Network Device"),
+            _instance("ap-1", "Wireless", "Network Device"),
+            _instance("host-1", "Switch", "OS"),
+        ],
+    )
+
+    assert [row["instance_id"] for row in rows] == ["ap-1"]
+    assert rows[0]["device_type"] == "Wireless"
+    assert rows[0]["value"] == 40.0
