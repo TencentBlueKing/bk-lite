@@ -56,6 +56,7 @@ import {
   filterPolicyGroupMembers,
   memberTemplateFilterOptions,
   pluginCounts,
+  readRuleTableFilters,
   renderPluginTag,
   rulesForTemplateIds,
   templateIdsFromRules,
@@ -977,10 +978,12 @@ const PolicyGroupPage: React.FC = () => {
         t,
         unitLabel: findUnitNameById,
         noDataFilter: workbenchNoData,
+        plugins: availableWorkbenchPlugins,
+        pluginFilter: workbenchPluginFilter,
         nameClassName: 'font-medium text-[var(--color-text-1)]',
         onEdit: (record) => openRuleEditor(currentGroup, record),
       }),
-    [t, findUnitNameById, workbenchNoData, currentGroup, objectId, treeData]
+    [t, findUnitNameById, workbenchNoData, workbenchPluginFilter, availableWorkbenchPlugins, currentGroup, objectId, treeData]
   );
   const drawerRuleColumns = React.useMemo(
     () =>
@@ -988,9 +991,11 @@ const PolicyGroupPage: React.FC = () => {
         t,
         unitLabel: findUnitNameById,
         noDataFilter: ruleNoData,
+        plugins: availablePlugins,
+        pluginFilter: rulePluginFilter,
         onEdit: (record) => openRuleEditor(ruleGroup, record),
       }),
-    [t, findUnitNameById, ruleNoData, ruleGroup, objectId, treeData]
+    [t, findUnitNameById, ruleNoData, rulePluginFilter, availablePlugins, ruleGroup, objectId, treeData]
   );
 
   return (
@@ -1111,58 +1116,29 @@ const PolicyGroupPage: React.FC = () => {
               </div>
 
               {/* 策略组轻量属性行 */}
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-1)] pb-2 text-[12px] text-[var(--color-text-3)]">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <span>生效数量:</span>
-                    <Button
-                      type="link"
-                      size="small"
-                      className="px-0 font-medium"
-                      onClick={() => void openMembers(currentGroup)}
-                    >
-                      {currentGroup.member_count || 0} 台
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span>生效状态:</span>
-                    <Permission requiredPermissions={['Edit']}>
-                      <Switch
-                        size="small"
-                        loading={enableSavingId === currentGroup.id}
-                        checked={Boolean(currentGroup.enable)}
-                        onChange={(val) => changeGroupEnable(currentGroup, val)}
-                      />
-                    </Permission>
-                  </div>
+              <div className="mb-2 flex flex-wrap items-center gap-4 border-b border-[var(--color-border-1)] pb-2 text-[12px] text-[var(--color-text-3)]">
+                <div className="flex items-center gap-1.5">
+                  <span>生效数量:</span>
+                  <Button
+                    type="link"
+                    size="small"
+                    className="px-0 font-medium"
+                    onClick={() => void openMembers(currentGroup)}
+                  >
+                    {currentGroup.member_count || 0} 台
+                  </Button>
                 </div>
-
-                {availableWorkbenchPlugins.length > 1 && (
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="text-[var(--color-text-3)] mr-0.5">接入模板:</span>
-                    <Tag.CheckableTag
-                      checked={workbenchPluginFilter === 'all'}
-                      onChange={() => {
-                        setWorkbenchPluginFilter('all');
-                        setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                      }}
-                    >
-                      全部 ({currentGroupRules.length}条规则)
-                    </Tag.CheckableTag>
-                    {availableWorkbenchPlugins.map(({ name }) => (
-                      <Tag.CheckableTag
-                        key={name}
-                        checked={workbenchPluginFilter === name}
-                        onChange={() => {
-                          setWorkbenchPluginFilter(name);
-                          setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                        }}
-                      >
-                        {name}
-                      </Tag.CheckableTag>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5">
+                  <span>生效状态:</span>
+                  <Permission requiredPermissions={['Edit']}>
+                    <Switch
+                      size="small"
+                      loading={enableSavingId === currentGroup.id}
+                      checked={Boolean(currentGroup.enable)}
+                      onChange={(val) => changeGroupEnable(currentGroup, val)}
+                    />
+                  </Permission>
+                </div>
               </div>
 
               {/* 规则清单表格与底部固定分页 */}
@@ -1175,9 +1151,9 @@ const PolicyGroupPage: React.FC = () => {
                     loading={loading}
                     pagination={false}
                     onChange={(_pagination, filters) => {
-                      const selected = filters?.no_data_enabled;
-                      const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
-                      setWorkbenchNoData(value === 'on' || value === 'off' ? value : null);
+                      const next = readRuleTableFilters(filters);
+                      setWorkbenchNoData(next.noData);
+                      setWorkbenchPluginFilter(next.plugin);
                       setWorkbenchPagination((prev) => ({
                         ...prev,
                         current: 1,
@@ -1545,33 +1521,6 @@ const PolicyGroupPage: React.FC = () => {
           description="策略组打包了多种采集模板的规则。主机实际接入时，仅会匹配其对应接入方式生效（如远程接入的主机仅生效 Host Remote 规则，其余规则因无该时序数据源自动保持静默，不会造成误报）。"
         />
 
-        {availablePlugins.length > 1 && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12px]">
-            <span className="text-[var(--color-text-3)] mr-1">接入模板:</span>
-            <Tag.CheckableTag
-              checked={rulePluginFilter === 'all'}
-              onChange={() => {
-                setRulePluginFilter('all');
-                setRulePagination((prev) => ({ ...prev, current: 1 }));
-              }}
-            >
-              全部 ({ruleRows.length})
-            </Tag.CheckableTag>
-            {availablePlugins.map(({ name, count }) => (
-              <Tag.CheckableTag
-                key={name}
-                checked={rulePluginFilter === name}
-                onChange={() => {
-                  setRulePluginFilter(name);
-                  setRulePagination((prev) => ({ ...prev, current: 1 }));
-                }}
-              >
-                {name} ({count})
-              </Tag.CheckableTag>
-            ))}
-          </div>
-        )}
-
         <SearchActionBar
           searchProps={{
             placeholder: '搜索名称或模板',
@@ -1596,9 +1545,9 @@ const PolicyGroupPage: React.FC = () => {
           scroll={{ y: 'auto' }}
           onChange={(next, filters, _sorter, extra) => {
             if (extra?.action === 'filter') {
-              const selected = filters?.no_data_enabled;
-              const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
-              setRuleNoData(value === 'on' || value === 'off' ? value : null);
+              const nextFilters = readRuleTableFilters(filters);
+              setRuleNoData(nextFilters.noData);
+              setRulePluginFilter(nextFilters.plugin);
               setRulePagination((prev) => ({
                 ...prev,
                 current: 1,
