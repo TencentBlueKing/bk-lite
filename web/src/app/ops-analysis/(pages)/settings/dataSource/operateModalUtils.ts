@@ -879,7 +879,7 @@ export interface DatasourceSourceFlags {
 }
 
 export function getDatasourceSourceFlags(
-  sourceType: DataSourceSourceType,
+  sourceType?: DataSourceSourceType,
 ): DatasourceSourceFlags {
   const isNatsSource = sourceType === SOURCE_TYPE_NATS;
   const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
@@ -1006,12 +1006,8 @@ export function buildHydratedDatasourceFormState(
   if (!row) {
     return {
       formValues: {
-        source_type: SOURCE_TYPE_NATS,
         connection_mode: "connection",
-        connection_config: {
-          method: "GET",
-          timeout: 10,
-        },
+        connection_config: {},
         query_config: {},
         transform_config: createDefaultTransformConfig(),
         ...(options?.selectedGroupId

@@ -176,6 +176,48 @@ def test_webhook_without_explicit_response_mode_defaults_to_immediate():
     assert normalized["return_nodes"] == []
 
 
+def test_webhook_keeps_declared_request_body_fields():
+    metadata = _metadata("WEBHOOK", None, response_mode="IMMEDIATE")
+    metadata["trigger_nodes"][0]["input_schema"] = {
+        "type": "object",
+        "properties": {
+            "body": {
+                "type": "object",
+                "title": "请求正文",
+                "properties": {"message": {"type": "string", "title": "消息", "x-widget": "input"}},
+                "required": ["message"],
+                "additionalProperties": True,
+            }
+        },
+        "required": ["body"],
+        "additionalProperties": False,
+    }
+
+    normalized = validate_orchestration_metadata(metadata, task_references={"task"})
+
+    body = normalized["trigger_nodes"][0]["input_schema"]["properties"]["body"]
+    assert body["properties"]["message"] == {"type": "string", "title": "消息", "x-widget": "input"}
+    assert body["required"] == ["message"]
+    assert body["additionalProperties"] is True
+    assert normalized["data_contract"]["inputs"][0]["schema"]["properties"]["message"]["title"] == "消息"
+
+
+def test_webhook_rejects_unsupported_request_body_field():
+    metadata = _metadata("WEBHOOK", None, response_mode="IMMEDIATE")
+    metadata["trigger_nodes"][0]["input_schema"] = {
+        "type": "object",
+        "properties": {
+            "body": {
+                "type": "object",
+                "properties": {"targets": {"type": "array", "x-widget": "target-selector"}},
+            }
+        },
+    }
+
+    with pytest.raises(DefinitionValidationError, match="Webhook 请求字段 targets 的类型不支持"):
+        validate_orchestration_metadata(metadata, task_references={"task"})
+
+
 def test_webhook_uses_platform_owned_request_body_schema():
     metadata = _metadata("WEBHOOK", "WEBHOOK")
 
