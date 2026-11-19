@@ -4,8 +4,20 @@ from typing import Any, Dict, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.core.utils.time_util import format_rfc3339_utc
 from apps.opspilot.metis.llm.tools.alerts.utils import call_alerts_rpc, wrap_error
 from apps.opspilot.metis.llm.tools.search_terms import SEARCH_NOTE, resolve_search_terms, user_message_from_config
+from apps.opspilot.metis.llm.tools.user_clock import parse_user_wall_time, timezone_name_from_config
+
+
+def _alert_created_bound(value: Optional[str], tz_name: str) -> tuple[Optional[str], Optional[str]]:
+    if value is None or not str(value).strip():
+        return None, None
+    try:
+        return format_rfc3339_utc(parse_user_wall_time(value, tz_name)), None
+    except ValueError as exc:
+        return None, str(exc)
+
 
 _ALERT_PAGE_SIZE = 100
 _ALERT_MAX_RECORDS = 1000
@@ -87,6 +99,9 @@ def _fetch_complete_alerts(config: Optional[RunnableConfig], query_data: Dict[st
         "monitor_list_active_alerts（监控策略告警未必进告警中心），两套都要查。"
         "status=active 表示未关闭的活动告警（pending、processing、unassigned），与告警中心活动页一致；"
         "不传 status 则包含已关闭。具体状态用 pending、processing、unassigned、closed、resolved、auto_close、auto_recovery。"
+        "start、end 按告警创建时间筛选，与告警列表页一致，可只传一侧。不传则不按时间筛选。"
+        "没写时区时按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。"
+        "问某段时间内的告警时传 start 和 end。没说活跃就不要改成 status=active，也不要拿一页结果自己再按时间剔除。"
         "「当前」「有哪些」这类口头语不会当关键字。问有哪些告警时不要传 keyword。"
         "关键字只取正文内容，并做或匹配，覆盖标题、正文、资源名和告警 ID。"
         "中文正文必须用 keyword 传入，并且这个词要原样出现在用户原话里。状态、时间和查询口头语不要传，中英文都一样。"
@@ -98,11 +113,20 @@ def alerts_list_alerts(
     status: Optional[Any] = None,
     level: Optional[Any] = None,
     keyword: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     fetch_all: bool = True,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
+    tz_name = timezone_name_from_config(config)
+    start_bound, start_error = _alert_created_bound(start, tz_name)
+    if start_error:
+        return wrap_error(start_error)
+    end_bound, end_error = _alert_created_bound(end, tz_name)
+    if end_error:
+        return wrap_error(end_error)
     if fetch_all and page != 1:
         return _incomplete_alert_query("fetch_all requires page=1")
     terms = resolve_search_terms(user_message_from_config(config), keyword)
@@ -113,6 +137,10 @@ def alerts_list_alerts(
         "page": page,
         "page_size": page_size,
     }
+    if start_bound:
+        query_data["start"] = start_bound
+    if end_bound:
+        query_data["end"] = end_bound
     if fetch_all:
         result = _fetch_complete_alerts(config, query_data)
     else:

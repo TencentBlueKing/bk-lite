@@ -129,11 +129,9 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     is_progressive_tools_enabled,
 )
-from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_prepare_conversation_skill_package_tool
 
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
-from apps.opspilot.services.conversation_skill_package import ALLOWED_ENTRIES, AUTHORING_EXTRA_KEY, PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL
 from apps.opspilot.services.job_output_text import model_visible_text
 from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
 from apps.opspilot.utils.pending_question import (
@@ -821,16 +819,6 @@ def build_planned_step_end_payload(
     if reused:
         payload["outcome"] = REUSED_PRIOR_RESULT
     return payload
-
-
-def _conversation_skill_package_authoring_enabled(graph_request) -> bool:
-    extra = getattr(graph_request, "extra_config", None) or {}
-    if not isinstance(extra, dict):
-        return False
-    authoring = extra.get(AUTHORING_EXTRA_KEY)
-    if not isinstance(authoring, dict) or not authoring.get("enabled"):
-        return False
-    return str(authoring.get("entry") or "") in ALLOWED_ENTRIES
 
 
 class ToolsNodes(
@@ -2237,10 +2225,6 @@ class ToolsNodes(
             and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools)
         ):
             tools.append(self._build_choice_tool())
-        if _conversation_skill_package_authoring_enabled(graph_request) and not any(
-            getattr(tool, "name", "") == PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL for tool in tools
-        ):
-            tools.append(build_prepare_conversation_skill_package_tool())
         return tools
 
     @staticmethod

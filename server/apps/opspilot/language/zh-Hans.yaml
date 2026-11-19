@@ -361,7 +361,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。start、end 按创建时间筛选，不传则不筛选。没写时区按当前用户时区理解。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:
@@ -393,6 +393,13 @@ tools:
     tools:
       generate_attachment_file:
         description: 生成 txt、md、pdf、docx、pptx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；pptx 按标题分页；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 PPT 时必须用 pptx，禁止降级成 docx。用户要 txt 时不要改成 md。
+  conversation_skill_package:
+    name: 生成技能包
+    description: |
+      把当前对话整理成技能包成稿。只有用户点确认后才写入。用户没有明确要求时不要调用。
+    tools:
+      prepare_conversation_skill_package:
+        description: 把当前对话整理成技能包成稿，并发出确认卡。
   kubernetes:
     name: Kubernetes工具
     description: |

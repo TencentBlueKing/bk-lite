@@ -1,4 +1,4 @@
-"""对话生成技能包的成稿工具。不进入工具管理目录。"""
+"""对话生成技能包的成稿工具。由目录工具 conversation_skill_package 加载。"""
 
 from asgiref.sync import sync_to_async
 from langchain_core.runnables import RunnableConfig
