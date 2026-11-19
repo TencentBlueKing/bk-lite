@@ -25,7 +25,7 @@
       "display_name": "Collection Status",
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
-      "unit": "[{\"name\":\"未存活\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"存活\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "unit": "[{\"name\":\"0\",\"id\":0},{\"name\":\"1\",\"id\":1}]",
       "dimensions": [{"name": "namesrv", "description": "NameServer"}],
       "description": "Whether collection is alive. 1 means alive and 0 means not alive.",
       "query": "bklite_rocketmq_up{__$labels__}"
