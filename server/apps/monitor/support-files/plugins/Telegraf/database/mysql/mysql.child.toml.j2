@@ -187,8 +187,10 @@
         collect_type = "database"
         config_type = "mysql"
 
-# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 线程是 Yes/No 字符串；
-# VictoriaMetrics 只收数值。采集侧转成 _int，避免依赖 ingest 侧 enum。
+# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 在 metric_version=2 下可能是字符串 Yes/No，
+# 也可能被 ParseValue 先收成整数 1/0。enum 查表前会把整数格式化成 "1"/"0"。
+# 只认 Yes 且 default=0 时，正在运行会被写成 0。两种都映射，不设 default，
+# 未知值不落成告警值。VictoriaMetrics 只收数值，所以写入独立的 _int 字段。
 [[processors.enum]]
     namepass = ["mysql"]
     [processors.enum.tagpass]
@@ -197,39 +199,43 @@
     [[processors.enum.mapping]]
         field = "slave_slave_io_running"
         dest = "slave_slave_io_running_int"
-        default = 0
         [processors.enum.mapping.value_mappings]
             Yes = 1
+            "1" = 1
             No = 0
+            "0" = 0
             Connecting = 0
             Preparing = 0
 
     [[processors.enum.mapping]]
         field = "slave_slave_sql_running"
         dest = "slave_slave_sql_running_int"
-        default = 0
         [processors.enum.mapping.value_mappings]
             Yes = 1
+            "1" = 1
             No = 0
+            "0" = 0
             Preparing = 0
 
     [[processors.enum.mapping]]
         field = "slave_replica_io_running"
         dest = "slave_replica_io_running_int"
-        default = 0
         [processors.enum.mapping.value_mappings]
             Yes = 1
+            "1" = 1
             No = 0
+            "0" = 0
             Connecting = 0
             Preparing = 0
 
     [[processors.enum.mapping]]
         field = "slave_replica_sql_running"
         dest = "slave_replica_sql_running_int"
-        default = 0
         [processors.enum.mapping.value_mappings]
             Yes = 1
+            "1" = 1
             No = 0
+            "0" = 0
             Preparing = 0
 
 {% set _statements_on = (gather_perf_events_statements | default(false, true) | lower) %}
