@@ -58,6 +58,13 @@
       "template": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:01222a02",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (sqlserver_schedulers_runnable_tasks_count{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:01539a11",
       "object_names": [
         "Hardware Server"
@@ -1580,6 +1587,20 @@
       "template": "tomcat_connector_processing_time{__$labels__}"
     },
     {
+      "id": "dashboard:v1:337454b9",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:341e48fe",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_database_io_reads{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:3456f20c",
       "object_names": [
         "IIS"
@@ -2053,6 +2074,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (rate(haproxy_hrsp_5xx{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:4256953c",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (sqlserver_schedulers_active_workers_count{__$labels__})"
     },
     {
       "id": "dashboard:v1:425a56b0",
@@ -2647,6 +2675,13 @@
       "template": "mongodb_queued_writes{__$labels__}"
     },
     {
+      "id": "dashboard:v1:55a8464a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg_over_time(sqlserver_cpu_system_idle_cpu{__$labels__}[5m])"
+    },
+    {
       "id": "dashboard:v1:55bf5f9b",
       "object_names": [
         "VLLM"
@@ -2703,6 +2738,13 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_parse_count_total_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:5748a754",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:5764f10c",
       "object_names": [
         "Kafka"
@@ -2757,6 +2799,13 @@
         "RabbitMQ"
       ],
       "template": "100 * (rabbitmq_overview_messages_unacked{__$labels__} / clamp_min(rabbitmq_overview_messages{__$labels__}, 1))"
+    },
+    {
+      "id": "dashboard:v1:5a87325c",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_performance_value{counter=\"Lock Waits/sec\", __$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:5aa4e079",
@@ -2841,6 +2890,13 @@
         "Active Directory"
       ],
       "template": "win_ad_ATQ_Estimated_Queue_Delay{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5d23636a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg by (instance_id) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:5d3088b5",
@@ -3011,6 +3067,13 @@
       "template": "mysql_innodb_buffer_pool_pages_total{__$labels__}"
     },
     {
+      "id": "dashboard:v1:630ecfc5",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:63181e12",
       "object_names": [
         "Router"
@@ -3025,6 +3088,13 @@
       "template": "win_ad_DS_Notify_Queue_Size{instance_type=\"active_directory\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:6324fbe7",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg by (instance_id) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:633b06f1",
       "object_names": [
         "Loadbalance",
@@ -3032,6 +3102,13 @@
         "Switch"
       ],
       "template": "min((device_optical_rx_power{__$labels__} != -10000) / 100) by (instance_id) or min(device_optical_rx_power{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:63579f09",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg by (instance_id) (sqlserver_performance_value{counter=\"Page life expectancy\", object=~\".*Buffer Manager\", __$labels__})"
     },
     {
       "id": "dashboard:v1:6388813c",
@@ -3090,6 +3167,13 @@
       "template": "max by (name) (redfish_fan_health_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
+      "id": "dashboard:v1:654be741",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "topk(8, sum by (wait_category) (rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])))"
+    },
+    {
       "id": "dashboard:v1:659002f9",
       "object_names": [
         "MSSQL"
@@ -3116,6 +3200,13 @@
         "MSSQL"
       ],
       "template": "sqlserver_server_properties_uptime{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:6604d265",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_requests_wait_time_ms{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:666aa1e6",
@@ -3558,6 +3649,13 @@
         "ElasticSearch"
       ],
       "template": "elasticsearch_http_current_open{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:78fa5e6b",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_database_io_writes{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:799bc026",
@@ -4732,6 +4830,13 @@
         "ElasticSearch"
       ],
       "template": "bottomk(8, min by (node_name) (elasticsearch_fs_data_0_available_in_bytes{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:a0abcb4a",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_requests_cpu_time_ms{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:a0e33d66",
@@ -6166,6 +6271,13 @@
       "template": "100 * sum(any(disk_used{instance_type=\"k3s\",__$labels__}) by (instance_id, device)) / sum(any(disk_total{instance_type=\"k3s\",__$labels__}) by (instance_id, device))"
     },
     {
+      "id": "dashboard:v1:d5edee3d",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (increase(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:d5fd5fe1",
       "object_names": [
         "Host"
@@ -6737,6 +6849,13 @@
       "template": "sum(rate(sglang:e2e_request_latency_seconds_sum{__$labels__}[5m])) / sum(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]))"
     },
     {
+      "id": "dashboard:v1:ec769d4f",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[5m])"
+    },
+    {
       "id": "dashboard:v1:ecd2bdad",
       "object_names": [
         "Mysql"
@@ -6814,6 +6933,13 @@
       "template": "mongodb_assert_user{__$labels__}"
     },
     {
+      "id": "dashboard:v1:f12bed75",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "topk(8, sum by (clerk_type) (sqlserver_memory_clerks_size_kb{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:f14a6f66",
       "object_names": [
         "Mysql"
@@ -6868,6 +6994,13 @@
         "IIS"
       ],
       "template": "count(win_iis_app_pool_was_Current_Application_Pool_State{instance_type=\"iis\", instance!=\"_Total\", __$labels__} != 3)"
+    },
+    {
+      "id": "dashboard:v1:f2855e40",
+      "object_names": [
+        "MSSQL"
+      ],
+      "template": "sum by (instance_id) (rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:f2a8c4d1",

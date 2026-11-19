@@ -87,6 +87,11 @@ interface ThinTimeSeriesProps {
    * 单维卡不要开，避免主机盘把本该隐藏的图例重新打开。
    */
   keepLegend?: boolean;
+  /**
+   * 多维折线把图例和当前值放到图外。图内只留折线。
+   * 颜色和 tooltip 仍用 legends。
+   */
+  hideLegend?: boolean;
   /** 本图达档。不传或 none 时不打点、不加框。 */
   alertLevel?: TabAlertLevel;
   onRetry?: () => void;
@@ -112,6 +117,13 @@ interface ThinTimeSeriesProps {
    * 只给活跃与排队。其它趋势全 0 仍走原来的贴轴处理。
    */
   markZeroCount?: boolean;
+  /**
+   * 整张卡共用的读数。传入后轴刻度和悬浮都走它，不再按每个点各自换单位。
+   * 不传时保持原来的刻度和悬浮。
+   */
+  formatReading?: (value: number) => string;
+  /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
+  plotHeight?: number;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -283,6 +295,12 @@ const seriesAxisValues = (data: ChartData[], key: string) => {
   return values;
 };
 
+/** 这条序列有采样且全是 0。按序列判断，空的对照序列不能把主序列的零值线藏掉。 */
+export const markedZeroSeries = (
+  markZeroCount: boolean,
+  samples: readonly number[]
+) => markZeroCount && samples.length > 0 && samples.every((value) => value === 0);
+
 /**
  * 整段贴在数值轴下限。速率轴把全 0 钉在 0，1.6px 描边和轴线重合，图区像没画。
  * 略高于下限的平线已经落在轴内，不抬。
@@ -446,13 +464,16 @@ export default function ThinTimeSeries({
   resolveValueBounds,
   independentAxes = false,
   keepLegend = false,
+  hideLegend = false,
   alertLevel,
   onRetry,
   hideFlatAxisLabels = false,
   pinAxisZero = false,
   areaOpacity,
   keepSeriesColor = false,
-  markZeroCount = false
+  markZeroCount = false,
+  formatReading,
+  plotHeight
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -559,10 +580,6 @@ export default function ThinTimeSeries({
     const sharedExtent = splitAxes
       ? null
       : extentOf(keys.flatMap((key) => seriesAxisValues(plotted, key)), unit);
-    const zeroCountLine = markZeroCount && keys.length > 0 && keys.every((key) => {
-      const samples = seriesAxisValues(plotted, key);
-      return samples.length > 0 && samples.every((value) => value === 0);
-    });
     const valueAxis = (samples: number[], color: string, showSplit: boolean, axisUnit: MetricUnit) => {
       const bounds = lockedAxis ? null : layoutOf(samples, axisUnit);
       const axisMin = lockedAxis?.min ?? bounds?.min ?? 0;
@@ -585,6 +602,7 @@ export default function ThinTimeSeries({
           color,
           show: !flatAxis,
           formatter: (value: number) => {
+            if (formatReading) return formatReading(Number(value));
             if (focusAxis) return focusAxis.formatTick(Number(value));
             return formatAxisTick(Number(value), axisUnit, peak);
           }
@@ -679,7 +697,11 @@ export default function ThinTimeSeries({
               const name = item.seriesName || '';
               const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
               const seriesUnit = typeof item.seriesIndex === 'number' ? unitAt(item.seriesIndex) : unit;
-              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${formatTooltipReading(raw, seriesUnit)}</span></div>`;
+              const numeric = typeof raw === 'number' ? raw : Number(raw);
+              const readingText = formatReading
+                ? formatReading(numeric)
+                : formatTooltipReading(raw, seriesUnit);
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:${color}">${readingText}</span></div>`;
             })
             .join('');
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;
@@ -691,12 +713,16 @@ export default function ThinTimeSeries({
         const samples = seriesAxisValues(plotted, key);
         const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
-        // 全 0 计数趋势不走这条：线留在 0，靠序列色和采样点认出来。
-        const onFloor = !zeroCountLine && !keepSeriesColor && Boolean(
+        // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
+        const zeroCountLine = markedZeroSeries(markZeroCount, samples);
+        const sitsOnFloor = !zeroCountLine && Boolean(
           axisColor
           && extent
           && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
         );
+        const onFloor = sitsOnFloor && !keepSeriesColor;
+        // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
+        const coloredFloor = sitsOnFloor && keepSeriesColor;
         const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
         return {
           type: 'line' as const,
@@ -705,9 +731,10 @@ export default function ThinTimeSeries({
           showSymbol: zeroCountLine,
           symbol: zeroCountLine ? 'circle' as const : 'none' as const,
           ...(zeroCountLine ? { showAllSymbol: true, symbolSize: ZERO_COUNT_SYMBOL_SIZE, large: false } : {}),
-          smooth: onFloor || zeroCountLine ? 0 : 0.15,
+          smooth: onFloor || coloredFloor || zeroCountLine ? 0 : 0.15,
           connectNulls: true,
           ...(onFloor ? { clip: false as const, z: 8 } : {}),
+          ...(coloredFloor ? { clip: false as const, z: 5 } : {}),
           ...(zeroCountLine ? { clip: false as const, z: 4 } : {}),
           itemStyle: { color },
           data: plotted.map((point) => {
@@ -724,22 +751,31 @@ export default function ThinTimeSeries({
               shadowBlur: 0,
               shadowOffsetY: floorLineLift(index)
             }
-            : {
-              width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
-              color,
-              ...(showArea ? { opacity: 1 } : {}),
-              type: dashed ? 'dashed' as const : 'solid' as const
-            }
+            : coloredFloor
+              ? {
+                width: dashed ? 1.2 : 2,
+                color,
+                type: dashed ? 'dashed' as const : 'solid' as const,
+                shadowColor: color,
+                shadowBlur: 0,
+                shadowOffsetY: -2
+              }
+              : {
+                width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
+                color,
+                ...(showArea ? { opacity: 1 } : {}),
+                type: dashed ? 'dashed' as const : 'solid' as const
+              }
         };
       })
     };
-  }, [areaOpacity, axisColor, chartWindow, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, chartWindow, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
     return typeof value === 'number' && Number.isFinite(value);
   })).length;
-  const showLegend = keepLegend ? legends.length > 0 : drawnSeriesCount >= 2;
+  const showLegend = hideLegend ? false : (keepLegend ? legends.length > 0 : drawnSeriesCount >= 2);
   const chart = (
     <>
       {title || reading || showLegend ? (
@@ -831,7 +867,10 @@ export default function ThinTimeSeries({
           ) : null}
         </div>
       ) : null}
-      <div className={styles.chartBody}>
+      <div
+        className={styles.chartBody}
+        style={plotHeight ? { height: plotHeight, minHeight: plotHeight, flex: 'none' } : undefined}
+      >
         {suspend || !plotted.length ? (
           <div className={styles.chartEmpty}>
             {suspend || loading ? <ProDashLoading /> : (
