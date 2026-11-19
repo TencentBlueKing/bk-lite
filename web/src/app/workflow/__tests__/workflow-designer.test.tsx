@@ -1,7 +1,7 @@
 import './test-mocks';
 
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 
 import { WorkflowOrchestrationConsole } from '../components/workflow-console';
@@ -21,6 +21,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/utils/request', () => ({
+  HandledRequestError: class extends Error {},
   default: () => ({ get: mocks.get, patch: mocks.patch, post: mocks.post, del: mocks.del }),
 }));
 
@@ -306,6 +307,23 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByRole('button', { name: /调试详情/ })).toBeNull();
   });
 
+  it('未保存流程连续点击调试只创建一个草稿并打开一个调试表单', async () => {
+    mocks.post.mockImplementation((url: string, draft: Record<string, unknown>) => {
+      if (url === '/workflow/api/workflows/') return Promise.resolve({ ...workflow, ...draft, id: 7 });
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
+    render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="新草稿" /></App>);
+    fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
+    fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
+    await closeTopDialog();
+    const debugButton = screen.getByRole('button', { name: /调试流程/ });
+    act(() => { debugButton.click(); debugButton.click(); });
+    const confirm = await screen.findByRole('button', { name: /保存并继续/ });
+    fireEvent.click(confirm);
+    expect(await screen.findByText('调试当前草稿')).not.toBeNull();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
   it('表单触发器的节点测试和整流程调试共用 Schema 动态表单', async () => {
     const formWorkflow = {
       ...workflow,
@@ -425,7 +443,8 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       }
       return Promise.resolve([]);
     });
-    mocks.post.mockResolvedValue(debugRecord);
+    const firstStart = Promise.withResolvers<never>();
+    mocks.post.mockReturnValueOnce(firstStart.promise).mockResolvedValue(debugRecord);
 
     render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
     fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
@@ -435,13 +454,20 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(within(debugDialog!).getByText('调试入口')).not.toBeNull();
     fireEvent.mouseDown(within(debugDialog!).getByRole('combobox'));
     fireEvent.click(await screen.findByText('告警 Webhook · WEBHOOK'));
-    fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试' }));
+    const startButton = within(debugDialog!).getByRole('button', { name: '开始调试' });
+    act(() => { startButton.click(); startButton.click(); });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(startButton).toHaveProperty('disabled', true);
+    await act(async () => firstStart.reject(new Error('启动失败')));
+    expect(await screen.findByText('启动失败')).not.toBeNull();
+    expect(startButton).toHaveProperty('disabled', false);
+    fireEvent.click(startButton);
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/workflows/1/debug/',
       expect.objectContaining({ trigger_id: 'trigger_webhook', inputs: {} }),
     ));
-    expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(1);
+    expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(2);
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
     expect(await screen.findByText('执行详情')).not.toBeNull();
@@ -499,15 +525,16 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       }
       return Promise.resolve([]);
     });
+    const previewPending = Promise.withResolvers<void>();
     mocks.post.mockImplementation((url: string) => {
       if (url.endsWith('/triggers/schedule-preview/')) {
-        return Promise.resolve({
+        return previewPending.promise.then(() => ({
           config: { frequency: 'daily', time: ['02:00'], expressions: ['0 2 * * *'], timezone: 'Asia/Shanghai' },
           expressions: ['0 2 * * *'],
           timezone: 'Asia/Shanghai',
           next_runs: ['2026-09-19T02:00:00+08:00'],
           test_output: testOutput,
-        });
+        }));
       }
       if (url.endsWith('/workflows/1/debug/')) {
         return Promise.resolve(debugRecord);
@@ -520,7 +547,10 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     const identity = screen.getByRole('group', { name: '调试账号 admin · 组织 当前组织' });
     expect(within(identity).getByText('admin')).not.toBeNull();
     expect(within(identity).getByText('当前组织')).not.toBeNull();
-    fireEvent.click(debugButton);
+    act(() => { debugButton.click(); debugButton.click(); });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(debugButton).toHaveProperty('disabled', true);
+    await act(async () => previewPending.resolve());
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/triggers/schedule-preview/',
