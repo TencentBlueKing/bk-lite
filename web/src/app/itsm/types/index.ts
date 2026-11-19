@@ -138,11 +138,11 @@ export interface TicketLogItem {
 }
 
 export interface TicketProgressNode {
-  outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected';
+  outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected' | 'failed';
   id: string;
   name: string;
   type: string;
-  state: 'done' | 'current' | 'waiting';
+  state: 'done' | 'current' | 'waiting' | 'failed';
   assignees?: string[];
   started_at?: string;
   finished_at?: string;
@@ -167,11 +167,14 @@ export interface TicketHistoryItem {
   node_id: string;
   name: string;
   action_label: string;
+  action?: string;
   operator: string;
   state: string;
   started_at: string;
   finished_at: string;
   message: string;
+  execution_id?: number;
+  can_retry?: boolean;
 }
 
 export interface TicketAttachmentItem {

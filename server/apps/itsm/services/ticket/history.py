@@ -1,4 +1,8 @@
 """使用任务实例和操作记录还原流转，不把技术动作名作为步骤名。"""
+from datetime import timedelta
+
+from django.utils import timezone
+
 ACTION_LABELS = {
     "create": "发起工单",
     "submit": "提交",
@@ -18,6 +22,7 @@ ACTION_LABELS = {
     "respond": "响应",
     "survey_ready": "邀请评价",
     "auto": "自动处理",
+    "auto_retry": "请求重试",
 }
 
 
@@ -31,13 +36,17 @@ def ticket_history(ticket, tasks, design):
         node_id = (
             task.node_id
             if task
-            else (next((key for key, node in nodes.items() if node.get("type") == "start"), "start") if log.action == "create" else "")
+            else (
+                next((key for key, node in nodes.items() if node.get("type") == "start"), "start")
+                if log.action == "create"
+                else (log.detail or {}).get("node_id", "")
+            )
         )
         rows.append(
             {
                 "id": f"log-{log.id}",
                 "node_id": node_id,
-                "name": (task.node_name or nodes.get(node_id, {}).get("name") or node_id) if task else label,
+                "name": (task.node_name or nodes.get(node_id, {}).get("name") or node_id) if task else nodes.get(node_id, {}).get("name") or label,
                 "action_label": label,
                 "action": log.action,
                 "operator": log.operator,
@@ -47,19 +56,25 @@ def ticket_history(ticket, tasks, design):
                 "message": log.message if log.message != log.action else "",
             }
         )
+    stale_at = timezone.now() - timedelta(minutes=5)
     for execution in ticket.auto_executions.all():
         node_id = execution.detail.get("node_id", "")
+        stale = execution.status == "running" and execution.updated_at < stale_at
+        failed = stale or execution.status == "failed" or (execution.status == "executed" and bool(execution.detail.get("reason")))
+        queued = execution.status == "queued" or execution.detail.get("retry_requested")
         rows.append(
             {
                 "id": f"auto-{execution.id}",
                 "node_id": node_id,
                 "name": nodes.get(node_id, {}).get("name") or "自动处理",
-                "action_label": "自动处理",
+                "action_label": "等待重试" if queued else "自动节点失败" if failed else "自动处理",
+                "action": "auto",
                 "operator": "系统",
-                "state": "done" if execution.status == "done" else "current",
+                "state": "done" if execution.status == "done" else "failed" if failed and not queued else "current",
                 "started_at": execution.created_at.isoformat(),
-                "finished_at": execution.updated_at.isoformat() if execution.status == "done" else "",
-                "message": "",
+                "finished_at": execution.updated_at.isoformat() if execution.status == "done" or failed else "",
+                "message": execution.detail.get("reason") or ("执行结果未确认，请先核对外部系统" if failed else ""),
+                "execution_id": execution.id,
             }
         )
     rows.sort(key=lambda row: row["finished_at"] or row["started_at"])
@@ -83,7 +98,7 @@ def ticket_history(ticket, tasks, design):
 
 def node_progress(node, history):
     rows = [row for row in history if row["node_id"] == node["id"]]
-    current = [row for row in rows if row["state"] == "current"]
+    current = [row for row in rows if row["state"] in {"current", "failed"}]
     selected = current or rows[-1:]
     outcome = node["state"]
     if outcome == "done":

@@ -58,7 +58,9 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
   }, [api.ready, load, ticketId]);
 
   useEffect(() => {
-    if (serviceId || !ticket || ticket.tasks.length || ['finished', 'cancelled', 'terminated'].includes(ticket.status)) return;
+    if (serviceId || !ticket || ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
+    const hasRunningStep = ticket.history?.some(item => item.action === 'auto' && item.state === 'current');
+    if (ticket.tasks.length && !hasRunningStep) return;
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 5000);
     return () => window.clearInterval(timer);
   }, [ticket, load, serviceId]);
@@ -81,6 +83,19 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
       if (error && typeof error === 'object' && 'errorFields' in error) return false;
       message.error(error instanceof Error ? error.message : t('itsm.ticket.operateFailed'));
       return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryAuto = async (executionId: number) => {
+    setBusy(true);
+    try {
+      await api.retryAutoNode(ticketId, executionId);
+      message.success('已请求重试');
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '请求重试失败');
     } finally {
       setBusy(false);
     }
@@ -110,7 +125,7 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>
           {!serviceId && <span>提单时间：{formatTicketTime(ticket.created_at)}</span>}
           <span>流程：{ticket.workflow_name || '—'}</span>
-          <span>当前节点：{ticket.nodes.filter((node) => node.state === 'current').map((node) => node.name).join('、') || '—'}</span>
+          <span>当前节点：{ticket.nodes.filter((node) => node.state === 'current' || node.state === 'failed').map((node) => node.name).join('、') || '—'}</span>
           <span>当前处理人：{serviceId ? ticket.creator : Array.from(new Set(ticket.tasks.map((task) => task.assignee).filter(Boolean))).join('、') || '—'}</span>
         </div>
       </header>
@@ -133,7 +148,7 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
         <>{serviceId ? <Empty className="mt-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description="提交后可查看流转记录、评论和附件" /> : <TicketCollaboration ticketId={ticketId} historyFirst extraTabs={[
           { key: 'history', label: '流转日志', children: <>
             {ticket.history?.length ? (
-              <TicketHistory items={ticket.history} nodes={ticket.nodes} />
+              <TicketHistory items={ticket.history} nodes={ticket.nodes} retry={retryAuto} busy={busy} />
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('itsm.ticket.noLogs')} />}
 
           </> },

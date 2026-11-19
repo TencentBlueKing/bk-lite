@@ -23,3 +23,12 @@ it('当前节点默认保持可读，并可重新定位',()=>{
   fireEvent.click(screen.getByRole('button',{name:'流程图'}));
   fireEvent.click(screen.getByRole('button',{name:'定位当前节点'}));expect(fitView).toHaveBeenCalledWith(expect.objectContaining({nodes:[{id:'a'}],minZoom:.75}));
 });
+it('自动节点失败时，打开流程图定位到失败节点', () => {
+  render(<TicketFlowBoard nodes={[
+    { id: 'start', name: '开始', type: 'start', state: 'done' },
+    { id: 'auto', name: '自动处理', type: 'auto', state: 'failed' },
+  ]} edges={[{ from: 'start', to: 'auto' }]} />);
+  fireEvent.click(screen.getByRole('button', { name: '流程图' }));
+  const fit = JSON.parse(screen.getByTestId('canvas').getAttribute('data-fit')!);
+  expect(fit.nodes).toEqual([{ id: 'auto' }]);
+});

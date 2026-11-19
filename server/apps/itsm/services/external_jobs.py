@@ -8,6 +8,62 @@ from apps.itsm.services.auto_runner import run_auto_action
 from apps.itsm.services.form.rules import match_when
 from apps.itsm.services.ticket.service import TicketService, _find_node, _form_variables
 
+TERMINAL = {"finished", "terminated", "cancelled", "suspended"}
+LOCAL_ACTIONS = {"table", "cmdb"}
+LOCAL_NODES = {"decision", "knowledge", "auto_dispatch"}
+
+
+class ActionFailure(Exception):
+    def __init__(self, reason, *, retryable=False):
+        super().__init__(reason)
+        self.retryable = retryable
+
+
+def retry_available(ticket, execution):
+    detail = execution.detail
+    return bool(
+        execution.kind == "external"
+        and detail.get("process_id") == ticket.process_instance_id
+        and ticket.process_instance_id
+        and (not ticket.status_id or ticket.status.key not in TERMINAL)
+        and (
+            execution.status == "failed"
+            and detail.get("retryable")
+            or execution.status == "executed"
+            and detail.get("reason")
+            and not detail.get("retry_requested")
+        )
+    )
+
+
+@transaction.atomic
+def request_retry(ticket, execution_id, operator):
+    from apps.itsm.models import TicketLog
+
+    ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    execution = ticket.auto_executions.select_for_update().get(pk=execution_id)
+    if execution.detail.get("process_id") != ticket.process_instance_id or (ticket.status_id and ticket.status.key in TERMINAL):
+        return False
+    if execution.status == "queued" or (execution.status == "executed" and execution.detail.get("retry_requested")):
+        return True
+    if not retry_available(ticket, execution):
+        return False
+    if execution.status == "failed":
+        execution.status = "queued"
+    execution.detail = {**execution.detail, "retry_requested": True}
+    execution.save(update_fields=["status", "detail", "updated_at"])
+    TicketLog.objects.create(
+        ticket=ticket,
+        domain=ticket.domain,
+        action="auto_retry",
+        operator=operator,
+        message="请求重试自动节点",
+        detail={"node_id": execution.detail["node_id"], "execution_id": execution.id},
+        created_by=operator,
+        updated_by=operator,
+    )
+    return True
+
 
 def execute_node(ticket, node):
     kind = node.get("type")
@@ -17,7 +73,7 @@ def execute_node(ticket, node):
 
         receivers = config.get("receivers") or (node.get("assignee") or {}).get("value") or []
         if not receivers:
-            raise ValueError("通知节点缺少接收人")
+            raise ActionFailure("通知节点缺少接收人", retryable=True)
         result = dispatch_notification(
             "node.notice",
             {"title": ticket.title, "content": config.get("content") or ticket.title},
@@ -26,7 +82,7 @@ def execute_node(ticket, node):
             site_only=ticket.is_test,
         )
         if not (result.get("site") or {}).get("result"):
-            raise ValueError("站内通知未投递成功")
+            raise ActionFailure("通知投递结果待核对")
         return {"notified": True}
     if kind == "decision":
         table = DecisionTable.objects.get(id=config.get("decision_id"), domain=ticket.domain)
@@ -66,55 +122,113 @@ def execute_node(ticket, node):
     if kind == "rule_trigger" and not match_when(config.get("when"), ticket.form_data):
         return {"skipped": True, "reason": "未满足触发条件"}
     if kind not in {"auto", "manual_trigger", "rule_trigger"}:
-        raise ValueError("未知自动节点")
+        raise ActionFailure("找不到已发布的自动节点配置", retryable=True)
     status, detail = run_auto_action(ticket, str(config.get("kind") or ""), config, "system")
     if status != "done":
-        raise ValueError("自动动作未完成")
+        if status == "skipped":
+            raise ActionFailure(detail.get("reason") or "自动动作尚未配置", retryable=True)
+        if config.get("kind") == "http" and isinstance(detail.get("status_code"), int):
+            raise ActionFailure(f"外部接口返回 HTTP {detail['status_code']}，请核对处理结果")
+        raise ActionFailure("自动动作未确认成功，请核对外部处理结果", retryable=config.get("kind") in LOCAL_ACTIONS)
     return detail
+
+
+def _job_node(ticket, element_id):
+    design = ticket.workflow_version.design
+    node = _find_node(design, node_id=element_id)
+    if not node and element_id.endswith("__action"):
+        original = _find_node(design, node_id=element_id[:-8])
+        if original.get("type") == "manual_trigger":
+            return original
+    return node
+
+
+def _execute(ticket, execution, node, detail):
+    try:
+        with transaction.atomic():
+            ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            if ticket.process_instance_id != detail["process_id"] or (
+                ticket.status_id and ticket.status.key in {"finished", "terminated", "cancelled"}
+            ):
+                raise ActionFailure("流程已结束或切换，本次动作未执行")
+            if ticket.status_id and ticket.status.key == "suspended":
+                execution.status = "queued"
+                execution.save(update_fields=["status", "updated_at"])
+                return
+            result = execute_node(ticket, node)
+            execution.status = "executed"
+            execution.detail = {**detail, "result": result}
+            execution.save(update_fields=["status", "detail", "updated_at"])
+    except Exception as exc:
+        is_local = node.get("type") in LOCAL_NODES or (node.get("auto") or {}).get("kind") in LOCAL_ACTIONS
+        execution.status = "failed"
+        execution.detail = {
+            **detail,
+            "reason": str(exc) if isinstance(exc, ActionFailure) else f"自动动作执行失败（{type(exc).__name__}）",
+            "retryable": exc.retryable if isinstance(exc, ActionFailure) else is_local,
+        }
+        execution.save(update_fields=["status", "detail", "updated_at"])
+
+
+@transaction.atomic
+def _ack(client, ticket, execution_id):
+    ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    execution = ticket.auto_executions.select_for_update().get(pk=execution_id)
+    if execution.status == "done":
+        return True
+    detail = execution.detail
+    if detail.get("process_id") != ticket.process_instance_id or (ticket.status_id and ticket.status.key in TERMINAL):
+        return False
+    variables = {**_form_variables(ticket.form_data), **(detail.get("result", {}).get("variables") or {})}
+    try:
+        client.complete_external_job(detail["job_id"], variables=variables)
+    except FlowableError as exc:
+        if exc.status != 404:
+            execution.detail = {**detail, "reason": "动作已完成，流程推进失败，可重试推进", "retry_requested": False}
+            execution.save(update_fields=["detail", "updated_at"])
+            return False
+    execution.status = "done"
+    execution.detail = {key: value for key, value in detail.items() if key not in {"reason", "retry_requested"}}
+    execution.save(update_fields=["status", "detail", "updated_at"])
+    return True
 
 
 def process_job(client, job):
     job_id = str(job.get("id") or "")
-    if not job_id:
+    process_id = str(job.get("processInstanceId") or "")
+    if not job_id or not process_id:
         return False
     with transaction.atomic():
-        ticket = Ticket.objects.select_for_update().filter(process_instance_id=str(job.get("processInstanceId") or "")).first()
-        if ticket is None:
+        ticket = Ticket.objects.select_for_update().filter(process_instance_id=process_id).first()
+        if ticket is None or (ticket.status_id and ticket.status.key in TERMINAL):
             return False
+        element_id = str(job.get("elementId") or "")
+        node = _job_node(ticket, element_id)
+        detail = {"job_id": job_id, "process_id": process_id, "node_id": node.get("id") or element_id}
         execution = ticket.auto_executions.filter(detail__job_id=job_id).first()
         if execution is None:
             execution = AutoExecution.objects.create(
-                ticket=ticket, domain=ticket.domain, kind="external", status="running", detail={"job_id": job_id}
+                ticket=ticket,
+                domain=ticket.domain,
+                kind="external",
+                status="running",
+                detail=detail,
             )
-        elif execution.status in {"running", "failed"}:
-            # 结果不确定时保留人工恢复入口，不能盲目重放远端动作。
-            return False
-    if execution.status == "running":
-        try:
-            with transaction.atomic():
-                node = _find_node(ticket.workflow_version.design, node_id=job.get("elementId"))
-                if not node and str(job.get("elementId") or "").endswith("__action"):
-                    original = _find_node(ticket.workflow_version.design, node_id=job["elementId"][:-8])
-                    if original.get("type") == "manual_trigger":
-                        node = original
-                result = execute_node(ticket, node)
-                execution.status = "executed"
-                execution.detail = {"job_id": job_id, "node_id": node.get("id"), "result": result}
-                execution.save(update_fields=["status", "detail", "updated_at"])
-        except Exception as exc:
-            execution.status = "failed"
-            execution.detail = {"job_id": job_id, "error_type": type(exc).__name__}
+        elif execution.status == "queued":
+            execution.status = "running"
+            execution.detail = detail
             execution.save(update_fields=["status", "detail", "updated_at"])
+        elif execution.status not in {"executed", "done"}:
             return False
-    if execution.status != "done":
-        variables = {**_form_variables(ticket.form_data), **(execution.detail.get("result", {}).get("variables") or {})}
-        try:
-            client.complete_external_job(job_id, variables=variables)
-        except FlowableError as exc:
-            if exc.status != 404:
-                return False
-        execution.status = "done"
-        execution.save(update_fields=["status", "updated_at"])
+        elif not execution.detail.get("process_id"):
+            execution.detail = {**detail, **execution.detail}
+            execution.save(update_fields=["detail", "updated_at"])
+    if execution.status == "running":
+        _execute(ticket, execution, node, detail)
+        if execution.status != "executed":
+            return False
+    if not _ack(client, ticket, execution.id):
+        return False
     service = TicketService(client)
     service.sync_ticket(ticket)
     service.finish_if_ended(ticket)

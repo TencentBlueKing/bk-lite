@@ -29,12 +29,13 @@ const STATE_CLASS = {
   passed: '[--node-accent:var(--color-primary)]',
   accepted: '[--node-accent:var(--color-success)]',
   rejected: '[--node-accent:var(--color-fail)]',
+  failed: '[--node-accent:var(--color-fail)]',
   current: '[--node-accent:var(--color-warning)]',
   waiting: '[--node-accent:var(--color-border)]',
 };
 const FRAME_CLASS = 'bg-[linear-gradient(145deg,color-mix(in_srgb,var(--node-accent)_40%,var(--color-bg))_0%,var(--node-accent)_55%,color-mix(in_srgb,var(--node-accent)_75%,var(--color-border))_100%)]';
 
-const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝', current: '待处理', waiting: '未到达' };
+const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝', failed: '执行失败', current: '待处理', waiting: '未到达' };
 
 export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
   const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
@@ -48,8 +49,9 @@ export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>
         {data.finished_at ? <span>处理时间 {formatTicketTime(data.finished_at)}</span> : null}
       </div>
     }>
-      <div tabIndex={0} aria-current={data.state === 'current' ? 'step' : undefined} aria-label={`${data.label}，${STATE_LABEL[outcome]}`} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative rounded-xl p-[2px] shadow-[0_2px_4px_color-mix(in_srgb,var(--color-text-1)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${FRAME_CLASS} ${STATE_CLASS[outcome]}`}>
+      <div tabIndex={0} aria-current={data.state === 'current' || data.state === 'failed' ? 'step' : undefined} aria-label={`${data.label}，${STATE_LABEL[outcome]}`} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative rounded-xl p-[2px] shadow-[0_2px_4px_color-mix(in_srgb,var(--color-text-1)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${FRAME_CLASS} ${STATE_CLASS[outcome]}`}>
         {data.state === 'current' ? <span className="absolute -top-7 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--color-warning)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning)]"><AimOutlined />当前节点</span> : null}
+        {data.state === 'failed' ? <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[var(--color-fail)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-fail)]">执行失败</span> : null}
         <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
         <div className="flex h-full flex-col justify-center gap-2 rounded-[10px] bg-[var(--color-bg)] px-3 shadow-[inset_0_1px_2px_color-mix(in_srgb,var(--color-text-1)_4%,transparent)]">
           <div className="flex min-w-0 items-center gap-2"><NodeGlyph type={data.nodeType} compact /><span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span></div>
@@ -123,7 +125,7 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const prepared = useMemo(() => withPassedGateways(nodes, edges), [nodes, edges]);
-  const current = prepared.filter((node) => node.state === 'current');
+  const current = prepared.filter((node) => node.state === 'current' || node.state === 'failed');
   const focusIds = current.length ? current.map(node => node.id) : prepared.slice(0, 1).map(node => node.id);
   const flowNodes = useMemo(() => layout(prepared, edges), [prepared, edges]);
   const flowEdges = edges.filter((edge) => edge.from && edge.to).map((edge) => {
@@ -149,7 +151,7 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
       </Button>
       {open ? <section aria-label="工单流程图" className="relative rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
         <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-3 text-xs text-[var(--color-text-3)]" aria-label="节点状态图例">
-          {(['waiting', 'passed', 'accepted', 'rejected', 'current'] as const).map((state) => <span key={state} className="flex items-center gap-1"><span className={`h-3 w-4 rounded-sm p-[1.5px] ${FRAME_CLASS} ${STATE_CLASS[state]}`}><span className="block h-full w-full rounded-[1px] bg-[var(--color-bg)]" /></span>{STATE_LABEL[state]}</span>)}
+          {(['waiting', 'passed', 'accepted', 'rejected', 'current', 'failed'] as const).map((state) => <span key={state} className="flex items-center gap-1"><span className={`h-3 w-4 rounded-sm p-[1.5px] ${FRAME_CLASS} ${STATE_CLASS[state]}`}><span className="block h-full w-full rounded-[1px] bg-[var(--color-bg)]" /></span>{STATE_LABEL[state]}</span>)}
         </div>
         <div className="absolute right-3 top-3 z-10"><Tooltip title="全屏查看流程"><Button aria-label="全屏查看流程" size="small" icon={<ZoomInOutlined />} onClick={() => setFullscreen(true)} /></Tooltip></div>
         <div className="h-96 max-h-[42vh] pt-8">{!fullscreen ? canvas : null}</div>

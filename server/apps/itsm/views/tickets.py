@@ -6,6 +6,7 @@ from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Exists, F, OuterRef, Prefetch, Q
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -13,6 +14,7 @@ from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import TicketSLARecord, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.models.extend import VipUser
 from apps.itsm.serializers.ticket import TicketListSerializer
+from apps.itsm.services.external_jobs import request_retry, retry_available
 from apps.itsm.services.ticket.actions import node_actions, side_action_enabled
 from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, date_bound, personal_group, validate_filters
@@ -149,6 +151,18 @@ def operate_ticket(request, ticket_id):
     return WebUtils.response_success({"id": updated.id, "status": updated.status.key if updated.status_id else ""})
 
 
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("ticket-Operate")
+def retry_auto_node(request, ticket_id, execution_id):
+    if not has_permission(request, "ticket-View") or not has_permission(request, "workflow-Edit"):
+        raise PermissionError()
+    if not request_retry(get_ticket(request, ticket_id), execution_id, _user(request)):
+        return WebUtils.response_error(error_message="当前执行无法重试，请刷新并核对执行结果", status_code=409)
+    return WebUtils.response_success({"id": execution_id})
+
+
 def _node_state(node, done_ids, pending_ids, status_key):
     node_id = node.get("id") or ""
     node_type = node.get("type") or ""
@@ -178,7 +192,7 @@ def _apply_view_template(form, fields, status_key):
     return ordered + [field for field in fields if field.get("key") not in seen]
 
 
-def _ticket_detail(ticket, username="", privileged=False, can_operate=True):
+def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False):
     from apps.itsm.models.extend import TicketProxy
 
     principals = set(TicketProxy.objects.filter(domain=ticket.domain, agent=username, is_enabled=True).values_list("principal", flat=True)) | {
@@ -266,6 +280,17 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True):
                 allowed_actions.append("respond")
     allowed_actions = [action for action in allowed_actions if side_action_enabled(design, tasks, action)]
     history = ticket_history(ticket, tasks, design)
+    active_executions = {
+        execution.id: execution
+        for execution in ticket.auto_executions.all()
+        if execution.detail.get("process_id") == ticket.process_instance_id and (not round_start or execution.created_at >= round_start)
+    }
+    for row in history:
+        execution = active_executions.get(row.get("execution_id"))
+        if execution:
+            row["can_retry"] = can_retry and retry_available(ticket, execution)
+    failed_ids = {row["node_id"] for row in history if row.get("execution_id") in active_executions and row["state"] == "failed"}
+    pending_ids.update(row["node_id"] for row in history if row.get("execution_id") in active_executions and row["state"] == "current")
     progress_history = history
     if round_start:
         from django.utils.dateparse import parse_datetime
@@ -308,7 +333,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True):
                     "id": node.get("id") or "",
                     "name": node.get("name") or {"start": "开始", "end": "结束"}.get(node.get("type")) or node.get("id") or "",
                     "type": node.get("type") or "",
-                    "state": _node_state(node, done_ids, pending_ids, status_key),
+                    "state": "failed" if node.get("id") in failed_ids else _node_state(node, done_ids, pending_ids, status_key),
                     "assignees": [task.assignee for task in pending if task.node_id == (node.get("id") or "") and task.assignee],
                 },
                 progress_history,
@@ -342,8 +367,15 @@ def ticket_detail(request, ticket_id):
         .prefetch_related("tasks", "logs", "sla_records", "workflow__stages", "workflow__form__view_templates", "auto_executions")
         .get(id=ticket_id)
     )
+    can_operate = has_permission(request, "ticket-Operate")
     return WebUtils.response_success(
-        _ticket_detail(ticket, _user(request), bool(getattr(request.user, "is_superuser", False)), has_permission(request, "ticket-Operate"))
+        _ticket_detail(
+            ticket,
+            _user(request),
+            bool(getattr(request.user, "is_superuser", False)),
+            can_operate,
+            can_operate and has_permission(request, "workflow-Edit"),
+        )
     )
 
 

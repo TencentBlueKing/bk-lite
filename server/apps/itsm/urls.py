@@ -64,7 +64,7 @@ from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_tags
-from apps.itsm.views.tickets import operate_ticket, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
+from apps.itsm.views.tickets import operate_ticket, retry_auto_node, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
@@ -152,6 +152,7 @@ urlpatterns = [
     path("api/workflow_variables/test/", workflow_variable_test, name="itsm-variable-test"),
     path("api/tickets/<int:ticket_id>/", ticket_detail, name="itsm-ticket-detail"),
     path("api/tickets/<int:ticket_id>/operate/", operate_ticket, name="itsm-ticket-operate"),
+    path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/retry/", retry_auto_node, name="itsm-auto-retry"),
     path("api/tickets/<int:ticket_id>/logs/", ticket_logs, name="itsm-ticket-logs"),
     path("api/tickets/<int:ticket_id>/survey/", ticket_survey, name="itsm-ticket-survey"),
 ]
