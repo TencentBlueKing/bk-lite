@@ -30,6 +30,18 @@ const ChannelPage = () => {
       description: t('system.channel.natsDesc')
     },
     {
+      id: 'sms',
+      name: t('system.channel.sms'),
+      icon: 'wendaduihua',
+      description: t('system.channel.smsDesc')
+    },
+    {
+      id: 'voice',
+      name: t('system.channel.voice'),
+      icon: 'dadianhua',
+      description: t('system.channel.voiceDesc')
+    },
+    {
       id: 'im_notification',
       name: t('system.channel.imNotification'),
       icon: 'liaotian',

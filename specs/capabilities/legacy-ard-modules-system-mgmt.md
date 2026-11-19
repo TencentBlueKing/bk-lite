@@ -59,7 +59,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 > 证据来源：server/apps/system_mgmt/nats/credentials.py、server/apps/rpc/system_mgmt.py、server/apps/system_mgmt/services/credential_ref_count.py、server/apps/system_mgmt/services/credential_refresh.py、server/apps/system_mgmt/models/credential.py、server/apps/monitor/nats/monitor.py　|　【已实现：列表/创建/解析/描述/版本/询问/拦截/监控引用计数/监控改密通知】
 
 ## 5. 通知渠道【已实现/已存在】
-`models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
+`models/channel.py` 的 `ChannelChoices` 定义 9 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）、`sms`（短信）、`voice`（语音）。邮件、机器人和 Webhook 的发送实现见 `utils/channel_utils.py`。短信和语音按渠道上保存的已审核模板调用腾讯云或阿里云，实现见 `services/cloud_notify/`。BK 用户对接 `utils/bk_user_utils.py`。
 
 IM 应用通知、群聊小助手、智能机器人和事故建群选用的平台用户与外部 IM 身份对应，是独立的账号关联，不再写在渠道上。规则见 `specs/capabilities/im-account-association.md`。
 

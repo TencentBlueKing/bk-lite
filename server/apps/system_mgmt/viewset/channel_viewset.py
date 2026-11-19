@@ -12,6 +12,7 @@ from apps.core.utils.viewset_utils import GenericViewSetFun
 from apps.system_mgmt.models import Channel, ChannelChoices, IMAccountAssociation, NotificationTag, User
 from apps.system_mgmt.models.im_account_association import IMAccountAssociationStatusChoices
 from apps.system_mgmt.serializers import ChannelSerializer
+from apps.system_mgmt.services.cloud_notify.delivery import send_cloud_notification
 from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel, provider_for_group_channel
 from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
 from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
@@ -375,6 +376,28 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             at_kwargs = {"at_user_ids": at_user_ids, "at_mobiles": at_mobiles}
         return content, [], at_kwargs
 
+    def _test_saved_cloud_channel(self, request, channel_type):
+        loader = self._get_loader(request)
+        channel = Channel.objects.filter(id=request.data.get("channel_id"), channel_type=channel_type).first()
+        if channel is None:
+            return Response({"result": False, "message": loader.get("error.cloud_test_requires_saved_channel")}, status=400)
+        is_valid, error_response = self._validate_channel_permission(request, channel)
+        if not is_valid:
+            return error_response
+        domain = getattr(request.user, "domain", None) or "domain.com"
+        user = User.objects.filter(username=request.user.username, domain=domain).first()
+        if user is None or not (user.phone or "").strip():
+            return Response({"result": False, "message": loader.get("error.cloud_test_phone_missing")}, status=400)
+        title = request.data.get("title")
+        content = request.data.get("content")
+        if not isinstance(title, str) or not title.strip() or not isinstance(content, str) or not content.strip():
+            return Response({"result": False, "message": loader.get("error.cloud_test_content_required")}, status=400)
+        result = send_cloud_notification(channel, title, content, [user.id])
+        return Response(
+            {"result": result.get("result"), "message": result.get("message"), "recipients": result.get("recipients")},
+            status=200 if result.get("result") else 400,
+        )
+
     @action(methods=["POST"], detail=False)
     @HasPermission("channel_list-Edit")
     def test_send(self, request, *args, **kwargs):
@@ -389,6 +412,8 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             ChannelChoices.DINGTALK_BOT,
             ChannelChoices.CUSTOM_WEBHOOK,
         }
+        if channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
+            return self._test_saved_cloud_channel(request, channel_type)
         if channel_type not in supported_types:
             return Response({"result": False, "message": "Unsupported channel type"}, status=400)
 

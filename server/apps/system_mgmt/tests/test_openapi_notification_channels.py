@@ -220,9 +220,7 @@ def test_send_parameter_descriptions_follow_acting_user_locale(tenants):
     assert email_parameters["channel_id"] == f'Always set this to {tenants.a.email.id}, for the "{tenants.a.email.name}" channel.'
     assert email_parameters["channel_type"] == "Always set this to email."
     assert email_parameters["title"] == "Email subject. Can be left empty."
-    assert email_parameters["content"] == (
-        "Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags."
-    )
+    assert email_parameters["content"] == ("Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.")
     assert email_parameters["receivers"].startswith("Platform user ID strings")
     assert webhook_parameters["channel_id"] == f'Always set this to {tenants.a.webhook.id}, for the "{tenants.a.webhook.name}" channel.'
     assert webhook_parameters["channel_type"] == "Always set this to custom_webhook."
@@ -699,3 +697,27 @@ def test_unknown_send_field_is_rejected(tenants):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
+    from apps.system_mgmt.openapi_api import _EXTERNAL_NOTIFICATION_CHANNEL_TYPES, _openapi_notification_channel
+
+    channel = Channel.objects.create(
+        name="短信A",
+        channel_type=ChannelChoices.SMS,
+        description="告警短信",
+        team=[1],
+        config={"secret_key": "secret-sentinel", "provider": "tencent"},
+    )
+
+    assert ChannelChoices.SMS in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES
+    assert ChannelChoices.VOICE in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES
+    item = _openapi_notification_channel(channel, "zh-Hans")
+    assert item["channel_type"] == "sms"
+    assert item["recipient_mode"] == "system_user"
+    parameters = {parameter["name"]: parameter for parameter in item["send_parameters"]}
+    assert list(parameters) == ["channel_id", "channel_type", "title", "content", "receivers"]
+    assert "云模板" in parameters["title"]["description"]
+    assert "云模板" in parameters["content"]["description"]
+    assert "用户 ID" in parameters["receivers"]["description"]
+    assert "secret-sentinel" not in json.dumps(item, ensure_ascii=False)

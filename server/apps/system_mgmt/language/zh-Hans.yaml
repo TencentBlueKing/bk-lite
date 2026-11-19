@@ -95,6 +95,29 @@ error:
   synced_groups_local_users_forbidden: 同步组织不能包含本地管理用户
   synced_group_membership_immutable: 同步组织成员关系不能在本地修改
   channel_team_required: 请选择渠道所属组织
+  cloud_config_invalid: 云渠道配置必须是对象
+  cloud_provider_invalid: 云厂商必须是腾讯云或阿里云
+  cloud_field_required: 不能为空
+  cloud_parameters_invalid: 模板参数必须是列表
+  cloud_parameters_limit: 模板参数不能超过 20 项
+  cloud_called_show_number_invalid: 被叫显号必须是字符串
+  cloud_parameter_invalid: 模板参数必须是对象
+  cloud_parameter_source_invalid: 参数来源必须是标题、正文或固定文字
+  cloud_parameter_name_invalid: 参数名必须是字符串
+  cloud_parameter_name_required: 阿里云模板参数名不能为空
+  cloud_literal_required: 固定文字不能为空
+  cloud_literal_too_long: 固定文字不能超过 200 字
+  cloud_secret_unreadable: 密钥无法解密
+  cloud_config_incomplete: 渠道配置不完整
+  cloud_no_recipients: 没有接收人
+  cloud_user_missing: 用户不存在
+  cloud_phone_missing: 没有可用手机号
+  cloud_phone_unusable: 手机号无法用于该厂商
+  cloud_send_unknown: 厂商结果未知
+  cloud_send_rejected: 厂商拒绝
+  cloud_test_requires_saved_channel: 请先保存渠道，再测试发送
+  cloud_test_phone_missing: 当前用户没有可用手机号
+  cloud_test_content_required: 测试发送需要标题和正文
   account_association_provider_mismatch: 账号关联与当前群聊渠道的平台不一致
   account_association_not_found: 账号关联不存在
   account_association_not_ready: 账号关联还不能用于发送，请先完成更新
@@ -287,6 +310,8 @@ channel:
     title_feishu_bot: 飞书卡片标题。留空时渠道侧显示为「通知」。
     title_dingtalk_bot: 钉钉 markdown 标题。留空时渠道侧显示为「通知」。
     title_custom_webhook: 自定义 Webhook 不使用标题，传空字符串即可。
+    title_sms: 短信标题。按该渠道已配置的参数对应，填入客户已审核的云模板。
+    title_voice: 语音标题。按该渠道已配置的参数对应，填入客户已审核的云模板。
     title_im_notification: IM 应用通知标题。可以留空。最长 512 个字符。
     title_default: 标题。可以留空。最长 512 个字符。
     content_email: 邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。
@@ -296,6 +321,8 @@ channel:
     content_dingtalk_bot: 钉钉 markdown 正文。接收人名会追加在正文后面。
     # format() 把 {{{{content}}}} 还原成字面量 {{content}}
     content_custom_webhook: '通知正文，会替换该渠道模板中的 {{{{content}}}}。接收人名会追加在正文后面。'
+    content_sms: 短信正文。按该渠道已配置的参数对应，填入客户已审核的云模板。
+    content_voice: 语音正文。按该渠道已配置的参数对应，填入客户已审核的云模板。播放次数固定为 1。
     content_im_notification: IM 应用通知正文，不能为空。最长 20000 个字符。
     content_default: 通知正文，不能为空。最长 20000 个字符。
     receivers_system_user: 平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。

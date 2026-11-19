@@ -263,6 +263,8 @@ const NOTIFICATION_CHANNEL_TYPE: Record<string, string> = {
   FEISHU_BOT: 'feishu_bot',
   DINGTALK_BOT: 'dingtalk_bot',
   CUSTOM_WEBHOOK: 'custom_webhook',
+  SMS: 'sms',
+  VOICE: 'voice',
 };
 
 const NOTIFICATION_TYPE_TEXT: Record<string, { id: string; defaultMessage: string }> = {
@@ -271,6 +273,8 @@ const NOTIFICATION_TYPE_TEXT: Record<string, { id: string; defaultMessage: strin
   FEISHU_BOT: { id: 'workflowOrchestration.editor.notificationTypeFeishuBot', defaultMessage: '飞书机器人' },
   DINGTALK_BOT: { id: 'workflowOrchestration.editor.notificationTypeDingtalkBot', defaultMessage: '钉钉机器人' },
   CUSTOM_WEBHOOK: { id: 'workflowOrchestration.editor.notificationTypeCustomWebhook', defaultMessage: '自定义 Webhook' },
+  SMS: { id: 'workflowOrchestration.editor.notificationTypeSms', defaultMessage: '短信' },
+  VOICE: { id: 'workflowOrchestration.editor.notificationTypeVoice', defaultMessage: '语音' },
 };
 
 function notificationChannelOptions(schema: JsonSchema, notificationType: string) {
@@ -344,7 +348,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
     setField('channel_id', first);
   }, [channelOptions, readOnly, value.channel_id]);
 
-  const emailRequired = notificationType === 'EMAIL';
+  const personalNotification = notificationType === 'EMAIL' || notificationType === 'SMS' || notificationType === 'VOICE';
 
   return <>
     <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required>
@@ -356,7 +360,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
       </ReferenceDropGuard>
     </Form.Item>
     <div className="relative">
-      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={emailRequired || schema.required?.includes('channel_id')}>
+      <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationMethod', '通知方式')} required={personalNotification || schema.required?.includes('channel_id')}>
         <ReferenceDropGuard>
           <Select showSearch optionFilterProp="label" allowClear disabled={readOnly} value={channelValue} options={channelOptions} placeholder={channelOptions.length ? t('workflowOrchestration.editor.selectNotificationMethod', '请选择通知方式') : t('workflowOrchestration.editor.noNotificationChannels', '暂无可用通知渠道')} onChange={(next) => {
             channelClearedRef.current = next == null;
@@ -366,7 +370,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
       </Form.Item>
       {!readOnly ? <Button className="absolute right-0 top-0 h-auto px-0 text-xs" type="link" size="small" icon={<PlusOutlined />} href="/system-manager/channel" target="_blank">{t('workflowOrchestration.editor.addNotificationChannel', '新增通知渠道')}</Button> : null}
     </div>
-    {notificationType === 'EMAIL' && schema?.properties?.recipients ? (
+    {personalNotification && schema?.properties?.recipients ? (
       <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationPeople', '通知人')} required>
         <SchemaNodeField
           schema={{ ...recipientSchema, 'x-binding': 'literal-only' }}
@@ -377,7 +381,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
         />
       </Form.Item>
     ) : null}
-    {notificationType === 'EMAIL' && schema?.properties?.title ? (
+    {personalNotification && schema?.properties?.title ? (
       <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationTitle', '通知标题')} required>
         <SchemaNodeField schema={{ ...field(schema, 'title'), 'x-text-surface': 'coerce' }} value={value.title} references={references} disabled={readOnly} onChange={(next) => setField('title', next)} />
       </Form.Item>

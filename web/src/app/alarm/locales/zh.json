@@ -643,6 +643,8 @@
       "imNotification": "IM应用通知",
       "webhook": "自定义 Webhook 文本",
       "opspilot": "OpsPilot 文本",
+      "sms": "短信文本",
+      "voice": "语音文本",
       "subject": "标题",
       "body": "正文",
       "variables": "可用变量",

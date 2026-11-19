@@ -15,6 +15,8 @@ export const NOTIFICATION_TEMPLATE_CHANNELS: NotificationTemplateChannelFormat[]
   { key: 'im_notification', labelKey: 'settings.notificationTemplate.imNotification', editorMode: 'markdown', previewMode: 'markdown', hasSubject: true },
   { key: 'custom_webhook', labelKey: 'settings.notificationTemplate.webhook', editorMode: 'text', previewMode: 'text', hasSubject: false },
   { key: 'nats', labelKey: 'settings.notificationTemplate.opspilot', editorMode: 'text', previewMode: 'text', hasSubject: false },
+  { key: 'sms', labelKey: 'settings.notificationTemplate.sms', editorMode: 'text', previewMode: 'text', hasSubject: true },
+  { key: 'voice', labelKey: 'settings.notificationTemplate.voice', editorMode: 'text', previewMode: 'text', hasSubject: true },
 ];
 
 export const getNotificationTemplateChannel = (channelType: string) => (

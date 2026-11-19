@@ -929,6 +929,8 @@
       "notificationTypeFeishuBot": "Feishu Bot",
       "notificationTypeDingtalkBot": "DingTalk Bot",
       "notificationTypeCustomWebhook": "Custom Webhook",
+      "notificationTypeSms": "SMS",
+      "notificationTypeVoice": "Voice",
       "webhookExampleToken": "Generated after you click Listen for a test request",
       "webhookExampleBody": "Replace this with real business data",
       "webhookExampleTriggerId": "Generated after publishing",

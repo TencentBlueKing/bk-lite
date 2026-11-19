@@ -45,6 +45,16 @@ const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
       title: t('system.channel.nats'),
       desc: t('system.channel.natsDesc'),
       icon: 'dongzuo1'
+    },
+    sms: {
+      title: t('system.channel.sms'),
+      desc: t('system.channel.smsDesc'),
+      icon: 'wendaduihua'
+    },
+    voice: {
+      title: t('system.channel.voice'),
+      desc: t('system.channel.voiceDesc'),
+      icon: 'dadianhua'
     }
   }
 

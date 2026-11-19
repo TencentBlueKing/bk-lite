@@ -4,6 +4,13 @@ from rest_framework import serializers
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
+from apps.system_mgmt.services.cloud_notify.config import (
+    CLOUD_SECRET_FIELDS,
+    apply_preserved_secrets,
+    fields_preserving_existing_secret,
+    masked_config,
+    validate_cloud_config,
+)
 from apps.system_mgmt.services.group_channel_mention import provider_for_group_channel
 from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 from apps.system_mgmt.utils.i18n import localized_channel_description
@@ -25,7 +32,10 @@ class ChannelSerializer(UsernameSerializer):
         ChannelChoices.FEISHU_BOT: ["webhook_url", "sign_secret"],
         ChannelChoices.DINGTALK_BOT: ["webhook_url", "sign_secret"],
         ChannelChoices.CUSTOM_WEBHOOK: ["webhook_url"],
+        ChannelChoices.SMS: list(CLOUD_SECRET_FIELDS),
+        ChannelChoices.VOICE: list(CLOUD_SECRET_FIELDS),
     }
+    CLOUD_CHANNEL_TYPES = {ChannelChoices.SMS, ChannelChoices.VOICE}
 
     class Meta:
         model = Channel
@@ -50,6 +60,8 @@ class ChannelSerializer(UsernameSerializer):
         locale = getattr(getattr(request, "user", None), "locale", None)
         data["description"] = localized_channel_description(data.get("description"), locale)
         data["tag"] = channel_tag_tokens(instance)
+        if instance.channel_type in self.CLOUD_CHANNEL_TYPES:
+            data["config"] = masked_config(instance)
         return data
 
     def validate_tag(self, value):
@@ -103,6 +115,12 @@ class ChannelSerializer(UsernameSerializer):
             config = attrs.get("config", getattr(self.instance, "config", {}) or {})
             self.validate_nats_config(config)
             self.validate_nats_subject_key_unique(config, exclude_channel_id=getattr(self.instance, "pk", None))
+        if channel_type in self.CLOUD_CHANNEL_TYPES and "config" in attrs:
+            config = attrs.get("config")
+            preserved = fields_preserving_existing_secret(config, self.instance.config, self.instance) if self.instance is not None else ()
+            cloud_errors = validate_cloud_config(channel_type, config, preserved)
+            if cloud_errors:
+                raise serializers.ValidationError({"config": self._localize_cloud_errors(cloud_errors)})
         if "account_association" in attrs:
             association = attrs.get("account_association")
         else:
@@ -127,7 +145,7 @@ class ChannelSerializer(UsernameSerializer):
         tag_provided = "tag" in self.initial_data
         pairs = validated_data.pop("tag", [])
         if validated_data.get("config"):
-            self.encode_config(validated_data, instance.config)
+            self.encode_config(validated_data, instance.config, instance.channel_type)
         else:
             validated_data["config"] = instance.config
         with transaction.atomic():
@@ -140,15 +158,28 @@ class ChannelSerializer(UsernameSerializer):
         return getattr(self.context.get("request"), "user", None)
 
     @staticmethod
-    def encode_config(validated_data, old_config=None):
+    def encode_config(validated_data, old_config=None, channel_type=None):
         if old_config is None:
             old_config = {}
         config = validated_data["config"]
-        encrypt_fields = ChannelSerializer.ENCRYPT_FIELDS_MAP.get(validated_data["channel_type"], [])
+        channel_type = validated_data.get("channel_type", channel_type)
+        preserved = set()
+        if channel_type in ChannelSerializer.CLOUD_CHANNEL_TYPES:
+            preserved = apply_preserved_secrets(config, old_config, Channel)
+        encrypt_fields = ChannelSerializer.ENCRYPT_FIELDS_MAP.get(channel_type, [])
         for field in encrypt_fields:
+            if field in preserved:
+                continue
             Channel.encrypt_field(field, config)
             config.setdefault(field, old_config.get(field, ""))
         validated_data["config"] = config
+
+    def _localize_cloud_errors(self, errors):
+        loader = self._loader()
+        localized = {}
+        for key, value in errors.items():
+            localized[key] = loader.get(value) if isinstance(value, str) and value.startswith("error.") else value
+        return localized
 
     def _loader(self):
         request = self.context.get("request")

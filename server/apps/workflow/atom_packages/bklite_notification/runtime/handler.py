@@ -86,8 +86,12 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
     recipients = _resolve_recipients(raw_recipients, team)
     if notification_type == "EMAIL" and not recipients:
         raise ValueError("邮件通知必须选择收件人")
+    if notification_type in {"SMS", "VOICE"} and not recipients:
+        raise ValueError("短信或语音通知必须选择收件人")
     if notification_type == "EMAIL" and (inputs.get("channel_id") in (None, "")):
         raise ValueError("邮件通知必须选择通知方式")
+    if notification_type in {"SMS", "VOICE"} and (inputs.get("channel_id") in (None, "")):
+        raise ValueError("短信或语音通知必须选择通知方式")
     title = _as_text(inputs.get("title")).strip()
     body = _as_text(inputs.get("body")).strip()
     report_link = _report_link(inputs, team, execution_id)
@@ -96,7 +100,7 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
     elif report_link and notification_type == "EMAIL" and not _is_absolute_http_url(report_link):
         # 未配置 WEB_BASE_URL 时链接不是绝对地址，渠道不会把它写成可点击下载。邮件正文仍要发出。
         report_link = ""
-    if (notification_type == "EMAIL" and not title) or len(title) > 200 or not body or len(body) > 10000:
+    if (notification_type in {"EMAIL", "SMS", "VOICE"} and not title) or len(title) > 200 or not body or len(body) > 10000:
         raise ValueError("通知标题或正文超出限额")
     delivery = SystemMgmt().dispatch_notification(
         delivery_key=f"workflow:{execution_id}:{inputs.get('task_reference') or 'notification'}"[:255],
@@ -115,6 +119,8 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
         internal_caller="workflow",
     )
     if not isinstance(delivery, dict) or delivery.get("result") is not True:
+        if notification_type in {"SMS", "VOICE"} and isinstance(delivery, dict) and delivery.get("retryable") is False:
+            return {"delivery": delivery}
         message = delivery.get("message") if isinstance(delivery, dict) else ""
         raise ValueError(str(message or "通知渠道投递失败"))
     return {"delivery": delivery}

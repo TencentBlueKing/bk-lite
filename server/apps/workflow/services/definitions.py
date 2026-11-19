@@ -37,6 +37,8 @@ NOTIFICATION_TYPE_TO_CHANNEL_TYPE = {
     "FEISHU_BOT": "feishu_bot",
     "DINGTALK_BOT": "dingtalk_bot",
     "CUSTOM_WEBHOOK": "custom_webhook",
+    "SMS": "sms",
+    "VOICE": "voice",
 }
 
 

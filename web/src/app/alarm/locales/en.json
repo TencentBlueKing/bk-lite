@@ -643,6 +643,8 @@
       "imNotification": "IM app notification",
       "webhook": "Custom Webhook text",
       "opspilot": "OpsPilot text",
+      "sms": "SMS text",
+      "voice": "Voice text",
       "subject": "Subject",
       "body": "Body",
       "variables": "Variables",

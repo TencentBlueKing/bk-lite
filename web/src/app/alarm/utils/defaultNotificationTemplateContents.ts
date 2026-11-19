@@ -209,7 +209,33 @@ export const DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS: NotificationTemplateCont
     subject_template: '',
     body_template: alertOperationTextBody('[WeOps 告警操作通知]'),
   },
+  {
+    channel_type: 'sms',
+    subject_template: ALERT_OPERATION_SUBJECT,
+    body_template: alertOperationTextBody('[告警操作通知]'),
+  },
+  {
+    channel_type: 'voice',
+    subject_template: ALERT_OPERATION_SUBJECT,
+    body_template: alertOperationTextBody('[告警操作通知]'),
+  },
 ];
+
+const ALERT_PLAIN_TEXT_BODY = `[告警通知]
+通知场景：{{ notification.scene_name }}
+告警级别：{{ alert.level }}
+告警标题：{{ alert.title }}
+告警 ID：{{ alert.alert_id }}
+告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
+资源 ID：{{ alert.resource_id }}
+监控来源：{{ alert.source_name }}
+监控指标：{{ alert.item }}
+发生时间：{{ alert.created_at }}
+本次接收人：{{ notification.receiver_names }}
+通知时间：{{ notification.generated_at }}
+
+告警内容：
+{{ alert.content }}`;
 
 export const DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS: NotificationTemplateContent[] = [
   {
@@ -367,5 +393,15 @@ export const DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS: NotificationTemplateContent
 
 告警内容：
 {{ alert.content }}`,
+  },
+  {
+    channel_type: 'sms',
+    subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
+    body_template: ALERT_PLAIN_TEXT_BODY,
+  },
+  {
+    channel_type: 'voice',
+    subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
+    body_template: ALERT_PLAIN_TEXT_BODY,
   },
 ];

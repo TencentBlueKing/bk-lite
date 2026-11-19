@@ -48,6 +48,8 @@ _EXTERNAL_NOTIFICATION_CHANNEL_TYPES = frozenset(
         ChannelChoices.FEISHU_BOT,
         ChannelChoices.DINGTALK_BOT,
         ChannelChoices.CUSTOM_WEBHOOK,
+        ChannelChoices.SMS,
+        ChannelChoices.VOICE,
     }
 )
 _CHANNEL_CATALOG_SUMMARY = (
