@@ -10,6 +10,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -302,17 +303,10 @@ def copy_windows_script_to_hosts(
             raise failure from error
 
 
-def _cli_main(argv: list[str] | None = None) -> int:
+def run_delivery_job(payload_path: str) -> int:
     """子进程入口：隔离 WinRM put_file，避免卡死 ansible-executor 的 event loop。"""
-    import argparse
-    import json
-    import sys
-
-    parser = argparse.ArgumentParser(prog="windows_script_delivery")
-    parser.add_argument("payload_json", help="JSON file with local_path/leaf/script_type/host_credentials")
-    args = parser.parse_args(argv)
     try:
-        payload = json.loads(Path(args.payload_json).read_text(encoding="utf-8"))
+        payload = json.loads(Path(payload_path).read_text(encoding="utf-8"))
         copy_windows_script_to_hosts(
             str(payload["local_path"]),
             str(payload["leaf"]),
@@ -329,4 +323,8 @@ def _cli_main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_cli_main())
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="windows_script_delivery")
+    parser.add_argument("payload_json", help="JSON file with local_path/leaf/script_type/host_credentials")
+    raise SystemExit(run_delivery_job(parser.parse_args().payload_json))

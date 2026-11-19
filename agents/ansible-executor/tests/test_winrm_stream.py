@@ -1,16 +1,40 @@
 import asyncio
 import json
+import shlex
+import sys
 import time
 from pathlib import Path
 
 import pytest
 from service.linux_script_delivery import ScriptDeliveryError
-from service.winrm_stream import _build_command, _build_protocol, build_execute_command, prepare_script_bytes, run_winrm_stream
+from service.winrm_stream import (
+    _build_command,
+    _build_protocol,
+    _copy_windows_script_via_subprocess,
+    build_execute_command,
+    prepare_script_bytes,
+    run_winrm_stream,
+)
 
 
 def _is_execute_command(command: str, arguments: list[str]) -> bool:
     joined = " ".join([command, *arguments])
     return command == "cmd.exe" and ("-File" in joined or "-u" in joined or ".cmd" in joined or ".py" in joined or ".ps1" in joined)
+
+
+@pytest.mark.asyncio
+async def test_frozen_windows_upload_reaches_delivery_and_cleans_payload(tmp_path, monkeypatch):
+    entrypoint = tmp_path / "ansible-executor"
+    main = Path(__file__).resolve().parents[1] / "main.py"
+    entrypoint.write_text("#!/bin/sh\nexec " + shlex.join([sys.executable, str(main)]) + ' "$@"\n')
+    entrypoint.chmod(0o700)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(entrypoint))
+
+    with pytest.raises(ScriptDeliveryError, match="host_credentials are required for Windows put_file delivery"):
+        await _copy_windows_script_via_subprocess(tmp_path, "script.ps1", "script.ps1", "powershell", [])
+
+    assert not (tmp_path / "windows-put-file-job.json").exists()
 
 
 class _Protocol:
