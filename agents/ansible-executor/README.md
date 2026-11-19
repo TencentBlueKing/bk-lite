@@ -145,12 +145,13 @@ jetstream:
   max_deliver: 5
   ack_wait: 300
   backoff: [5, 15, 30, 60]
-  dlq_subject: bk.ans_exec.default.tasks.dlq
+  dlq_subject: bk.ans_exec.default.dlq
 ```
 
 手写配置时，`namespace` 和 `dlq_subject` 必须带本执行器的节点 ID，并与 `instance_id` 一致。
 平台内置模板写成 `bk.ans_exec.${node.id}`，下发时和 `instance_id: ${node.id}` 做同一次替换。
 多个执行器连同一套 NATS 时，各自的任务 subject 不再重叠，也不会共用 stream 和 consumer。
+死信 subject 是 `bk.ans_exec.<节点 ID>.dlq`，不在 `tasks.>` 工作队列里，由单独的 stream 保留，工作消费者不会再收走。仍写成 `tasks.dlq` 的旧配置不会另建这条 stream，避免 subject 重叠；重下发预置配置后才分开。
 `security.allowed_stream_subjects` 里的 `bk.ans_exec.stream.>` 是流式日志白名单，不从任务队列 namespace 派生。
 
 已下发到节点的预置配置不会随采集器定义更新自动改写。升级时：

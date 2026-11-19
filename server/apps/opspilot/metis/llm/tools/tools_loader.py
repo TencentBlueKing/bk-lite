@@ -30,6 +30,7 @@ class ToolsLoader:
     # 惰性定义所有工具模块映射
     TOOL_MODULES = {
         "attachment_file": ("apps.opspilot.metis.llm.tools.attachment", False),
+        "conversation_skill_package": ("apps.opspilot.metis.llm.tools.conversation_skill_package", False),
         "agent_browser": ("apps.opspilot.metis.llm.tools.agent_browser", False),
         "browser_use": ("apps.opspilot.metis.llm.tools.browser_use", False),
         "cmdb": ("apps.opspilot.metis.llm.tools.cmdb", False),

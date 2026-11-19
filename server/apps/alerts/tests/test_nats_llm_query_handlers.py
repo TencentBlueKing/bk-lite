@@ -130,6 +130,61 @@ def test_list_alerts_active_status_matches_open_alerts_only(mocker):
     assert [item["alert_id"] for item in result["data"]["items"]] == ["ALERT-LLM-OPEN"]
 
 
+def test_list_alerts_filters_created_at_when_start_or_end_is_set(mocker):
+    mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
+    early = Alert.objects.create(
+        alert_id="ALERT-LLM-EARLY",
+        title="十月告警",
+        content="c",
+        status=AlertStatus.CLOSED,
+        level="warning",
+        fingerprint="fp-early",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    late = Alert.objects.create(
+        alert_id="ALERT-LLM-LATE",
+        title="十一月告警",
+        content="c",
+        status=AlertStatus.RESOLVED,
+        level="warning",
+        fingerprint="fp-late",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.filter(pk=early.pk).update(created_at=datetime.datetime(2026, 10, 14, 7, 44, tzinfo=datetime.timezone.utc))
+    Alert.objects.filter(pk=late.pk).update(created_at=datetime.datetime(2026, 11, 2, 2, 0, tzinfo=datetime.timezone.utc))
+
+    unfiltered = alerts_nats.list_alerts(query_data={}, user_info=_user_info())
+    assert {item["alert_id"] for item in unfiltered["data"]["items"]} == {"ALERT-LLM-EARLY", "ALERT-LLM-LATE"}
+
+    window = alerts_nats.list_alerts(
+        query_data={"start": "2026-10-17T00:00:00Z", "end": "2026-11-17T10:41:15Z"},
+        user_info=_user_info(),
+    )
+    assert [item["alert_id"] for item in window["data"]["items"]] == ["ALERT-LLM-LATE"]
+
+    start_only = alerts_nats.list_alerts(query_data={"start": "2026-11-01T00:00:00Z"}, user_info=_user_info())
+    assert [item["alert_id"] for item in start_only["data"]["items"]] == ["ALERT-LLM-LATE"]
+
+    end_only = alerts_nats.list_alerts(query_data={"end": "2026-10-31T00:00:00Z"}, user_info=_user_info())
+    assert [item["alert_id"] for item in end_only["data"]["items"]] == ["ALERT-LLM-EARLY"]
+
+    blank = alerts_nats.list_alerts(query_data={"start": "  ", "end": ""}, user_info=_user_info())
+    assert blank["data"]["count"] == 2
+
+    invalid = alerts_nats.list_alerts(query_data={"start": "2026-10-14 15:44:00"}, user_info=_user_info())
+    assert invalid["result"] is False
+    assert "start" in invalid["message"]
+
+    reversed_range = alerts_nats.list_alerts(
+        query_data={"start": "2026-11-17T00:00:00Z", "end": "2026-10-17T00:00:00Z"},
+        user_info=_user_info(),
+    )
+    assert reversed_range["result"] is False
+    assert "start" in reversed_range["message"]
+
+
 def test_list_alerts_includes_alerts_assigned_to_caller_outside_current_team(mocker):
     mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
     Alert.objects.create(

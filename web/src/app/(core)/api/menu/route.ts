@@ -12,9 +12,10 @@ const ENTERPRISE_MENUS_MANIFEST_PATH = ENTERPRISE_WEB_ROOT
 interface MenuPatch {
   target: string;
   children: any[];
+  after?: string;
 }
 
-const applyPatch = (items: any[], targetParts: string[], children: any[]): boolean => {
+export const applyPatch = (items: any[], targetParts: string[], children: any[], after?: string): boolean => {
   const [head, ...rest] = targetParts;
   for (const item of items) {
     if (item.name !== head) {
@@ -22,11 +23,17 @@ const applyPatch = (items: any[], targetParts: string[], children: any[]): boole
     }
 
     if (rest.length === 0) {
-      item.children = [...(item.children || []), ...children];
+      const siblings = item.children || [];
+      const afterIndex = after ? siblings.findIndex((child: { name?: string }) => child.name === after) : -1;
+      if (after && afterIndex >= 0) {
+        item.children = [...siblings.slice(0, afterIndex + 1), ...children, ...siblings.slice(afterIndex + 1)];
+      } else {
+        item.children = [...siblings, ...children];
+      }
       return true;
     }
 
-    if (item.children && applyPatch(item.children, rest, children)) {
+    if (item.children && applyPatch(item.children, rest, children, after)) {
       return true;
     }
   }
@@ -36,7 +43,7 @@ const applyPatch = (items: any[], targetParts: string[], children: any[]): boole
 
 const applyPatches = (menuItems: any[], patches: MenuPatch[]) => {
   for (const patch of patches) {
-    const applied = applyPatch(menuItems, patch.target.split('.'), patch.children);
+    const applied = applyPatch(menuItems, patch.target.split('.'), patch.children, patch.after);
     if (!applied) {
       console.warn(`[menu] patch target not found: ${patch.target}`);
     }

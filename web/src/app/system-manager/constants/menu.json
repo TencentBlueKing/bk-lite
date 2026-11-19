@@ -19,17 +19,25 @@
           "url": "/system-manager/user/login-auth"
         },
         {
-          "title": "用户字段",
-          "icon": "shezhi",
-          "name": "user_fields",
-          "url": "/system-manager/user/fields"
-        },
-        {
           "title": "用户同步",
           "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
         },
+        {
+          "title": "用户字段",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
+        }
+      ]
+    },
+    {
+      "title": "安全治理",
+      "icon": "guanlipingju",
+      "name": "Security",
+      "url": "/system-manager/user/security-settings",
+      "children": [
         {
           "title": "安全策略",
           "icon": "shezhi",
@@ -41,6 +49,12 @@
           "icon": "chaojiguanliyuan",
           "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
+        },
+        {
+          "title": "网络白名单",
+          "url": "/system-manager/settings/network-whitelist",
+          "icon": "whitelist",
+          "name": "network_white_list"
         }
       ]
     },
@@ -138,12 +152,6 @@
           "name": "error_logs"
         },
         {
-          "title": "网络白名单",
-          "url": "/system-manager/settings/network-whitelist",
-          "icon": "whitelist",
-          "name": "network_white_list"
-        },
-        {
           "title": "API 文档",
           "url": "/system-manager/settings/openapi-docs",
           "icon": "wendang1",
@@ -178,17 +186,25 @@
           "url": "/system-manager/user/login-auth"
         },
         {
-          "title": "User Fields",
-          "icon": "shezhi",
-          "name": "user_fields",
-          "url": "/system-manager/user/fields"
-        },
-        {
           "title": "User Sync",
           "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
         },
+        {
+          "title": "User Fields",
+          "icon": "shezhi",
+          "name": "user_fields",
+          "url": "/system-manager/user/fields"
+        }
+      ]
+    },
+    {
+      "title": "Security Governance",
+      "icon": "guanlipingju",
+      "name": "Security",
+      "url": "/system-manager/user/security-settings",
+      "children": [
         {
           "title": "Security Settings",
           "icon": "shezhi",
@@ -200,6 +216,12 @@
           "icon": "chaojiguanliyuan",
           "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
+        },
+        {
+          "title": "Network Whitelist",
+          "url": "/system-manager/settings/network-whitelist",
+          "icon": "whitelist",
+          "name": "network_white_list"
         }
       ]
     },
@@ -295,12 +317,6 @@
           "url": "/system-manager/settings/error-logs",
           "icon": "wannengbiaodan",
           "name": "error_logs"
-        },
-        {
-          "title": "Network Whitelist",
-          "url": "/system-manager/settings/network-whitelist",
-          "icon": "whitelist",
-          "name": "network_white_list"
         },
         {
           "title": "API Documentation",

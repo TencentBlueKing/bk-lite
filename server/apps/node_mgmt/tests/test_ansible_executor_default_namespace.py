@@ -18,6 +18,7 @@ def test_each_node_owns_its_task_namespace_and_dlq():
             namespace = re.search(r'namespace: "([^"]+)"', rendered).group(1)
             dlq = re.search(r'dlq_subject: "([^"]+)"', rendered).group(1)
             assert namespace == f"bk.ans_exec.{node_id}"
-            assert dlq == f"{namespace}.tasks.dlq"
+            assert dlq == f"{namespace}.dlq"
+            assert not dlq.startswith(f"{namespace}.tasks.")
             namespaces.append(namespace)
         assert namespaces[0] != namespaces[1]

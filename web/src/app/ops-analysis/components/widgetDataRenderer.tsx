@@ -544,6 +544,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       block={false}
       chartThemeMode={config?.chartThemeMode}
       scale={getScreenWidgetScale(screenRenderContext)}
+      screenDensity={screenRenderContext?.enabled ? screenRenderContext.screenDensity : undefined}
+      layoutMode={screenRenderContext?.enabled ? screenRenderContext.layoutMode : undefined}
+      fitScale={screenRenderContext?.enabled ? screenRenderContext.fitScale : undefined}
     />
   ) : null;
   const runtimeHeaderControl =

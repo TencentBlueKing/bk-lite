@@ -51,6 +51,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME,
     BUILTIN_JOB_MGMT_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MLOPS_TOOL_NAME,
@@ -63,6 +64,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_alerts_tool,
     build_builtin_attachment_file_tool,
     build_builtin_cmdb_tool,
+    build_builtin_conversation_skill_package_tool,
     build_builtin_job_mgmt_tool,
     build_builtin_log_tool,
     build_builtin_mlops_tool,
@@ -1296,6 +1298,8 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mlops_tool(loader))
             if not any(item.get("name") == BUILTIN_JOB_MGMT_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_job_mgmt_tool(loader))
+            if not any(item.get("name") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_conversation_skill_package_tool(loader))
             for item in response.data:
                 if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
                     apply_fallback_tool_tags(item)

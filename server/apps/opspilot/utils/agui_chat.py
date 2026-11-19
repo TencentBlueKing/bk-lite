@@ -444,13 +444,18 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
         direct_reply = await sync_to_async(try_commit_conversation_skill_package, thread_sensitive=True)(params)
         if direct_reply:
             message_id = uuid.uuid4().hex
+            run_id = uuid.uuid4().hex
+            thread_id = str(params.get("thread_id") or params.get("skill_session_id") or params.get("session_id") or message_id)
             now = int(time.time() * 1000)
-            for event_type, extra in (
-                ("TEXT_MESSAGE_START", {}),
-                ("TEXT_MESSAGE_CONTENT", {"delta": direct_reply}),
-                ("TEXT_MESSAGE_END", {}),
+            # 页面把没有 RUN_FINISHED 的流结束当成断线。确认和放弃都不进模型，也要按正常一轮收尾。
+            for event in (
+                {"type": "RUN_STARTED", "threadId": thread_id, "runId": run_id, "timestamp": now},
+                {"type": "TEXT_MESSAGE_START", "message_id": message_id, "timestamp": now},
+                {"type": "TEXT_MESSAGE_CONTENT", "message_id": message_id, "delta": direct_reply, "timestamp": now},
+                {"type": "TEXT_MESSAGE_END", "message_id": message_id, "timestamp": now},
+                {"type": "RUN_FINISHED", "threadId": thread_id, "runId": run_id, "timestamp": now},
             ):
-                yield _build_sse_line({"type": event_type, "message_id": message_id, "timestamp": now, **extra})
+                yield _build_sse_line(event)
             return
         # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
         # 移入生成器内执行，经 sync_to_async 调用，避免在首个 flush 前阻塞请求线程，改善 TTFB。

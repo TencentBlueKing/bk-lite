@@ -41,6 +41,29 @@ def test_alerts_list_maps_to_rpc():
     assert kwargs["query_data"]["status"] == "unassigned"
 
 
+def test_alerts_list_sends_created_time_bounds_and_omits_them_when_absent():
+    config = cfg()
+    config["configurable"]["user_timezone"] = "Asia/Shanghai"
+    with patch("apps.opspilot.metis.llm.tools.alerts.utils.AlertOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.list_alerts.return_value = {"result": True, "data": {"count": 1, "items": []}}
+        alerts_list_alerts.invoke(
+            {"start": "2026-10-17 00:00:00", "end": "2026-11-17T10:41:15Z"},
+            config=config,
+        )
+        alerts_list_alerts.invoke({"page": 1}, config=config)
+        invalid = alerts_list_alerts.invoke({"start": "上个月"}, config=config)
+    window = rpc_cls.return_value.list_alerts.call_args_list[0].kwargs["query_data"]
+    assert window["start"] == "2026-10-16T16:00:00.000Z"
+    assert window["end"] == "2026-11-17T10:41:15.000Z"
+    assert "status" in window
+    assert window["status"] is None
+    plain = rpc_cls.return_value.list_alerts.call_args_list[1].kwargs["query_data"]
+    assert "start" not in plain
+    assert "end" not in plain
+    assert invalid["error"]
+    assert rpc_cls.return_value.list_alerts.call_count == 2
+
+
 def test_alerts_detail_requires_alert_id():
     out = alerts_get_alert_detail.invoke({"alert_id": ""}, config=cfg())
     assert out["error"] == "alert_id is required"

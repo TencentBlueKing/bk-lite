@@ -45,8 +45,8 @@ export const ThresholdColorConfigSection: React.FC<
           const isBaseThreshold = index === thresholdColors.length - 1;
           return (
             <div key={index} className="flex items-center gap-2 py-1.5">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-(--color-text-2) whitespace-nowrap">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="shrink-0 whitespace-nowrap text-xs text-(--color-text-2)">
                   {t('topology.nodeConfig.thresholdWhenValueGte')}
                 </span>
                 <InputNumber
@@ -62,15 +62,17 @@ export const ThresholdColorConfigSection: React.FC<
                   }}
                   placeholder={t('common.inputMsg')}
                   disabled={(isBaseThreshold && !allowEmpty) || readonly}
+                  className="min-w-0 shrink"
                   style={{ width: '100px' }}
                   size="small"
                   min={0}
                 />
-                <span className="text-xs text-(--color-text-2)">
+                <span className="shrink-0 whitespace-nowrap text-xs text-(--color-text-2)">
                   {t('topology.nodeConfig.thresholdShow')}
                 </span>
               </div>
               <ColorPicker
+                className="shrink-0 !items-center [&_.ant-color-picker-trigger-text]:whitespace-nowrap"
                 value={threshold.color}
                 onChange={(color) =>
                   onThresholdChange(index, 'color', color.toHexString())
@@ -80,7 +82,7 @@ export const ThresholdColorConfigSection: React.FC<
                 showText
               />
               {!readonly ? (
-                <div className="flex items-center gap-1 pl-2">
+                <div className="flex shrink-0 items-center gap-1 pl-2">
                   <Button
                     type="text"
                     size="small"

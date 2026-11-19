@@ -124,6 +124,32 @@ class NATSTopologyMixin:
             durable=retry_durable,
             stream=retry_stream,
         )
+        await self._ensure_dlq_stream()
+
+    async def _ensure_dlq_stream(self):
+        """死信留在独立 stream。落在工作 subject 里的旧配置不另建，避免 subject 重叠把进程打退。"""
+        work_prefix = f"{self.config.js_subject_prefix}."
+        if self.config.dlq_subject.startswith(work_prefix):
+            logger.warning(
+                "dlq subject '%s' is inside work subject '%s>'; keep the existing stream until the subject is moved outside it",
+                self.config.dlq_subject,
+                f"{self.config.js_subject_prefix}.>",
+            )
+            return
+        dlq_stream = f"{self.config.js_stream}_DLQ"
+        dlq_config = StreamConfig(
+            name=dlq_stream,
+            subjects=[self.config.dlq_subject],
+            retention=RetentionPolicy.LIMITS,
+            storage=StorageType.FILE,
+            max_msgs=-1,
+            max_age=0,
+        )
+        try:
+            await self.js.stream_info(dlq_stream)
+            await self.js.update_stream(dlq_config)
+        except NotFoundError:
+            await self.js.add_stream(dlq_config)
 
     async def _replace_filtered_consumer(self, stream, subject, durable, config, label):
         existing_consumer = None

@@ -20,6 +20,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME,
     BUILTIN_JOB_MGMT_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MLOPS_TOOL_NAME,
@@ -33,6 +34,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_alerts_runtime_tool,
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
+    build_builtin_conversation_skill_package_runtime_tool,
     build_builtin_job_mgmt_runtime_tool,
     build_builtin_log_runtime_tool,
     build_builtin_mlops_runtime_tool,
@@ -41,6 +43,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_mysql_runtime_tool,
     build_builtin_oracle_runtime_tool,
     build_builtin_redis_runtime_tool,
+    selected_tools_include_conversation_skill_package,
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_request import ChatRequest
@@ -493,6 +496,7 @@ class ChatService:
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
             BUILTIN_MLOPS_TOOL_NAME: None,
             BUILTIN_JOB_MGMT_TOOL_NAME: None,
+            BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -507,6 +511,7 @@ class ChatService:
             BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
             BUILTIN_MLOPS_TOOL_NAME: build_builtin_mlops_runtime_tool,
             BUILTIN_JOB_MGMT_TOOL_NAME: build_builtin_job_mgmt_runtime_tool,
+            BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME: build_builtin_conversation_skill_package_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]
@@ -522,6 +527,11 @@ class ChatService:
             if isinstance(tool_id, int) and tool_id > 0:
                 skill_tool = skill_tools_by_id.get(tool_id)
                 return skill_tool.name if skill_tool else tool.get("name")
+            if (
+                tool.get("rawName") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME
+                or tool.get("name") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME
+            ):
+                return BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME
             raw_name = tool.get("rawName") or tool.get("name")
             if raw_name in IDENTITY_ONLY_BUILTIN_TOOLS.values():
                 return raw_name
@@ -715,7 +725,7 @@ class ChatService:
                 match_user_message=kwargs.get("reply_language") == "match_user",
             )
         authoring = kwargs.get(AUTHORING_EXTRA_KEY)
-        if isinstance(authoring, dict) and authoring.get("enabled"):
+        if isinstance(authoring, dict) and authoring.get("enabled") and selected_tools_include_conversation_skill_package(kwargs.get("tools")):
             resolved_prompt = f"{resolved_prompt}{AUTHORING_PROMPT_SUFFIX}"
 
         vendor_type = llm_model.vendor.vendor_type if llm_model.vendor_id else ""
