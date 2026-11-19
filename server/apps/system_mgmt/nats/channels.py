@@ -848,7 +848,7 @@ def sync_workflow_nats_channels(workflow_id, workflow_name, team, nodes, active,
         incoming_node_keys.add(node_key)
         label = str((node or {}).get("name") or node_key).strip()
         config = {
-            "namespace": OPSPILOT_NATS_NAMESPACE,
+            "namespace": OPSPILOT_NATS_NAMESPACE or "bklite",
             "method_name": WORKFLOW_NATS_METHOD,
             "workflow_id": workflow_id,
             "trigger_id": trigger_id,

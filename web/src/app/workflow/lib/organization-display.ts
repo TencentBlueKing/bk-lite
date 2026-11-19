@@ -44,3 +44,9 @@ export function organizationDisplayText(
     .filter(Boolean);
   return names.length ? names.join('，') : '--';
 }
+
+export function executionOrganizationText(id: number | null | undefined, groups: OrganizationNode[]) {
+  if (id == null) return '--';
+  const organization = findOrganization(groups, id);
+  return organization ? organizationPath(organization, groups) : String(id);
+}

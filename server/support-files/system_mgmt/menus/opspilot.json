@@ -1,7 +1,7 @@
 {
   "client_id": "opspilot",
   "name": "OpsPilot",
-  "url": "/opspilot/studio",
+  "url": "/opspilot/skill",
   "icon": "opspilot",
   "tags": [
     "tag.agent",

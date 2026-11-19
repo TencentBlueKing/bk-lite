@@ -10,10 +10,12 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/components/operate-drawer';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Icon from '@/components/icon';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { downloadExecutionArtifact } from '../lib/download-artifact';
+import { executionOrganizationText } from '../lib/organization-display';
 import { executionStatusPresentation, formatDuration, formatStartedBy, formatTriggerTypeLabel } from '../lib/presentation';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import type { DownloadableArtifact, ExecutionRecord, ExecutionStatus, PaginatedResponse, WorkflowTriggerType } from '../lib/types';
@@ -136,6 +138,7 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
   const searchParams = useSearchParams();
   const { get } = useApiClient();
   const { t } = useTranslation();
+  const { flatGroups } = useUserInfoContext();
   const { convertToLocalizedTime } = useLocalizedTime();
   const initialQuery = searchParams.get('query')?.trim() || undefined;
   const rawStatus = searchParams.get('status');
@@ -244,6 +247,10 @@ export function ExecutionListPage({ initialExecutionId, initialNodeReference, in
     { title: t('workflowOrchestration.execution.mode', '模式'), dataIndex: 'mode', key: 'mode', width: 90, filters: Object.entries(modeLabels).map(([value, text]) => ({ value, text })), filterMultiple: false, filteredValue: filters.mode ? [filters.mode] : null, render: (value: ExecutionRecord['mode']) => modeLabels[value] || '--' },
     { title: t('workflowOrchestration.trigger.title', '触发器'), dataIndex: 'trigger_type', key: 'trigger_type', width: 110, filters: Object.entries(triggerLabels).map(([value, text]) => ({ value, text })), filterMultiple: false, filteredValue: filters.triggerType ? [filters.triggerType] : null, render: (value: WorkflowTriggerType) => triggerLabels[value] || '--' },
     { title: t('workflowOrchestration.execution.startedBy', '发起人'), dataIndex: 'started_by', key: 'started_by', width: 120, render: (value: string) => <EllipsisWithTooltip text={formatStartedBy(value, t)} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" /> },
+    {
+      title: t('workflowOrchestration.execution.organization', '执行组织'), dataIndex: 'execution_team_id', key: 'execution_team_id', width: 140,
+      render: (id: ExecutionRecord['execution_team_id']) => <EllipsisWithTooltip text={executionOrganizationText(id, flatGroups)} className="w-full truncate" />,
+    },
     { title: t('workflowOrchestration.execution.startedAt', '开始时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: (value: string) => <span className="whitespace-nowrap tabular-nums">{value ? convertToLocalizedTime(value) : '--'}</span> },
     { title: t('workflowOrchestration.execution.duration', '耗时'), dataIndex: 'duration_ms', key: 'duration_ms', width: 100, render: (value: number | null) => <span className="tabular-nums">{formatDuration(value)}</span> },
     { title: t('common.actions', '操作'), key: 'actions', width: 140, fixed: 'right', render: (_, record) => {

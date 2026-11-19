@@ -239,6 +239,13 @@ def test_memory_atoms_validate_limits_and_bind_entity_scope(mocker, monkeypatch)
             }
         )
 
+    machine = _context(trigger_type="NATS", actor={"username": "managed-nats-channel", "domain": "domain.com"})
+    with pytest.raises(ValueError, match="个人记忆需要"):
+        atoms.execute_memory_read({"memory_space_id": 1, "query": "cpu", "__bklite_context": machine})
+    with pytest.raises(ValueError, match="个人记忆需要"):
+        atoms.execute_memory_write({"memory_space_id": 1, "content": "event", "__bklite_context": machine})
+    assert atoms.execute_memory_read({"memory_space_id": 2, "query": "cpu", "__bklite_context": machine})["count"] == 2
+
     engine.write.return_value = SimpleNamespace(success=False, memory_id=None, event_id=None)
     with pytest.raises(ValueError, match="记忆写入失败"):
         atoms.execute_memory_write({"memory_space_id": 2, "content": "x", "__bklite_context": _context()})

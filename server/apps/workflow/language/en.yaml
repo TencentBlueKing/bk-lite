@@ -64,9 +64,13 @@ error:
   trigger_type_invalid: "Trigger type is invalid"
   trigger_nodes_not_array: "trigger_nodes must be an array"
   idempotency_key_required: "This trigger requires an idempotency key"
+  idempotency_cron_reserved: "The cron: idempotency key prefix is reserved for scheduled runs."
+  idempotency_identity_conflict: "This idempotency key belongs to another execution identity."
   idempotency_key_too_long: "Idempotency key must be at most 128 characters"
   schedule_time_count: "time must contain 1 to 10 execution times"
   schedule_time_format: "time must use 24-hour HH:MM format"
+  schedule_execution_team_invalid: "Select one valid organization for scheduled execution."
+  schedule_execution_team_forbidden: "The selected organization is unavailable to the publishing account."
   schedule_config_not_object: "Schedule trigger config must be a JSON object"
   schedule_frequency_invalid: "frequency must be daily, weekly, monthly, or crontab"
   cron_field_count: "Cron expression is invalid and must contain 5 fields"
@@ -142,6 +146,7 @@ error:
   enabled_invalid: enabled is invalid
   excel_render_empty: The Excel template rendered an empty document
   excel_render_failed: 'Excel template rendering failed: {detail}'
+  personal_memory_identity_required: Automated workflows require a verified execution account to access personal memory
   execution_actor_invalid: The workflow execution identity is invalid
   execution_already_terminal: The execution is already in a terminal state
   execution_context_missing: A trusted workflow execution context is missing

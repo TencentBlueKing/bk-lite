@@ -46,6 +46,7 @@ OpsPilot 的技能可以挂 LLM 工具做 function calling，但面向 bklite �
 
 - **通道**：工具 → `apps/rpc/*` RPC 客户端 → 目标 app NATS handler。禁止工具直接 import monitor / log / alerts / cmdb 的 service 或 model。
 - **身份与权限**：沿用 monitor 模式，`configurable.caller_identity`（username / domain / team_id / include_children）由 `services/caller_identity.py` 捕获并透传到 NATS 参数；无身份则工具拒绝执行。权限判定在目标 app 的 NATS handler 侧完成（服务端兜底），handler 缺权限校验的必须补上。
+- 编排中心手动运行、重跑或调试时，在 HTTP 入口捕获已认证调用者的身份，随执行记录保存。智能体节点仅在快照与执行组织一致时使用该身份，查询范围不展开子组织。定时任务使用已发布版本绑定的账号和组织。OpenAPI 与已认证的 NATS 用户调用沿用入口校验结果。缺少身份快照的执行仍拒绝使用这些工具。
 - **注册**：新工具模块加入 `tools_loader.TOOL_MODULES`；`services/builtin_tools.py` 增加 log / alerts / cmdb 内置分类，用户在技能配置中直接勾选。
 - **够用性基准**：以「典型用户问答场景清单」为准，不追求覆盖后端能力全集。每个模块开工时先起草场景清单并经用户确认，场景映射不到工具的即为补充项。
 

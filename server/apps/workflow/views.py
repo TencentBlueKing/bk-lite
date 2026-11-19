@@ -6,6 +6,7 @@ import re
 from datetime import datetime, time, timedelta
 from io import BytesIO
 
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
 from django.db.models.functions import Coalesce, TruncDate
@@ -106,7 +107,7 @@ from apps.workflow.services.report_links import read_report_download_link
 from apps.workflow.services.report_template_inputs import freeze_document_templates, store_uploaded_report_template
 from apps.workflow.services.reports import ReportTemplateError
 from apps.workflow.services.runtime import start_debug_execution, start_execution
-from apps.workflow.services.schedules import bind_schedule_timezones, build_schedule_preview, resolve_user_timezone
+from apps.workflow.services.schedules import bind_published_schedules, build_schedule_preview, resolve_user_timezone, schedule_execution_identity
 from apps.workflow.services.target_resolver import RpcTargetGateway, TargetDependencyUnavailable, TargetResolutionError, resolve_target_fields
 from apps.workflow.services.triggers import TriggerConflict, invoke_trigger, sync_published_triggers
 from apps.workflow.services.validation_messages import render_definition_error, render_known_message, render_workflow_error
@@ -120,7 +121,7 @@ from apps.workflow.services.webhook_test_sessions import (
 from apps.workflow.services.workflow_pack import MAX_PACK_MEMBERS, PackRejected, export_workflow_pack, import_workflow_pack
 from apps.workflow.services.workflow_projections import workflow_trigger_types
 from apps.workflow.services.workflows import WorkflowDeleteConflict, soft_delete_workflow
-from apps.workflow.utils.i18n import workflow_message
+from apps.workflow.utils.i18n import request_execution_locale, workflow_message
 
 APP_NAME = "workflow"
 
@@ -136,6 +137,18 @@ class WorkflowPageNumberPagination(PageNumberPagination):
 
 def _identity(request):
     return getattr(request.user, "username", ""), getattr(request.user, "domain", "domain.com")
+
+
+def _workflow_caller_identity(request) -> dict | None:
+    """编排使用单组织执行范围，身份仅从发起本次运行的请求捕获。"""
+    from apps.opspilot.services.caller_identity import CallerIdentityError, capture_caller_identity
+
+    try:
+        identity = capture_caller_identity(request)
+    except CallerIdentityError:
+        # 普通编排仍可运行，需要调用者身份的工具会在调用时拒绝。
+        return None
+    return {**identity, "include_children": False}
 
 
 def _has_menu_permission(request, name: str) -> bool:
@@ -499,8 +512,9 @@ class WorkflowViewSet(AuthViewSet):
 
     @action(methods=["POST"], detail=True, url_path="enabled")
     @HasPermission("workflow-Publish", app_name=APP_NAME)
+    @transaction.atomic
     def set_enabled(self, request, pk=None):
-        scoped = self._scoped_object(request, require_operate=True)
+        scoped = get_object_or_404(self._scoped_queryset(request, require_operate=True).select_for_update(), pk=pk)
         enabled = request.data.get("enabled")
         if not isinstance(enabled, bool):
             return Response({"detail": render_known_message(request, "enabled 必须是布尔值")}, status=status.HTTP_400_BAD_REQUEST)
@@ -729,10 +743,12 @@ class WorkflowViewSet(AuthViewSet):
                     atom_catalog=catalog,
                 )
             )
-            compiled_metadata = bind_schedule_timezones(
-                compiled_metadata,
-                timezone_name=resolve_user_timezone(request.user),
-            )
+            if any(node.get("trigger_type") == "SCHEDULE" for node in compiled_metadata.get("trigger_nodes") or []):
+                if not _has_menu_permission(request, "workflow-Execute"):
+                    return _deny_menu_permission(request)
+                compiled_metadata = bind_published_schedules(compiled_metadata, user=request.user, current_team=team)
+        except PermissionDenied as error:
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_403_FORBIDDEN)
         except (DefinitionValidationError, ValueError) as error:
             return Response(
                 {
@@ -908,11 +924,20 @@ class WorkflowViewSet(AuthViewSet):
                 _node_debug_input_schema(input_schema, raw_inputs, task_reference=task_reference),
             )
             username, domain = _identity(request)
+            if trigger_type == WorkflowTrigger.Type.SCHEDULE:
+                identity = schedule_execution_identity(selected_trigger["config"], user=request.user, current_team=_team_id(request))
+                execution_team_id = identity["team_id"]
+            else:
+                identity = _workflow_caller_identity(request)
+                execution_team_id = None
             execution = start_debug_execution(
                 workflow,
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
+                caller_identity=identity,
+                execution_team_id=execution_team_id,
                 client=ConductorClient(),
                 definition_override=compiled_definition,
                 canvas_metadata_override=compiled_metadata,
@@ -1169,6 +1194,8 @@ class WorkflowViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
+                caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=version.version,
                 launch_token_hash=launch_token_digest(launch_token),
@@ -2069,6 +2096,8 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
+                caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=original.workflow_version,
                 parent_execution=original,
@@ -2355,6 +2384,8 @@ class WorkflowTriggerViewSet(AuthViewSet):
                 idempotency_key=request.data.get("idempotency_key") or "",
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
+                caller_identity=_workflow_caller_identity(request),
             )
         except DefinitionValidationError as error:
             return Response(

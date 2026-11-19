@@ -1,6 +1,8 @@
 import pytest
 from django.test import override_settings
 
+from apps.system_mgmt.models import User
+from apps.workflow.management.commands.run_workflow_worker import _build_runtime_inputs
 from apps.workflow.models import Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
 from apps.workflow.openapi_api import openapi_workflow_trigger, openapi_workflow_webhook_test
 from apps.workflow.services.webhook_test_sessions import create_webhook_test_session, wait_for_webhook_test_event
@@ -8,11 +10,14 @@ from apps.workflow.services.webhook_test_sessions import create_webhook_test_ses
 
 @pytest.mark.django_db
 def test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant(mocker):
-    workflow = Workflow.objects.create(name="API 流程", team=[7], definition={"tasks": []}, current_version=1, status=Workflow.Status.PUBLISHED)
+    workflow = Workflow.objects.create(
+        name="API 流程", team=[9, 7], definition={"tasks": []}, current_version=1, status=Workflow.Status.PUBLISHED, enabled=True
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition={"tasks": []})
     trigger = WorkflowTrigger.objects.create(workflow=workflow, name="API", trigger_type=WorkflowTrigger.Type.WEBHOOK, enabled=True, team=[7])
-    invoke = mocker.patch("apps.workflow.openapi_api.invoke_trigger")
-    execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
-    invoke.return_value = (execution, True)
+    conductor = mocker.patch("apps.workflow.openapi_api.ConductorClient").return_value
+    conductor.start_workflow.return_value = "gateway-webhook-run"
+    caller = User.objects.create(username="alice", domain="example.com", locale="en")
     mocker.patch(
         "apps.workflow.permissions.get_permission_rules",
         return_value={"team": [], "instance": [{"id": workflow.id, "permission": ["View", "Operate"]}]},
@@ -22,9 +27,20 @@ def test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant(mocker):
         str(trigger.id),
         "evt-1",
         {"message": "ok"},
+        team=[8, 7],
+        user_info={"user": "alice", "domain": "example.com"},
+    )
+    caller.locale = "zh-Hans"
+    caller.save(update_fields=["locale"])
+    replay = openapi_workflow_trigger(
+        str(trigger.id),
+        "evt-1",
+        {"message": "ok"},
         team=[7],
         user_info={"user": "alice", "domain": "example.com"},
     )
+    assert replay["execution_id"] == allowed["execution_id"]
+    assert replay["created"] is False
     denied = openapi_workflow_trigger(
         str(trigger.id),
         "evt-2",
@@ -33,9 +49,18 @@ def test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant(mocker):
         user_info={"user": "mallory", "domain": "example.com"},
     )
 
-    assert allowed["execution_id"] == str(execution.id)
+    execution = WorkflowExecution.objects.get(pk=allowed["execution_id"])
+    assert execution.caller_identity == {"username": "alice", "domain": "example.com", "team_id": 7, "include_children": False}
+    assert (execution.started_by, execution.domain, execution.effective_execution_team_id) == ("alice", "example.com", 7)
+    context = _build_runtime_inputs(inputs={}, atom_execution=None, task_type="bklite_agent", execution=execution)["__bklite_context"]
+    assert context["caller_identity"] == execution.caller_identity
+    assert context["organization_id"] == 7
+    assert execution.locale == context["locale"] == "en"
     assert denied == {"result": False, "message": "触发器不存在或不属于调用方组织"}
-    assert invoke.call_count == 1
+    for invalid in ({}, {"user": "alice", "domain": ""}, {"user": "a" * 33, "domain": "example.com"}):
+        refused = openapi_workflow_trigger(str(trigger.id), "bad-id", {}, team=[7], user_info=invalid)
+        assert refused["result"] is False
+    assert WorkflowExecution.objects.count() == 1
 
 
 @pytest.mark.django_db

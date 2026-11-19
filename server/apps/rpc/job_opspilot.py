@@ -19,6 +19,7 @@ ACTION_DESCRIBE_SCRIPT = "describe_script"
 ACTION_SEARCH_TARGETS = "search_targets"
 ACTION_LIST_TARGETS = "list_targets"
 ACTION_EXECUTE = "execute_script"
+ACTION_LIST_EXECUTIONS = "list_executions"
 ACTION_QUERY = "query_execution"
 ACTION_DISTRIBUTE = "distribute_files"
 

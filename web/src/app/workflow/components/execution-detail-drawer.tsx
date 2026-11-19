@@ -5,10 +5,12 @@ import { Alert, App, Button, Descriptions, Empty, Input, Popconfirm, Skeleton, T
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import OperateDrawer from '@/components/operate-drawer';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { downloadExecutionArtifact } from '../lib/download-artifact';
+import { executionOrganizationText } from '../lib/organization-display';
 import { executionStatusPresentation, formatDuration, formatStartedBy, formatTriggerTypeLabel, presentExecutionInfoItem, formatJson } from '../lib/presentation';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
 import type { ExecutionArtifactRecord, ExecutionNodeDetail, ExecutionNodeSummary, ExecutionNodesResponse, ExecutionRecord } from '../lib/types';
@@ -191,6 +193,7 @@ export interface ExecutionDetailDrawerProps {
 export function ExecutionDetailDrawer({ executionId, initialNodeReference, initialInstanceId, open, onClose, onExecutionChanged, onRerunStarted }: ExecutionDetailDrawerProps) {
   const { get } = useApiClient();
   const { t } = useTranslation();
+  const { flatGroups } = useUserInfoContext();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [execution, setExecution] = useState<ExecutionRecord>();
   const [nodes, setNodes] = useState<ExecutionNodeSummary[]>([]);
@@ -355,6 +358,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
                 { key: 'mode', label: t('workflowOrchestration.execution.mode', '模式'), children: execution.mode === 'PRODUCTION' ? t('workflowOrchestration.execution.production', '正式') : t('workflowOrchestration.execution.debug', '调试') },
                 { key: 'trigger', label: t('workflowOrchestration.trigger.title', '触发器'), children: formatTriggerTypeLabel(execution.trigger_type, t) },
                 { key: 'actor', label: t('workflowOrchestration.execution.startedBy', '发起人'), children: formatStartedBy(execution.started_by, t) },
+                { key: 'organization', label: t('workflowOrchestration.execution.organization', '执行组织'), children: executionOrganizationText(execution.execution_team_id, flatGroups) },
                 { key: 'started', label: t('workflowOrchestration.execution.startedAt', '开始时间'), children: execution.created_at ? convertToLocalizedTime(execution.created_at) : '--' },
                 { key: 'duration', label: t('workflowOrchestration.execution.duration', '耗时'), children: formatDuration(execution.duration_ms) },
               ]} />
