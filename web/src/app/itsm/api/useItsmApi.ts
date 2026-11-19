@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
+import type { HandoverCandidate, HandoverDraft, HandoverRecord, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -92,6 +92,17 @@ export function useItsmApi() {
   const downloadTicketExport = useCallback((id: number) => get<Blob>(`/itsm/api/tickets/export/tasks/${id}/download/`, { responseType: 'blob' }), [get]);
   const retryTicketExport = useCallback((id: number) => post<TicketExportRecord>(`/itsm/api/tickets/export/tasks/${id}/retry/`), [post]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
+  const listHandovers = useCallback(async () => await listResources('handovers') as unknown as {
+    items: HandoverRecord[];
+    can_add?: boolean;
+    can_retry?: boolean;
+  }, [listResources]);
+  const searchHandoverCandidates = useCallback((fromUser: string, q: string, page: number) => get<{
+    items: HandoverCandidate[];
+    count: number;
+  }>('/itsm/api/handovers/candidates/', { params: { from_user: fromUser, q, page } }), [get]);
+  const createHandover = useCallback((body: HandoverDraft) => post<HandoverRecord>('/itsm/api/resources/handovers/', body), [post]);
+  const retryHandover = useCallback((id: number) => post<HandoverRecord>(`/itsm/api/handovers/${id}/retry/`), [post]);
   const createResource = useCallback((kind: string, body: Record<string, unknown>) => post(`/itsm/api/resources/${kind}/`, body), [post]);
   const updateResource = useCallback(
     (kind: string, id: number, body: Record<string, unknown>) => put(`/itsm/api/resources/${kind}/${id}/`, body),
@@ -279,6 +290,10 @@ export function useItsmApi() {
     toggleFavorite,
     useService,
     searchUsers,
+    listHandovers,
+    searchHandoverCandidates,
+    createHandover,
+    retryHandover,
     searchTransferCandidates,
     listStatuses,
     listStatusAdmin,

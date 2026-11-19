@@ -97,6 +97,33 @@ export interface NamedItem {
   key: string;
 }
 
+export interface HandoverDraft {
+  from_user: string;
+  to_user: string;
+  ticket_ids: number[];
+}
+
+export type HandoverResultStatus = 'pending' | 'succeeded' | 'failed' | 'skipped' | 'unconfirmed';
+
+export interface HandoverResult {
+  ticket_id: number;
+  task_id: number | null;
+  status: HandoverResultStatus;
+  message: string;
+}
+
+export interface HandoverRecord extends HandoverDraft {
+  id: number;
+  created_at: string;
+  results?: HandoverResult[];
+}
+
+export interface HandoverCandidate {
+  id: number;
+  sn: string;
+  title: string;
+}
+
 export interface WorkflowListItem extends NamedItem {
   current_version_no?: number | null;
   form_id: number | null;

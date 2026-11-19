@@ -161,6 +161,7 @@ class Handover(ItsmModel):
     from_user = models.CharField(max_length=64)
     to_user = models.CharField(max_length=64)
     ticket_ids = models.JSONField(default=list)
+    results = models.JSONField(default=list)
 
     class Meta:
         db_table = "itsm_handover"

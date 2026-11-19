@@ -4,10 +4,10 @@ from functools import wraps
 
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from jinja2 import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
@@ -41,6 +41,7 @@ from apps.itsm.models.extend import (
     Trigger,
     UserPreference,
 )
+from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.tickets import _service, _user
 
@@ -129,6 +130,8 @@ def _public(item, fields):
         data[field] = value
     if isinstance(item, ScheduledTask):
         data["next_run_at"] = item.next_run_at.isoformat() if item.next_run_at else None
+    if isinstance(item, Handover):
+        data.update(created_at=item.created_at.isoformat(), results=item.results)
     return data
 
 
@@ -211,6 +214,9 @@ def resources(request, kind):
                 can_edit=has_permission(request, "rule-Edit"),
                 can_delete=has_permission(request, "rule-Delete"),
             )
+        if kind == "handovers":
+            can_retry = has_permission(request, "handover-Add")
+            data.update(can_add=can_retry and has_permission(request, "ticket-View"), can_retry=can_retry)
         return WebUtils.response_success(data)
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
@@ -289,6 +295,8 @@ def resource_item(request, kind, item_id):
     item = resource_scope(request, kind, model).filter(id=item_id).first()
     if item is None:
         return WebUtils.response_error("记录不存在")
+    if kind == "handovers" and item.results:
+        return WebUtils.response_error("交接执行记录不允许修改或删除", status_code=405)
     if request.method == "DELETE":
         item.delete()
         return WebUtils.response_success({"id": item_id})
@@ -307,20 +315,36 @@ def resource_item(request, kind, item_id):
 
 
 def _apply_handover(item: Handover) -> None:
-    ticket_ids = item.ticket_ids or []
     service = _service()
-    tasks = list(
-        TicketTask.objects.filter(ticket__domain=item.domain, ticket_id__in=ticket_ids, assignee=item.from_user, status__in=["pending", "claimed"])
-        .select_related("ticket", "ticket__status", "ticket__workflow_version")
-        .order_by("pk")
-    )
-    actor = item.created_by or item.from_user
-    for task in tasks:
-        service.check_transfer_target(task.ticket, task, item.to_user, actor, privileged=True)
-    if item.pk is None:
-        item.save()
-    for task in tasks:
-        service.operate(task.ticket, task, "transfer", {"target": item.to_user}, actor, privileged=True)
+    prepare_handover(item, service)
+    run_handover(item, service, item.created_by or item.from_user)
+
+
+@require_GET
+@api_errors
+@HasPermission("handover-Add")
+def handover_candidates(request):
+    if not has_permission(request, "ticket-View"):
+        raise PermissionError()
+    source = handover_user(request.GET.get("from_user"))
+    tasks = TicketTask.objects.filter(ticket_id=OuterRef("pk"), assignee=source, status__in=ACTIVE_STATUSES)
+    tickets = ticket_scope(request).filter(Exists(tasks)).exclude(status__key__in=["suspended", "finished", "terminated", "cancelled"])
+    keyword = (request.GET.get("q") or "").strip()
+    if keyword:
+        tickets = tickets.filter(Q(sn__icontains=keyword) | Q(title__icontains=keyword))
+    paginator = Paginator(tickets.values("id", "sn", "title").order_by("-id"), 20)
+    page = paginator.get_page(request.GET.get("page"))
+    return WebUtils.response_success({"items": list(page), "count": paginator.count})
+
+
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("handover-Add")
+def retry_handover(request, handover_id):
+    item = Handover.objects.get(pk=handover_id, domain=domain_of(request))
+    run_handover(item, _service(), _user(request))
+    return WebUtils.response_success(_public(item, KINDS["handovers"][1]))
 
 
 @csrf_exempt

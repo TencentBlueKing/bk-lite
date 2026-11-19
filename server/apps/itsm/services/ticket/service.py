@@ -13,6 +13,14 @@ from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolv
 from apps.itsm.signals import itsm_event
 
 
+class TaskAssigneeChanged(ValueError):
+    pass
+
+
+class TransferRejected(ValueError):
+    pass
+
+
 class TicketService:
     def __init__(self, client: FlowableClient | None = None, identity=None):
         self.client = client
@@ -160,16 +168,35 @@ class TicketService:
         schedule_sync(ticket)
 
     @transaction.atomic
-    def operate(self, ticket: Ticket, task: TicketTask, action: str, data: dict, operator: str, privileged: bool = False) -> Ticket:
+    def operate(
+        self,
+        ticket: Ticket,
+        task: TicketTask,
+        action: str,
+        data: dict,
+        operator: str,
+        privileged: bool = False,
+        *,
+        expected_assignee: str | None = None,
+    ) -> Ticket:
         ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
         if task is not None:
             task = ticket.tasks.select_for_update().get(pk=task.pk)
-        node = self._action_node(ticket, task, action, operator, privileged)
-        if action == "transfer":
-            if task is None:
-                raise ValueError("需要待办任务")
-            target = require_transfer_target(transfer_users(ticket.domain, node), data.get("target"))
-            data = {**data, "target": target}
+        if expected_assignee is not None and (
+            task is None or task.assignee != expected_assignee or task.status not in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}
+        ):
+            raise TaskAssigneeChanged("原待办或处理人已变化")
+        try:
+            node = self._action_node(ticket, task, action, operator, privileged)
+            if action == "transfer":
+                if task is None:
+                    raise ValueError("需要待办任务")
+                target = require_transfer_target(transfer_users(ticket.domain, node), data.get("target"))
+                data = {**data, "target": target}
+        except (ValueError, PermissionError) as exc:
+            if expected_assignee is not None:
+                raise TransferRejected("待办暂时无法转交所选人员") from exc
+            raise
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
             return self._side_action(ticket, task, action, data, operator, node)
         if task is None:
