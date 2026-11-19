@@ -1,13 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   DownOutlined,
-  EyeOutlined,
-  QuestionCircleOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import { Button, Form, Radio, Select, Tooltip } from 'antd';
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
-import { CardListAccent } from '@/app/ops-analysis/components/widgets/cardListAccent';
 import {
   normalizeCardListAccentStyle,
   type CardListAccentStyle,
@@ -17,7 +14,7 @@ import {
   buildCardListFieldOptions,
   getCardListDuplicateHintSlots,
   resolveCardListOptionalOpenState,
-  resolveCardListPreviewSlots,
+  resolveCardListOptionalSummaries,
   type CardListFormState,
 } from '../utils/cardListSettingsModel';
 import { ConfigSectionTitle } from '../configTitles';
@@ -33,6 +30,8 @@ interface CardListSettingsSectionProps {
   previewRawData?: unknown;
   loadingFields?: boolean;
   onRefreshFields?: () => void;
+  /** 关闭再打开或换一条配置时变化，用来按当前草稿重算展开。 */
+  resetToken?: string;
 }
 
 const SLOT_LABEL_KEYS: Record<string, string> = {
@@ -50,6 +49,10 @@ const CardListFieldSelect = ({
   allowClear = true,
   value,
   onChange,
+  onUserEdit,
+  testId,
+  invalidName,
+  revealClosedLeading,
 }: {
   options: ReturnType<typeof buildCardListFieldOptions>;
   placeholder: string;
@@ -57,8 +60,19 @@ const CardListFieldSelect = ({
   allowClear?: boolean;
   value?: string;
   onChange?: (value: string) => void;
+  onUserEdit?: () => void;
+  testId?: string;
+  invalidName?: (string | number)[];
+  revealClosedLeading?: { open: boolean; onInvalid: () => void };
 }) => (
   <>
+    {invalidName ? <ScrollWhenInvalid name={invalidName} /> : null}
+    {revealClosedLeading ? (
+      <LeadingErrorReveal
+        open={revealClosedLeading.open}
+        onInvalid={revealClosedLeading.onInvalid}
+      />
+    ) : null}
     <Select
       allowClear={allowClear}
       showSearch
@@ -66,7 +80,11 @@ const CardListFieldSelect = ({
       options={options}
       placeholder={placeholder}
       value={value}
-      onChange={onChange}
+      data-testid={testId}
+      onChange={(next) => {
+        onUserEdit?.();
+        onChange?.(next);
+      }}
     />
     {hint ? (
       <div className="mt-1 text-xs text-(--color-text-3)">{hint}</div>
@@ -130,78 +148,103 @@ const LayoutPicker = ({
   );
 };
 
-const CardListNestedTitle = ({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) => (
-  <h5
-    className={`mb-3 text-xs font-medium leading-5 text-(--color-text-3)${
-      className ? ` ${className}` : ''
-    }`}
-  >
-    {children}
-  </h5>
-);
-
 const OptionalGroup = ({
   title,
+  summary,
   open,
-  expandLabel,
-  collapseLabel,
   testId,
-  tooltip,
-  required,
   onToggle,
   children,
 }: {
   title: string;
+  summary: string;
   open: boolean;
-  expandLabel: string;
-  collapseLabel: string;
   testId: string;
-  tooltip?: string;
-  required?: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) => (
-  <div>
+  <section>
     <button
       type="button"
       aria-expanded={open}
       data-testid={testId}
-      className="flex h-auto w-full cursor-pointer items-center justify-between px-0 py-1 text-left text-(--color-text-1)"
+      className="flex w-full cursor-pointer items-center gap-2 rounded-md py-3 text-left transition-colors duration-150 hover:bg-(--color-fill-1) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
       onClick={onToggle}
     >
-      <span className="inline-flex items-center">
-        {required ? (
-          <span className="mr-1 text-[var(--color-fail)]" aria-hidden>
-            *
-          </span>
-        ) : null}
+      <DownOutlined
+        aria-hidden
+        data-testid={`${testId}-chevron`}
+        className={`shrink-0 text-xs text-(--color-text-3) transition-transform duration-150 ${open ? '' : '-rotate-90'}`}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5 text-(--color-text-1)">
         {title}
-        {tooltip ? (
-          <Tooltip title={tooltip}>
-            <QuestionCircleOutlined
-              data-testid={`${testId}-hint`}
-              className="ml-1 text-(--color-text-3) cursor-help"
-              onClick={(event) => event.stopPropagation()}
-            />
-          </Tooltip>
-        ) : null}
       </span>
-      <span className="inline-flex items-center gap-1 text-xs text-(--color-text-3)">
-        {open ? collapseLabel : expandLabel}
-        <DownOutlined className={`text-[10px] transition-transform ${open ? 'rotate-180' : ''}`} />
+      <span
+        data-testid={`${testId}-summary`}
+        hidden={open}
+        className="max-w-[45%] shrink-0 truncate text-xs leading-5 text-(--color-text-3)"
+      >
+        {summary}
       </span>
     </button>
-    <div className={open ? 'pt-1' : 'hidden'} hidden={!open}>
+    <div
+      data-testid={`${testId}-body`}
+      className={open ? 'pb-3 pl-5' : 'hidden'}
+      hidden={!open}
+    >
       {children}
     </div>
-  </div>
+  </section>
 );
+
+const FieldLabel = ({
+  text,
+  tip,
+  required = false,
+  testId,
+}: {
+  text: string;
+  tip?: string;
+  required?: boolean;
+  testId?: string;
+}) => (
+  <span className="inline-flex items-center text-sm leading-5 text-(--color-text-1)" data-testid={testId}>
+    {required ? (
+      <span className="mr-1 text-[var(--color-fail)]" aria-hidden>
+        *
+      </span>
+    ) : null}
+    {tip ? <ChartRoleLabel text={text} tip={tip} /> : text}
+  </span>
+);
+
+const ScrollWhenInvalid = ({
+  name,
+}: {
+  name: (string | number)[];
+}) => {
+  const { status } = Form.Item.useStatus();
+  const form = Form.useFormInstance();
+  useEffect(() => {
+    if (status !== 'error') return;
+    form.scrollToField(name, { block: 'center' });
+  }, [form, name, status]);
+  return null;
+};
+
+const LeadingErrorReveal = ({
+  open,
+  onInvalid,
+}: {
+  open: boolean;
+  onInvalid: () => void;
+}) => {
+  const { status } = Form.Item.useStatus();
+  useEffect(() => {
+    if (status === 'error' && !open) onInvalid();
+  }, [onInvalid, open, status]);
+  return null;
+};
 
 const LeadingTypeSegmented = ({
   value,
@@ -211,6 +254,7 @@ const LeadingTypeSegmented = ({
   fieldLabel,
   onClearField,
   onClearStyle,
+  onUserEdit,
 }: {
   value?: 'none' | 'index' | 'field';
   onChange?: (value: 'none' | 'index' | 'field') => void;
@@ -219,11 +263,13 @@ const LeadingTypeSegmented = ({
   fieldLabel: string;
   onClearField: () => void;
   onClearStyle: () => void;
+  onUserEdit?: () => void;
 }) => (
   <Radio.Group
     optionType="button"
     value={value}
     onChange={(event) => {
+      onUserEdit?.();
       const typed = event.target.value as 'none' | 'index' | 'field';
       onChange?.(typed);
       if (typed !== 'field') {
@@ -276,66 +322,8 @@ const AccentStyleButton = ({
   </Tooltip>
 );
 
-const CardListPreview = ({
-  label,
-  slots,
-}: {
-  label: string;
-  slots: ReturnType<typeof resolveCardListPreviewSlots>;
-}) => (
-  <section
-    data-testid="card-list-preview"
-    aria-label={label}
-    className="rounded-md border border-dashed border-[var(--color-border-3)] bg-[var(--color-fill-1)] px-3 py-2.5"
-  >
-    <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-3)]">
-      <EyeOutlined aria-hidden className="text-[12px]" />
-      <span>{label}</span>
-    </div>
-    <article className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] px-3 py-2.5">
-      <div className="flex min-w-0 items-center gap-3">
-        {slots.leading ? (
-          <CardListAccent
-            text={slots.leading}
-            style={slots.leadingStyle}
-            kind="leading"
-          />
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-(--color-text-1)">
-            {slots.primary}
-          </div>
-          {slots.secondary ? (
-            <div className="mt-0.5 line-clamp-2 text-xs text-(--color-text-2)">
-              {slots.secondary}
-            </div>
-          ) : null}
-        </div>
-        {slots.badge || slots.trailingPrimary || slots.trailingSecondary ? (
-          <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">
-            {slots.badge ? (
-              <CardListAccent
-                text={slots.badge}
-                style={slots.badgeStyle}
-                kind="badge"
-              />
-            ) : null}
-            {slots.trailingPrimary ? (
-              <span className="max-w-full truncate text-xs font-medium text-(--color-text-1)">
-                {slots.trailingPrimary}
-              </span>
-            ) : null}
-            {slots.trailingSecondary ? (
-              <span className="max-w-full truncate text-xs text-(--color-text-3)">
-                {slots.trailingSecondary}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </article>
-  </section>
-);
+const TITLE_FIELD_NAME = ['cardList', 'titleField'];
+const LEADING_FIELD_NAME = ['cardList', 'leading', 'field'];
 
 export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = ({
   t,
@@ -343,6 +331,7 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
   previewRawData,
   loadingFields = false,
   onRefreshFields,
+  resetToken = 'open',
 }) => {
   const form = Form.useFormInstance();
   // 必须分别 watch nested style：useWatch('cardList') 组装出的 leading
@@ -363,12 +352,25 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
   const [styleTarget, setStyleTarget] = useState<'leading' | 'badge' | null>(
     null,
   );
+  const suspendOpenSync = React.useRef(false);
+  const markUserEdited = () => {
+    suspendOpenSync.current = true;
+  };
 
   useEffect(() => {
+    suspendOpenSync.current = false;
+  }, [resetToken]);
+
+  useEffect(() => {
+    if (suspendOpenSync.current) return;
     setLeadingOpen(restored.leading);
     setBadgeOpen(restored.badge);
     setTrailingOpen(restored.trailing);
-  }, [restored.leading, restored.badge, restored.trailing]);
+  }, [resetToken, restored.leading, restored.badge, restored.trailing]);
+
+  const revealLeadingError = React.useCallback(() => {
+    setLeadingOpen(true);
+  }, []);
 
   useEffect(() => {
     if (!cardList?.badgeField?.trim() && cardList?.badgeStyle) {
@@ -383,12 +385,13 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
   const fieldPlaceholder = fieldOptions.length === 0
     ? t('topology.nodeConfig.clickRefreshToGetFields')
     : t('dashboard.cardListSelectField');
-  const previewSlots = resolveCardListPreviewSlots(cardList, fieldOptions, {
-    title: t('dashboard.cardListPreviewTitle'),
-    description: t('dashboard.cardListPreviewDescription'),
-    badge: t('dashboard.cardListPreviewBadge'),
-    trailing: t('dashboard.cardListPreviewTrailing'),
-    index: '01',
+  const summaries = resolveCardListOptionalSummaries(cardList, fieldOptions, {
+    none: t('dashboard.cardListLeadingNone'),
+    index: t('dashboard.cardListLeadingIndex'),
+    field: t('dashboard.cardListLeadingField'),
+    unconfigured: t('dashboard.cardListUnconfigured'),
+    firstLine: t('dashboard.cardListTrailingFirst'),
+    secondLine: t('dashboard.cardListTrailingSecond'),
   });
 
   const duplicateHint = (fieldKey: string | undefined, currentSlot: string) => {
@@ -429,15 +432,8 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
         {t('dashboard.dataFields')}
       </ConfigSectionTitle>
 
-      <div className="mb-5 border-l border-(--color-border-2) pl-3">
-      <CardListPreview
-        label={t('dashboard.cardListPreview')}
-        slots={previewSlots}
-      />
-
-      <CardListNestedTitle className="mt-4">
-        {t('dashboard.cardListContent')}
-      </CardListNestedTitle>
+      <div className="space-y-6">
+      <div>
       <Form.Item
         label={(
           <ChartRoleLabel
@@ -445,12 +441,16 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
             tip={t('dashboard.cardListTitleFieldTip')}
           />
         )}
+        labelCol={{ span: 24 }}
+        wrapperCol={{ span: 24 }}
         name={['cardList', 'titleField']}
         rules={[{ required: true, message: t('dashboard.cardListTitleRequired') }]}
       >
         <CardListFieldSelect
           options={fieldOptions}
           placeholder={fieldPlaceholder}
+          onUserEdit={markUserEdited}
+          invalidName={TITLE_FIELD_NAME}
         />
       </Form.Item>
       <Form.Item
@@ -460,48 +460,60 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
             tip={t('dashboard.cardListDescriptionFieldTip')}
           />
         )}
+        labelCol={{ span: 24 }}
+        wrapperCol={{ span: 24 }}
+        className="mb-0"
         name={['cardList', 'descriptionField']}
       >
         <CardListFieldSelect
           options={fieldOptions}
           placeholder={fieldPlaceholder}
           hint={duplicateHint(cardList?.descriptionField, 'description')}
+          onUserEdit={markUserEdited}
         />
       </Form.Item>
+      </div>
 
-      <CardListNestedTitle className="mt-4">
+      <div>
+      <ConfigSectionTitle>
         {t('dashboard.cardListOptional')}
-      </CardListNestedTitle>
-      <div className="flex flex-col gap-3">
+      </ConfigSectionTitle>
+      <div className="divide-y divide-(--color-border-2)">
         <OptionalGroup
           title={t('dashboard.cardListAddLeading')}
-          tooltip={t('dashboard.cardListLeadingFieldTip')}
+          summary={summaries.leading}
           open={leadingOpen}
-          expandLabel={t('dashboard.cardListExpand')}
-          collapseLabel={t('dashboard.cardListCollapse')}
           testId="card-list-optional-leading"
-          required={cardList?.leading?.type === 'field'}
-          onToggle={() => setLeadingOpen((open) => !open)}
+          onToggle={() => {
+            markUserEdited();
+            setLeadingOpen((open) => !open);
+          }}
         >
-          <div className="flex items-start gap-1">
-            <div className="min-w-0 flex-1">
-              <Form.Item
-                name={['cardList', 'leading', 'type']}
-                className={cardList?.leading?.type === 'field' ? 'mb-3' : 'mb-0'}
-              >
-                <LeadingTypeSegmented
-                  noneLabel={t('dashboard.cardListLeadingNone')}
-                  indexLabel={t('dashboard.cardListLeadingIndex')}
-                  fieldLabel={t('dashboard.cardListLeadingField')}
-                  onClearField={() =>
-                    form.setFieldValue(['cardList', 'leading', 'field'], undefined)
-                  }
-                  onClearStyle={() =>
-                    form.setFieldValue(['cardList', 'leading', 'style'], undefined)
-                  }
-                />
-              </Form.Item>
-            </div>
+          <div className="mb-2">
+            <FieldLabel
+              text={t('dashboard.cardListDisplayMode')}
+              tip={t('dashboard.cardListLeadingFieldTip')}
+              testId="card-list-display-mode-label"
+            />
+          </div>
+          <div className="mb-3 flex items-center gap-1">
+            <Form.Item
+              name={['cardList', 'leading', 'type']}
+              className="mb-0 min-w-0 flex-1"
+            >
+              <LeadingTypeSegmented
+                noneLabel={t('dashboard.cardListLeadingNone')}
+                indexLabel={t('dashboard.cardListLeadingIndex')}
+                fieldLabel={t('dashboard.cardListLeadingField')}
+                onUserEdit={markUserEdited}
+                onClearField={() =>
+                  form.setFieldValue(['cardList', 'leading', 'field'], undefined)
+                }
+                onClearStyle={() =>
+                  form.setFieldValue(['cardList', 'leading', 'style'], undefined)
+                }
+              />
+            </Form.Item>
             {leadingEnabled ? (
               <AccentStyleButton
                 t={t}
@@ -513,14 +525,19 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           </div>
           {cardList?.leading?.type === 'field' ? (
             <Form.Item
+              name={['cardList', 'leading', 'field']}
+              className="mb-3"
               label={(
-                <ChartRoleLabel
-                  text={t('dashboard.cardListLeadingField')}
+                <FieldLabel
+                  text={t('dashboard.cardListBindField')}
                   tip={t('dashboard.cardListLeadingFieldTip')}
+                  required
+                  testId="card-list-leading-bind-label"
                 />
               )}
-              name={['cardList', 'leading', 'field']}
-              required
+              labelCol={{ span: 24 }}
+              wrapperCol={{ span: 24 }}
+              required={false}
               rules={[
                 {
                   required: true,
@@ -533,6 +550,10 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
                 options={fieldOptions}
                 placeholder={fieldPlaceholder}
                 hint={duplicateHint(cardList?.leading?.field, 'leading')}
+                onUserEdit={markUserEdited}
+                testId="card-list-leading-field"
+                invalidName={LEADING_FIELD_NAME}
+                revealClosedLeading={{ open: leadingOpen, onInvalid: revealLeadingError }}
               />
             </Form.Item>
           ) : null}
@@ -540,26 +561,34 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
 
         <OptionalGroup
           title={t('dashboard.cardListAddBadge')}
+          summary={summaries.badge}
           open={badgeOpen}
-          expandLabel={t('dashboard.cardListExpand')}
-          collapseLabel={t('dashboard.cardListCollapse')}
           testId="card-list-optional-badge"
-          tooltip={t('dashboard.cardListBadgeHint')}
-          onToggle={() => setBadgeOpen((open) => !open)}
+          onToggle={() => {
+            markUserEdited();
+            setBadgeOpen((open) => !open);
+          }}
         >
-          <div className="flex items-start gap-1">
-            <div className="min-w-0 flex-1">
-              <Form.Item
-                name={['cardList', 'badgeField']}
-                className="mb-0"
-              >
-                <CardListFieldSelect
-                  options={fieldOptions}
-                  placeholder={fieldPlaceholder}
-                  hint={duplicateHint(cardList?.badgeField, 'badge')}
-                />
-              </Form.Item>
-            </div>
+          <div className="mb-2">
+            <FieldLabel
+              text={t('dashboard.cardListBindField')}
+              tip={t('dashboard.cardListBadgeHint')}
+              testId="card-list-badge-field-label"
+            />
+          </div>
+          <div className="mb-3 flex items-start gap-1">
+            <Form.Item
+              name={['cardList', 'badgeField']}
+              className="mb-0 min-w-0 flex-1"
+            >
+              <CardListFieldSelect
+                options={fieldOptions}
+                placeholder={fieldPlaceholder}
+                hint={duplicateHint(cardList?.badgeField, 'badge')}
+                onUserEdit={markUserEdited}
+                testId="card-list-badge-field"
+              />
+            </Form.Item>
             {badgeEnabled ? (
               <AccentStyleButton
                 t={t}
@@ -573,45 +602,57 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
 
         <OptionalGroup
           title={t('dashboard.cardListAddTrailing')}
+          summary={summaries.trailing}
           open={trailingOpen}
-          expandLabel={t('dashboard.cardListExpand')}
-          collapseLabel={t('dashboard.cardListCollapse')}
           testId="card-list-optional-trailing"
-          onToggle={() => setTrailingOpen((open) => !open)}
+          onToggle={() => {
+            markUserEdited();
+            setTrailingOpen((open) => !open);
+          }}
         >
           <Form.Item
+            name={['cardList', 'trailingPrimaryField']}
+            labelCol={{ span: 24 }}
+            wrapperCol={{ span: 24 }}
             label={(
-              <ChartRoleLabel
+              <FieldLabel
                 text={t('dashboard.cardListTrailingFirst')}
                 tip={t('dashboard.cardListTrailingFieldTip')}
+                testId="card-list-trailing-first-label"
               />
             )}
-            name={['cardList', 'trailingPrimaryField']}
           >
             <CardListFieldSelect
               options={fieldOptions}
               placeholder={fieldPlaceholder}
               hint={duplicateHint(cardList?.trailingPrimaryField, 'trailing')}
+              onUserEdit={markUserEdited}
             />
           </Form.Item>
           <Form.Item
+            name={['cardList', 'trailingSecondaryField']}
+            labelCol={{ span: 24 }}
+            wrapperCol={{ span: 24 }}
+            className="mb-3"
             label={(
-              <ChartRoleLabel
+              <FieldLabel
                 text={t('dashboard.cardListTrailingSecond')}
                 tip={t('dashboard.cardListTrailingFieldTip')}
+                testId="card-list-trailing-second-label"
               />
             )}
-            name={['cardList', 'trailingSecondaryField']}
           >
             <CardListFieldSelect
               options={fieldOptions}
               placeholder={fieldPlaceholder}
+              onUserEdit={markUserEdited}
             />
           </Form.Item>
         </OptionalGroup>
       </div>
       </div>
 
+      <div>
       <ConfigSectionTitle>
         {t('dashboard.cardListLayout')}
       </ConfigSectionTitle>
@@ -621,6 +662,8 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           gridLabel={t('dashboard.cardListLayoutGrid')}
         />
       </Form.Item>
+      </div>
+      </div>
 
       {styleTarget ? (
         <CardListAccentStyleModal
