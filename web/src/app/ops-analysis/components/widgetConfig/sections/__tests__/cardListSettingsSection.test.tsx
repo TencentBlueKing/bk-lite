@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Form } from 'antd';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import React, { useState } from 'react';
@@ -112,14 +112,15 @@ const Harness = ({
 afterEach(cleanup);
 
 describe('CardListSettingsSection', () => {
-  it('shows title config and keeps optional groups collapsed by default', () => {
+  it('shows title and description above auxiliary groups and has no in-form preview', () => {
     render(<Harness />);
 
+    expect(screen.queryByText('dashboard.cardListContent')).toBeNull();
+    expect(screen.getByText('dashboard.cardListOptional')).toBeTruthy();
     expect(screen.getByText('dashboard.cardListTitleField')).toBeTruthy();
     expect(screen.getByText('dashboard.cardListDescriptionField')).toBeTruthy();
-    expect(
-      screen.getByTestId('card-list-optional-leading').className,
-    ).toContain('cursor-pointer');
+    expect(screen.queryByText('dashboard.cardListOptionalMark')).toBeNull();
+    expect(screen.queryByTestId('card-list-preview')).toBeNull();
     expect(
       screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
     ).toBe('false');
@@ -129,13 +130,29 @@ describe('CardListSettingsSection', () => {
     expect(
       screen.getByTestId('card-list-optional-trailing').getAttribute('aria-expanded'),
     ).toBe('false');
-    expect(screen.getAllByText('dashboard.cardListExpand').length).toBe(3);
-    expect(screen.getByTestId('card-list-preview').textContent).toContain(
-      'dashboard.cardListPreview',
+    expect(screen.queryByText('dashboard.cardListExpand')).toBeNull();
+    expect(screen.queryByText('dashboard.cardListCollapse')).toBeNull();
+    const leadingChevron = screen.getByTestId('card-list-optional-leading-chevron');
+    const leadingTitle = screen.getByText('dashboard.cardListAddLeading');
+    expect(
+      leadingChevron.compareDocumentPosition(leadingTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId('card-list-optional-leading-summary').hidden).toBe(false);
+    expect(screen.getByTestId('card-list-optional-leading-summary').textContent).toBe(
+      'dashboard.cardListLeadingNone',
     );
-    expect(screen.getByTestId('card-list-preview').textContent).toContain(
-      'dashboard.cardListPreviewTitle',
+    expect(screen.getByTestId('card-list-optional-badge-summary').textContent).toBe(
+      'dashboard.cardListUnconfigured',
     );
+    expect(screen.getByTestId('card-list-optional-trailing-summary').textContent).toBe(
+      'dashboard.cardListUnconfigured',
+    );
+
+    const title = screen.getByText('dashboard.cardListTitleField');
+    const auxiliary = screen.getByText('dashboard.cardListOptional');
+    expect(
+      title.compareDocumentPosition(auxiliary) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('restores optional groups and preview when editing an existing cardList', () => {
@@ -161,16 +178,22 @@ describe('CardListSettingsSection', () => {
       screen.getByTestId('card-list-optional-trailing').getAttribute('aria-expanded'),
     ).toBe('true');
     expect(screen.queryByText('dashboard.cardListLeadingMode')).toBeNull();
-    expect(screen.getByTestId('card-list-optional-badge-hint')).toBeTruthy();
+    expect(screen.getByTestId('card-list-badge-field-label')).toBeTruthy();
     expect(screen.queryByText('dashboard.cardListBadgeHint')).toBeNull();
-    expect(screen.getByText('dashboard.cardListTrailingFirst')).toBeTruthy();
+    expect(screen.getByTestId('card-list-display-mode-label')).toBeTruthy();
+    expect(screen.getByTestId('card-list-leading-bind-label')).toBeTruthy();
+    expect(screen.getByTestId('card-list-trailing-first-label')).toBeTruthy();
+    expect(screen.getByTestId('card-list-trailing-second-label')).toBeTruthy();
     expect(screen.getAllByText('dashboard.cardListFieldUsedIn').length).toBeGreaterThan(0);
-    expect(
-      screen.getByTestId('card-list-optional-leading').textContent,
-    ).toContain('*');
-    expect(screen.getByTestId('card-list-preview').textContent).toContain('名称');
-    expect(screen.getByTestId('card-list-preview').textContent).toContain('级别');
-    expect(screen.getByTestId('card-list-preview').textContent).toContain('负责人');
+    expect(screen.getByTestId('card-list-leading-bind-label').textContent).toContain('*');
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).hidden).toBe(true);
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListLeadingField · 级别',
+    );
+    expect(screen.getByTestId('card-list-optional-badge-summary', { hidden: true }).textContent).toBe('级别');
+    expect(screen.getByTestId('card-list-optional-trailing-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListTrailingFirst · 负责人',
+    );
     expect(screen.getByTestId('card-list-leading-style-btn')).toBeTruthy();
     expect(screen.getByTestId('card-list-badge-style-btn')).toBeTruthy();
     expect(screen.queryByText('dashboard.cardListAccentDisplayType')).toBeNull();
@@ -360,7 +383,7 @@ describe('CardListSettingsSection', () => {
     });
   });
 
-  it('collapses optional groups without clearing form values or preview', () => {
+  it('collapses optional groups without clearing form values', () => {
     render(
       <Harness
         initial={{
@@ -381,34 +404,76 @@ describe('CardListSettingsSection', () => {
     expect(
       screen.getByTestId('card-list-optional-trailing').getAttribute('aria-expanded'),
     ).toBe('false');
-
-    const preview = screen.getByTestId('card-list-preview');
-    expect(preview.textContent).toContain('名称');
-    expect(preview.textContent).toContain('摘要');
-    expect(preview.textContent).toContain('01');
-    expect(preview.textContent).toContain('级别');
-    expect(preview.textContent).toContain('负责人');
+    expect(screen.getByTestId('card-list-optional-badge-summary').textContent).toBe('级别');
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListLeadingIndex',
+    );
 
     fireEvent.click(screen.getByText('dump-form'));
     const dumped = JSON.parse(screen.getByTestId('form-dump').textContent || '{}');
     expect(dumped.badgeField).toBe('severity');
     expect(dumped.trailingPrimaryField).toBe('owner');
     expect(dumped.leading?.type).toBe('index');
+    expect(dumped.descriptionField).toBe('summary');
+  });
+
+  it('keeps a group open when the user changes its type or clears a field', () => {
+    render(
+      <Harness
+        initial={{
+          titleField: 'name',
+          leading: { type: 'index' },
+          badgeField: 'severity',
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+    ).toBe('true');
+    fireEvent.click(screen.getByText('dashboard.cardListLeadingNone'));
+    expect(
+      screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListLeadingNone',
+    );
+
+    fireEvent.click(screen.getByText('seed-all-slots'));
+    expect(
+      screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(
+      screen.getByTestId('card-list-optional-badge').getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListLeadingIndex',
+    );
+    expect(screen.getByTestId('card-list-optional-badge-summary', { hidden: true }).textContent).toBe('级别');
   });
 
   it('switches leading modes and layout and shows the selected layout', () => {
     render(<Harness initial={{ titleField: 'name' }} />);
 
     fireEvent.click(screen.getByTestId('card-list-optional-leading'));
-    expect(screen.getByText('dashboard.cardListLeadingNone')).toBeTruthy();
-    expect(screen.getByText('dashboard.cardListLeadingIndex')).toBeTruthy();
-    expect(screen.getByText('dashboard.cardListLeadingField')).toBeTruthy();
+    const leadingBody = screen.getByTestId('card-list-optional-leading-body');
+    expect(within(leadingBody).getByText('dashboard.cardListLeadingNone')).toBeTruthy();
+    expect(within(leadingBody).getByText('dashboard.cardListLeadingIndex')).toBeTruthy();
+    expect(within(leadingBody).getByText('dashboard.cardListLeadingField')).toBeTruthy();
     expect(screen.queryByText('dashboard.cardListLeadingMode')).toBeNull();
 
-    fireEvent.click(screen.getByText('dashboard.cardListLeadingField'));
+    fireEvent.click(within(leadingBody).getByText('dashboard.cardListLeadingField'));
+    expect(screen.getByTestId('card-list-leading-bind-label').textContent).toContain('*');
+    const modeLabel = screen.getByTestId('card-list-display-mode-label');
+    const noneOption = within(leadingBody).getByText('dashboard.cardListLeadingNone');
     expect(
-      screen.getByTestId('card-list-optional-leading').textContent,
-    ).toContain('*');
+      modeLabel.compareDocumentPosition(noneOption) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const bindLabel = screen.getByTestId('card-list-leading-bind-label');
+    const fieldSelect = screen.getByTestId('card-list-leading-field');
+    expect(
+      bindLabel.compareDocumentPosition(fieldSelect) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       screen.getAllByText('dashboard.cardListSelectField').length,
     ).toBeGreaterThan(0);
@@ -432,15 +497,65 @@ describe('CardListSettingsSection', () => {
     expect(dumped.leading?.type).toBe('field');
   });
 
-  it('updates preview slots from current form state', () => {
+  it('updates collapsed summaries from the current draft without binding a sample', () => {
     render(<Harness />);
 
+    expect(screen.getByTestId('card-list-optional-badge-summary').textContent).toBe(
+      'dashboard.cardListUnconfigured',
+    );
     fireEvent.click(screen.getByText('seed-all-slots'));
-    const preview = screen.getByTestId('card-list-preview');
-    expect(preview.textContent).toContain('名称');
-    expect(preview.textContent).toContain('摘要');
-    expect(preview.textContent).toContain('01');
-    expect(preview.textContent).toContain('级别');
-    expect(preview.textContent).toContain('负责人');
+    expect(screen.getByTestId('card-list-optional-leading-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListLeadingIndex',
+    );
+    expect(screen.getByTestId('card-list-optional-badge-summary', { hidden: true }).textContent).toBe('级别');
+    expect(screen.getByTestId('card-list-optional-trailing-summary', { hidden: true }).textContent).toBe(
+      'dashboard.cardListTrailingFirst · 负责人',
+    );
+    expect(screen.queryByText('应用名称')).toBeNull();
+  });
+
+  it('shows the title error in place and expands a collapsed leading field error', async () => {
+    const HarnessValidate = () => {
+      const [form] = Form.useForm();
+      return (
+        <Form
+          form={form}
+          initialValues={{
+            cardList: {
+              leading: { type: 'field' },
+              layout: 'list',
+            },
+          }}
+        >
+          <CardListSettingsSection t={(key) => key} availableFields={fields} />
+          <button type="button" onClick={() => form.validateFields().catch(() => undefined)}>
+            validate-required
+          </button>
+        </Form>
+      );
+    };
+
+    render(<HarnessValidate />);
+    expect(
+      screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+    ).toBe('true');
+    fireEvent.click(screen.getByTestId('card-list-optional-leading'));
+    expect(
+      screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+    ).toBe('false');
+
+    fireEvent.click(screen.getByText('validate-required'));
+    expect(await screen.findByText('dashboard.cardListTitleRequired')).toBeTruthy();
+    expect(
+      screen.getByText('dashboard.cardListTitleRequired').closest('[hidden]'),
+    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
+      ).toBe('true');
+    });
+    expect(
+      screen.getByText('dashboard.cardListLeadingFieldRequired').closest('[hidden]'),
+    ).toBeNull();
   });
 });
