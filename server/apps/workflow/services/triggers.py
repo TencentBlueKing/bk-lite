@@ -38,7 +38,7 @@ def _scheduled_identity(version: WorkflowVersion, node_key: str) -> dict | None:
     return {"username": version.created_by, "domain": version.domain, "team_id": team_id, "include_children": False}
 
 
-def _authorize_schedule(workflow: Workflow, identity: dict) -> None:
+def _authorized_schedule_user(workflow: Workflow, identity: dict) -> User:
     from apps.system_mgmt.nats.auth import build_user_authorization_context
 
     account = {"username": identity["username"], "domain": identity["domain"]}
@@ -58,6 +58,7 @@ def _authorize_schedule(workflow: Workflow, identity: dict) -> None:
         for owner_team in groups.intersection(workflow.team)
     ):
         raise TriggerConflict("缺少流程实例操作权限")
+    return user
 
 
 def calculate_next_run(trigger: WorkflowTrigger, *, after=None):
@@ -157,6 +158,7 @@ def invoke_trigger(
     idempotency_key: str,
     started_by: str,
     domain: str,
+    locale: str | None = None,
     caller_identity: dict | None = None,
     scheduled_at: datetime | None = None,
     client: ConductorClient | None = None,
@@ -241,7 +243,7 @@ def invoke_trigger(
     conductor = client or ConductorClient()
     try:
         if scheduled_at is not None and caller_identity is not None:
-            _authorize_schedule(locked_workflow, caller_identity)
+            locale = _authorized_schedule_user(locked_workflow, caller_identity).locale
         execution = start_execution(
             locked_workflow,
             version_number=version.version,
@@ -249,6 +251,7 @@ def invoke_trigger(
             inputs=validated_inputs,
             started_by=started_by,
             domain=domain,
+            locale=locale,
             caller_identity=caller_identity,
             client=conductor,
             trigger_type=trigger_type,

@@ -15,6 +15,7 @@ from apps.workflow.services.capability_profiles import capability_resource_snaps
 from apps.workflow.services.conductor import ConductorClient, ConductorRejected, ConductorUnavailable, ExecutionStartUnknown
 from apps.workflow.services.data_contracts import redact_sensitive_inputs, seal_sensitive_inputs
 from apps.workflow.services.definitions import prepare_definition_for_publish
+from apps.workflow.utils.i18n import normalize_execution_locale
 
 # Unattached QUEUED/UNKNOWN reconcile backoff: 60s * 2^n, capped at 1h.
 _RECONCILE_BACKOFF_BASE_SECONDS = 60
@@ -173,6 +174,7 @@ def _claim_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
     caller_identity: dict | None = None,
     execution_team_id: int | None = None,
     version_number: int | None = None,
@@ -209,6 +211,7 @@ def _claim_execution(
         "input": copy.deepcopy(redacted_inputs),
         "started_by": started_by,
         "domain": domain,
+        "locale": normalize_execution_locale(locale),
         "caller_identity": caller_identity,
         "definition_snapshot": copy.deepcopy(version.definition),
         "resource_snapshot": copy.deepcopy(version.resource_snapshot),
@@ -240,6 +243,7 @@ def start_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
     caller_identity: dict | None = None,
     execution_team_id: int | None = None,
     client: ConductorClient | None = None,
@@ -260,6 +264,7 @@ def start_execution(
         inputs=inputs,
         started_by=started_by,
         domain=domain,
+        locale=locale,
         caller_identity=caller_identity,
         execution_team_id=execution_team_id,
         version_number=version_number,
@@ -350,6 +355,7 @@ def start_debug_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
     caller_identity: dict | None = None,
     execution_team_id: int | None = None,
     client: ConductorClient | None = None,
@@ -400,6 +406,7 @@ def start_debug_execution(
             input=copy.deepcopy(redacted_inputs),
             started_by=started_by,
             domain=domain,
+            locale=normalize_execution_locale(locale),
             caller_identity=caller_identity,
             definition_snapshot=copy.deepcopy(definition),
             resource_snapshot={

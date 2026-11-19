@@ -121,7 +121,7 @@ from apps.workflow.services.webhook_test_sessions import (
 from apps.workflow.services.workflow_pack import MAX_PACK_MEMBERS, PackRejected, export_workflow_pack, import_workflow_pack
 from apps.workflow.services.workflow_projections import workflow_trigger_types
 from apps.workflow.services.workflows import WorkflowDeleteConflict, soft_delete_workflow
-from apps.workflow.utils.i18n import workflow_message
+from apps.workflow.utils.i18n import request_execution_locale, workflow_message
 
 APP_NAME = "workflow"
 
@@ -935,6 +935,7 @@ class WorkflowViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
                 caller_identity=identity,
                 execution_team_id=execution_team_id,
                 client=ConductorClient(),
@@ -1193,6 +1194,7 @@ class WorkflowViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
                 caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=version.version,
@@ -2094,6 +2096,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 inputs=inputs,
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
                 caller_identity=_workflow_caller_identity(request),
                 client=ConductorClient(),
                 version_number=original.workflow_version,
@@ -2381,6 +2384,7 @@ class WorkflowTriggerViewSet(AuthViewSet):
                 idempotency_key=request.data.get("idempotency_key") or "",
                 started_by=username,
                 domain=domain,
+                locale=request_execution_locale(request),
                 caller_identity=_workflow_caller_identity(request),
             )
         except DefinitionValidationError as error:

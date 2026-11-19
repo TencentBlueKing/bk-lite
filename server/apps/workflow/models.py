@@ -5,6 +5,7 @@ from django.db import models
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.workflow.services.workflow_projections import workflow_trigger_types
+from apps.workflow.utils.i18n import DEFAULT_EXECUTION_LOCALE
 
 
 class ActiveWorkflowManager(models.Manager):
@@ -162,6 +163,7 @@ class WorkflowExecution(TimeInfo):
     debug_kind = models.CharField(max_length=16, choices=DebugKind.choices, blank=True, default="")
     debug_task_reference = models.CharField(max_length=100, blank=True, default="")
     execution_team_id = models.PositiveBigIntegerField(null=True, editable=False)
+    locale = models.CharField(max_length=7, default=DEFAULT_EXECUTION_LOCALE, editable=False)
     caller_identity = models.JSONField(null=True, blank=True, editable=False)
     started_by = models.CharField(max_length=32, default="", db_index=True)
     domain = models.CharField(max_length=100, default="domain.com")

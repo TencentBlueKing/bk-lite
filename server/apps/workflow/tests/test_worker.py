@@ -404,6 +404,7 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
         "actor": {"username": "alice", "domain": "example.com"},
         "trigger_type": "FORM",
         "task_reference": "agent",
+        "locale": "zh-Hans",
     }
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
 

@@ -63,8 +63,8 @@ def scheduled_workflow(mocker):
     return workflow, operator, account, rules, conductor
 
 
-def _action(workflow, user, name, data=None):
-    request = APIRequestFactory().post(f"/workflows/{workflow.pk}/{name}/", data or {}, format="json")
+def _action(workflow, user, name, data=None, **headers):
+    request = APIRequestFactory().post(f"/workflows/{workflow.pk}/{name}/", data or {}, format="json", **headers)
     request.COOKIES["current_team"] = "7"
     force_authenticate(request, user=user)
     return WorkflowViewSet.as_view({"post": name})(request, pk=workflow.pk)
@@ -183,6 +183,69 @@ def test_debug_schedule_uses_testers_selected_organization(scheduled_workflow, m
         assert run.caller_identity == {"username": operator.username, "domain": operator.domain, "team_id": team_id, "include_children": False}
     else:
         assert not workflow.executions.exists()
+
+
+@pytest.mark.skipif(not django_apps.is_installed("apps.opspilot"), reason="需要 OpsPilot 智能体")
+@pytest.mark.parametrize(
+    "entry,page_locale,account_locale,expected",
+    [
+        ("run", "cn", "en", "zh-Hans"),
+        ("run", "en", "zh-Hans", "en"),
+        ("debug", "zh-CN", "en", "zh-Hans"),
+        ("debug", "en-US", "zh-Hans", "en"),
+        ("debug", None, "en", "en"),
+        ("debug", None, "", "zh-Hans"),
+        ("schedule", None, "en", "en"),
+        ("schedule", None, "cn", "zh-Hans"),
+        ("schedule", None, "", "zh-Hans"),
+    ],
+)
+def test_agent_reply_language_at_model_boundary(scheduled_workflow, mocker, entry, page_locale, account_locale, expected):
+    from apps.opspilot.models import LLMModel, LLMSkill
+    from apps.opspilot.models.model_provider_mgmt import ModelVendor
+    from apps.opspilot.services.chat_service import ChatService
+    from apps.workflow.management.commands.run_workflow_worker import _build_runtime_inputs
+    from apps.workflow.services.opspilot_atoms import execute_agent
+
+    workflow, publisher, account, *_ = scheduled_workflow
+    vendor = ModelVendor.objects.create(name="vendor", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="agent", llm_model=model, team=[7], usage_team=[7, 8])
+    inputs = {"agent_id": skill.id, "message": "查询活动告警"}
+    workflow.definition = {"tasks": [{"name": "bklite_agent", "taskReferenceName": "agent", "type": "SIMPLE", "inputParameters": inputs}]}
+    workflow.canvas_metadata["edges"] = [{"source": "clock", "target": "agent"}]
+    workflow.save()
+    assert _action(workflow, publisher, "publish").status_code == 200
+    if entry == "schedule":
+        # 调度取触发时的偏好，发布之后仍可切换。
+        account.locale = account_locale
+        account.save(update_fields=["locale"])
+        assert run_due_cron_triggers(now=workflow.triggers.get().next_run_at)["succeeded"] == 1
+        account.locale = "zh-Hans" if expected == "en" else "en"
+        account.save(update_fields=["locale"])
+    else:
+        operator = get_user_model().objects.create(username="tester", domain=account.domain, group_list=[7, 8], is_superuser=True)
+        operator.locale = account_locale
+        headers = {"HTTP_X_BK_LOCALE": page_locale} if page_locale else {}
+        if entry == "run":
+            request = APIRequestFactory().get("/launch-plan/")
+            request.COOKIES["current_team"] = "7"
+            force_authenticate(request, user=operator)
+            plan = WorkflowViewSet.as_view({"get": "launch_plan"})(request, pk=workflow.pk)
+            data = {"launch_token": plan.data["launch_token"]}
+        else:
+            data = {"trigger_id": "clock"}
+        mocker.patch("apps.workflow.views.ConductorClient").return_value.start_workflow.return_value = "engine-manual"
+        response = _action(workflow, operator, entry, data, **headers)
+        assert response.status_code == 201, response.data
+    execution = workflow.executions.get()
+    payload = _build_runtime_inputs(inputs=inputs, atom_execution=None, task_type="bklite_agent", execution=execution)
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    chat = mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "ok"}, None, None))
+    execute_agent(payload)
+    formatted, _, _ = ChatService.format_chat_server_kwargs(chat.call_args.args[0], model)
+    instruction = "Reply in English." if expected == "en" else "请用简体中文回复"
+    assert instruction in formatted["system_message_prompt"]
 
 
 @pytest.mark.skipif(not django_apps.is_installed("apps.opspilot"), reason="需要 OpsPilot 工具与记忆引擎")

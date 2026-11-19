@@ -62,6 +62,7 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         if identity and (identity["team_id"], identity["username"], identity["domain"]) == (organization_id, execution.started_by, execution.domain):
             node_context["caller_identity"] = identity
     if task_type == "bklite_agent":
+        node_context["locale"] = execution.locale
         if atom_execution:
             node_context["task_reference"] = atom_execution.task_reference
         if organization_id != execution.team[0]:
