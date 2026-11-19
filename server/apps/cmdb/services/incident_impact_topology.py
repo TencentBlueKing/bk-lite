@@ -5,12 +5,17 @@ from __future__ import annotations
 from typing import Any, Callable
 from uuid import UUID
 
-from apps.cmdb.constants.constants import ASSOCIATION_TYPE, INSTANCE, INSTANCE_ASSOCIATION, MODEL
+from apps.cmdb.constants.constants import ASSOCIATION_TYPE, INSTANCE, INSTANCE_ASSOCIATION, MODEL, MODEL_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.services.app_topo_layer import resolve_app_topo_layer
+from apps.cmdb.services.ci_context_policy import APPLICATION_MODEL
+from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import safe_exception_info
 
 SEED_LIMIT = 200
+RELATED_CANDIDATE_LIMIT = 300
+MEMBER_LIMIT = 1000
 IMPACT_ASST_IDS = frozenset({"run", "connect"})
 # 数字越小越靠上，也越适合当上一跳。基础设施和不分类不参与这场比较。
 _LAYER_RANK = {"system": 0, "service": 1, "host": 2, "appService": 3}
@@ -98,29 +103,90 @@ def query_incident_impact_topology(
     graph_factory: GraphFactory | None = None,
     can_view: CanView | None = None,
 ) -> dict[str, Any]:
-    """加载种子、run/connect 边和模型层级，再交给组装函数。"""
-    seeds = _prepare_seeds(inst_uuids)
-    if len(seeds) > SEED_LIMIT:
-        return {
-            "truncated": True,
-            "nodes": [_seed_node(inst_uuid, None) for inst_uuid in seeds],
-            "links": [],
-        }
-    valid_ids = [inst_uuid for inst_uuid, valid in seeds if valid]
+    """基础图仍只按 run/connect 桥接。另外返回种子模型全部关系的一层实例和应用归属。"""
+    prepared = _prepare_seeds(inst_uuids)
+    seed_ids = [inst_uuid for inst_uuid, _valid in prepared]
+    if len(prepared) > SEED_LIMIT:
+        return _with_related(
+            {
+                "truncated": True,
+                "nodes": [_seed_node(inst_uuid, None) for inst_uuid in seed_ids],
+                "links": [],
+            }
+        )
+    valid_ids = [inst_uuid for inst_uuid, valid in prepared if valid]
     if graph_factory is None:
         graph_factory = GraphClient
     viewer = can_view or _viewer(user_info or {})
+    user_info = user_info or {}
     with graph_factory() as graph:
         entities = {item["inst_uuid"]: item for item in _load_instances(graph, valid_ids)}
         visible_ids = [inst_uuid for inst_uuid in valid_ids if viewer(entities.get(inst_uuid) or {})]
         raw_edges = _load_edges(graph, visible_ids) if visible_ids else []
-        peer_ids = [inst_uuid for inst_uuid in _peer_ids(raw_edges, set(valid_ids)) if inst_uuid not in entities]
-        for item in _load_instances(graph, peer_ids):
+        for item in _load_instances(graph, [inst_uuid for inst_uuid in _peer_ids(raw_edges, set(valid_ids)) if inst_uuid not in entities]):
             entities[item["inst_uuid"]] = item
+        seed_models = sorted(
+            {
+                str((entities.get(inst_uuid) or {}).get("model_id") or "")
+                for inst_uuid in visible_ids
+                if (entities.get(inst_uuid) or {}).get("model_id")
+            }
+        )
+        associations = _load_model_associations(graph, seed_models)
+        allowed = {str(item.get("model_asst_id") or "") for item in associations if item.get("model_asst_id")}
+        touching = []
+        if visible_ids and allowed:
+            touching = [edge for edge in _load_touching_edges(graph, visible_ids) if str(edge.get("model_asst_id") or "") in allowed]
+            extra_peers = [inst_uuid for inst_uuid in _peer_ids(touching, set()) if inst_uuid not in entities]
+            for item in _load_instances(graph, extra_peers):
+                entities[item["inst_uuid"]] = item
         model_ids = sorted({str(item.get("model_id") or "") for item in entities.values() if item.get("model_id")})
         models = {str(item.get("model_id")): item for item in _load_models(graph, model_ids)}
     instances = {inst_uuid: _instance_record(entity, models, viewer) for inst_uuid, entity in entities.items()}
-    return assemble_incident_impact_topology([inst_uuid for inst_uuid, _valid in seeds], instances, _describe_edges(raw_edges, user_info or {}))
+    base = assemble_incident_impact_topology(seed_ids, instances, _describe_edges(raw_edges, user_info))
+    occupied = {str(node.get("inst_uuid") or "") for node in base["nodes"]}
+    link_keys = {
+        (str(link.get("src_inst_uuid") or ""), str(link.get("dst_inst_uuid") or ""), str(link.get("model_asst_id") or "")) for link in base["links"]
+    }
+    related = collect_related_layer(
+        [inst_uuid for inst_uuid in visible_ids if _is_visible(instances.get(inst_uuid))],
+        instances,
+        _describe_edges(touching, user_info),
+        allowed,
+        occupied,
+        link_keys,
+    )
+    context_status = "ok"
+    contexts: list[dict[str, Any]] = []
+    members: list[dict[str, Any]] = []
+    try:
+        contexts, members, instances = _attach_context(
+            instances,
+            [inst_uuid for inst_uuid in occupied if _is_visible(instances.get(inst_uuid))]
+            + [node["inst_uuid"] for node in related["related_candidates"]],
+            user_info,
+            graph_factory,
+            models,
+            viewer,
+        )
+    except Exception as exc:
+        context_status = "unavailable"
+        contexts = []
+        members = []
+        logger.warning(
+            "event=incident_impact_context_unavailable failed_stage=context error_type=%s",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+    return _with_related(
+        base,
+        related_truncated=related["related_truncated"],
+        related_candidates=related["related_candidates"],
+        related_links=related["related_links"],
+        contexts=contexts,
+        application_members=members,
+        context_status=context_status,
+    )
 
 
 def _prepare_seeds(inst_uuids) -> list[tuple[str, bool]]:
@@ -193,6 +259,7 @@ def _link(edge: dict[str, Any], parent_uuid: str) -> dict[str, Any]:
         "asst_id": str(edge.get("asst_id") or ""),
         "asst_name": str(edge.get("asst_name") or ""),
         "parent_inst_uuid": parent_uuid,
+        "origin": "relation",
     }
 
 
@@ -354,3 +421,290 @@ def _describe_edges(edges: list[dict[str, Any]], user_info: dict[str, Any]) -> l
 def _chunks(values: list[str], size: int):
     for index in range(0, len(values), size):
         yield values[index : index + size]
+
+
+def _with_related(result: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    result.setdefault("related_truncated", False)
+    result.setdefault("context_status", "ok")
+    result.setdefault("related_candidates", [])
+    result.setdefault("related_links", [])
+    result.setdefault("contexts", [])
+    result.setdefault("application_members", [])
+    result.update(extra)
+    for link in result.get("links") or []:
+        if isinstance(link, dict):
+            link.setdefault("origin", "relation")
+    return result
+
+
+def collect_related_layer(seed_uuids, instances, edges, allowed_model_asst_ids, occupied_ids, occupied_link_keys) -> dict[str, Any]:
+    """种子向外一层。只保留模型关系目录里的实例边，不从对端再展开。"""
+    allowed = {str(item or "") for item in allowed_model_asst_ids if item}
+    seeds = set(seed_uuids)
+    occupied = set(occupied_ids)
+    seen = set(occupied_link_keys)
+    candidates: dict[str, dict[str, Any]] = {}
+    links: list[dict[str, Any]] = []
+    for edge in edges or []:
+        model_asst_id = str(edge.get("model_asst_id") or "")
+        if model_asst_id not in allowed:
+            continue
+        src = str(edge.get("src_inst_uuid") or "")
+        dst = str(edge.get("dst_inst_uuid") or "")
+        if not src or not dst or src == dst:
+            continue
+        src_seed = src in seeds and _is_visible(instances.get(src))
+        dst_seed = dst in seeds and _is_visible(instances.get(dst))
+        if not src_seed and not dst_seed:
+            continue
+        key = (src, dst, model_asst_id)
+        if key in seen:
+            continue
+        peer = ""
+        if src_seed and dst_seed:
+            peer = ""
+        else:
+            peer = dst if src_seed else src
+            if not _is_visible(instances.get(peer)):
+                continue
+        seen.add(key)
+        links.append(_link(edge, _parent_uuid(edge, instances)))
+        if peer and peer not in occupied and peer not in candidates:
+            candidates[peer] = instances[peer]
+    ordered = sorted(candidates)
+    truncated = len(ordered) > RELATED_CANDIDATE_LIMIT
+    if truncated:
+        kept = set(ordered[:RELATED_CANDIDATE_LIMIT])
+        links = [
+            link
+            for link in links
+            if all(
+                end in occupied or end in seeds or end in kept for end in (str(link.get("src_inst_uuid") or ""), str(link.get("dst_inst_uuid") or ""))
+            )
+        ]
+        ordered = ordered[:RELATED_CANDIDATE_LIMIT]
+    nodes = []
+    for inst_uuid in ordered:
+        node = _seed_node(inst_uuid, candidates[inst_uuid])
+        node["role"] = "related"
+        nodes.append(node)
+    return {"related_truncated": truncated, "related_candidates": nodes, "related_links": links}
+
+
+def _load_model_associations(graph, model_ids: list[str]) -> list[dict[str, Any]]:
+    if not model_ids:
+        return []
+    found: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    allowed_models = set(model_ids)
+    for field in ("src_model_id", "dst_model_id"):
+        rows = graph.query_edge(
+            MODEL_ASSOCIATION,
+            [{"field": field, "type": "str[]", "value": model_ids}],
+            return_entity=False,
+        )
+        for item in rows or []:
+            edge = _edge_props(item)
+            model_asst_id = str(edge.get("model_asst_id") or "")
+            src_model = str(edge.get("src_model_id") or "")
+            dst_model = str(edge.get("dst_model_id") or "")
+            if not model_asst_id or model_asst_id in seen:
+                continue
+            if src_model not in allowed_models and dst_model not in allowed_models:
+                continue
+            seen.add(model_asst_id)
+            found.append(edge)
+    return found
+
+
+def _load_touching_edges(graph, inst_uuids: list[str]) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for field in ("src_inst_uuid", "dst_inst_uuid"):
+        for batch in _chunks(inst_uuids, _EDGE_BATCH):
+            rows = graph.query_edge(
+                INSTANCE_ASSOCIATION,
+                [{"field": field, "type": "str[]", "value": batch}],
+                return_entity=True,
+            )
+            for item in rows or []:
+                edge = _flatten_edge(item)
+                key = (
+                    str(edge.get("src_inst_uuid") or ""),
+                    str(edge.get("dst_inst_uuid") or ""),
+                    str(edge.get("model_asst_id") or ""),
+                )
+                if not key[0] or not key[1] or key in seen:
+                    continue
+                seen.add(key)
+                found.append(edge)
+    return found
+
+
+def _edge_props(item: dict[str, Any] | None) -> dict[str, Any]:
+    data = item if isinstance(item, dict) else {}
+    edge = data.get("edge")
+    if isinstance(edge, dict):
+        return edge
+    return data
+
+
+def _attach_context(instances, object_ids, user_info, graph_factory, models, viewer):
+    organization_ids = _organization_ids(user_info)
+    if not organization_ids or not object_ids:
+        return [], [], instances
+    bundle = _load_context_bundle(organization_ids, object_ids, instances)
+    missing = [inst_uuid for inst_uuid in bundle["instance_ids"] if inst_uuid not in instances]
+    if missing:
+        with graph_factory() as graph:
+            loaded = _load_instances(graph, missing)
+            extra_model_ids = sorted(
+                {str(item.get("model_id") or "") for item in loaded if item.get("model_id") and str(item.get("model_id")) not in models}
+            )
+            for item in _load_models(graph, extra_model_ids):
+                models[str(item.get("model_id"))] = item
+            for entity in loaded:
+                instances[str(entity.get("inst_uuid") or "")] = _instance_record(entity, models, viewer)
+    return _assemble_context(object_ids, instances, bundle), bundle["members"], instances
+
+
+def _assemble_context(object_ids, instances, bundle) -> list[dict[str, Any]]:
+    rows_by_ci = bundle["by_ci"]
+    system_by_root = bundle["system_by_root"]
+    contexts = []
+    for inst_uuid in object_ids:
+        apps = []
+        seen: set[str] = set()
+        rows = list(rows_by_ci.get(inst_uuid) or [])
+        record = instances.get(inst_uuid) or {}
+        if record.get("model_id") == APPLICATION_MODEL and _is_visible(record):
+            rows.append({"root_uuid": inst_uuid, "system_uuid": system_by_root.get(inst_uuid)})
+        for row in rows:
+            root = str((row or {}).get("root_uuid") or "")
+            if not root or root in seen:
+                continue
+            root_inst = instances.get(root)
+            if not _is_visible(root_inst):
+                continue
+            seen.add(root)
+            system_uuid = str((row or {}).get("system_uuid") or system_by_root.get(root) or "")
+            system = None
+            system_inst = instances.get(system_uuid) if system_uuid else None
+            if system_uuid and _is_visible(system_inst):
+                system = _context_node(system_uuid, system_inst)
+            apps.append({**_context_node(root, root_inst), "system": system})
+        if apps:
+            contexts.append({"ci_uuid": inst_uuid, "applications": apps})
+    return contexts
+
+
+def _context_node(inst_uuid: str, instance: dict[str, Any] | None) -> dict[str, Any]:
+    node = _seed_node(inst_uuid, instance)
+    node.pop("role", None)
+    node.pop("found", None)
+    return node
+
+
+def _load_context_bundle(organization_ids, object_ids, instances) -> dict[str, Any]:
+    from apps.cmdb.models.ci_context import CmdbCiContext
+    from apps.cmdb.services.ci_context import lookup_ci_context
+    from apps.cmdb.services.ci_context_policy import CONTEXT_APPLICATION
+
+    by_ci = lookup_ci_context(organization_ids, inst_uuids=list(object_ids)) or {}
+    roots = []
+    seen_roots: set[str] = set()
+    for rows in by_ci.values():
+        for row in rows or []:
+            root = str((row or {}).get("root_uuid") or "")
+            if root and root not in seen_roots:
+                seen_roots.add(root)
+                roots.append(root)
+    for inst_uuid in object_ids:
+        record = instances.get(inst_uuid) or {}
+        if record.get("model_id") == APPLICATION_MODEL and inst_uuid not in seen_roots:
+            seen_roots.add(inst_uuid)
+            roots.append(inst_uuid)
+    from apps.core.utils.viewset_utils import build_json_membership_query
+
+    member_rows = []
+    truncated = False
+    if roots:
+        member_base = CmdbCiContext.objects.filter(context=CONTEXT_APPLICATION, root_uuid__in=roots)
+        org_match = build_json_membership_query(member_base, "organization", organization_ids)
+        fetched = list(
+            member_base.filter(org_match).order_by("root_uuid", "ci_uuid").values("root_uuid", "ci_uuid", "system_uuid")[: MEMBER_LIMIT + 1]
+        )
+        truncated = len(fetched) > MEMBER_LIMIT
+        member_rows = fetched[:MEMBER_LIMIT]
+    grouped: dict[str, list[str]] = {}
+    system_by_root: dict[str, str] = {}
+    for row in member_rows:
+        root = str(row.get("root_uuid") or "")
+        ci_uuid = str(row.get("ci_uuid") or "")
+        if root and ci_uuid:
+            grouped.setdefault(root, []).append(ci_uuid)
+        system_uuid = str(row.get("system_uuid") or "")
+        if root and system_uuid and root not in system_by_root:
+            system_by_root[root] = system_uuid
+    for rows in by_ci.values():
+        for row in rows or []:
+            root = str((row or {}).get("root_uuid") or "")
+            system_uuid = str((row or {}).get("system_uuid") or "")
+            if root and system_uuid and root not in system_by_root:
+                system_by_root[root] = system_uuid
+    members = [
+        {
+            "inst_uuid": root,
+            "member_uuids": grouped.get(root, []),
+            "member_truncated": truncated,
+        }
+        for root in roots
+    ]
+    instance_ids = []
+    seen_ids: set[str] = set()
+    for root in roots:
+        if root not in seen_ids:
+            seen_ids.add(root)
+            instance_ids.append(root)
+        system_uuid = system_by_root.get(root) or ""
+        if system_uuid and system_uuid not in seen_ids:
+            seen_ids.add(system_uuid)
+            instance_ids.append(system_uuid)
+    return {"by_ci": by_ci, "members": members, "system_by_root": system_by_root, "instance_ids": instance_ids}
+
+
+def _organization_ids(user_info: dict[str, Any]) -> list[int]:
+    if not isinstance(user_info, dict):
+        return []
+    team = user_info.get("team")
+    user = user_info.get("user")
+    if team in (None, "") or not user:
+        return []
+    try:
+        current_team = int(team)
+    except (TypeError, ValueError):
+        return []
+    from apps.cmdb.nats.nats import _get_authorized_team_ids, _normalize_permission_user
+    from apps.system_mgmt.models import User
+
+    user_obj = _normalize_permission_user(user, domain=user_info.get("domain"))
+    filters = {"username": getattr(user_obj, "username", "") or ""}
+    if getattr(user_obj, "domain", None):
+        filters["domain"] = user_obj.domain
+    if not filters["username"]:
+        return []
+    real_user = User.objects.filter(**filters).first()
+    if real_user is None:
+        return []
+    raw = _get_authorized_team_ids(
+        real_user,
+        current_team,
+        include_children=bool(user_info.get("include_children")),
+    )
+    found = []
+    for item in raw or []:
+        try:
+            found.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return found

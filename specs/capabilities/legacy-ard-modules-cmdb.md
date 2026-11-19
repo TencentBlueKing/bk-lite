@@ -187,7 +187,8 @@
 
 ## 2026-11-09 事故影响拓扑
 
-- `[cmdb#20261109-001]` 新增 NATS `incident_impact_topology`：入参种子 UUID 与 `user_info`。只批量查询 `run` / `connect`，按应用拓扑层级决定上一跳；至少两个种子共用的上一跳作为桥接返回。超过 200 个去重种子不查图。看不见的实例不返回名称。查询失败返回 `{result: False}`，不把图库异常正文带回。RPC：`CMDB.incident_impact_topology`。消费方为告警事故详情。契约见 `specs/changes/incident-impact-topology/spec.md`。
+- `[cmdb#20261109-001]` 新增 NATS `incident_impact_topology`：入参种子 UUID 与 `user_info`。基础图只批量查询 `run` / `connect`，按应用拓扑层级决定上一跳；至少两个种子共用的上一跳作为桥接返回。超过 200 个去重种子不查图。看不见的实例不返回名称。查询失败返回 `{result: False}`，不把图库异常正文带回。RPC：`CMDB.incident_impact_topology`。消费方为告警事故详情。契约见 `specs/changes/incident-impact-topology/spec.md`。
+- `[cmdb#20261117-001]` 同一个 NATS 方法追加一层候选和应用归属。种子模型在 `model_association` 里的全部关系都参与，模型可以是源或目标，只展开直接相连的实例，含基础设施。候选最多 300。`ci_context` 在 CMDB 进程内按调用者组织点查，返回应用、系统和成员 UUID；组织为空则不返回应用层。模型关系目录失败时整次查询失败，不退回成只查 `run` / `connect`。上下文失败时基础图仍返回，`context_status=unavailable`。不新增第二个 RPC。契约见 `specs/changes/incident-impact-topology-related-alerts/design.md`。
 
 ## 2026-09-21 Code-ARD 校准
 - `[cmdb#20261012-001]` NATS `get_room_list` 重新作为运营分析内置选项源「CMDB 机房列表（选项）」暴露，`valueField=inst_uuid`、`labelField=inst_name`。`get_room3d_layout` 仍不作为用户可选出图数据源。NATS handler 本身不变。

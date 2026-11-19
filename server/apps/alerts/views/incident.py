@@ -13,7 +13,7 @@ from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
-from apps.alerts.service.incident_impact_topology import build_incident_impact_topology
+from apps.alerts.service.incident_impact_topology import ALERT_PAGE_SIZE, build_incident_impact_topology, list_incident_impact_alerts
 from apps.alerts.service.incident_operator import IncidentOperator
 from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
@@ -486,8 +486,47 @@ class IncidentModelViewSet(AuthViewSet):
                 incident.incident_id,
                 self._impact_topology_alerts(request, incident),
                 requested,
+                visible_alerts=self._visible_current_alerts(request),
             )
         )
+
+    @HasPermission("Incidents-View")
+    @action(methods=["post"], detail=True, url_path="impact_topology_alerts")
+    def impact_topology_alerts(self, request, *args, **kwargs):
+        incident, error_response = self._get_authorized_incident(
+            request,
+            check_view_permission=True,
+            denied_message="您没有权限查看此事故",
+        )
+        if error_response is not None:
+            return error_response
+        payload = request.data if isinstance(request.data, dict) else {}
+        page = payload.get("page", 1)
+        if type(page) is not int or page < 1:
+            return WebUtils.response_error(error_message=alerts_message(request, "error.impact_topology_page_invalid"))
+        if "page_size" in payload and payload.get("page_size") != ALERT_PAGE_SIZE:
+            return WebUtils.response_error(error_message=alerts_message(request, "error.impact_topology_page_invalid"))
+        body, status_payload = list_incident_impact_alerts(
+            request,
+            incident.incident_id,
+            self._impact_topology_alerts(request, incident),
+            None,
+            payload.get("inst_uuid"),
+            page,
+            visible_alerts=self._visible_current_alerts(request),
+        )
+        if body is None:
+            message = (status_payload or {}).get("message") or alerts_message(request, "error.impact_topology_node_missing")
+            return WebUtils.response_error(error_message=message)
+        return WebUtils.response_success(body)
+
+    def _visible_current_alerts(self, request):
+        if getattr(request.user, "is_superuser", False):
+            return Alert.objects.all()
+        queryset = self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT)
+        if not hasattr(queryset, "filter"):
+            return Alert.objects.none()
+        return queryset
 
     def _impact_topology_alerts(self, request, incident):
         queryset = incident.alert.all().order_by("id")
