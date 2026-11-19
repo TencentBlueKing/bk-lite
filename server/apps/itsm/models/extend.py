@@ -68,11 +68,26 @@ class TriggerLog(ItsmModel):
 class ScheduledTask(ItsmModel):
     name = models.CharField(max_length=128)
     cron = models.CharField(max_length=64, default="0 9 * * 1-5")
-    action = models.CharField(max_length=64, default="noop")
+    action = models.TextField(default="noop")
     is_enabled = models.BooleanField(default=True)
+    next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "itsm_scheduled_task"
+
+
+class ScheduledRun(ItsmModel):
+    schedule = models.ForeignKey(ScheduledTask, on_delete=models.SET_NULL, null=True, related_name="runs")
+    schedule_name = models.CharField(max_length=128)
+    due_at = models.DateTimeField()
+    status = models.CharField(max_length=16, default="running")
+    message = models.CharField(max_length=255, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        db_table = "itsm_scheduled_run"
+        constraints = [models.UniqueConstraint(fields=["schedule", "due_at"], name="itsm_schedule_unique_slot")]
 
 
 class DataSource(ItsmModel):

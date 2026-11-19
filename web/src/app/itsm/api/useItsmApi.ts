@@ -94,6 +94,7 @@ export function useItsmApi() {
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
   const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
   const retryAutoNode = useCallback((ticketId: number, executionId: number) => post(`/itsm/api/tickets/${ticketId}/auto/${executionId}/retry/`), [post]);
+  const listScheduleRuns = useCallback((page: number, scheduleId?: number) => get('/itsm/api/schedules/runs/', { params: { page, schedule_id: scheduleId } }), [get]);
   const submitSurvey = useCallback(
     (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
     [post],
@@ -230,6 +231,7 @@ export function useItsmApi() {
     ticketLogs,
     getTicket,
     retryAutoNode,
+    listScheduleRuns,
     ticketForm,
     listTicketWorkflows,
     submitSurvey,

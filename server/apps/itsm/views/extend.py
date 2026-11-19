@@ -1,12 +1,15 @@
 import base64
 import json
+from datetime import timedelta
 from functools import wraps
 from io import BytesIO
 
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 from jinja2 import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 from openpyxl import Workbook
@@ -31,6 +34,7 @@ from apps.itsm.models.extend import (
     KnowledgeArticle,
     PrintTemplate,
     ReportCard,
+    ScheduledRun,
     ScheduledTask,
     SearchField,
     SpecialOperationRule,
@@ -127,7 +131,68 @@ def _public(item, fields):
         if hasattr(value, "isoformat"):
             value = value.isoformat()
         data[field] = value
+    if isinstance(item, ScheduledTask):
+        data["next_run_at"] = item.next_run_at.isoformat() if item.next_run_at else None
     return data
+
+
+@transaction.atomic
+def _save_schedule(request, values, item=None):
+    from apps.itsm.services.schedules import register_schedule, schedule_config, target_workflow
+    from apps.itsm.services.service_access import check_service_request
+
+    username = _user(request)
+    preserve_next = False
+    if item is None:
+        item = ScheduledTask(created_by=username, **values)
+    else:
+        item = ScheduledTask.objects.select_for_update().get(id=item.id, domain=domain_of(request))
+        preserve_next = all(getattr(item, field) == value for field, value in values.items() if field in {"cron", "action", "is_enabled"})
+        for field, value in values.items():
+            setattr(item, field, value)
+        if set(values) == {"is_enabled", "domain"} and item.is_enabled is False:
+            item.next_run_at = None
+            item.save(update_fields=["is_enabled", "next_run_at", "updated_at"])
+            return WebUtils.response_success(_public(item, KINDS["schedules"][1]))
+    try:
+        config = schedule_config(item)
+        if config["task"] == "create_ticket":
+            if not has_permission(request, "ticket-Add"):
+                raise PermissionError()
+            check_service_request(request, target_workflow(item, config).current_version)
+        if not isinstance(item.name, str) or not item.name.strip() or len(item.name) > 128:
+            raise ValueError("任务名称需为 1 至 128 个字符")
+        if type(item.is_enabled) is not bool or not isinstance(item.cron, str):
+            raise ValueError("任务状态或周期格式错误")
+        item.updated_by = username
+        item.save()
+        register_schedule(item, preserve_next=preserve_next and item.next_run_at is not None)
+    except (ValueError, TypeError) as exc:
+        transaction.set_rollback(True)
+        return WebUtils.response_error(error_message=str(exc) if not isinstance(exc, (json.JSONDecodeError, TypeError)) else "定时任务配置格式错误")
+    return WebUtils.response_success(_public(item, KINDS["schedules"][1]))
+
+
+@require_GET
+@api_errors
+@HasPermission("rule-View")
+def schedule_runs(request):
+    queryset = ScheduledRun.objects.filter(domain=domain_of(request)).order_by("-due_at", "-id")
+    if request.GET.get("schedule_id"):
+        queryset = queryset.filter(schedule_id=int(request.GET["schedule_id"]))
+    paginator = Paginator(queryset, 20)
+    page = paginator.get_page(int(request.GET.get("page", "1")))
+    rows = list(page)
+    visible = set()
+    if has_permission(request, "ticket-View"):
+        visible = set(ticket_scope(request).filter(id__in=[row.ticket_id for row in rows if row.ticket_id]).values_list("id", flat=True))
+    items = []
+    for row in rows:
+        data = _public(row, ["schedule_name", "due_at", "status", "message", "created_at", "finished_at"])
+        if row.status == "running" and row.created_at < timezone.now() - timedelta(minutes=5):
+            data.update(status="unconfirmed", message="超过执行等待时间，请核对结果")
+        items.append({**data, "ticket_id": row.ticket_id if row.ticket_id in visible else None})
+    return WebUtils.response_success({"items": items, "count": paginator.count})
 
 
 @csrf_exempt
@@ -143,10 +208,19 @@ def resources(request, kind):
         paginator = Paginator(resource_scope(request, kind, model).order_by("-id"), page_size)
         page = paginator.get_page(int(request.GET.get("page") or 1))
         items = [_public(item, fields) for item in page]
-        return WebUtils.response_success({"items": items, "count": paginator.count})
+        data = {"items": items, "count": paginator.count}
+        if kind == "schedules":
+            data.update(
+                can_add=has_permission(request, "rule-Add"),
+                can_edit=has_permission(request, "rule-Edit"),
+                can_delete=has_permission(request, "rule-Delete"),
+            )
+        return WebUtils.response_success(data)
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
+    if kind == "schedules":
+        return _save_schedule(request, values)
     if kind == "reports":
         values["username"] = _user(request)
     if kind == "preferences":
@@ -193,10 +267,6 @@ def resources(request, kind):
         raise
     if kind == "handovers":
         _apply_handover(item)
-    if kind == "schedules":
-        from apps.itsm.services.schedules import register_schedule
-
-        register_schedule(item)
     if kind == "decisions":
         from apps.itsm.services.dmn import deploy_table
 
@@ -227,14 +297,12 @@ def resource_item(request, kind, item_id):
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
+    if kind == "schedules":
+        return _save_schedule(request, values, item)
     for field, value in values.items():
         setattr(item, field, value)
     item.updated_by = _user(request)
     item.save()
-    if kind == "schedules":
-        from apps.itsm.services.schedules import register_schedule
-
-        register_schedule(item)
     return WebUtils.response_success(_public(item, fields))
 
 

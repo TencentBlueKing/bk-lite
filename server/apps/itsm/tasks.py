@@ -7,7 +7,6 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.itsm.models import EmailRule, TicketSLARecord
-from apps.itsm.models.extend import ScheduledTask
 from apps.itsm.services.notify.service import deliver_with_retry
 
 
@@ -62,25 +61,25 @@ def email_poll():
 
 
 @shared_task
-def scheduled_noop(schedule_id: int = 0):
-    import json
+def schedule_tick():
+    from types import SimpleNamespace
 
-    item = ScheduledTask.objects.filter(id=schedule_id, is_enabled=True).first()
-    if item is None:
-        return {"schedule_id": schedule_id, "ran": False}
-    try:
-        config = json.loads(item.action)
-    except (TypeError, ValueError):
-        config = {}
-    if isinstance(config, dict) and config.get("notify") and item.created_by:
-        try:
-            deliver_with_retry("schedule", {"title": item.name, "content": item.name}, [item.created_by], f"schedule-{item.id}")
-        except Exception as exc:
-            from apps.core.logger import itsm_logger as logger
+    from django.conf import settings
 
-            logger.warning("定时任务通知失败 schedule_id=%s error_type=%s", schedule_id, type(exc).__name__)
-            return {"schedule_id": schedule_id, "ran": True, "notify": "failed"}
-    return {"schedule_id": schedule_id, "name": item.name, "ran": True}
+    from apps.itsm.flowable.client import FlowableClient
+    from apps.itsm.services.integrations import live_identity
+    from apps.itsm.services.schedules import run_due, target_workflow
+    from apps.itsm.services.service_access import check_service_request
+    from apps.itsm.services.ticket.service import TicketService
+
+    def service_for(item, run, config):
+        identity = live_identity(item, actor=run.created_by, permission="ticket-Add")
+        user = SimpleNamespace(username=identity.user, domain=identity.domain, is_superuser=identity.is_superuser)
+        check_service_request(SimpleNamespace(user=user), target_workflow(item, config).current_version)
+        client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD) if settings.FLOWABLE_PASSWORD else None
+        return TicketService(client, identity=identity)
+
+    return {"runs": run_due(service_for)}
 
 
 @shared_task

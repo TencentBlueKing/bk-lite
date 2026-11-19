@@ -33,6 +33,7 @@ from apps.itsm.views.extend import (
     resource_item,
     resources,
     run_auto,
+    schedule_runs,
 )
 from apps.itsm.views.field_fetch import field_catalog, field_fetch, field_gateway
 from apps.itsm.views.health import health
@@ -76,6 +77,7 @@ urlpatterns = [
     path("api/integrations/<int:item_id>/", integration_detail),
     path("api/integrations/<int:item_id>/test/", integration_test),
     path("api/integrations/<int:item_id>/deliveries/<int:delivery_id>/retry/", retry_delivery),
+    path("api/schedules/runs/", schedule_runs, name="itsm-schedule-runs"),
     path("api/services/layout/", portal_layout, name="itsm-portal-layout"),
     path("api/services/dashboard/", portal_dashboard, name="itsm-portal-dashboard"),
     path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),

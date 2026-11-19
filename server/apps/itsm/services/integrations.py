@@ -75,7 +75,7 @@ def request_identity(request):
     )
 
 
-def live_identity(item, actor=None):
+def live_identity(item, actor=None, *, permission=None):
     """异步执行恢复操作者实时权限，不借用集成维护人的身份。"""
     from apps.base.models.user import User
     from apps.core.backends import APISecretAuthBackend, _normalize_group_ids
@@ -91,7 +91,7 @@ def live_identity(item, actor=None):
         raise PermissionError("集成维护人不存在")
     teams = sorted(_normalize_group_ids(account.group_list))
     APISecretAuthBackend()._populate_user_permissions(user, teams[0] if teams else 0)
-    permission = "workflow-Edit" if actor is not None else "data-Edit"
+    permission = permission or ("workflow-Edit" if actor is not None else "data-Edit")
     if not user.is_superuser and permission not in (user.permission or {}).get("itsm", []):
         raise PermissionError("集成维护人权限已收回")
     return CallerIdentity(
