@@ -45,6 +45,7 @@ def _query_window(start: int, end: int) -> str:
 _BUCKET_COUNT_TOKENS = (
     "increase(postgresql_deadlocks{",
     "increase(postgresql_conflicts{",
+    'increase(sqlserver_performance_value{counter="Number of Deadlocks/sec"',
 )
 
 

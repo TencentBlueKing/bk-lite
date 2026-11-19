@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
-import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -29,6 +27,7 @@ from service.ansible_runner import (
     decode_command_output,
 )
 from service.linux_script_delivery import ScriptDeliveryError, format_host_failure
+from service.runtime import current_entrypoint_command
 from service.windows_script_delivery import (
     ConnectionOpener,
     copy_windows_script_to_hosts,
@@ -38,8 +37,6 @@ from service.windows_script_delivery import (
 )
 from winrm.exceptions import WinRMOperationTimeoutError
 from winrm.protocol import Protocol
-
-_EXECUTOR_ROOT = Path(__file__).resolve().parents[1]
 
 ProtocolFactory = Callable[[dict[str, Any]], Protocol]
 WindowsCopier = Callable[..., None]
@@ -250,16 +247,11 @@ async def _copy_windows_script_via_subprocess(
             ensure_ascii=False,
         ).encode("utf-8"),
     )
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join([str(_EXECUTOR_ROOT), *[p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p]])
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "service.windows_script_delivery",
+            *current_entrypoint_command(),
+            "--internal-windows-put-file",
             str(payload_path),
-            cwd=str(_EXECUTOR_ROOT),
-            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

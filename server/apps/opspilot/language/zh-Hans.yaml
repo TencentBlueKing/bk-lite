@@ -284,7 +284,7 @@ tools:
     name: 作业管理
     description: |
       用当前用户和当前组织执行脚本库脚本、自定义脚本，并分发本会话暂存的文件。
-      也可按 Playbook 包内路径选择脚本。有脚本输出时直接展示给用户，模型只看作业号和终态。没有输出时给出作业记录链接。文件分发终态只看成功或失败；还在执行时给出作业记录链接，请用户到作业管理查看。
+      可按脚本、定时任务和时间范围查询历史执行，再按作业号读取脚本输出。也可按 Playbook 包内路径选择脚本。没有输出时给出作业记录链接。文件分发终态只看成功或失败；还在执行时给出作业记录链接，请用户到作业管理查看。
     tools:
       job_mgmt_list_scripts:
         description: 列出当前组织的脚本库脚本，不含脚本正文。即使只有一个也要让用户确认名称和类型。
@@ -302,6 +302,8 @@ tools:
         description: 执行经用户确认的自定义脚本，可由智能体生成。script_type 只能是 shell、python、powershell、bat。target_ids 填查询结果的 id，不要填 IP。Linux 只接受 shell 和 python，Windows 只接受 powershell 和 bat。
       job_mgmt_distribute:
         description: 分发本会话暂存文件。target_ids 填查询结果的 id，不要填 IP。终态只有成功或失败。未结束时给出作业记录链接，请用户到作业管理查看，不要说成失败。
+      job_mgmt_list_executions:
+        description: 按脚本、定时任务和创建时间分页查询历史作业，返回执行 ID、状态和目标计数。用执行 ID 查询脚本输出。
       job_mgmt_query:
         description: 按作业号查询当前组织的作业；未指定时查询本会话最近的作业，不重新提交。
       job_mgmt_schedule_watch:

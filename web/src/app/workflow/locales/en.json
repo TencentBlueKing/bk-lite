@@ -86,6 +86,7 @@
       "importedElsewhere": "Imported into {organizations}. Switch organization to see them"
     },
     "execution": {
+      "organization": "Execution organization",
       "records": "Execution Records",
       "all": "All Executions",
       "details": "Execution Details",
@@ -652,6 +653,7 @@
       "publishUnavailableHint": "Publish service is temporarily unavailable. Retry later; do not assume the local version was published.",
       "pathExists": "This path already exists",
       "unsupportedConnection": "Only triggers, top-level nodes, and response nodes can be connected. Configure nested paths inside control nodes.",
+      "debugIdentity": "Debug account {account} · Organization {organization}",
       "debugWorkflow": "Debug Workflow",
       "debugDetails": "Debug Details",
       "debugAgain": "Debug Again",
@@ -1007,6 +1009,7 @@
       "jobTargetFallback": "Job target #{id}",
       "nodeTargetFallback": "Node #{id}",
       "literalFieldDropRejected": "This field only accepts a choice or typed value, not an upstream field",
+      "executionAccount": "Execution account",
       "scheduleSystemTimezoneHint": "Calculated in the current user's system timezone and fixed when the workflow version is published.",
       "triggerFrequency": "Trigger frequency",
       "everyDay": "Every day",

@@ -344,8 +344,7 @@ class AgentNode(BaseNodeExecutor):
             params["entry_type"] = entry_type
         caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
         if caller_identity is not None:
-            # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
-            # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
+            # 仅透传入口已经校验的快照，工具在目标模块按该身份鉴权。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
         params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_chat_flow_input(flow_input)
         if isinstance(flow_input.get("pending_question"), dict):
@@ -487,6 +486,8 @@ class AgentNode(BaseNodeExecutor):
     def _resolve_trigger_type(flow_input: Dict[str, Any]) -> str:
         """根据 entry_type 映射到 trigger_type（用于审批策略判断）"""
         entry_type = flow_input.get("entry_type", "")
+        if entry_type == "workflow" and flow_input.get("unattended") is True:
+            return "unattended"
         if entry_type in ("celery", "test"):
             return "unattended"
         if entry_type in (

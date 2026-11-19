@@ -255,6 +255,17 @@
   align-items: stretch;
 }
 
+/* 六张健康卡优先一行。窄屏折成 3+3，不把某一张挤掉。 */
+.kpiGrid[data-kpi-columns='6'] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 1099px) {
+  .kpiGrid[data-kpi-columns='6'] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* 健康六卡：上下 8px、左右 12px，总高约 64–76px。内容顶对齐，不把空白均分到数字上下。 */
 .kpiCard {
   box-sizing: border-box;

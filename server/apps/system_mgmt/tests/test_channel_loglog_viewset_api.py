@@ -185,8 +185,9 @@ def test_channel_test_send_whitelist_failure_has_action_contract(super_client):
     assert body["data"]["action_label"] == "Open Network Allowlist"
 
 
-def test_channel_update_opspilot_managed_readonly(super_client):
-    ch = Channel.objects.create(name="nats", channel_type=ChannelChoices.NATS, config={"source": "opspilot"}, description="d", team=[1])
+@pytest.mark.parametrize("source", ["opspilot", "workflow"])
+def test_channel_update_managed_readonly(super_client, source):
+    ch = Channel.objects.create(name="nats", channel_type=ChannelChoices.NATS, config={"source": source}, description="d", team=[1])
     resp = super_client.put(
         f"{V}/channel/{ch.id}/",
         {"name": "nats", "channel_type": ChannelChoices.NATS, "config": {"source": "opspilot"}, "description": "d", "team": [1]},

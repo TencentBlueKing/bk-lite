@@ -33,14 +33,16 @@ def format_caller_identity_required_error(config: Optional[RunnableConfig], tool
     entry_type = configurable.get("entry_type")
     trigger_type = configurable.get("trigger_type")
 
-    if isinstance(entry_type, str) and entry_type in _ENTRY_SOURCE_LABELS:
+    if entry_type == "workflow":
+        source = "编排中心无人值守流程" if trigger_type == "unattended" else "编排中心流程"
+    elif isinstance(entry_type, str) and entry_type in _ENTRY_SOURCE_LABELS:
         source = _ENTRY_SOURCE_LABELS[entry_type]
     elif isinstance(trigger_type, str) and trigger_type in _TRIGGER_SOURCE_LABELS:
         source = _TRIGGER_SOURCE_LABELS[trigger_type]
     else:
         source = "当前触发方式"
 
-    return f"{tool_label}工具仅支持已登录的交互式 HTTP 调用（Web/Mobile/OpenAPI/Skill 执行等）。" f"{source}未提供调用方身份快照（caller_identity），无法使用{tool_label}工具。"
+    return f"{tool_label}工具需要已验证的执行账号和组织。{source}未提供调用方身份快照（caller_identity），无法使用{tool_label}工具。"
 
 
 def resolve_rpc_user_info(config: Optional[RunnableConfig], tool_label: str) -> Dict[str, Any]:

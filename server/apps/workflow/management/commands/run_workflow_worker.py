@@ -16,7 +16,7 @@ from apps.workflow.services.atom_packages import atom_requires_trusted_context, 
 from apps.workflow.services.atoms import ATOM_HANDLERS, TASK_DEFINITIONS, execute_atom, package_atom_task_definitions
 from apps.workflow.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow.services.data_contracts import mask_secret_envelopes, resolve_secret_envelopes
-from apps.workflow.services.tool_caller_identity import tool_caller_identity, tool_caller_locale
+from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 
 
 def _conductor_task_update(*, workflow_id, task_id, worker_id, status, output_data=None, callback_after_seconds=None, reason=None):
@@ -55,27 +55,31 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         return runtime_inputs
     if execution is None or not execution.team:
         raise ValueError("原子缺少可信的流程执行上下文")
-    context = {
-        "execution_id": str(execution.id),
-        "workflow_id": str(execution.workflow_id),
-        "workflow_version": execution.workflow_version,
-        "organization_id": execution.team[0],
-        "actor": {"username": execution.started_by, "domain": execution.domain},
-        "trigger_type": execution.trigger_type,
-    }
-    if task_type == "bklite_agent" and atom_execution is not None:
-        context["task_reference"] = atom_execution.task_reference
+    organization_id = execution.team[0]
+    node_context = {}
+    if task_type in {"bklite_agent", "bklite_memory_read", "bklite_memory_write"}:
+        organization_id = execution.effective_execution_team_id
+        identity = accepted_tool_caller_identity(execution.caller_identity)
+        if identity and (identity["team_id"], identity["username"], identity["domain"]) == (organization_id, execution.started_by, execution.domain):
+            node_context["caller_identity"] = identity
     if task_type == "bklite_agent":
-        identity = tool_caller_identity(execution)
-        if identity is not None:
-            context["caller_identity"] = identity
-        locale = tool_caller_locale(execution)
-        if locale is not None:
-            context["locale"] = locale
+        node_context["locale"] = execution.locale
+        if atom_execution:
+            node_context["task_reference"] = atom_execution.task_reference
+        if organization_id != execution.team[0]:
+            node_context["workflow_organization_id"] = execution.team[0]
     return {
         **runtime_inputs,
         "__execution_id": str(execution.id),
-        "__bklite_context": context,
+        "__bklite_context": {
+            "execution_id": str(execution.id),
+            "workflow_id": str(execution.workflow_id),
+            "workflow_version": execution.workflow_version,
+            "organization_id": organization_id,
+            "actor": {"username": execution.started_by, "domain": execution.domain},
+            "trigger_type": execution.trigger_type,
+            **node_context,
+        },
     }
 
 

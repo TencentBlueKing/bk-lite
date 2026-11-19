@@ -5,6 +5,8 @@ import { formatMetricValue } from '../src/app/monitor/utils/formatMetricValue';
 assert.equal(formatMetricValue('32', 'counts'), '32');
 assert.equal(formatMetricValue('0.00', 'counts'), '0');
 assert.equal(formatMetricValue('1.5', 'counts'), '1.5');
+assert.equal(formatMetricValue('1.25', 'counts'), '1.25');
+assert.equal(formatMetricValue('3.89966555139465', 'counts'), '3.9');
 assert.equal(formatMetricValue('32', 'percent'), '32.00');
 assert.equal(formatMetricValue('unknown', 'counts'), 'unknown');
 
