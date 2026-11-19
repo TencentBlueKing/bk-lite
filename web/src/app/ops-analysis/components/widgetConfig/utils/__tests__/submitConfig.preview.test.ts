@@ -116,7 +116,7 @@ test('preview draft skips hidden-only columns that block save', () => {
   assert.equal(draft.tableConfig?.columns?.[0]?.visible, false);
 });
 
-test('preview draft skips multiple componentSwitch params that block save', () => {
+test('preview draft rejects multiple componentSwitch params the same way save does', () => {
   const input = {
     ...baseInput,
     chartType: 'topN',
@@ -132,8 +132,7 @@ test('preview draft skips multiple componentSwitch params that block save', () =
   assert.equal(saved.config, undefined);
 
   const draft = buildWidgetDraftConfig(input);
-  assert.ok(draft);
-  assert.equal(draft.chartType, 'topN');
+  assert.equal(draft, undefined);
 });
 
 test('preview draft still carries filter bindings', () => {

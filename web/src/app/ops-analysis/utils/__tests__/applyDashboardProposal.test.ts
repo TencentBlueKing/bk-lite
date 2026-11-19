@@ -629,7 +629,7 @@ test('keeps a component prefix and reports every problem on the same widget', ()
   assert.ok(result.warnings?.includes('param:typed:type'));
 });
 
-test('drops a component-param reference to an unbindable type and turns off component switch', () => {
+test('drops a component-param reference to an unbindable type and keeps component switch when the ref stays', () => {
   const flag = dynamicFilter('flag__boolean', 'flag', {});
   flag.type = 'boolean' as UnifiedFilterDefinition['type'];
   const result = applyDashboardProposal({
@@ -664,7 +664,7 @@ test('drops a component-param reference to an unbindable type and turns off comp
     ? card.valueConfig?.dataSourceParams?.find((item) => item.name === 'device')
     : undefined;
   const config = param?.inputConfig;
-  assert.equal(config && config.control === 'select' ? config.componentSwitch : 'missing-config', undefined);
+  assert.equal(config && config.control === 'select' ? config.componentSwitch : 'missing-config', true);
 });
 
 test('keeps a component-param ref when its name matches a global filter key', () => {

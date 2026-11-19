@@ -8,7 +8,7 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs
+from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs, _run_atom_with_heartbeat
 from apps.workflow.models import AtomExecution, Workflow, WorkflowExecution
 from apps.workflow.services.conductor import ConductorUnavailable
 from apps.workflow.services.data_contracts import seal_sensitive_inputs
@@ -431,6 +431,36 @@ def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_
     assert "caller_identity" not in payload["__bklite_context"]
 
 
+def test_completed_atom_returns_without_waiting_for_the_pool_thread_to_exit(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from apps.workflow.management.commands import run_workflow_worker as worker
+
+    class Executor(ThreadPoolExecutor):
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            if wait:
+                raise AssertionError("pool shutdown waited for the worker thread")
+            super().shutdown(wait=False, cancel_futures=cancel_futures)
+
+    monkeypatch.setattr(worker, "ThreadPoolExecutor", Executor)
+
+    result = _run_atom_with_heartbeat(
+        client=None,
+        execute=lambda _inputs: {"message": "done"},
+        runtime_inputs={},
+        interval=0.01,
+        atom_execution=None,
+        claim_token=None,
+        lease_duration=timedelta(seconds=60),
+        workflow_id="workflow-1",
+        task_id="task-1",
+        worker_id="worker-1",
+        task_type="bklite_agent",
+    )
+
+    assert result == {"message": "done"}
+
+
 @pytest.mark.django_db
 def test_worker_heartbeats_while_atom_is_running(mocker):
     client = mocker.Mock()
@@ -439,22 +469,18 @@ def test_worker_heartbeats_while_atom_is_running(mocker):
 
     def slow_handler(_inputs):
         started.set()
+        threading.Timer(0.05, release.set).start()
         release.wait(timeout=1)
         return {"ok": True}
 
-    timer = threading.Timer(0.05, release.set)
-    timer.start()
-    try:
-        Command._execute_task(
-            client,
-            "worker-1",
-            "bklite_inspection_group_targets",
-            {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
-            handler=slow_handler,
-            heartbeat_interval=0.01,
-        )
-    finally:
-        timer.cancel()
+    Command._execute_task(
+        client,
+        "worker-1",
+        "bklite_inspection_group_targets",
+        {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
+        handler=slow_handler,
+        heartbeat_interval=0.01,
+    )
 
     assert started.is_set()
     statuses = [call.args[0]["status"] for call in client.update_task.call_args_list]

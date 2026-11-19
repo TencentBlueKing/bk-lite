@@ -9,7 +9,6 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
-import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { getWidgetComponent } from './widgetRegistry';
 
 interface WidgetRendererProps {
@@ -29,7 +28,6 @@ interface WidgetRendererProps {
   onTopologyLayoutChange?: (
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
-  componentSwitchControl?: React.ReactNode;
   paginationResetKey?: string;
   errorMessage?: string;
   runtimeOwnerId?: string;
@@ -58,7 +56,6 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   onQueryChange,
   layoutEditable,
   onTopologyLayoutChange,
-  componentSwitchControl,
   paginationResetKey,
   errorMessage,
   runtimeOwnerId,
@@ -101,7 +98,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
         ? { unifiedFilterValues, filterDefinitions }
         : {})}
       {...(scenePermissionDenied ? { scenePermissionDenied } : {})}
-      {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
+      {...(chartType === 'topN' || chartType === 'nodeGraph' ? { errorMessage } : {})}
       {...(chartType === 'table' ? { paginationResetKey } : {})}
     />
   );

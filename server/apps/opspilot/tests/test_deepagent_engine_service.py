@@ -2568,6 +2568,37 @@ def test_summarize_planned_step_carries_row_fields_not_only_counts():
     assert "created_at=2026-11-18 10:00:00" in alerts
     assert "owners=张三" in alerts
     assert "正文" * 100 not in alerts
+    assert "rows_truncated=true" in alerts
+    assert "shown=1" in alerts
+    assert "total=5" in alerts
+
+    long_title = "标" * 80 + "尾"
+    titled = summary_for(
+        "alerts_list_alerts",
+        {
+            "success": True,
+            "data": {
+                "count": 1,
+                "items": [{"title": long_title, "owners": [{"name": "张三"}]}],
+            },
+        },
+        "活动告警共 1 条。",
+    )
+    assert "title=" + ("标" * 80) in titled
+    assert "title=" + long_title not in titled
+    assert "owners=张三" in titled
+    assert "rows_truncated" not in titled
+
+    page = [{"alert_id": f"A-{index}", "title": "cpu"} for index in range(20)]
+    truncated = summary_for(
+        "alerts_list_alerts",
+        {"success": True, "data": {"count": 100, "items": page}},
+        "活动告警共 100 条。",
+    )
+    assert "rows_truncated=true" in truncated
+    assert "shown=20" in truncated
+    assert "total=100" in truncated
+    assert "total=20" not in truncated
 
 
 def test_summarize_planned_step_carries_instance_id_into_next_step():

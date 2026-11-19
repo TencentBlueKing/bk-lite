@@ -58,6 +58,36 @@ describe('n8n 风格流程画布表现层', () => {
     expect(onPick).toHaveBeenCalledTimes(1);
   });
 
+  it('不可用的节点保留说明且不能添加', () => {
+    const onPick = vi.fn();
+
+    render(
+      <App>
+        <WorkflowNodePickerPanel
+          open
+          query=""
+          groups={[
+            {
+              key: 'return',
+              title: '响应',
+              description: '把流程结果返回给调用方',
+              items: [{ key: 'WEBHOOK', title: 'Webhook 响应', description: '先改为等待流程结果', meta: '需改为等待', disabled: true, onClick: onPick }],
+            },
+          ]}
+          onQueryChange={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </App>,
+    );
+
+    const response = screen.getByRole('button', { name: /Webhook 响应/ });
+    expect(response).toHaveProperty('disabled', true);
+    expect(screen.getByText('先改为等待流程结果')).not.toBeNull();
+    expect(screen.getByText('需改为等待')).not.toBeNull();
+    fireEvent.click(response);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it('默认以左输入、中间配置、右输出三栏展示节点数据', () => {
     const onClose = vi.fn();
     const onExecute = vi.fn();

@@ -1,13 +1,16 @@
-from types import SimpleNamespace
 import time
+from types import SimpleNamespace
 
 from apps.monitor.nats import monitor as nm
 
 
 def test_network_device_resource_top_handler_returns_ranked_traffic(monkeypatch):
     instance = SimpleNamespace(
-        id="sw-1", name="Switch A", ip="10.0.0.1", interval=300,
-        monitor_object=SimpleNamespace(name="Switch"),
+        id="sw-1",
+        name="Switch A",
+        ip="10.0.0.1",
+        interval=300,
+        monitor_object=SimpleNamespace(name="Switch", type_id="Network Device"),
     )
     monkeypatch.setattr(
         nm,

@@ -118,7 +118,7 @@ def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
         "3D机房大屏",
         "3D应用大屏",
         "应用拓扑大屏",
-        "监控值班总览",
+        "监控概况大屏",
         "网络设备运行汇总",
     ]
     duty = next(screen for screen in payload["screens"] if screen["key"] == "screen::监控值班总览_内置")
@@ -133,6 +133,40 @@ def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
         )
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
     assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
+
+
+NETWORK_CATEGORY_OBJECT_PARAMS = {
+    "网络设备总数": "monitor_object_id",
+    "网络失联设备数": "monitor_object_id",
+    "Down 接口数": "monitor_object_id",
+    "有错包接口数": "monitor_object_id",
+    "当前未关闭告警数": "monitor_object_id",
+    "设备类型分布（设备数）": "monitor_object_ids",
+    "接口列表（当前）": "monitor_object_id",
+    "网络设备未关闭告警（当前）": "monitor_object_id",
+}
+
+
+def test_builtin_network_device_screen_counts_the_whole_category():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen = next(screen for screen in payload["screens"] if screen["key"] == "screen::网络设备运行汇总_内置")
+    items = screen["view_sets"]["items"]
+    widgets = {item["title"]: item for item in items if item.get("kind") == "widget"}
+
+    assert screen["desc"] == "基于当前监控数据快照，汇总网络设备的运行情况。总数、失联、采集失败和接口按整个网络设备分类统计。"
+    subtitle = next(item["content"] for item in items if item.get("kind") == "text" and item.get("y") == 62)
+    assert subtitle == "基于当前监控数据快照，按整个网络设备分类汇总运行情况。"
+    assert widgets["设备类型分布（设备数）"]["valueConfig"]["description"] == "统计该分类下实际有实例的对象。"
+    assert widgets["网络设备总数"]["valueConfig"]["description"] == "分类为网络设备的全部实例，比交换机、路由器、防火墙、负载均衡更宽。"
+
+    for title, param_name in NETWORK_CATEGORY_OBJECT_PARAMS.items():
+        params = {item["name"]: item for item in widgets[title]["valueConfig"]["dataSourceParams"]}
+        assert params["monitor_object_type_ids"]["value"] == ["Network Device"]
+        assert params[param_name]["value"] == []
+
+    ranking = {item["name"]: item for item in widgets["网络设备资源排行（当前值）"]["valueConfig"]["dataSourceParams"]}
+    assert "monitor_object_id" not in ranking
+    assert "monitor_object_ids" not in ranking
 
 
 def test_builtin_application_topology_screen_filter_uses_canvas_contract():

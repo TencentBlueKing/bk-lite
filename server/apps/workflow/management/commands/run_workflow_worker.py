@@ -16,6 +16,7 @@ from apps.workflow.services.atom_packages import atom_requires_trusted_context, 
 from apps.workflow.services.atoms import ATOM_HANDLERS, TASK_DEFINITIONS, execute_atom, package_atom_task_definitions
 from apps.workflow.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow.services.data_contracts import mask_secret_envelopes, resolve_secret_envelopes
+from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 
 
 def _conductor_task_update(*, workflow_id, task_id, worker_id, status, output_data=None, callback_after_seconds=None, reason=None):
@@ -58,7 +59,7 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
     node_context = {}
     if task_type in {"bklite_agent", "bklite_memory_read", "bklite_memory_write"}:
         organization_id = execution.effective_execution_team_id
-        identity = execution.caller_identity
+        identity = accepted_tool_caller_identity(execution.caller_identity)
         if identity and (identity["team_id"], identity["username"], identity["domain"]) == (organization_id, execution.started_by, execution.domain):
             node_context["caller_identity"] = identity
     if task_type == "bklite_agent":
@@ -106,7 +107,8 @@ def _run_atom_with_heartbeat(
     worker_id,
     task_type,
 ):
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="workflow-atom") as executor:
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workflow-atom")
+    try:
         future = executor.submit(execute, runtime_inputs)
         while True:
             try:
@@ -136,6 +138,9 @@ def _run_atom_with_heartbeat(
                         task_type,
                         task_id,
                     )
+    finally:
+        # 工作线程在结果已经返回后可能不再释放线程状态锁，join 会挡住成功回写。
+        executor.shutdown(wait=False, cancel_futures=False)
 
 
 def _finalize_atom_success(*, atom_execution, claim_token, output, task_type, task_id) -> bool:

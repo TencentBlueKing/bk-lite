@@ -7,6 +7,7 @@ from django.apps import apps as django_apps
 
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.workflow.services.agent_knowledge_inputs import resolve_uploaded_agent_knowledge
+from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 from apps.workflow.utils.i18n import DEFAULT_EXECUTION_LOCALE
 
 MAX_AGENT_OUTPUT_CHARS = 100_000
@@ -99,8 +100,9 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "trigger_type": str(context.get("trigger_type") or ""),
         "unattended": context.get("trigger_type") in AUTOMATIC_TRIGGERS,
     }
-    if context.get("caller_identity") is not None:
-        flow_input["caller_identity"] = context["caller_identity"]
+    identity = accepted_tool_caller_identity(context.get("caller_identity"))
+    if identity is not None:
+        flow_input["caller_identity"] = identity
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
     manager.set_variable("execution_id", str(context.get("execution_id") or ""))

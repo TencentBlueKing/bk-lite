@@ -799,7 +799,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
   });
 
-  it('Webhook 只保留自动接口与响应模式，并仅在等待模式开放响应节点', async () => {
+  it('Webhook 在立即响应时展示不可添加的响应节点，等待模式才允许添加', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="Webhook 流程" /></App>);
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
@@ -808,24 +808,24 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(await screen.findByText('Webhook 接口')).not.toBeNull();
     const triggerName = screen.getByDisplayValue('Webhook 触发器');
     expect(triggerName.closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: /添加请求输入字段/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /添加请求输入字段/ }));
+    expect(screen.getByDisplayValue('新请求字段')).not.toBeNull();
     expect(screen.getByText('立即响应（返回 execution_id）')).not.toBeNull();
+    expect(screen.getByText('调用方要看到流程结果时，改为「等待流程结果」，再从节点列表添加「Webhook 响应」。')).not.toBeNull();
 
     fireEvent.click(document.querySelector<HTMLButtonElement>('.ant-modal-close')!);
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
-    expect(screen.queryByRole('button', { name: /Webhook 响应/ })).toBeNull();
-    const pickerClose = container.querySelector<HTMLButtonElement>('.ant-drawer-close');
-    expect(pickerClose).not.toBeNull();
-    if (!pickerClose) return;
-    fireEvent.click(pickerClose);
+    expect(screen.getByRole('button', { name: /Webhook 响应/ })).toHaveProperty('disabled', true);
+    await closeTopDialog();
 
-    const trigger = screen.getByRole('button', { name: /Webhook 触发器/ });
-    fireEvent.doubleClick(trigger);
+    const trigger = container.querySelector<HTMLButtonElement>('[data-workflow-node="trigger"] button[aria-label="Webhook 触发器"]');
+    expect(trigger).not.toBeNull();
+    fireEvent.doubleClick(trigger!);
     fireEvent.mouseDown(await screen.findByText('立即响应（返回 execution_id）'));
     fireEvent.click(await screen.findByText('等待流程结果（同步）'));
-    fireEvent.click(document.querySelector<HTMLButtonElement>('.ant-modal-close')!);
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
-    expect(await screen.findByRole('button', { name: /Webhook 响应/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /Webhook 响应/ })).toHaveProperty('disabled', false);
   });
 
   it('Webhook 监听真实测试请求并用 body 推断输入字段', async () => {

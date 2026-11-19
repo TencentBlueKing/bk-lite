@@ -143,6 +143,55 @@ def test_workflow_agent_queries_active_alerts_as_execution_caller(mocker, action
 
 
 @pytest.mark.django_db
+def test_workflow_agent_forwards_supplied_caller_identity_and_does_not_invent_one(mocker):
+    from apps.opspilot.services.chat_service import ChatService
+
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="identity-model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="identity-agent", llm_model=model, team=[7], usage_team=[7])
+    mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    captured = {}
+
+    def invoke(params):
+        captured.clear()
+        captured.update(params)
+        return {"success": True, "message": "处理完成"}, None, None
+
+    mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
+    snapshot = {
+        "username": "dave",
+        "domain": "hook.example",
+        "team_id": 7,
+        "include_children": False,
+    }
+    execute_agent(
+        {
+            "agent_id": skill.id,
+            "message": "统计告警",
+            "__bklite_context": {
+                **_context(),
+                "trigger_type": "WEBHOOK",
+                "caller_identity": snapshot,
+                "locale": "zh-Hans",
+            },
+        }
+    )
+    assert captured["caller_identity"] == snapshot
+    assert captured["locale"] == "zh-Hans"
+
+    execute_agent(
+        {
+            "agent_id": skill.id,
+            "message": "统计告警",
+            "__bklite_context": {**_context(), "trigger_type": "WEBHOOK"},
+        }
+    )
+    assert "caller_identity" not in captured
+    assert captured["locale"] == "en"
+
+
+@pytest.mark.django_db
 def test_workflow_agent_history_separates_distinct_nodes(mocker):
     from apps.opspilot.models import SkillConversation
     from apps.opspilot.services.chat_service import ChatService

@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.viewset_utils import build_json_membership_query
+from apps.system_mgmt.models import User
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.workflow.models import Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
 from apps.workflow.openapi_serializers import (
@@ -68,6 +69,10 @@ def _gateway_execution_identity(user_info, authorized_teams, workflow):
     return None, {"result": False, "message": render_known_message(None, "缺少流程实例操作权限")}
 
 
+def _gateway_execution_locale(identity):
+    return User.objects.filter(username=identity["username"], domain=identity["domain"]).values_list("locale", flat=True).first()
+
+
 @openapi_expose(
     path="workflow/trigger",
     method="POST",
@@ -98,6 +103,7 @@ def openapi_workflow_trigger(trigger_id, idempotency_key, inputs=None, *, team=N
             idempotency_key=idempotency_key,
             started_by=identity["username"],
             domain=identity["domain"],
+            locale=_gateway_execution_locale(identity),
             caller_identity=identity,
             client=client,
         )
@@ -244,6 +250,7 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
             inputs=sealed_inputs,
             started_by=identity["username"],
             domain=identity["domain"],
+            locale=_gateway_execution_locale(identity),
             caller_identity=identity,
             client=ConductorClient(),
             version_number=version.version,
