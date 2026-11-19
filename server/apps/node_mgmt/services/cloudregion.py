@@ -149,7 +149,7 @@ class RegionService:
             "WEBHOOK_SERVER_URL"
         )
         if not webhook_url:
-            logger.error(f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}")
+            logger.error("proxy_package_failed region=%s failed_stage=config error_type=MissingWebhookURL", cloud_region_id)
             raise BaseAppException("Webhook configuration missing")
 
         # 自定义区域会把 NODE_SERVER_URL / NATS_SERVERS 改成代理地址，供区域内节点访问。
@@ -207,7 +207,7 @@ class RegionService:
             missing_vars.append(NodeConstants.NATS_PASSWORD_KEY)
         if missing_vars:
             logger.error(
-                "Missing required environment variables in cloud region %s: %s",
+                "proxy_package_failed region=%s failed_stage=config error_type=MissingConfiguration fields=%s",
                 cloud_region_id,
                 ", ".join(missing_vars),
             )
@@ -295,7 +295,11 @@ class RegionService:
             )
 
             if response.status_code != 200:
-                logger.error("proxy_package_failed region=%s failed_stage=webhook_response status=%s", cloud_region_id, response.status_code)
+                logger.error(
+                    "proxy_package_failed region=%s failed_stage=webhook_response error_type=UnexpectedHTTPStatus status=%s",
+                    cloud_region_id,
+                    response.status_code,
+                )
                 raise BaseAppException("Failed to generate deploy script")
 
             webhook_response = response.json()

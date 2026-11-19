@@ -3,6 +3,8 @@
 仅 mock 真实外部边界（requests.post webhook、AESCryptor 解密、cache）。
 其余断言真实 DB 副作用与返回值。
 """
+import logging
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -925,8 +927,48 @@ def test_get_deploy_script_webhook_non_200_raises(caplog):
     assert "secret-sentinel-full-response" not in str(exc.value)
     assert "secret-sentinel-full-response" not in caplog.text
     record = next(record for record in caplog.records if record.funcName == "get_deploy_script" and record.levelname == "ERROR")
-    assert record.msg == "proxy_package_failed region=%s failed_stage=webhook_response status=%s"
+    assert record.msg == "proxy_package_failed region=%s failed_stage=webhook_response error_type=UnexpectedHTTPStatus status=%s"
     assert record.args == (region.id, 500)
+    assert record.getMessage() == f"proxy_package_failed region={region.id} failed_stage=webhook_response error_type=UnexpectedHTTPStatus status=500"
+    assert response.text not in str(record.args)
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_unexpected_error_keeps_one_sanitized_traceback(monkeypatch, caplog):
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-deploy-exception", proxy_address="6.6.6.6")
+    _build_complete_env(region.id)
+    for key, value in {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.items():
+        monkeypatch.setenv(key, value)
+
+    sentinel = "fixture-sensitive-webhook-exception"
+    original = ValueError(sentinel)
+
+    def read_response():
+        raise original
+
+    response = MagicMock(status_code=200)
+    response.json.side_effect = read_response
+    with patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response), patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ), pytest.raises(BaseAppException, match="^Failed to generate deploy script$"):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    errors = [record for record in caplog.records if record.levelno == logging.ERROR and record.exc_info]
+    (record,) = errors
+    assert record.msg == "proxy_package_failed region=%s failed_stage=webhook_response error_type=%s"
+    assert record.args == (region.id, "ValueError")
+    assert record.getMessage() == f"proxy_package_failed region={region.id} failed_stage=webhook_response error_type=ValueError"
+    assert record.exc_info[2] is original.__traceback__
+    assert record.exc_info[1] is not original
+    assert str(original) == sentinel
+    formatted = logging.Formatter().format(record)
+    assert "in read_response" in formatted
+    assert "RuntimeError: Unexpected Proxy package generation failure" in formatted
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.args)
+    assert sentinel not in formatted
+    assert sentinel not in caplog.text
 
 
 @pytest.mark.django_db

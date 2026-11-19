@@ -19,7 +19,7 @@ load_compose_env() {
     NATS_IMAGE=$(jq -er '.services.nats.image' <<< "$config")
     COLLECTOR_IMAGE=$(jq -er '.services["fusion-collector"].image' <<< "$config")
     HTTPS_PORT=$(jq -er '
-        [.services.traefik.command[] | capture("^--entrypoints[.]websecure[.]address=:(?<port>[0-9]+)$").port]
+        [.services.traefik.command[] | capture("^--entrypoints[.]websecure[.]address=(?:[^:]*|\\[[^]]+\\]):(?<port>[0-9]+)(?:/tcp)?$").port]
         | if length == 1 then .[0] else error("missing HTTPS entry point") end
     ' <<< "$config") || err "Cannot determine the Proxy HTTPS entry point"
 }
@@ -119,7 +119,14 @@ fi
 # Populate the staged bind mount before the new collector can execute these files.
 docker run --rm --network none \
     -v "$PWD/bin:/tmp/bin" --entrypoint=/bin/bash "$COLLECTOR_IMAGE" \
-    -c "cp -ar bin/* /tmp/bin/" || err "Failed to copy binaries"
+    -c 'set -euo pipefail
+        required=$(du -sk bin | awk "{ print \$1 }")
+        available=$(df -Pk /tmp/bin | awk "NR == 2 { print \$4 }")
+        if (( available < required + 65536 )); then
+            echo "Insufficient free space to copy Proxy collector binaries" >&2
+            exit 1
+        fi
+        cp -ar bin/* /tmp/bin/' || err "Failed to copy binaries"
 
 docker compose up -d --force-recreate || err "Services failed to start"
 source=
