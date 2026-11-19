@@ -127,7 +127,7 @@ export default function WaitsPane({
           <MssqlHint
             kind="mssql-wait-top"
             title="等待类别 Top"
-            body="按等待类别汇总，查看哪一类等待占用时间最多。类别名用中文。"
+            body="按等待类别汇总，查看哪一类等待占用时间最多。类别名按源端原文展示。"
           />
         )}
       >

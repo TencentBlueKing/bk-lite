@@ -322,53 +322,9 @@ export const clerkChart = (metricMap: MssqlMetricMap) => {
   };
 };
 
-/** 等待类别展示名。只改卡面上的字，不改源端标签。 */
-const WAIT_CATEGORY_LABELS: Record<string, string> = {
-  memory: '内存',
-  preemptive: '抢占',
-  'buffer io': '缓冲读写',
-  cpu: '处理器',
-  'network io': '网络读写',
-  lock: '锁',
-  latch: '闩锁',
-  'buffer latch': '缓冲闩锁',
-  parallelism: '并行',
-  transaction: '事务',
-  compilation: '编译',
-  idle: '空闲',
-  'worker thread': '工作线程',
-  'tran log io': '日志读写',
-  logging: '日志读写',
-  'other disk io': '其他磁盘读写',
-  'sql clr': '公共语言运行时',
-  mirroring: '镜像',
-  replication: '复制',
-  'service broker': '服务代理',
-  'full text search': '全文检索',
-  tracing: '跟踪',
-  'user wait': '用户等待',
-  'log rate governor': '日志速率限制'
-};
-
-const waitCategoryKey = (raw: string) => raw.trim().replace(/\s+/g, ' ').replace(/I\/O/gi, 'IO').toLowerCase();
-
+/** 等待类别展示名。用源端原文，不翻译，也不收成统称。 */
 export function mssqlWaitCategoryLabel(raw: string): string {
-  const key = waitCategoryKey(raw);
-  if (!key) return '其他等待';
-  const exact = WAIT_CATEGORY_LABELS[key];
-  if (exact) return exact;
-  if (/[\u4e00-\u9fff]/.test(raw)) return raw.trim();
-  const phrases = Object.keys(WAIT_CATEGORY_LABELS).sort((left, right) => right.length - left.length);
-  let rest = ` ${key} `;
-  const parts: string[] = [];
-  phrases.forEach((phrase) => {
-    const token = ` ${phrase} `;
-    if (!rest.includes(token)) return;
-    parts.push(WAIT_CATEGORY_LABELS[phrase]);
-    rest = rest.split(token).join(' ');
-  });
-  const chinese = parts.join('');
-  return chinese && !/[a-z]/i.test(rest) ? chinese : (chinese || '其他等待');
+  return raw.trim();
 }
 
 export const waitCategoryChart = (raw: unknown) => {

@@ -60,6 +60,10 @@ const replicationKpi = (metricMap: Record<string, MetricSeries | undefined>) => 
     'uptime',
     'alerts'
   ]);
+  const alerts = cards.find((card) => card.key === 'alerts');
+  expect(alerts?.label).toBe('告警数量');
+  expect(alerts?.value).toBe('0');
+  expect(alerts?.value).not.toContain('个');
   return cards.find((card) => card.key === 'replication')!;
 };
 

@@ -70,22 +70,19 @@ describe('mssql card units', () => {
     expect(MSSQL_SIDE_PLOT_PX).toBe(132);
   });
 
-  it('个数不叠「个」，死锁仍用次，等待类别用中文名', () => {
+  it('个数不叠「个」，死锁仍用次，等待类别保留源端原文', () => {
     expect(formatCount(41, '个')).toBe('41');
     expect(formatCount(0, '个')).toBe('0');
     expect(formatCount(3, '次')).toBe('3 次');
-    expect(mssqlWaitCategoryLabel('Memory')).toBe('内存');
-    expect(mssqlWaitCategoryLabel('Preemptive')).toBe('抢占');
-    expect(mssqlWaitCategoryLabel('Buffer IO')).toBe('缓冲读写');
-    expect(mssqlWaitCategoryLabel('Buffer I/O')).toBe('缓冲读写');
-    expect(mssqlWaitCategoryLabel('CPU')).toBe('处理器');
-    expect(mssqlWaitCategoryLabel('Network IO')).toBe('网络读写');
-    expect(mssqlWaitCategoryLabel('Network I/O')).toBe('网络读写');
-    expect(mssqlWaitCategoryLabel('Lock')).toBe('锁');
-    expect(mssqlWaitCategoryLabel('Latch')).toBe('闩锁');
-    expect(mssqlWaitCategoryLabel('Tran Log IO')).toBe('日志读写');
-    expect(mssqlWaitCategoryLabel('SQL CLR')).toBe('公共语言运行时');
+    expect(mssqlWaitCategoryLabel('Memory')).toBe('Memory');
+    expect(mssqlWaitCategoryLabel('Preemptive')).toBe('Preemptive');
+    expect(mssqlWaitCategoryLabel('Buffer IO')).toBe('Buffer IO');
+    expect(mssqlWaitCategoryLabel('Buffer I/O')).toBe('Buffer I/O');
+    expect(mssqlWaitCategoryLabel('CPU')).toBe('CPU');
+    expect(mssqlWaitCategoryLabel('Network IO')).toBe('Network IO');
+    expect(mssqlWaitCategoryLabel('Lock')).toBe('Lock');
     expect(mssqlWaitCategoryLabel('类别1')).toBe('类别1');
-    expect(mssqlWaitCategoryLabel('Something New')).toBe('其他等待');
+    expect(mssqlWaitCategoryLabel('Something New')).toBe('Something New');
+    expect(mssqlWaitCategoryLabel('  CPU  ')).toBe('CPU');
   });
 });

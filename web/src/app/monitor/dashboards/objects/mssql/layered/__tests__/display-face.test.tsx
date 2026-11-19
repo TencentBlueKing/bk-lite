@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MetricSeries } from '../../../common/simple-dashboard-core';
@@ -190,7 +190,9 @@ describe('mssql display face', () => {
     const section = side?.querySelector('section');
     const frame = side?.querySelector('[data-mssql-series-frame]');
     const list = frame?.querySelector('[data-mssql-series-readout]');
-    expect(side?.className).toContain('220px');
+    expect(side?.className).toContain('3fr');
+    expect(side?.className).toContain('1fr');
+    expect(side?.className).not.toContain('220px');
     expect(side?.className).toContain('gap-4');
     expect(list).toBeTruthy();
     expect(section?.contains(list || null)).toBe(false);
@@ -207,6 +209,47 @@ describe('mssql display face', () => {
     expect(swatch?.getAttribute('style')).toBeTruthy();
     expect(value?.style.color).toBe(swatch?.style.backgroundColor);
     expect(value?.textContent).not.toMatch(/\.\d{3}/);
+  });
+
+  it('右栏多选只留下选中折线，未选行仍在，卸掉再挂上回到全部', () => {
+    const names = () => {
+      const option = [...seen.options].reverse().find((item) => Array.isArray(item?.series) && item.series.length);
+      return (option?.series || []).map((item: { name?: string }) => item.name);
+    };
+    const props = {
+      metricMap: {
+        mssql_pro_clerks: clerkSeries([{
+          time: 1,
+          value1: 1024 * 1024,
+          value2: 512 * 1024,
+          seriesMetrics: {
+            value1: { clerk_type: 'SOS Node' },
+            value2: { clerk_type: 'Buffer Pool' }
+          }
+        } as never])
+      },
+      pendingMetricNames: new Set<string>()
+    };
+    const view = mount(<BufferPane {...props} />);
+    expect(names()).toEqual(['SOS Node', 'Buffer Pool']);
+    const sos = view.getByRole('button', { name: /SOS Node/ });
+    const pool = view.getByRole('button', { name: /Buffer Pool/ });
+    fireEvent.click(sos);
+    expect(sos.getAttribute('aria-pressed')).toBe('true');
+    expect(sos.getAttribute('data-mssql-readout-selected')).toBe('true');
+    expect(sos.className).toContain('bg-[var(--color-fill-1)]');
+    expect(pool.getAttribute('aria-pressed')).toBe('false');
+    expect(view.getByText('Buffer Pool')).toBeTruthy();
+    expect(names()).toEqual(['SOS Node']);
+    fireEvent.click(pool);
+    expect(names()).toEqual(['SOS Node', 'Buffer Pool']);
+    fireEvent.click(sos);
+    fireEvent.click(pool);
+    expect(names()).toEqual(['SOS Node', 'Buffer Pool']);
+    view.unmount();
+    const again = mount(<BufferPane {...props} />);
+    expect(again.getByRole('button', { name: /SOS Node/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(names()).toEqual(['SOS Node', 'Buffer Pool']);
   });
 
   it('压力排行三组同时可见，TempDB 两条 MiB 序列共用左轴', async () => {

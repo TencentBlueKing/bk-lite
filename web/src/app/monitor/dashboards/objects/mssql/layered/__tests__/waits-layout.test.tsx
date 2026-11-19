@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MSSQL_PRO_WAIT_CATEGORY_QUERY } from '../queries';
 import WaitsPane from '../waits-pane';
 
 const query = vi.hoisted(() => vi.fn());
@@ -58,19 +59,30 @@ describe('mssql waits layout', () => {
     });
     const frame = top?.querySelector('[data-mssql-series-frame]');
     const plot = top?.querySelector('section');
+    const side = top?.querySelector('[data-mssql-side-readout]');
     expect(plot?.contains(frame || null)).toBe(false);
+    expect(side?.className).toContain('3fr');
+    expect(side?.className).toContain('1fr');
+    expect(side?.className).not.toContain('220px');
     expect(top?.querySelectorAll('[data-mssql-series-readout] li')).toHaveLength(8);
-    expect(top?.textContent).toContain('内存');
-    expect(top?.textContent).toContain('抢占');
-    expect(top?.textContent).toContain('缓冲读写');
-    expect(top?.textContent).toContain('处理器');
-    expect(top?.textContent).toContain('网络读写');
+    expect(top?.textContent).toContain('Memory');
+    expect(top?.textContent).toContain('Preemptive');
+    expect(top?.textContent).toContain('Buffer IO');
+    expect(top?.textContent).toContain('CPU');
+    expect(top?.textContent).toContain('Network IO');
+    expect(top?.textContent).toContain('Lock');
+    expect(top?.textContent).toContain('Latch');
+    expect(top?.textContent).toContain('类别8');
     expect(top?.textContent).toContain('ms/s');
-    expect(top?.textContent).not.toContain('Memory');
-    expect(top?.textContent).not.toContain('Preemptive');
-    expect(top?.textContent).not.toContain('Buffer IO');
-    expect(top?.textContent).not.toContain('CPU');
-    expect(top?.textContent).not.toContain('Network IO');
+    expect(top?.textContent).not.toContain('内存');
+    expect(top?.textContent).not.toContain('抢占');
+    expect(top?.textContent).not.toContain('缓冲读写');
+    expect(top?.textContent).not.toContain('处理器');
+    expect(top?.textContent).not.toContain('网络读写');
+    expect(top?.textContent).not.toContain('其他等待');
     expect(top?.textContent).not.toContain(' min');
+    expect(MSSQL_PRO_WAIT_CATEGORY_QUERY).toBe(
+      'topk(8, sum by (wait_category) (rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])))'
+    );
   });
 });
