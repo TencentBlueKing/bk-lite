@@ -22,7 +22,7 @@ class Command(BaseCommand):
         live_index = _live_instance_index()
         plans = [(_conflict_id(instance, live_index), instance) for instance in candidates]
         restorable = [instance for conflict_id, instance in plans if conflict_id is None]
-        node_labels = {instance.id: _node_label(instance) for instance in restorable}
+        node_labels = {instance.id: _node_label(instance) for _, instance in plans}
         if apply and restorable:
             with transaction.atomic():
                 _apply_restore(restorable)

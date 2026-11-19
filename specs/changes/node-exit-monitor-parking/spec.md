@@ -58,7 +58,7 @@ Status: implemented
 
 ### 存量与删除项
 
-- 存量命令 `python manage.py restore_node_exit_parked_hosts`：默认 dry-run；`--apply` 把 `is_deleted=True,is_active=False` 且有 `CollectConfig`、同对象同 IP 同云区域无活实例的行恢复为活实例，并把配置标 `executor_node_removed=True`。冲突只报告。局限：候选不区分软删来源；两条同 IP 软删行之间不判冲突。
+- 存量命令 `python manage.py restore_node_exit_parked_hosts`：默认 dry-run；`--apply` 把 `is_deleted=True,is_active=False` 且有 `CollectConfig`、同对象同 IP 同云区域无活实例的行恢复为活实例，并把配置标 `executor_node_removed=True`。冲突只报告、不落库；节点列仍用同一套身份，两边都没有才是 `node=none`。局限：候选不区分软删来源；两条同 IP 软删行之间不判冲突。
 - 删除 `module_ingest.py` 的 `_retired_by_node_exit`（不再对软删行另建 uuid）、`_handle_lifecycle` 的 node_mgmt 软删分支（node_mgmt 来源 lifecycle 直接 skipped）、`module_push.py` 的 `best_effort_retire_linked` / `parse_retire_linked_flag`、前端 `retireLinkedConfirm`。`retire_linked` 查询参数被忽略。
 - 更新 `legacy-ard-modules-monitor.md`、`legacy-ard-modules-node-mgmt.md`、`legacy-ard-modules-cmdb.md` 中与节点退役软删监控相关的句子。
 
