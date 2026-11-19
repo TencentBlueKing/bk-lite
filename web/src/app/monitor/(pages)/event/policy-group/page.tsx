@@ -767,7 +767,9 @@ const PolicyGroupPage: React.FC = () => {
           const name = r.plugin_name || '其他';
           pluginCounts[name] = (pluginCounts[name] || 0) + 1;
         });
-        const pluginEntries = Object.entries(pluginCounts);
+        const pluginEntries = Object.entries(pluginCounts).sort(
+          (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'),
+        );
         const content = (
           <div className="inline-flex flex-col">
             <Button
@@ -794,14 +796,14 @@ const PolicyGroupPage: React.FC = () => {
             getPopupContainer={() => document.body}
             styles={{ body: { padding: 0, borderRadius: 8 } }}
             content={
-              <div className="w-[240px]">
+              <div className="w-[280px]">
                 <div className="border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-xs font-medium text-[var(--color-text-1)]">
                   涵盖监控模板分布
                 </div>
-                <div className="space-y-1.5 px-3 py-2">
+                <div className="max-h-[240px] space-y-1.5 overflow-y-auto overscroll-contain px-3 py-2">
                   {pluginEntries.map(([name, count]) => (
                     <div key={name} className="flex items-center justify-between gap-4 text-xs">
-                      <span className="min-w-0 truncate text-[var(--color-text-1)]">{name}</span>
+                      <span className="min-w-0 truncate text-[var(--color-text-1)]" title={name}>{name}</span>
                       <span className="shrink-0 font-mono tabular-nums text-[var(--color-text-2)]">{count} 条</span>
                     </div>
                   ))}
