@@ -118,6 +118,15 @@ error:
   cloud_test_requires_saved_channel: 请先保存渠道，再测试发送
   cloud_test_phone_missing: 当前用户没有可用手机号
   cloud_test_content_required: 测试发送需要标题和正文
+  notification_channel_pack_not_loaded: 通知渠道包未加载
+  notification_channel_secret_unreadable: 密钥无法解密
+  notification_channel_config_incomplete: 渠道配置不完整
+  notification_channel_config_invalid: 渠道配置必须是对象
+  notification_channel_content_invalid: 通知标题或正文无效
+  notification_channel_phone_missing: 没有电话
+  notification_channel_parameter_name_required: 参数名不能为空
+  notification_channel_send_unknown: 发送结果未知
+  notification_channel_send_rejected: 渠道拒绝发送
   account_association_provider_mismatch: 账号关联与当前群聊渠道的平台不一致
   account_association_not_found: 账号关联不存在
   account_association_not_ready: 账号关联还不能用于发送，请先完成更新

@@ -1,16 +1,64 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
 import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
+import { useChannelApi } from '@/app/system-manager/api/channel';
+
+interface ChannelCard {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  url?: string;
+}
+
+const includeUploadedPacks = Boolean(process.env.ENTERPRISE_WEB_ROOT);
 
 const ChannelPage = () => {
   const { t } = useTranslation();
   const router = useScreenAwareRouter();
+  const { getNotificationChannelPacks } = useChannelApi();
+  const [packCards, setPackCards] = useState<ChannelCard[]>([]);
+  const [packsReady, setPacksReady] = useState(!includeUploadedPacks);
 
-  const [dataList] = useState([
+  useEffect(() => {
+    if (!includeUploadedPacks) {
+      return;
+    }
+    let cancelled = false;
+    getNotificationChannelPacks()
+      .then((packs) => {
+        if (cancelled) {
+          return;
+        }
+        setPackCards(
+          packs.map((pack) => ({
+            id: pack.key,
+            name: pack.name || pack.key,
+            icon: 'wendaduihua',
+            description: pack.description || t('system.channel.packDesc'),
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPackCards([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPacksReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [dataList] = useState<ChannelCard[]>([
     {
       id: 'email',
       name: t('system.channel.email'),
@@ -50,7 +98,9 @@ const ChannelPage = () => {
     },
   ]);
 
-  const handleCardClick = (item: typeof dataList[number]) => {
+  const cards = [...dataList, ...packCards];
+
+  const handleCardClick = (item: ChannelCard) => {
     if (item.url) {
       router.push(item.url);
       return;
@@ -64,8 +114,8 @@ const ChannelPage = () => {
       <SystemManagerEntityGrid
         title={t('system.channel.pageTitle')}
         description={t('system.channel.pageDesc')}
-        items={dataList}
-        loading={false}
+        items={cards}
+        loading={!packsReady}
         compactSkeleton
         getItemKey={(item) => item.id}
         renderCard={(item) => (

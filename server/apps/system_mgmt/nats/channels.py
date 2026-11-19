@@ -15,6 +15,7 @@ from apps.system_mgmt.services.cloud_notify.config import masked_config
 from apps.system_mgmt.services.cloud_notify.delivery import send_cloud_notification
 from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
+from apps.system_mgmt.services.notification_channel_pack import public_channel_config, send_loaded_notification_channel
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
 
@@ -35,7 +36,9 @@ def get_channel_detail(channel_id, locale=None):
     return_data = {
         "name": channel_obj.name,
         "description": localized_channel_description(channel_obj.description, locale),
-        "config": masked_config(channel_obj) if channel_obj.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE} else channel_obj.config,
+        "config": masked_config(channel_obj)
+        if channel_obj.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}
+        else public_channel_config(channel_obj),
         "team": channel_obj.team,
         "channel_type": channel_obj.channel_type,
     }
@@ -709,7 +712,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         if error:
             return error
         return send_nats_message(channel_obj, normalized)
-    return {"result": False, "message": "Unsupported channel type"}
+    return send_loaded_notification_channel(channel_obj, title, content, receivers)
 
 
 OPSPILOT_CHANNEL_SOURCE = "opspilot"

@@ -278,8 +278,8 @@ def test_cloud_test_send_uses_the_saved_channel_and_current_user_phone(super_cli
             {
                 "channel_id": channel.id,
                 "channel_type": ChannelChoices.SMS,
-                "title": "测试标题",
-                "content": "测试正文",
+                "title": "请求里的标题不会被使用",
+                "content": "请求里的正文不会被使用",
                 "config": {"secret_key": "******mask"},
             },
             format="json",
@@ -290,6 +290,6 @@ def test_cloud_test_send_uses_the_saved_channel_and_current_user_phone(super_cli
     saved, title, content, receivers = send.call_args.args
     assert saved.id == channel.id
     assert saved.config["secret_key"] == "stored-secret"
-    assert title == "测试标题"
-    assert content == "测试正文"
+    assert title == "[短信] Test Message"
+    assert content == "This is a test message from channel '短信'. Receiver: 管理员"
     assert receivers == [SysUser.objects.get(username="chadmin").id]

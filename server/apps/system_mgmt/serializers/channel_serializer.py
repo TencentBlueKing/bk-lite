@@ -12,6 +12,14 @@ from apps.system_mgmt.services.cloud_notify.config import (
     validate_cloud_config,
 )
 from apps.system_mgmt.services.group_channel_mention import provider_for_group_channel
+from apps.system_mgmt.services.notification_channel_pack import (
+    apply_pack_secrets,
+    encrypt_pack_secrets,
+    masked_pack_config,
+    notification_manifest,
+    retain_pack_config,
+    validate_pack_channel_config,
+)
 from apps.system_mgmt.services.notification_tag import assign_channel_tags, channel_tag_tokens, parse_tag_tokens
 from apps.system_mgmt.utils.i18n import localized_channel_description
 
@@ -23,6 +31,7 @@ except (ImportError, ModuleNotFoundError):
 
 class ChannelSerializer(UsernameSerializer):
     tag = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
+    channel_type = serializers.CharField(max_length=30)
 
     # 各 channel_type 需要加密的字段列表
     ENCRYPT_FIELDS_MAP = {
@@ -62,6 +71,10 @@ class ChannelSerializer(UsernameSerializer):
         data["tag"] = channel_tag_tokens(instance)
         if instance.channel_type in self.CLOUD_CHANNEL_TYPES:
             data["config"] = masked_config(instance)
+        else:
+            manifest = notification_manifest(instance.channel_type)
+            if manifest is not None:
+                data["config"] = masked_pack_config(instance, manifest)
         return data
 
     def validate_tag(self, value):
@@ -111,6 +124,9 @@ class ChannelSerializer(UsernameSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         channel_type = attrs.get("channel_type", getattr(self.instance, "channel_type", None))
+        manifest = notification_manifest(channel_type)
+        if channel_type not in set(ChannelChoices.values) and manifest is None:
+            raise serializers.ValidationError({"channel_type": self._loader().get("error.notification_channel_pack_not_loaded")})
         if channel_type == ChannelChoices.NATS:
             config = attrs.get("config", getattr(self.instance, "config", {}) or {})
             self.validate_nats_config(config)
@@ -121,6 +137,17 @@ class ChannelSerializer(UsernameSerializer):
             cloud_errors = validate_cloud_config(channel_type, config, preserved)
             if cloud_errors:
                 raise serializers.ValidationError({"config": self._localize_cloud_errors(cloud_errors)})
+        if manifest is not None and "config" in attrs:
+            config = attrs.get("config")
+            if not isinstance(config, dict):
+                raise serializers.ValidationError({"config": self._loader().get("error.notification_channel_config_invalid")})
+            config = retain_pack_config(config, manifest)
+            preserved = apply_pack_secrets(config, self.instance.config, self.instance, manifest) if self.instance is not None else set()
+            pack_errors = validate_pack_channel_config(manifest, config, preserved)
+            if pack_errors:
+                raise serializers.ValidationError({"config": self._localize_cloud_errors(pack_errors)})
+            attrs["config"] = config
+            attrs["_pack_preserved_secrets"] = preserved
         if "account_association" in attrs:
             association = attrs.get("account_association")
         else:
@@ -134,8 +161,13 @@ class ChannelSerializer(UsernameSerializer):
 
     def create(self, validated_data):
         pairs = validated_data.pop("tag", [])
+        preserved = validated_data.pop("_pack_preserved_secrets", set())
+        manifest = notification_manifest(validated_data.get("channel_type"))
         if validated_data.get("config"):
-            self.encode_config(validated_data)
+            if manifest is not None:
+                encrypt_pack_secrets(validated_data["config"], manifest, preserved)
+            else:
+                self.encode_config(validated_data)
         with transaction.atomic():
             instance = super().create(validated_data)
             assign_channel_tags(instance, pairs, actor=self._actor())
@@ -144,8 +176,13 @@ class ChannelSerializer(UsernameSerializer):
     def update(self, instance, validated_data):
         tag_provided = "tag" in self.initial_data
         pairs = validated_data.pop("tag", [])
+        preserved = validated_data.pop("_pack_preserved_secrets", set())
+        manifest = notification_manifest(instance.channel_type)
         if validated_data.get("config"):
-            self.encode_config(validated_data, instance.config, instance.channel_type)
+            if manifest is not None:
+                encrypt_pack_secrets(validated_data["config"], manifest, preserved)
+            else:
+                self.encode_config(validated_data, instance.config, instance.channel_type)
         else:
             validated_data["config"] = instance.config
         with transaction.atomic():

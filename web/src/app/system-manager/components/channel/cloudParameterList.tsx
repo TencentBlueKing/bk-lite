@@ -13,7 +13,7 @@ export interface CloudTemplateParameter {
 interface CloudParameterListProps {
   value?: CloudTemplateParameter[];
   onChange?: (value: CloudTemplateParameter[]) => void;
-  provider?: string;
+  showName?: boolean;
 }
 
 const SOURCES = [
@@ -22,7 +22,7 @@ const SOURCES = [
   { value: 'literal', labelKey: 'system.channel.settings.cloudSourceLiteral' },
 ] as const;
 
-const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange, provider }) => {
+const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange, showName = false }) => {
   const { t } = useTranslation();
   const items = Array.isArray(value) ? value : [];
   const update = (next: CloudTemplateParameter[]) => onChange?.(next);
@@ -41,7 +41,7 @@ const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange
               update(next);
             }}
           />
-          {provider === 'aliyun' ? (
+          {showName ? (
             <Input
               className="w-[140px]"
               value={item.name}

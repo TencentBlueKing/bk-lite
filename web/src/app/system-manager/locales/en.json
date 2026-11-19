@@ -1300,6 +1300,7 @@
         "testTitle": "Test title",
         "testContent": "Test body",
         "cloudTestSaveFirst": "Save the channel before sending a test",
+        "packNotLoaded": "The notification channel pack is not loaded, so it cannot be saved",
         "cloudTestContentRequired": "A test send needs a title and a body"
       },
       "table": {
@@ -1321,6 +1322,7 @@
       "natsDesc": "The NATS channel supports notification push through NATS message queue.",
       "sms": "SMS",
       "smsDesc": "The SMS channel sends notifications with a template the customer has already had approved at Tencent Cloud or Alibaba Cloud.",
+      "packDesc": "Provided by a loaded notification channel pack.",
       "voice": "Voice",
       "voiceDesc": "The voice channel places notification calls with a template the customer has already had approved at Tencent Cloud or Alibaba Cloud.",
       "feishu": "Feishu Bot",
@@ -1691,7 +1693,9 @@
         "authorVersion": "Author version",
         "upload": "Upload",
         "uploadModalTitle": "Upload Provider pack",
-        "uploadModalHint": "Upload a zip of 10MB or less. After it succeeds, the new type can be chosen in Add Integration.",
+        "uploadModalHint": "Upload a zip of 10MB or less.",
+        "uploadModalHintIntegration": "After it succeeds, the new type can be chosen in Add Integration.",
+        "uploadModalHintNotificationChannel": "After it succeeds, a new channel card appears on the Notification Channels page.",
         "uploadDropHint": "Drop a zip here, or click to choose a file",
         "uploadFileRequired": "Choose a zip file first",
         "replace": "Replace",
@@ -1713,7 +1717,16 @@
         "loadLoaded": "Loaded",
         "loadFailed": "Load failed",
         "loadFailedReason": "Reason: {errorType}",
-        "builtinNoActions": "Built-in types cannot be replaced or uninstalled"
+        "builtinNoActions": "Built-in types cannot be replaced or uninstalled",
+        "purpose": "Purpose",
+        "purposeIntegration": "Integration",
+        "purposeNotificationChannel": "Notification channel",
+        "purposeRequired": "Choose a purpose first",
+        "replaceConfirmChannels": "This overwrites the installed channel pack. {count} channel instance(s) will be affected. Existing configuration is kept, and the next send uses the new pack.",
+        "uninstallConfirmChannels": "This takes the channel offline. Uninstall succeeds only when no channel instances use it.",
+        "uninstallHasChannels": "Delete the channel instances before uninstalling this pack.",
+        "deliveryChanged": "Delivery cannot change while channel instances exist",
+        "replaceUnavailable": "This pack is not loaded, so it cannot be replaced"
       },
       "createInstanceDesc": "Select a type from the list of connected integrated systems to create an instance of the integrated system"
     },

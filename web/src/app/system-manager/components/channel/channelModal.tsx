@@ -6,7 +6,7 @@ import { Button, Form, message, Select, Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
-import { useChannelApi } from '@/app/system-manager/api/channel';
+import { NotificationChannelPack, useChannelApi } from '@/app/system-manager/api/channel';
 import { useNatsChannelExtension } from '@/app/system-manager/hooks/useNatsChannelExtension';
 import { ChannelType } from '@/app/system-manager/types/channel';
 import NotificationTagSelect, { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
@@ -21,6 +21,36 @@ interface ChannelModalProps {
 }
 
 const WEBHOOK_SUB_TYPES: ChannelType[] = ['enterprise_wechat_bot', 'feishu_bot', 'dingtalk_bot', 'custom_webhook'];
+const BUILTIN_CHANNEL_TYPES = new Set<string>([
+  'email',
+  'enterprise_wechat',
+  'enterprise_wechat_bot',
+  'nats',
+  'feishu_bot',
+  'dingtalk_bot',
+  'custom_webhook',
+  'sms',
+  'voice',
+]);
+
+const packControlType = (field: NotificationChannelPack['instance_template'][number]) => {
+  if (field.secret || field.field_type === 'password') {
+    return 'editablePwd';
+  }
+  if (field.field_type === 'textarea') {
+    return 'textarea';
+  }
+  if (field.field_type === 'number') {
+    return 'inputNumber';
+  }
+  if (field.field_type === 'boolean') {
+    return 'switch';
+  }
+  if (field.field_type === 'select') {
+    return 'select';
+  }
+  return 'input';
+};
 
 const GROUP_BOT_PROVIDER: Partial<Record<ChannelType, string>> = {
   enterprise_wechat_bot: 'wecom',
@@ -147,6 +177,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     testChannel,
     getNotificationTagCatalog,
     getGroupAccountAssociationOptions,
+    getNotificationChannelPacks,
   } = useChannelApi();
   const natsExtension = useNatsChannelExtension();
   const [loading, setLoading] = useState<boolean>(false);
@@ -165,6 +196,8 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
 
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
   const isCloudChannel = channelType === 'sms' || channelType === 'voice';
+  const isPackChannel = !BUILTIN_CHANNEL_TYPES.has(channelType);
+  const [packManifest, setPackManifest] = useState<NotificationChannelPack | null>(null);
 
   const watchedSubType = Form.useWatch('sub_type', form);
   const watchedNatsMode = Form.useWatch('nats_mode', form);
@@ -263,7 +296,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: '',
         channel_type: isWebhookChannel ? defaultSubType : channelType,
         description: '',
-        config: channelType === 'email' ? ensureEmailConfig() : isCloudChannel ? cloudDefaultConfig() : channelType === 'nats' ? {
+        config: isPackChannel ? {} : channelType === 'email' ? ensureEmailConfig() : isCloudChannel ? cloudDefaultConfig() : channelType === 'nats' ? {
           ...(natsExtension?.buildInitialConfig() || {
             nats_mode: 'request_reply',
             namespace: '',
@@ -275,6 +308,47 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
     }
   }, [type, channelId, visible]);
+
+  useEffect(() => {
+    if (!visible || !isPackChannel) {
+      setPackManifest(null);
+      return;
+    }
+    let cancelled = false;
+    getNotificationChannelPacks()
+      .then((packs) => {
+        if (!cancelled) {
+          setPackManifest(packs.find((pack) => pack.key === channelType) || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPackManifest(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, isPackChannel, channelType]);
+
+  useEffect(() => {
+    if (!visible || !isPackChannel || !packManifest || type !== 'add') {
+      return;
+    }
+    const config: Record<string, unknown> = {};
+    packManifest.instance_template.forEach((field) => {
+      config[field.key] = field.default ?? '';
+    });
+    if (packManifest.delivery === 'template') {
+      config.parameters = [];
+    }
+    setChannelData({
+      name: '',
+      channel_type: channelType,
+      description: '',
+      config,
+    });
+  }, [visible, isPackChannel, packManifest, type, channelType]);
 
   useEffect(() => {
     if (!visible || !isWebhookChannel || !GROUP_BOT_PROVIDER[subType]) {
@@ -334,6 +408,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleOk = async () => {
     try {
       setConfirmLoading(true);
+      if (isPackChannel && !packManifest) {
+        message.error(t('system.channel.settings.packNotLoaded'));
+        return;
+      }
       const values = await form.validateFields();
       const payload = buildChannelPayload(values);
 
@@ -407,6 +485,15 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         if (!keep.has(key)) delete finalConfig[key];
       });
     }
+    if (isPackChannel && packManifest) {
+      const keep = new Set(packManifest.instance_template.map((field) => field.key));
+      if (packManifest.delivery === 'template') {
+        keep.add('parameters');
+      }
+      Object.keys(finalConfig).forEach((key) => {
+        if (!keep.has(key)) delete finalConfig[key];
+      });
+    }
 
     const webhookType = (values.sub_type || subType) as ChannelType;
     return {
@@ -425,21 +512,14 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleTest = async () => {
     try {
       setTestLoading(true);
-      if (isCloudChannel) {
+      if (isCloudChannel || isPackChannel) {
         if (type !== 'edit' || !channelId) {
           message.warning(t('system.channel.settings.cloudTestSaveFirst'));
-          return;
-        }
-        const values = form.getFieldsValue();
-        if (!String(values.test_title || '').trim() || !String(values.test_content || '').trim()) {
-          message.warning(t('system.channel.settings.cloudTestContentRequired'));
           return;
         }
         await testChannel({
           channel_id: channelId,
           channel_type: channelType,
-          title: values.test_title,
-          content: values.test_content,
         });
         message.success(t('system.channel.settings.testSuccess'));
         return;
@@ -660,23 +740,33 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: 'parameters',
         type: 'cloudParameters',
         label: t('system.channel.settings.parameters'),
-        component: <CloudParameterList provider={provider} />,
-      },
-      {
-        name: 'test_title',
-        type: 'input',
-        label: t('system.channel.settings.testTitle'),
-        rules: [{ required: false }],
-      },
-      {
-        name: 'test_content',
-        type: 'textarea',
-        label: t('system.channel.settings.testContent'),
-        rows: 3,
-        rules: [{ required: false }],
+        component: <CloudParameterList showName={provider === 'aliyun'} />,
       },
     ] : [];
 
+    const packFields = isPackChannel && packManifest ? [
+      ...packManifest.instance_template.map((field) => ({
+        name: field.key,
+        type: packControlType(field),
+        label: field.label || field.key,
+        placeholder: field.placeholder || '',
+        options: field.options,
+        rules: [{
+          required: field.required && (type === 'add' || !field.secret),
+          message: t('common.inputMsg'),
+        }],
+      })),
+      ...(packManifest.delivery === 'template' ? [{
+        name: 'parameters',
+        type: 'cloudParameters',
+        label: t('system.channel.settings.parameters'),
+        component: <CloudParameterList showName={packManifest.parameter_mode === 'named'} />,
+      }] : []),
+    ] : [];
+
+    if (isPackChannel) {
+      return [...basicFields, ...packFields];
+    }
     return [...basicFields, ...(isCloudChannel ? cloudFields : configFields)];
   }, [
     channelData.config,
@@ -689,6 +779,8 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     tagOptions,
     subType,
     isCloudChannel,
+    isPackChannel,
+    packManifest,
     watchedProvider,
     type,
     associationOptions,

@@ -11,9 +11,17 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
 from apps.system_mgmt.models import Channel, ChannelChoices, IMAccountAssociation, NotificationTag, User
 from apps.system_mgmt.models.im_account_association import IMAccountAssociationStatusChoices
+from apps.system_mgmt.providers.pack_i18n import localize_public_manifest, request_locale
+from apps.system_mgmt.providers.registry import get_provider_registry
 from apps.system_mgmt.serializers import ChannelSerializer
 from apps.system_mgmt.services.cloud_notify.delivery import send_cloud_notification
 from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel, provider_for_group_channel
+from apps.system_mgmt.services.notification_channel_pack import (
+    is_loaded_notification_channel,
+    notification_capability,
+    notification_manifest,
+    send_loaded_notification_channel,
+)
 from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
 from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -203,6 +211,28 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(methods=["GET"], detail=False, url_path="notification_channel_packs")
+    @HasPermission("channel_list-View")
+    def notification_channel_packs(self, request, *args, **kwargs):
+        locale = request_locale(request)
+        items = []
+        for manifest in get_provider_registry().list():
+            capability = manifest.get_capability("notification_channel")
+            if capability is None:
+                continue
+            public = localize_public_manifest(manifest, locale)
+            items.append(
+                {
+                    "key": public["key"],
+                    "name": public["name"],
+                    "description": public["description"],
+                    "delivery": capability.delivery,
+                    "parameter_mode": capability.parameter_mode,
+                    "instance_template": public["instance_template"],
+                }
+            )
+        return Response(items)
+
     @HasPermission("channel_list-View")
     def retrieve(self, request, *args, **kwargs):
         obj = self.get_object()
@@ -376,6 +406,14 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             at_kwargs = {"at_user_ids": at_user_ids, "at_mobiles": at_mobiles}
         return content, [], at_kwargs
 
+    @staticmethod
+    def _fixed_template_test_copy(channel, user):
+        channel_name = channel.name or "Test Channel"
+        receiver_name = getattr(user, "display_name", None) or getattr(user, "username", None) or ""
+        title = f"[{channel_name}] Test Message"
+        content = f"This is a test message from channel '{channel_name}'. Receiver: {receiver_name}"
+        return title, content
+
     def _test_saved_cloud_channel(self, request, channel_type):
         loader = self._get_loader(request)
         channel = Channel.objects.filter(id=request.data.get("channel_id"), channel_type=channel_type).first()
@@ -388,11 +426,33 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         user = User.objects.filter(username=request.user.username, domain=domain).first()
         if user is None or not (user.phone or "").strip():
             return Response({"result": False, "message": loader.get("error.cloud_test_phone_missing")}, status=400)
-        title = request.data.get("title")
-        content = request.data.get("content")
-        if not isinstance(title, str) or not title.strip() or not isinstance(content, str) or not content.strip():
-            return Response({"result": False, "message": loader.get("error.cloud_test_content_required")}, status=400)
+        title, content = self._fixed_template_test_copy(channel, user)
         result = send_cloud_notification(channel, title, content, [user.id])
+        return Response(
+            {"result": result.get("result"), "message": result.get("message"), "recipients": result.get("recipients")},
+            status=200 if result.get("result") else 400,
+        )
+
+    def _test_saved_pack_channel(self, request, channel_type):
+        loader = self._get_loader(request)
+        channel = Channel.objects.filter(id=request.data.get("channel_id"), channel_type=channel_type).first()
+        if channel is None:
+            return Response({"result": False, "message": loader.get("error.cloud_test_requires_saved_channel")}, status=400)
+        is_valid, error_response = self._validate_channel_permission(request, channel)
+        if not is_valid:
+            return error_response
+        manifest = notification_manifest(channel_type)
+        capability = notification_capability(manifest)
+        receivers = []
+        title, content = self._fixed_template_test_copy(channel, request.user)
+        if capability is not None and capability.delivery == "template":
+            domain = getattr(request.user, "domain", None) or "domain.com"
+            user = User.objects.filter(username=request.user.username, domain=domain).first()
+            if user is None or not (user.phone or "").strip():
+                return Response({"result": False, "message": loader.get("error.cloud_test_phone_missing")}, status=400)
+            receivers = [user.id]
+            title, content = self._fixed_template_test_copy(channel, user)
+        result = send_loaded_notification_channel(channel, title, content, receivers)
         return Response(
             {"result": result.get("result"), "message": result.get("message"), "recipients": result.get("recipients")},
             status=200 if result.get("result") else 400,
@@ -414,6 +474,8 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         }
         if channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
             return self._test_saved_cloud_channel(request, channel_type)
+        if is_loaded_notification_channel(channel_type):
+            return self._test_saved_pack_channel(request, channel_type)
         if channel_type not in supported_types:
             return Response({"result": False, "message": "Unsupported channel type"}, status=400)
 

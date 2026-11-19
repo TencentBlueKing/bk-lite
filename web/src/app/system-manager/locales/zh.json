@@ -1300,6 +1300,7 @@
         "testTitle": "测试标题",
         "testContent": "测试正文",
         "cloudTestSaveFirst": "请先保存渠道，再测试发送",
+        "packNotLoaded": "通知渠道包未加载，不能保存",
         "cloudTestContentRequired": "测试发送需要标题和正文"
       },
       "table": {
@@ -1321,6 +1322,7 @@
       "natsDesc": "NATS通道支持通过NATS消息队列进行通知推送。",
       "sms": "短信",
       "smsDesc": "短信渠道按客户已在腾讯云或阿里云审核通过的模板发送通知。",
+      "packDesc": "由已加载的通知渠道包提供。",
       "voice": "语音",
       "voiceDesc": "语音渠道按客户已在腾讯云或阿里云审核通过的模板拨打通知电话。",
       "feishu": "飞书机器人",
@@ -1691,7 +1693,9 @@
         "authorVersion": "作者版本",
         "upload": "上传",
         "uploadModalTitle": "上传 Provider 包",
-        "uploadModalHint": "请上传 zip 包，大小不超过 10MB。成功后可在「添加集成」中选用新类型。",
+        "uploadModalHint": "请上传 zip 包，大小不超过 10MB。",
+        "uploadModalHintIntegration": "成功后可在「添加集成」中选用新类型。",
+        "uploadModalHintNotificationChannel": "成功后会在「通知渠道」中出现新的渠道卡片。",
         "uploadDropHint": "将 zip 拖到此处，或点击选择文件",
         "uploadFileRequired": "请先选择 zip 文件",
         "replace": "更换",
@@ -1713,7 +1717,16 @@
         "loadLoaded": "已加载",
         "loadFailed": "加载失败",
         "loadFailedReason": "原因：{errorType}",
-        "builtinNoActions": "内置类型不可更换或卸载"
+        "builtinNoActions": "内置类型不可更换或卸载",
+        "purpose": "用途",
+        "purposeIntegration": "集成",
+        "purposeNotificationChannel": "通知渠道",
+        "purposeRequired": "请先选择用途",
+        "replaceConfirmChannels": "将覆盖当前已装的该渠道包。受影响渠道实例 {count} 个。已有配置保留，下次发送使用新包。",
+        "uninstallConfirmChannels": "将下线该渠道。无渠道实例时才会卸载成功。",
+        "uninstallHasChannels": "请先删除该渠道下的渠道实例，再卸载。",
+        "deliveryChanged": "已有渠道实例时不能更换投递方式",
+        "replaceUnavailable": "当前包未加载，不能更换"
       },
       "createInstanceDesc": "从已接入的集成系统类型中选择一个类型创建集成系统实例"
     },
