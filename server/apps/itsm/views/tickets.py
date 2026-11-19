@@ -70,6 +70,7 @@ def tickets(request):
                 "count": current.paginator.count,
                 "items": items,
                 "can_operate": has_permission(request, "ticket-Operate"),
+                "can_export": has_permission(request, "ticket-Export"),
             }
         )
     payload = _body(request)

@@ -257,3 +257,14 @@ export interface TicketFilterField {
   type: 'input' | 'textarea' | 'number' | 'date' | 'radio' | 'select';
   options: { label: string; value: string | number }[];
 }
+
+export interface TicketExportRecord {
+  id: number;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  filename: string;
+  created_at: string;
+  finished_at: string | null;
+  count: number;
+  downloadable: boolean;
+  error: string;
+}

@@ -3,11 +3,11 @@ import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
-const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
-vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { tableProps.current = props; const { rowSelection, dataSource } = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
+vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection?: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { const { rowSelection, dataSource } = props; if (!rowSelection) return <div>{dataSource.length} 条记录</div>; tableProps.current = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
 // 列配置加载后还会触发防抖查询，给并行运行时的真实异步渲染留出时间。
 configure({ asyncUtilTimeout: 3000 });
@@ -22,6 +22,7 @@ beforeEach(() => {
   api.centerSettings.mockResolvedValue({ columns: ['sn', 'title'], views: [] });
   api.listTickets.mockResolvedValue({ count: 1, items: [{ id: 1, sn: 'REQ1', title: '测试工单' }], can_operate: true });
   api.saveTicketColumns.mockResolvedValue({ columns: ['sn', 'title', 'status', 'creator', 'node', 'created_at'] });
+  api.listTicketExports.mockResolvedValue({ count: 0, items: [] });
   api.batchOptions.mockResolvedValue({ actions: ['follow', 'unfollow'], reason: '' });
   api.batchTickets.mockResolvedValue({ items: [{ id: 1, ok: false, error: '当前节点不支持' }] });
 });
@@ -179,4 +180,24 @@ it('在分组中按流程配置动态条件并回查', async () => {
   await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
     workflow_id: '4', form_filters: [{ key: 'amount', operator: 'eq', value: 200 }],
   })));
+});
+
+it('仅向具备导出权限的账号显示导出入口', async () => {
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  expect(screen.queryByRole('button', { name: '导出' })).toBeNull();
+  api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_export: true });
+  fireEvent.click(screen.getByRole('button', { name: '刷新列表' }));
+  await screen.findByRole('button', { name: '导出' });
+});
+
+it('提交后台导出后打开导出记录并保留当前分组范围', async () => {
+  api.exportTickets.mockResolvedValue({ id: 7, status: 'pending' });
+  api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_export: true });
+  render(<TicketWorkbench initialTab="following" />);
+  fireEvent.click(await screen.findByRole('button', { name: '导出' }));
+  fireEvent.click(await screen.findByRole('button', { name: '提交导出' }));
+  await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ tab: 'following' }), [], undefined));
+  await screen.findByText('导出记录', { selector: '.ant-drawer-title span' });
+  await waitFor(() => expect(api.listTicketExports).toHaveBeenCalledWith(1, 20));
 });

@@ -253,6 +253,72 @@ def test_dynamic_filters_catalog_groups_and_invalid_conditions(dynamic_tickets):
         assert tickets(request(payload={**params, "form_filters": json.dumps([clause])}, username="owner")).status_code == 400
 
 
+def test_export_matches_filters_checks_permissions_and_preserves_literal_cells(dynamic_tickets):
+    import base64
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from apps.itsm.models.extend import TicketExportTask
+    from apps.itsm.views.ticket_export import export_tickets
+
+    match, invisible = dynamic_tickets
+    payload = {
+        "filters": {"workflow_id": str(match.workflow_id), "tab": "created", "form_filters": [{"key": "amount", "operator": "gte", "value": 150}]},
+        "form_columns": ["amount", "notes"],
+        "ids": [match.id, invisible.id],
+    }
+    assert export_tickets(request("post", payload, "owner")).status_code == 403
+    assert export_tickets(request("post", payload, "owner", ["ticket-Export"])).status_code == 403
+    permissions = ["ticket-View", "ticket-Export"]
+    assert export_tickets(request("post", {**payload, "form_columns": ["secret"]}, "owner", permissions)).status_code == 400
+    result = data(export_tickets(request("post", payload, "owner", permissions)))
+    assert result["count"] == 1
+    sheet = load_workbook(BytesIO(base64.b64decode(result["content_base64"]))).active
+    assert list(sheet.values) == [("单号", "标题", "提单人", "状态", "申请金额", "备注"), (match.sn, "=1+1", "owner", "new", 200, "Blue office")]
+    assert sheet["B2"].data_type == "s"
+    assert TicketExportTask.objects.get(pk=result["id"]).domain == match.domain
+
+
+def test_historical_hidden_field_is_neither_matched_nor_exported(dynamic_tickets):
+    import base64
+    from copy import deepcopy
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from apps.itsm.models import WorkflowVersion
+    from apps.itsm.views.ticket_export import export_tickets
+
+    match, _ = dynamic_tickets
+    design = deepcopy(match.workflow_version.design)
+    design["nodes"][1]["field_perm"]["amount"] = "hidden"
+    hidden_version = WorkflowVersion.objects.create(workflow=match.workflow, version_no=2, design=design, is_published=True)
+    hidden = TicketService().create(hidden_version, {"title": "金额不可见", "amount": 200}, "owner")
+    invalid = TicketService().create(match.workflow_version, {"title": "旧表单值", "amount": 200}, "owner")
+    invalid.form_data["amount"] = "200"
+    invalid.save(update_fields=["form_data"])
+    workflow_id = str(match.workflow_id)
+    clause = {"key": "amount", "operator": "gte", "value": 150}
+    result = data(tickets(request(payload={"workflow_id": workflow_id, "form_filters": json.dumps([clause])}, username="owner")))
+    assert [row["id"] for row in result["items"]] == [match.id]
+    payload = {"filters": {"workflow_id": workflow_id}, "form_columns": ["amount"], "ids": [hidden.id]}
+    result = data(export_tickets(request("post", payload, "owner", ["ticket-View", "ticket-Export"])))
+    sheet = load_workbook(BytesIO(base64.b64decode(result["content_base64"]))).active
+    assert sheet["A2"].value == hidden.sn and sheet["E2"].value is None
+
+
+def test_export_limit_does_not_create_partial_file(dynamic_tickets, monkeypatch):
+    from apps.itsm.models.extend import TicketExportTask
+    from apps.itsm.views.ticket_export import export_tickets
+
+    monkeypatch.setattr("apps.itsm.views.ticket_export.MAX_ROWS", 1)
+    permissions = ["ticket-View", "ticket-Export"]
+    assert export_tickets(request("post", {}, "owner", permissions)).status_code == 400
+    assert export_tickets(request("post", {"ids": []}, "owner", permissions)).status_code == 400
+    assert not TicketExportTask.objects.exists()
+
+
 def test_dynamic_choice_accepts_numeric_value_stored_by_integration(dynamic_tickets):
     match, _ = dynamic_tickets
     version = match.workflow_version

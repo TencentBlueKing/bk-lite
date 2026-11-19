@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { TicketCenterFilters } from '../types';
+import type { TicketCenterFilters, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -79,6 +79,16 @@ export function useItsmApi() {
   }, [get]);
   const ticketFilterWorkflows = useCallback((q: string) => get('/itsm/api/tickets/filter_fields/', { params: { q } }), [get]);
   const ticketFilterFields = useCallback((workflowId: string) => get('/itsm/api/tickets/filter_fields/', { params: { workflow_id: workflowId } }), [get]);
+  const exportTickets = useCallback(
+    (filters: TicketCenterFilters, formColumns: string[], ids?: number[]) =>
+      post<TicketExportRecord>('/itsm/api/tickets/export/tasks/', { filters, form_columns: formColumns, ids }),
+    [post],
+  );
+  const listTicketExports = useCallback((page: number, pageSize: number) => get<{ count: number; items: TicketExportRecord[] }>(
+    '/itsm/api/tickets/export/tasks/', { params: { page, page_size: pageSize } },
+  ), [get]);
+  const downloadTicketExport = useCallback((id: number) => get<Blob>(`/itsm/api/tickets/export/tasks/${id}/download/`, { responseType: 'blob' }), [get]);
+  const retryTicketExport = useCallback((id: number) => post<TicketExportRecord>(`/itsm/api/tickets/export/tasks/${id}/retry/`), [post]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
   const createResource = useCallback((kind: string, body: Record<string, unknown>) => post(`/itsm/api/resources/${kind}/`, body), [post]);
   const updateResource = useCallback(
@@ -226,7 +236,7 @@ export function useItsmApi() {
     getDesign,
     saveDesign,
     publishWorkflow,
-    listTickets, ticketFilterWorkflows, ticketFilterFields,
+    listTickets, ticketFilterWorkflows, ticketFilterFields, exportTickets, listTicketExports, downloadTicketExport, retryTicketExport,
     listResources,
     createResource,
     updateResource,

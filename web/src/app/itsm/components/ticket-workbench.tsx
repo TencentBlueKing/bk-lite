@@ -9,11 +9,13 @@ import dayjs from 'dayjs';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { Alert, App, Button, Checkbox, DatePicker, Input, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { CloseOutlined, FilterOutlined, PlusOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
+import { CloseOutlined, DownloadOutlined, FilterOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { UserSelector } from './user-selector';
 import { TicketTagSelector } from './ticket-tag-selector';
 import { TicketFormFilters, completeFormConditions } from './ticket-form-filters';
+import { TicketExportDialog } from './ticket-export-dialog';
+import { TicketExportHistory } from './ticket-export-history';
 import { useItsmApi } from '../api/useItsmApi';
 import type { TicketCenterFilters as Filters, TicketListItem } from '../types';
 
@@ -46,6 +48,9 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [canExport, setCanExport] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportHistoryOpen, setExportHistoryOpen] = useState(false);
   const [items, setItems] = useState<TicketListItem[]>([]);
   const [batchOptions, setBatchOptions] = useState<string[]>([]);
   const [batchReason, setBatchReason] = useState('');
@@ -81,8 +86,8 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
     setLoading(true); setLoadError('');
     void api.listTickets({ ...query, fields: columns.join(','), page, page_size: pageSize }).then((value) => {
       if (!active) return;
-      const result = value as { items: TicketListItem[]; count: number; can_operate: boolean };
-      setItems(result.items); setTotal(result.count);
+      const result = value as { items: TicketListItem[]; count: number; can_export: boolean };
+      setItems(result.items); setTotal(result.count); setCanExport(result.can_export === true);
     }).catch((error: unknown) => { if (active) { setLoadError(errorText(error)); setItems([]); setTotal(0); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api.ready, api.listTickets, settingsReady, query, columns, page, pageSize, refresh]);
@@ -184,6 +189,10 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         <Button onClick={applyDraft}>查询</Button>
         <Button onClick={() => { apply({ ...EMPTY, ...(views.find(view => `view:${view.id}` === tab)?.filters || { tab: query.tab }) }); setFilterOpen(false); }}>重置</Button>
         <Tooltip title="刷新"><Button aria-label="刷新列表" icon={<ReloadOutlined />} onClick={() => { setSelected([]); setRefresh(value => value + 1); }} /></Tooltip>
+      {canExport && <>
+        <Button aria-label="导出记录" icon={<HistoryOutlined />} onClick={() => setExportHistoryOpen(true)}>导出记录</Button>
+        <Button aria-label="导出" icon={<DownloadOutlined />} disabled={loading || total === 0} onClick={() => setExportOpen(true)}>导出</Button>
+      </>}
       <Button type="primary" disabled={loading || selected.length === 0 || optionsLoading || !batchOptions.includes(action)} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
     </>} />
     {selected.length > 0 ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-primary)] bg-[var(--color-bg)] p-3"><span>已选 {selected.length} 项</span><Select aria-label="批量操作类型" className="w-36" value={action} loading={optionsLoading} disabled={optionsLoading} options={ACTIONS.filter(item => batchOptions.includes(item.value))} onChange={setAction} /><Button type="text" onClick={() => setSelected([])}>取消选择</Button><span className="text-xs text-[var(--color-text-3)]">仅选择当前页，每次最多 50 项</span></div> : null}
@@ -214,6 +223,13 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         <TicketFormFilters filters={groupFilters} active={groupOpen} onChange={setGroupFilters} />
       </div>
     </Modal>
+    {exportOpen && <TicketExportDialog filters={query} selected={selected.map(Number)} total={total}
+      onClose={() => setExportOpen(false)} onSubmitted={() => {
+        setExportOpen(false);
+        setExportHistoryOpen(true);
+        message.success('已提交导出任务');
+      }} />}
+    {exportHistoryOpen && <TicketExportHistory onClose={() => setExportHistoryOpen(false)} />}
     {selected.length > 0 && batchReason ? <Alert className="mb-3" type="warning" message={batchReason} /> : null}
     <Modal confirmLoading={batchBusy} formValue={results ? undefined : opinion} title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={optionsLoading || !batchOptions.includes(action)} onClick={() => void runBatch()}>确认执行</Button>}>
       {results ? <><Alert className="mb-3" type={results.every(item => item.ok) ? 'success' : 'warning'} message={`成功 ${results.filter(item => item.ok).length} 项，失败 ${results.filter(item => !item.ok).length} 项`} /><Table size="small" rowKey="id" pagination={false} dataSource={results} columns={[{ title: '工单', render: (_value, record: BatchResult) => batchNames[record.id] || record.id }, { title: '结果', render: (_value, record: BatchResult) => record.ok ? <Tag color="success">成功</Tag> : record.error }]} /></> : <><Alert type="info" className="mb-3" message={`将对选中的 ${selected.length} 张工单执行操作，逐单校验权限、节点和必填字段。`} /><div className="mb-3 max-h-36 overflow-auto text-sm">{selected.map(id => <div key={id} className="py-1">{batchNames[Number(id)]}</div>)}</div>{!['follow', 'unfollow'].includes(action) ? <Input.TextArea aria-label="批量操作意见" placeholder="操作意见（可选）" maxLength={1000} rows={3} value={opinion} onChange={event => setOpinion(event.target.value)} /> : null}</>}

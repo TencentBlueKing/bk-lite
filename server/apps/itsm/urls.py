@@ -28,7 +28,6 @@ from apps.itsm.views.extend import (
     cmdb_search,
     create_child,
     execute_decision,
-    export_tickets,
     render_print,
     resource_item,
     resources,
@@ -65,6 +64,7 @@ from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
+from apps.itsm.views.ticket_export import download_export, export_tasks, export_tickets, retry_export
 from apps.itsm.views.tickets import operate_ticket, retry_auto_node, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
@@ -91,6 +91,9 @@ urlpatterns = [
     path("api/tickets/batch_options/", batch_options, name="itsm-ticket-batch-options"),
     path("api/tickets/batch_operate/", batch_operate, name="itsm-ticket-batch"),
     path("api/tickets/export/", export_tickets, name="itsm-ticket-export"),
+    path("api/tickets/export/tasks/", export_tasks, name="itsm-ticket-export-tasks"),
+    path("api/tickets/export/tasks/<int:task_id>/download/", download_export, name="itsm-ticket-export-download"),
+    path("api/tickets/export/tasks/<int:task_id>/retry/", retry_export, name="itsm-ticket-export-retry"),
     path("api/tickets/<int:ticket_id>/children/", create_child, name="itsm-ticket-child"),
     path("api/tickets/<int:ticket_id>/print/", render_print, name="itsm-ticket-print"),
     path("api/tickets/<int:ticket_id>/auto/", run_auto, name="itsm-ticket-auto"),

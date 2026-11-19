@@ -22,9 +22,15 @@ class TicketExportTask(ItsmModel):
     filename = models.CharField(max_length=128, default="")
     content_base64 = models.TextField(default="")
     ticket_count = models.PositiveIntegerField(default=0)
+    is_async = models.BooleanField(default=False)
+    request_payload = models.JSONField(default=dict)
+    result_manifest = models.JSONField(default=dict)
+    error = models.CharField(max_length=300, default="", blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "itsm_ticket_export_task"
+        indexes = [models.Index(fields=["domain", "username", "is_async", "id"], name="itsm_export_owner_idx")]
 
 
 class TicketProxy(ItsmModel):

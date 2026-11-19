@@ -1,8 +1,6 @@
-import base64
 import json
 from datetime import timedelta
 from functools import wraps
-from io import BytesIO
 
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -12,7 +10,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 from jinja2 import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
-from openpyxl import Workbook
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import itsm_logger as logger
@@ -39,7 +36,6 @@ from apps.itsm.models.extend import (
     SearchField,
     SpecialOperationRule,
     SurveyTemplate,
-    TicketExportTask,
     TicketProxy,
     TicketSavedView,
     Trigger,
@@ -392,35 +388,6 @@ def batch_operate(request):
         except FlowableError:
             results.append({"id": pk, "ok": False, "error": "流程引擎暂不可用，请刷新核对后再操作"})
     return WebUtils.response_success({"items": results})
-
-
-@csrf_exempt
-@api_errors
-@HasPermission("ticket-Export")
-def export_tickets(request):
-    payload = _body(request)
-    queryset = ticket_scope(request).order_by("-id")
-    ids = payload.get("ids") or []
-    if ids:
-        queryset = queryset.filter(id__in=ids)
-    rows = list(queryset[:500])
-    book = Workbook()
-    sheet = book.active
-    sheet.append(["sn", "title", "creator", "status"])
-    for ticket in rows:
-        sheet.append([ticket.sn, ticket.title, ticket.creator, ticket.status.key if ticket.status_id else ""])
-    buffer = BytesIO()
-    book.save(buffer)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    task = TicketExportTask.objects.create(
-        username=_user(request),
-        filename=f"tickets-{timezone.now().strftime('%Y%m%d%H%M%S')}.xlsx",
-        content_base64=encoded,
-        ticket_count=len(rows),
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
-    return WebUtils.response_success({"id": task.id, "filename": task.filename, "count": task.ticket_count, "content_base64": encoded})
 
 
 @csrf_exempt
