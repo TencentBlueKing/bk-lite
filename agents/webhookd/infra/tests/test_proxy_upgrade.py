@@ -109,7 +109,8 @@ def test_bootstrap_requires_services_and_working_https(tmp_path, failed_service,
     docker.write_text(
         """#!/bin/bash
 case "$*" in
-    'compose version'|'compose up -d --force-recreate') exit 0 ;;
+    'compose version') exit 0 ;;
+    'compose up -d --force-recreate') test -f collected-bin-ready ;;
     'compose ps --all --format json') cat states.json ;;
     'compose --project-directory '*)
         printf '%s\\n' '{"services":{"nats-executor":{"environment":{"NATS_URLS":"tls://admin:test@nats:4222"}},"nats":{"image":"test"},"fusion-collector":{"image":"test"},"traefik":{"command":["--entrypoints.websecure.address=:9443"]}}}'
@@ -121,7 +122,7 @@ case "$*" in
         [ "$HTTPS_STATUS" != TLS_ERROR ] || exit 60
         printf '%s' "$HTTPS_STATUS"
         ;;
-    *'cp -ar bin/'*) exit 0 ;;
+    *'--network none'*'cp -ar bin/'*) touch collected-bin-ready ;;
     *) exit 99 ;;
 esac
 """

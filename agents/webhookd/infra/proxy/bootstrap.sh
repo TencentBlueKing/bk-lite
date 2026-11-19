@@ -116,6 +116,11 @@ if [ "${1:-}" = preflight ]; then
     exit
 fi
 
+# Populate the staged bind mount before the new collector can execute these files.
+docker run --rm --network none \
+    -v "$PWD/bin:/tmp/bin" --entrypoint=/bin/bash "$COLLECTOR_IMAGE" \
+    -c "cp -ar bin/* /tmp/bin/" || err "Failed to copy binaries"
+
 docker compose up -d --force-recreate || err "Services failed to start"
 source=
 for attempt in {1..8}; do
@@ -200,10 +205,5 @@ wait_for_services() {
     done
     err "$last_failure"
 }
-
-# Preserve the existing agent binary installation step.
-docker run --rm --network=bklite-proxy \
-    -v "$PWD/bin:/tmp/bin" --entrypoint=/bin/bash "$COLLECTOR_IMAGE" \
-    -c "cp -ar bin/* /tmp/bin/" || err "Failed to copy binaries"
 
 wait_for_services
