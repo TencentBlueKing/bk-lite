@@ -21,11 +21,6 @@ export interface PolicyGroupRule {
   source_template_id?: number | null;
 }
 
-export const VIEW_MODE_OPTIONS = [
-  { label: '工作台', value: 'workbench' },
-  { label: '策略组列表', value: 'groupList' },
-] as const;
-
 const METHOD_OPERATOR_MAP: Record<string, string> = {
   gt: '>',
   gte: '>=',
