@@ -8,7 +8,6 @@ from django.apps import apps as django_apps
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.workflow.services.agent_knowledge_inputs import resolve_uploaded_agent_knowledge
 from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
-from apps.workflow.utils.i18n import DEFAULT_EXECUTION_LOCALE
 
 MAX_AGENT_OUTPUT_CHARS = 100_000
 MAX_MEMORY_CONTEXT_CHARS = 100_000
@@ -96,13 +95,15 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "team": context["organization_id"],
         "execution_id": str(context.get("execution_id") or ""),
         "entry_type": "workflow",
-        "locale": context.get("locale") or DEFAULT_EXECUTION_LOCALE,
         "trigger_type": str(context.get("trigger_type") or ""),
         "unattended": context.get("trigger_type") in AUTOMATIC_TRIGGERS,
     }
     identity = accepted_tool_caller_identity(context.get("caller_identity"))
     if identity is not None:
         flow_input["caller_identity"] = identity
+    locale = context.get("locale")
+    if isinstance(locale, str) and locale.strip():
+        flow_input["locale"] = locale.strip()
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
     manager.set_variable("execution_id", str(context.get("execution_id") or ""))
