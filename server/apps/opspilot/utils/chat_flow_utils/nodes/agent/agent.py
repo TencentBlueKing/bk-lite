@@ -298,6 +298,14 @@ class AgentNode(BaseNodeExecutor):
             user_message=final_message,
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
+        if flow_input.get("entry_type") == "workflow" and flow_input.get("reply_channel") == "WECOM_BOT":
+            resolved_prompt += (
+                "\n\n本次是企业微信群的单向通知。整条最终回答就是群消息，群成员不能通过这条消息回复你。"
+                "只写一份正文。若完整查询成功且结果为零，整条消息只写一句话，把查询对象和零项结论写在同一句，然后结束。"
+                "有结果时先给结论，再按用户要求的维度分行汇总，省略内部记录编号、工具参数和查询过程。"
+                "缺失的数据就地注明，查询失败如实说明。可用加粗和引用，避免表格和包裹全文的代码块。"
+                "写完所问内容即结束。仅当用户明确要求时给出处置建议。省略推送示例、邀请回复、请求补充信息和继续服务的尾语。"
+            )
         skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
         params = {
             "llm_model": skill.llm_model_id,

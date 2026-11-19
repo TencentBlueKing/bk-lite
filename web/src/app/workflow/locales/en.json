@@ -200,8 +200,7 @@
           "description": "Process input with an OpsPilot agent available to the current organization",
           "input": {
             "agent_id": "Agent",
-            "message": "Input",
-            "prompt": "Additional Prompt",
+            "message": "Task content",
             "knowledge_files": "Knowledge Files",
             "memory_context": "Memory Context"
           },
@@ -897,8 +896,6 @@
       "selectAgent": "Select Agent",
       "pleaseSelectAgent": "Select an agent",
       "addAgent": "New Agent",
-      "prompt": "Prompt",
-      "promptAppendTooltip": "This prompt is prepended to the current input.",
       "llmModel": "LLM Model",
       "pleaseSelectLlmModel": "Select an LLM model",
       "classificationRules": "Classification Rules",
