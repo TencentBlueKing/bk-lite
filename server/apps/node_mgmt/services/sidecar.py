@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 
-from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.core.exceptions.base_app_exception import UnauthorizedException, ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.safe_template import build_sandboxed_env
@@ -609,6 +609,12 @@ class Sidecar:
             cpu_architecture__in=allowed_architectures,
         ).order_by("name", "cpu_architecture", "id")
 
+        from apps.node_mgmt.models import EnvironmentInstallAttempt
+
+        environment_attempt = EnvironmentInstallAttempt.objects.select_related("grant").filter(node_id=node.id).first()
+        if environment_attempt:
+            collector_objs = collector_objs.filter(id__in=[item["id"] for item in environment_attempt.grant.required_components])
+
         selected_collectors = {}
         for collector_obj in collector_objs:
             priority = cls._default_collector_priority(collector_obj.cpu_architecture, node_arch)
@@ -624,15 +630,47 @@ class Sidecar:
         lookup_cloud_region_id = request_data.get("cloud_region_id") or CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
         with transaction.atomic():
             CloudRegion.objects.select_for_update().filter(id=lookup_cloud_region_id).first()
+            from apps.node_mgmt.services.environment_install import EnvironmentInstallService
+
             locked_self = Node.objects.select_for_update().filter(id=node_id).first()
             if locked_self:
                 return locked_self, node_id, False
+            try:
+                environment_attempt = EnvironmentInstallService.validate_registration(node_id, request_data)
+            except PermissionError as error:
+                raise UnauthorizedException(str(error)) from error
             assert_cloud_ip_available(
                 lookup_cloud_region_id,
                 request_data.get("ip", ""),
                 lock=True,
             )
-            return Node.objects.create(**request_data), node_id, True
+            node = Node.objects.create(**request_data)
+            if environment_attempt:
+                environment_attempt.registered_at = datetime.now(timezone.utc)
+                environment_attempt.last_heartbeat_at = environment_attempt.registered_at
+                environment_attempt.save(update_fields=["registered_at", "last_heartbeat_at"])
+            return node, node_id, True
+
+    @staticmethod
+    def _notify_collectors_node_returned(node):
+        """同一节点 ID 重建后通知监控和日志挂回。与延迟推送一样在事务外，失败不阻断心跳。"""
+        from apps.node_mgmt.services.node_collection_exit import log_collection_exit_failure
+
+        organization_ids = list(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
+        try:
+            from apps.monitor.services.collector_node_exit import MonitorCollectorNodeExit
+
+            host_instance_id = MonitorCollectorNodeExit.on_node_returned(node, organization_ids)
+            if host_instance_id and not str(node.monitor_id or "").strip():
+                Node.objects.filter(id=node.id).filter(Q(monitor_id="") | Q(monitor_id__isnull=True)).update(monitor_id=host_instance_id)
+        except Exception as exc:
+            log_collection_exit_failure(node.id, "monitor_returned", exc)
+        try:
+            from apps.log.services.collector_node_exit import LogCollectorNodeExit
+
+            LogCollectorNodeExit.on_node_returned(node, organization_ids)
+        except Exception as exc:
+            log_collection_exit_failure(node.id, "log_returned", exc)
 
     @staticmethod
     def _consume_deferred_module_push(node):
@@ -681,6 +719,10 @@ class Sidecar:
             updated_count = Node.objects.filter(id=node_id).update(**updates)
             if updated_count and ip_changed:
                 invalidate_node_configuration_etags([node_id])
+            if updated_count:
+                from apps.node_mgmt.services.environment_install import EnvironmentInstallService
+
+                EnvironmentInstallService.record_heartbeat(node_id, node_details)
             Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
 
             response = HttpResponse(status=304)
@@ -766,10 +808,14 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
+                Sidecar._notify_collectors_node_returned(node)
                 Sidecar._consume_deferred_module_push(node)
 
         if not created:
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
+            from apps.node_mgmt.services.environment_install import EnvironmentInstallService
+
+            EnvironmentInstallService.record_heartbeat(node_id, request_data)
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)

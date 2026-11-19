@@ -26,10 +26,34 @@ _STEP_SUMMARY_MAX_CHARS = 1200
 _CARRY_OVER_MARKER = "【本步已取得的结构化结果，后续步骤直接引用】"
 _CARRY_OVER_MAX_CHARS = 8000
 
-# 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
+# 监控工具额外标出后续调用要用的 id，不把别的工具的 id 改写成 instance_id。
+# 任意列表再按原字段名保留短标量，写文件的下一步才能展开明细，而不是只看到总数。
 _MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
 _MONITOR_INSTANCE_TOOLS = frozenset({"monitor_list_object_instances"})
 _MONITOR_METRIC_TOOLS = frozenset({"monitor_list_object_metrics"})
+_ROW_FACT_LIMIT = 20
+_ROW_FIELD_LIMIT = 12
+_ROW_VALUE_LIMIT = 80
+
+
+def _clip_fact_text(text: str) -> str:
+    if not text:
+        return ""
+    if len(text) > _ROW_VALUE_LIMIT:
+        return text[:_ROW_VALUE_LIMIT]
+    return text
+
+
+def _list_item_fact_text(item) -> str:
+    """列表元素里的短标量；人名对象取 name，否则 username。"""
+    if isinstance(item, dict):
+        raw = item.get("name") or item.get("username") or ""
+        if raw == "":
+            return ""
+        return " ".join(str(raw).split())
+    if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+        return ""
+    return " ".join(str(item).split())
 
 
 class DeepAgentAssemblyMixin:
@@ -224,7 +248,10 @@ class DeepAgentAssemblyMixin:
             name = str(getattr(message, "name", "") or "tool")
             tool_bits.append(f"{name}: {str(getattr(message, 'content', '') or '')[:400]}")
         if tool_bits:
-            return "；".join(tool_bits)[:1200]
+            tool_summary = "；".join(tool_bits)[:1200]
+            if carry_over:
+                return cls._join_step_summary(tool_summary, carry_over)
+            return tool_summary
         if ai_text:
             return ai_text[:200]
         return "步骤已完成"
@@ -346,7 +373,7 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _tool_result_structured_facts(cls, tool_name: str, content) -> list[str]:
-        """按工具类型提关键字段。监控带实例 id，仪表盘检索带数据源目录。"""
+        """监控和仪表盘保留调用链要用的 id。其余列表按原字段名留下短标量。"""
         payload = cls._parse_tool_result_payload(content)
         if payload is None:
             return []
@@ -374,7 +401,68 @@ class DeepAgentAssemblyMixin:
                 metric = str(row.get("name") or "").strip()
                 if metric:
                     facts.append(f"metric={metric}")
+        facts.extend(cls._record_row_facts(payload))
         return facts
+
+    @classmethod
+    def _record_row_facts(cls, payload: dict) -> list[str]:
+        """列表里的标量按原字段名带走。过长文本截到 80 字；人名对象取 name 或 username。"""
+        rows = [row for row in cls._rows_of(payload) if isinstance(row, dict)]
+        shown_rows = rows[:_ROW_FACT_LIMIT]
+        facts = []
+        for row in shown_rows:
+            parts = []
+            for key, value in row.items():
+                if not isinstance(key, str) or not key.strip():
+                    continue
+                text = cls._scalar_fact_text(value)
+                if not text:
+                    continue
+                parts.append(f"{key}={text}")
+                if len(parts) >= _ROW_FIELD_LIMIT:
+                    break
+            if parts:
+                facts.append(" ".join(parts))
+        total = cls._declared_row_total(payload)
+        if total is None:
+            total = len(rows)
+        if total > len(shown_rows) or len(rows) > _ROW_FACT_LIMIT:
+            facts.append(f"rows_truncated=true shown={len(shown_rows)} total={total}")
+        return facts
+
+    @staticmethod
+    def _declared_row_total(payload) -> int | None:
+        """列表接口已经给出的总数。告警是 data.count，其它列表还有 total / total_count。"""
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        containers = [data, payload] if isinstance(data, dict) else [payload]
+        for container in containers:
+            for key in ("count", "total", "total_count"):
+                value = container.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    continue
+                return value
+        return None
+
+    @staticmethod
+    def _scalar_fact_text(value) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        if isinstance(value, str):
+            return _clip_fact_text(" ".join(value.split()))
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                text = _list_item_fact_text(item)
+                if text:
+                    parts.append(text)
+                if len(parts) == 3:
+                    break
+            return _clip_fact_text(",".join(parts))
+        return ""
 
     @staticmethod
     def _rows_of(payload) -> list:
@@ -573,7 +661,7 @@ class DeepAgentAssemblyMixin:
         if mode == "alert_rca":
             return (
                 "本步给出用户可见的最终答案，只输出一份报告，不要按排查步骤重复粘贴。"
-                "必须以「# RCA 报告」作为第一行，然后按系统提示「输出格式」写完整中文 Markdown，章节顺序为："
+                "必须以「# RCA 报告」作为第一行，然后按系统提示「输出格式」写完整 Markdown，章节顺序为："
                 "事件概述、异常对象清单、根因分析、修复建议、待确认项。"
                 "标题之前不要写定位说明、步骤结果或客套话。"
                 "异常对象清单必须是 Markdown 表，列名为：对象、状态/现象、重启次数、关键事件、是否已定位。"
@@ -658,8 +746,13 @@ class DeepAgentAssemblyMixin:
         )
         return (
             "【工具执行】只调用本步骤计划/可见工具。"
-            "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
+            "当前不可见的工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即不要把空当失败反复换参。"
+            "大结果落盘通知只是预览，全量分析须读取完整文件；当前可见Python时用它加载JSON并校验记录数后聚合。"
+            "Python读取结果使用工作目录相对路径large_tool_results/<文件名>，文件工具显示的/large_tool_results/是虚拟路径。"
+            "分别计算用户要求的各维度；每张完整分组表的数量合计须等于已校验总数。"
+            "同一指标跨对象类型时须合并计数或完整列出各类型，未知值单列，不得漏项；展示时沿用计算结果。"
+            "读取不全须说明数据不足，不得估算未读记录、用预览抽样或把匹配行数当记录数。"
             "monitor_list_object_instances 的 monitor_obj_id 只能来自 monitor_list_objects；"
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
             f"{object_choice}"
@@ -699,8 +792,8 @@ class DeepAgentAssemblyMixin:
     def _build_lightweight_system_prompt(user_system_message: str = "", *, skills_available: bool = False) -> str:
         role = (user_system_message or "").strip() or "你是运维助手。"
         if skills_available:
-            return f"{role}\n\n" "直接用中文简洁回答用户。" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
-        return f"{role}\n\n" "直接用中文简洁回答用户。" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
+            return f"{role}\n\n" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
+        return f"{role}\n\n" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
 
     PLANNED_EXECUTION_STEP_PROMPT_SUFFIX = (
         "\n\n【分步工具执行】外部规划器已经拆分任务。"
@@ -744,7 +837,7 @@ class DeepAgentAssemblyMixin:
             PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
         )
 
-        always_visible: set = {"read_tool_result"}
+        always_visible: set = {"read_file", "grep"}
         hidden_tools = set(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
         # ppt 要读 SKILL.md、写页面再多次执行脚本，不能沿用「只留 execute、读文件即停」的查询技能模式。
         if skill_sources and (not skills_only_plan or ppt_authoring):
@@ -818,7 +911,7 @@ class DeepAgentAssemblyMixin:
             skill_guard,
             ToolTimeoutMiddleware(),
             ToolExceptionAsResultMiddleware(),
-            ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
+            ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars, preserve_tool_results=True),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
             ConversationSkillPackageMiddleware(),

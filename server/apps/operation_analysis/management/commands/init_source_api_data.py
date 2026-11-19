@@ -17,6 +17,11 @@ RETIRED_BUILTIN_DATASOURCES = (
         "name": "CMDB 3D机房布局",
         "rest_api": "cmdb/get_room3d_layout",
     },
+    {
+        "build_in_key": "监控告警查询::monitor/query_monitor_alerts",
+        "name": "监控告警查询",
+        "rest_api": "monitor/query_monitor_alerts",
+    },
 )
 
 ROOM_LIST_BUILTIN = {

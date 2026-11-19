@@ -153,14 +153,15 @@ Webhook，也不复用现有 `wecom_bot` 渠道。
 
 - 外部用户目录来自企业微信通讯录。
 - 首期接收标识只使用企业微信 `userid`。
-- 平台用户与企业微信用户的映射、映射同步记录、定时同步和状态机沿用现有
-  IMNotificationChannel 语义。
+- 平台用户与企业微信用户的对应已独立为账号关联，不再写在
+  `IMNotificationChannel` 上。当前规则见
+  `specs/capabilities/im-account-association.md`。
 - 首期消息类型只支持文本；标题和正文按现有通知服务输入合成为可读文本。
 
 #### 验收场景
 
-- **WHEN** 同步通知用户映射
-- **THEN** 系统按配置匹配平台用户，并将对应企业微信 `userid` 保存为接收标识。
+- **WHEN** 更新所选账号关联
+- **THEN** 系统按该关联的配置匹配平台用户，并将对应企业微信 `userid` 保存为接收标识。
 
 - **WHEN** 向一个或多个已映射用户发送通知
 - **THEN** adapter 使用共享 AgentId 和 access token 逐个发送应用文本消息。

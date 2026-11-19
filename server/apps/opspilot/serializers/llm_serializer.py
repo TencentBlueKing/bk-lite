@@ -8,12 +8,14 @@ from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSeri
 from apps.opspilot.services.asset_tags import normalize_user_tags, system_tags_removed
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.skill_memory_service import SkillMemoryConfigError, normalize_write_rounds, validate_skill_memory_binding
+from apps.opspilot.services.skill_template_catalog import TEMPLATE_CONFIG_FIELDS
 from apps.opspilot.utils.skill_package_params import mask_package_params
 from apps.opspilot.utils.user_message import user_message
 
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
     permission_key = "provider.llm_model"
+    vendor_enabled = serializers.SerializerMethodField()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -48,7 +50,19 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "team_name",
             "vendor_name",
             "vendor_type",
+            "vendor_enabled",
         ]
+
+
+class SkillTemplateSerializer(serializers.ModelSerializer):
+    tools = serializers.SerializerMethodField()
+
+    def get_tools(self, obj):
+        return [{"name": tool["name"], "kwargs": []} for tool in obj.tools if isinstance(tool, dict) and tool.get("name")]
+
+    class Meta:
+        model = LLMSkill
+        fields = ("id", *TEMPLATE_CONFIG_FIELDS, "tools")
 
 
 class LLMSerializer(TeamSerializer, AuthSerializer):

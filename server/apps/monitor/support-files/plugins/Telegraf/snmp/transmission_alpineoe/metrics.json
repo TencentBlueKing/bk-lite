@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Alpine Optoelectronics TDCM-EDFA optical transmission chassis. It reports uptime, per-fan speed and state, PSU input/output state, output voltage, slot temperature and EDFA temperature, based on the ALPINE-TDCM-EDFA-MIB (enterprise PEN 52326). There is no host CPU% or memory%.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_alpineoe'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-transmission_传输设备",
   "type": "Network Device",

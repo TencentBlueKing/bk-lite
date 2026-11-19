@@ -23,6 +23,7 @@ import type {
 } from './sceneWidget';
 import type { Application3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import type { DateRangeValue } from './dateRange';
 import type { SingleValueStyleConfig } from '@/app/ops-analysis/utils/singleValueStyle';
 
@@ -47,6 +48,8 @@ export interface TimeConfig {
 
 export interface OtherConfig {
   timeSelector?: TimeConfig;
+  /** 画布级数据变量。引用处只存 id，名称只用于回显。 */
+  dataVariables?: DataVariable[];
   /**
    * 仪表盘横向格数。缺省或 12 表示按旧 12 列保存的 x/w；
    * 当前运行时为 24，打开旧盘时换算一次后写入 24。
@@ -110,21 +113,12 @@ export interface TableColumnConfigItem {
   valueMappings?: ValueMapping[];
   /** 列级数值阈值配色 */
   cellThresholdColors?: ThresholdColorConfig[];
-  /** 运行时由模型属性列附上，不写入已保存配置。 */
-  modelFormat?: {
-    attrType?: string;
-    displayKey?: string;
-    displayFormat?: string;
-    options?: Array<{ value: string; label: string }>;
-  };
 }
 
 /** 表格组件配置 */
 export interface TableConfig {
   filterFields?: TableFilterFieldConfig[];
   columns?: TableColumnConfigItem[];
-  /** 这些列所属的模型。换模型后与响应不一致时改用新模型的默认列。 */
-  columnModelKey?: string;
 }
 
 export interface ValueConfig {
@@ -311,7 +305,8 @@ export interface ViewConfigProps {
   open: boolean;
   /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
   item?: ViewConfigItem | null;
-  onConfirm?: (values: WidgetConfig) => void;
+  /** 同步返回 false 表示调用方拒绝了这份配置，表单保持未应用状态。异步确认不参与这次拒绝。 */
+  onConfirm?: (values: WidgetConfig) => void | false | Promise<void>;
   onClose?: () => void;
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
@@ -341,6 +336,8 @@ export interface ViewConfigProps {
   previewSingleStyle?: SingleValueStyleConfig;
   /** 面板模式把预览传送到这个节点。抽屉模式忽略。 */
   previewHost?: HTMLElement | null;
+  /** 把当前查询拷成画布上的一条数据变量。不传则不显示入口。 */
+  onCreateDataVariable?: (variable: DataVariable) => void;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {
@@ -355,7 +352,11 @@ export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
   onOpenConfig?: (item: ComponentSelectorConfigItem) => void;
+  /** 只把选中的数据源交回去，不进入组件配置。没有图表类型的数据源也可以选。 */
+  onPickSource?: (item: DatasourceItem) => void;
   surface?: OpsAnalysisWidgetSurface;
+  /** 只选数据源，不提供场景组件。 */
+  hideSceneWidgets?: boolean;
 }
 
 export interface BaseWidgetProps {

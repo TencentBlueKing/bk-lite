@@ -1,10 +1,10 @@
 from django.core.management import BaseCommand
 
-from apps.opspilot.services.model_provider_init_service import ModelProviderInitService
+from apps.opspilot.services.skill_template_catalog import SkillTemplateCatalogService
 
 
 class Command(BaseCommand):
-    help = "初始化模型数据"
+    help = "同步内置智能体模板"
 
     def handle(self, *args, **options):
-        ModelProviderInitService(owner="admin").init()
+        SkillTemplateCatalogService().sync()

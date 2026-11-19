@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import dayjs from 'dayjs';
 import { Select, DatePicker, TimePicker } from 'antd';
 import { timeInterval, weekList } from '@/app/alarm/constants/settings';
+import { useTranslation } from '@/utils/i18n';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -31,6 +32,7 @@ const EffectiveTime: React.FC<EffectiveTimeProps> = ({
   onChange,
 }) => {
   const form = value || defaultValue;
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!value) {
@@ -67,7 +69,7 @@ const EffectiveTime: React.FC<EffectiveTimeProps> = ({
         <Select value={form.type} onChange={handleTypeChange}>
           {timeInterval.map((item) => (
             <Option key={item.value} value={item.value}>
-              {item.name}
+              {t(item.labelKey, item.name)}
             </Option>
           ))}
         </Select>
@@ -83,7 +85,7 @@ const EffectiveTime: React.FC<EffectiveTimeProps> = ({
           >
             {weekList.map((item) => (
               <Option key={item.value} value={item.value}>
-                {item.name}
+                {t(item.labelKey, item.name)}
               </Option>
             ))}
           </Select>

@@ -16,7 +16,9 @@ from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
+from apps.monitor.services.list_asset_ip import present_list_asset_ips
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
+from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.instance import list_reporting_status
@@ -25,6 +27,7 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 DISPLAY_METRICS_VM_MAX_WORKERS = 2
+_PROMQL_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
 _INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
@@ -129,6 +132,14 @@ class MonitorObjectService:
             _instance_status_cache.clear()
         _instance_status_cache[cache_key] = (now, instance_map)
         return instance_map
+
+    @staticmethod
+    def plugin_status_query_covers_identity(status_query, instance_id_keys) -> bool:
+        """插件 status_query 必须带出对象全部身份标签，才能用来过滤实例列表。"""
+        if not status_query or not instance_id_keys:
+            return False
+        labels = set(_PROMQL_IDENT_RE.findall(str(status_query)))
+        return all(str(key) in labels for key in instance_id_keys)
 
     @staticmethod
     def _safe_get_instances_by_metric(metric: str, instance_id_keys: list):
@@ -268,6 +279,7 @@ class MonitorObjectService:
             monitor_object_id=monitor_obj.id,
         )
 
+        instance_id_keys = obj_metric_map.get("instance_id_keys") or []
         status_query = obj_metric_map.get("default_metric", "")
         if monitor_plugin_id:
             plugin = (
@@ -280,12 +292,17 @@ class MonitorObjectService:
             )
             if not plugin:
                 return {"count": 0, "results": []}
-            if plugin.status_query:
+            # 复合插件（K8S Cluster/Pod/Node）共用集群级 status_query。
+            # 派生对象身份键更长，硬套插件查询会拼出 ('cluster', None) 把列表洗空。
+            if plugin.status_query and MonitorObjectService.plugin_status_query_covers_identity(
+                plugin.status_query,
+                instance_id_keys,
+            ):
                 status_query = plugin.status_query
 
         instance_map = MonitorObjectService._safe_get_instances_by_metric(
             status_query,
-            obj_metric_map.get("instance_id_keys"),
+            instance_id_keys,
         )
         if monitor_plugin_id:
             qs = qs.filter(id__in=instance_map.keys())
@@ -309,6 +326,7 @@ class MonitorObjectService:
             # 排序阶段先用空 org_map 序列化，分页后再补组织。
             candidates = [MonitorObjectService._serialize_instance_list_item(obj, instance_map, {}) for obj in all_objs]
             fill_missing_host_container_asset_ips(candidates, monitor_obj.name)
+            present_list_asset_ips(candidates, monitor_obj.name)
             filled_out_key = apply_ordering_to_instances(
                 monitor_object_id,
                 obj_metric_map,
@@ -354,6 +372,7 @@ class MonitorObjectService:
             for obj in objs:
                 result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
             fill_missing_host_container_asset_ips(result, monitor_obj.name)
+            present_list_asset_ips(result, monitor_obj.name)
 
         if add_metrics and page_size != -1:
             MonitorObjectService._safe_fill_display_metrics(
@@ -729,7 +748,7 @@ class MonitorObjectService:
             "time": instance_map.get(obj.id, {}).get("time", ""),
             "cloud_region_id": obj.cloud_region_id,
             "ip": obj.ip,
-            "summary_facts": obj.summary_facts,
+            "summary_facts": summary_facts_with_model_ip(obj.summary_facts, obj.ip),
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "node_id": obj.node_id or "",
             "cmdb_id": obj.cmdb_id or "",

@@ -31,7 +31,13 @@ import {
   UnifiedFilterConfigModal,
 } from "@/app/ops-analysis/components/unifiedFilter";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
-import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
+import { useShareOrganization } from "@/app/ops-analysis/context/shareOrganization";
+import { useDashboardSelectedGroup } from "@/app/ops-analysis/hooks/useDashboardModuleAccess";
+import {
+  applySelectedOrganizationToFilterValues,
+  isOrganizationFilterDefinition,
+  resolveCanvasOrganizationId,
+} from "@/app/ops-analysis/utils/unifiedFilterState";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
 import {
@@ -143,6 +149,10 @@ import {
   updateScreenViewport,
 } from "./utils/viewport";
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
+import DataVariableModal from "@/app/ops-analysis/components/dataVariableModal";
+import { DataVariableRuntimeProvider, withDatasourceNamespace } from "@/app/ops-analysis/context/dataVariableRuntime";
+import { buildDataVariableRequestParams } from "@/app/ops-analysis/utils/widgetDataTransform";
+import { readDataVariables, type DataVariable } from "@/app/ops-analysis/utils/dataVariable";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
 import { mergeScreenWidgetValueConfig } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 import { useCanvasDraft } from "@/app/ops-analysis/hooks/useCanvasDraft";
@@ -166,6 +176,7 @@ interface ScreenQuerySnapshot {
   appliedFilterValues: Record<string, FilterValue>;
   namespaceDraftId?: number;
   appliedNamespaceId?: number;
+  organizationId?: string | number | null;
 }
 
 const ScreenDataConfig = memo(
@@ -181,6 +192,8 @@ const ScreenDataConfig = memo(
     screenFrame,
     previewSingleStyle,
     previewHost,
+    dataVariables,
+    onCreateDataVariable,
     onDirtyChange,
     onConfirm,
     onClose,
@@ -200,8 +213,10 @@ const ScreenDataConfig = memo(
     screenFrame?: "panel" | "bare";
     previewSingleStyle?: SingleValueStyleConfig;
     previewHost?: HTMLElement | null;
+    dataVariables?: DataVariable[];
+    onCreateDataVariable?: (variable: DataVariable) => void;
     onDirtyChange?: (dirty: boolean) => void;
-    onConfirm?: (values: WidgetConfig) => void;
+    onConfirm?: (values: WidgetConfig) => void | false;
     onClose?: () => void;
   }) {
     return (
@@ -222,6 +237,8 @@ const ScreenDataConfig = memo(
         builtinNamespaceId={builtinNamespaceId}
         filterDefinitions={filterDefinitions}
         unifiedFilterValues={unifiedFilterValues}
+        dataVariables={dataVariables}
+        onCreateDataVariable={onCreateDataVariable}
         onDirtyChange={onDirtyChange}
         onConfirm={onConfirm}
         onClose={onClose}
@@ -264,7 +281,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
   const { hasPermission } = useBtnPermissions();
   const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
-  const shareOrganizationSeed = useShareOrganizationSeed();
+  const selectedGroup = useDashboardSelectedGroup(shareMode);
+  const shareOrganization = useShareOrganization();
+  const selectedOrganizationId = resolveCanvasOrganizationId({
+    shareMode,
+    shareSpaceId: shareOrganization?.spaceId,
+    selectedGroupId: selectedGroup?.id,
+  });
+  const selectedOrganizationIdRef = useRef(selectedOrganizationId);
+  selectedOrganizationIdRef.current = selectedOrganizationId;
+  const previousOrganizationIdRef = useRef(selectedOrganizationId);
   const dataSourceManager = useDataSourceManager();
   const { dataSources } = dataSourceManager;
   const { syncCanvasResources } = useCanvasResources();
@@ -279,6 +305,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     useState(false);
   const [displayModalVisible, setDisplayModalVisible] = useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
+  const [dataVariableOpen, setDataVariableOpen] = useState(false);
+  const [dataVariableDraft, setDataVariableDraft] = useState<DataVariable | null>(null);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -504,13 +532,13 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       filtersRef.current = loadedDefinitions;
       queryState.resetQueryState({
         definitions: loadedDefinitions,
-        organizationId: shareOrganizationSeed,
+        organizationId: selectedOrganizationIdRef.current,
       });
       setRefreshVersion((current) => current + 1);
       setRefreshCause("manual");
       void syncScreenCanvasResources(normalized);
     },
-    [labelSceneFilters, queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources],
+    [labelSceneFilters, queryState, setSavedRefreshInterval, syncScreenCanvasResources],
   );
   const screenDraft = useCanvasDraft({
     resourceType: "screen",
@@ -554,7 +582,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     setLoading(false);
     queryState.resetQueryState({
       definitions: normalized.filters ?? [],
-      organizationId: shareOrganizationSeed,
+      organizationId: selectedOrganizationIdRef.current,
     });
   }, [
     labelSceneFilters,
@@ -562,7 +590,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     playbackMode,
     queryState.resetQueryState,
     selectedScreen?.data_id,
-    shareOrganizationSeed,
   ]);
 
   useEffect(() => {
@@ -585,7 +612,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       setSavedRefreshInterval(0);
       queryState.resetQueryState({
         definitions: emptyViewSets.filters ?? [],
-        organizationId: shareOrganizationSeed,
+        organizationId: selectedOrganizationIdRef.current,
       });
       return;
     }
@@ -621,7 +648,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         setEditQuerySnapshot(null);
         queryState.resetQueryState({
           definitions: normalized.filters ?? [],
-          organizationId: shareOrganizationSeed,
+          organizationId: selectedOrganizationIdRef.current,
         });
       } catch (error) {
         console.error("Failed to load screen:", error);
@@ -636,7 +663,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           setEditQuerySnapshot(null);
           queryState.resetQueryState({
             definitions: fallback.filters ?? [],
-            organizationId: shareOrganizationSeed,
+            organizationId: selectedOrganizationIdRef.current,
           });
         }
       } finally {
@@ -655,8 +682,46 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     playbackMode,
     queryState.resetQueryState,
     selectedScreen?.data_id,
-    shareOrganizationSeed,
     syncScreenCanvasResources,
+  ]);
+
+  useEffect(() => {
+    const previousOrganizationId = previousOrganizationIdRef.current;
+    previousOrganizationIdRef.current = selectedOrganizationId;
+    if (selectedOrganizationId === undefined || queryState.definitions.length === 0) {
+      return;
+    }
+    if (previousOrganizationId === selectedOrganizationId) {
+      return;
+    }
+    const nextFilterValues = applySelectedOrganizationToFilterValues(
+      queryState.definitions,
+      queryState.filterValues,
+      selectedOrganizationId,
+    );
+    const nextAppliedValues = applySelectedOrganizationToFilterValues(
+      queryState.definitions,
+      queryState.appliedFilterValues,
+      selectedOrganizationId,
+    );
+    const unchanged = queryState.definitions
+      .filter((definition) => definition.enabled && isOrganizationFilterDefinition(definition))
+      .every((definition) => (
+        nextFilterValues[definition.id] === queryState.filterValues[definition.id]
+        && nextAppliedValues[definition.id] === queryState.appliedFilterValues[definition.id]
+      ));
+    queryState.applyOrganizationChange(
+      selectedOrganizationId,
+      unchanged ? queryState.filterValues : nextFilterValues,
+      unchanged ? queryState.appliedFilterValues : nextAppliedValues,
+      !unchanged,
+    );
+  }, [
+    queryState.appliedFilterValues,
+    queryState.applyOrganizationChange,
+    queryState.definitions,
+    queryState.filterValues,
+    selectedOrganizationId,
   ]);
 
   useEffect(() => {
@@ -886,9 +951,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         setDataFormDirty(false);
         setSelectedItemId(created?.id ?? null);
         setInspectorTab("style");
+        return;
       } catch (error) {
         console.error("Failed to add screen widget:", error);
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
+        return false;
       }
     },
     [commitDocument, projectDocument, t],
@@ -1048,6 +1115,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       appliedFilterValues: queryState.appliedFilterValues,
       namespaceDraftId: queryState.namespaceDraftId,
       appliedNamespaceId: queryState.appliedNamespaceId,
+      organizationId: selectedOrganizationIdRef.current,
     });
     setEditMode(true);
     setSelectedItemId(null);
@@ -1073,6 +1141,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         appliedFilterValues: queryState.appliedFilterValues,
         namespaceDraftId: queryState.appliedNamespaceId,
         appliedNamespaceId: queryState.appliedNamespaceId,
+        organizationId: selectedOrganizationIdRef.current,
       },
     );
     setEditQuerySnapshot(null);
@@ -1094,7 +1163,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     if (!selectedScreen?.data_id) return;
 
     const nextDraftViewSets = {
-      ...draftViewSets,
+      ...draftViewSetsRef.current,
       filters: queryState.definitions,
     };
     setSaving(true);
@@ -1123,6 +1192,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleConfirmDataVariables = (next: DataVariable[]) => {
+    commitDocument({
+      viewSets: {
+        ...draftViewSetsRef.current,
+        dataVariables: next,
+      },
+      filters: filtersRef.current,
+    });
+    message.success(t("common.saveSuccess"));
+    setDataVariableDraft(null);
   };
 
   const handleSaveSettings = ({
@@ -1317,7 +1398,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
 
       if (!isScreenWidgetChartType(nextChartType)) {
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
-        return;
+        return false;
       }
 
       const nextItem = {
@@ -1345,17 +1426,17 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       );
       setDataFormDirty(false);
       message.success(t("opsAnalysis.screen.dataApplied"));
+      return;
     },
     [commitDocument, projectDocument, t],
   );
 
   const handleDataConfigClose = useCallback(() => {
+    // 选中还在时，右侧栏会立刻再打开，未应用表单也还挂着。退出配置必须同时取消选中。
     setDataFormDirty(false);
-    setPendingConfigItem((current) => {
-      if (!current) return current;
-      setInspectorTab("style");
-      return null;
-    });
+    setPendingConfigItem(null);
+    setSelectedItemId(null);
+    setInspectorCollapsed(true);
   }, []);
 
   const handleTopologyLayoutChange = useCallback(
@@ -1388,8 +1469,36 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     [commitDocument, editMode, shareMode],
   );
 
+  const dataVariables = useMemo(
+    () => readDataVariables(activeViewSets.dataVariables),
+    [activeViewSets],
+  );
+
+  const handleCreateDataVariable = useCallback((variable: DataVariable) => {
+    setDataVariableDraft(variable);
+    setDataVariableOpen(true);
+  }, []);
+
   const screenCanvas = useMemo(
     () => (
+      <DataVariableRuntimeProvider
+        variables={dataVariables}
+        referencedValues={activeViewSets.items}
+        filterValues={queryState.appliedFilterValues}
+        reloadKey={refreshVersion}
+        scopeKey={queryState.appliedNamespaceId}
+        prepareParams={(variable, params) => {
+          const source = dataSources.find((item) => item.id === variable.dataSourceId);
+          const shaped = buildDataVariableRequestParams({
+            variable,
+            resolvedParams: params,
+            dataSource: source,
+            filterValues: queryState.appliedFilterValues,
+            filterDefinitions: queryState.definitions,
+          });
+          return withDatasourceNamespace(shaped, source?.namespaces, queryState.appliedNamespaceId);
+        }}
+      >
       <ScreenCanvas
         viewSets={activeViewSets}
         fullscreen={isFullscreen || playbackFullscreen}
@@ -1419,9 +1528,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         }
         resolveFilterTextRef={resolveFilterTextRef}
       />
+      </DataVariableRuntimeProvider>
     ),
     [
       activeViewSets,
+      dataVariables,
+      dataSources,
       dataSourceResolver,
       editMode,
       handleDropChrome,
@@ -1481,6 +1593,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         handleSelectCanvasItem(null)
       }
       onOpenFilterConfig={() => setFilterConfigOpen(true)}
+      onOpenDataVariables={() => {
+        setDataVariableDraft(null);
+        setDataVariableOpen(true);
+      }}
       onPreview={enterFullscreen}
       onEdit={handleStartEdit}
       onCancel={() => runAfterDataGuard(handleCancelEdit)}
@@ -1566,6 +1682,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       builtinNamespaceId={queryState.namespaceDraftId}
       filterDefinitions={queryState.definitions}
       unifiedFilterValues={queryState.filterValues}
+      dataVariables={dataVariables}
+      onCreateDataVariable={handleCreateDataVariable}
       configSection={activeInspectorTab === "interaction" ? "interaction" : "data"}
       onConfigSectionChange={setInspectorTab}
       onSectionErrorsChange={handleSectionErrorsChange}
@@ -1616,8 +1734,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           toolbar={screenToolbar ?? undefined}
           filterBar={unifiedFilterBar}
         >
-          {editorOpen ? (
-            <div className="relative flex h-full min-h-0 overflow-hidden" data-screen-editor>
+          {/* 画布必须留在同一个父节点。取消/保存关掉编辑栏时如果把画布换到另一支树，React 会整棵卸载再挂上，所有组件重新取数。 */}
+          <div
+            className="relative flex h-full min-h-0 overflow-hidden"
+            {...(editorOpen ? { "data-screen-editor": true } : {})}
+          >
+            {editorOpen ? (
               <ScreenElementPalette
                 stagePreviewBackground={String(
                   getScreenTheme(draftViewSets.viewport.theme).variables["--screen-stage-bg"],
@@ -1658,8 +1780,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                 onOpenItemMenu={openItemMenu}
                 onReorderItem={handleReorderItem}
               />
-              <div className="relative min-h-0 min-w-0 flex-1">
-                {screenCanvas}
+            ) : null}
+            <div className="relative min-h-0 min-w-0 flex-1">
+              {screenCanvas}
+              {editorOpen ? (
                 <div
                   ref={bindWidgetPreviewHost}
                   data-testid="screen-widget-preview-host"
@@ -1667,7 +1791,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                     isScreenPreviewHostVisible(activeInspectorTab),
                   )}
                 />
-              </div>
+              ) : null}
+            </div>
+            {editorOpen ? (
               <ScreenInspectorPane
                 label={t("opsAnalysis.screen.inspectorResize")}
                 collapsed={inspectorCollapsed}
@@ -1736,20 +1862,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
                   </>
                 )}
               </ScreenInspectorPane>
-              {itemMenu && itemMenuEntries.length > 0 ? (
-                <ScreenItemContextMenu
-                  open
-                  x={itemMenu.x}
-                  y={itemMenu.y}
-                  entries={itemMenuEntries}
-                  onAction={handleItemMenuAction}
-                  onClose={() => setItemMenu(null)}
-                />
-              ) : null}
-            </div>
-          ) : (
-            screenCanvas
-          )}
+            ) : null}
+            {editorOpen && itemMenu && itemMenuEntries.length > 0 ? (
+              <ScreenItemContextMenu
+                open
+                x={itemMenu.x}
+                y={itemMenu.y}
+                entries={itemMenuEntries}
+                onAction={handleItemMenuAction}
+                onClose={() => setItemMenu(null)}
+              />
+            ) : null}
+          </div>
         </ViewWorkspace>
       </div>
       <ViewSelector
@@ -1784,6 +1908,21 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           valueConfig: item.valueConfig,
         }))}
         dataSources={dataSources}
+      />
+      <DataVariableModal
+        open={dataVariableOpen}
+        variables={dataVariableDraft ? [...dataVariables, dataVariableDraft] : dataVariables}
+        focusId={dataVariableDraft?.id}
+        dataSources={dataSources}
+        filters={queryState.definitions}
+        filterValues={queryState.filterValues}
+        namespaceId={queryState.namespaceDraftId}
+        widgetConfigs={activeViewSets.items}
+        onCancel={() => {
+          setDataVariableOpen(false);
+          setDataVariableDraft(null);
+        }}
+        onConfirm={handleConfirmDataVariables}
       />
       {selectedScreen?.data_id != null && (
         <DashboardSubscriptionModal

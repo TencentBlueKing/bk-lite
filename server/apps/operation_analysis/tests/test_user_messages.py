@@ -77,3 +77,20 @@ def test_oa_message_uses_request_language_and_keeps_zh_contract():
         )
         assert oa_message("messages.weops_request_failed_detail", "WeOps 请求失败: {detail}", detail="probe down") == "WeOps 请求失败: probe down"
         assert oa_message("messages.connection_type_unsupported", "fallback") == "连接类型不支持"
+
+
+def test_share_request_language_follows_locale_header():
+    from types import SimpleNamespace
+
+    from apps.operation_analysis.views.share_view import activate_request_language, request_oa_language
+
+    request = SimpleNamespace(headers={"X-BK-Locale": "en"}, user=SimpleNamespace(locale="zh-Hans"))
+    assert request_oa_language(request) == "en"
+    activate_request_language(request)
+    try:
+        assert oa_message("messages.share_fixed_param", "参数 {name} 为固定值，不允许修改", name="view") == ("Parameter view is fixed and cannot be changed")
+    finally:
+        translation.deactivate()
+
+    anonymous = SimpleNamespace(headers={}, user=SimpleNamespace(locale=""))
+    assert request_oa_language(anonymous) is None

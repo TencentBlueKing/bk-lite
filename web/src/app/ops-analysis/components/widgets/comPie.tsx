@@ -22,7 +22,6 @@ import {
 } from './shared/screenMetrics';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
-import { piePageShare } from '@/app/ops-analysis/utils/genericStructure';
 import { useTranslation } from '@/utils/i18n';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { pieSectorSelectedMode } from '@/app/ops-analysis/utils/interactionBehavior';
@@ -48,7 +47,6 @@ const OsPie: React.FC<OsPieProps> = ({
 }) => {
   const { t } = useTranslation();
   const pieTotalLabel = t('dashboard.pieTotal');
-  const pageShare = piePageShare(rawData);
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
@@ -231,17 +229,7 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {pageShare ? (
-        <div className="px-2 text-xs text-[var(--color-text-3)]" data-testid="pie-page-share">
-          {t(
-            'dashboard.piePageShare',
-            '当前页占比，不是全部结果（第 {page} 页，每页 {pageSize}，共 {count} 项）',
-            pageShare,
-          )}
-        </div>
-      ) : null}
-      <div className="flex min-h-0 flex-1">
+    <div className="flex h-full min-h-0">
       {/* 图表区域 */}
       <div className="flex-1 min-w-0">
         <ReactEcharts
@@ -269,7 +257,6 @@ const OsPie: React.FC<OsPieProps> = ({
           onSelectionChange={handleLegendChange}
         />
       )}
-      </div>
     </div>
   );
 };

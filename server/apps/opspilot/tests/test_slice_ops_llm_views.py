@@ -76,7 +76,7 @@ def _vendor(name="v"):
 # ---------------------------------------------------------------------------
 class TestLLMViewSet:
     def test_get_template_list(self):
-        LLMSkill.objects.create(name="tpl", team=[1], is_template=True)
+        LLMSkill.objects.create(name="tpl", team=[], is_template=True, is_builtin=True)
         LLMSkill.objects.create(name="normal", team=[1], is_template=False)
         resp = _dispatch(LLMViewSet, "get_template_list", "get")
         body = _body(resp)

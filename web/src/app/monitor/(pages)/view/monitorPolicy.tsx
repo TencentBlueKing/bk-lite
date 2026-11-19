@@ -21,6 +21,11 @@ import {
   PolicyMetricCatalogItem,
   resolvePolicyMetricDisplayName
 } from '@/app/monitor/utils/policyDisplayName';
+import {
+  POLICY_GROUP_OTHER_ORG_HINT,
+  isPolicyGroupMembershipReadOnly,
+  policyGroupMembershipLabel
+} from './policyGroupMembership';
 
 const MonitorPolicy: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -54,6 +59,8 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     state: string | null;
     group_id: number | null;
     group_name: string;
+    read_only?: boolean;
+    group_organization_name?: string;
     groups: Array<{ id: number; name: string; is_default?: boolean }>;
     legacy_policies: Array<{ id: number; name: string; enable: boolean }>;
   } | null>(null);
@@ -223,6 +230,8 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   };
 
   const membershipState = membership?.state;
+  const membershipReadOnly = isPolicyGroupMembershipReadOnly(membership);
+  const membershipLabel = policyGroupMembershipLabel(membership);
   const isMember = membershipState === 'member';
   const membershipBadge = isMember
     ? '在组'
@@ -266,15 +275,25 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
       {!readOnly && membership ? (
         <div className="mb-3 flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-3 py-2.5">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-[13px] font-semibold text-[var(--color-text-1)]">策略组</span>
-              <StatusToneBadge tone={membershipTone} label={membershipBadge} />
-              {isMember ? (
-                <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">{membership.group_name || '--'}</span>
-              ) : (
-                <span className="text-xs leading-5 text-[var(--color-text-3)]">{membershipHint}</span>
-              )}
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 text-[13px] font-semibold text-[var(--color-text-1)]">策略组</span>
+                <StatusToneBadge tone={membershipTone} label={membershipBadge} />
+                {membershipReadOnly ? (
+                  membershipLabel ? (
+                    <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">{membershipLabel}</span>
+                  ) : null
+                ) : isMember ? (
+                  <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">{membership.group_name || '--'}</span>
+                ) : (
+                  <span className="text-xs leading-5 text-[var(--color-text-3)]">{membershipHint}</span>
+                )}
+              </div>
+              {membershipReadOnly ? (
+                <span className="text-xs leading-5 text-[var(--color-text-3)]">{POLICY_GROUP_OTHER_ORG_HINT}</span>
+              ) : null}
             </div>
+            {membershipReadOnly ? null : (
             <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
               <div className="flex flex-wrap items-center gap-2">
                 <Select
@@ -311,6 +330,7 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
                 ) : null}
               </div>
             </Permission>
+            )}
           </div>
         </div>
       ) : null}

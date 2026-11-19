@@ -20,12 +20,12 @@ import {
   buildWidgetExtraParams,
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
+  widgetDataVariableBlockReason,
   createWidgetRequestHistory,
   decideWidgetRequest,
   hasActiveWidgetRuntimeParams,
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
-import { genericStructureMismatch } from "@/app/ops-analysis/utils/genericStructure";
 import {
   beginOwnerRequest,
   finishOwnerRequest,
@@ -38,12 +38,13 @@ import {
 } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import {
   findComponentSwitchParams,
-  getTypedValueKey,
-  reconcileComponentSwitchValue,
+  reconcileComponentSwitchSelection,
   resolveComponentSwitchRequestGate,
   resolveComponentSwitchRuntime,
+  sameParamValue,
   supportsComponentSwitch,
 } from "@/app/ops-analysis/utils/componentParamSwitch";
+import { isMultipleSelectInputConfig } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
@@ -67,10 +68,14 @@ import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import { useRegisterWidgetCsvExport, useWidgetCsvExportRegistry } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { getScreenWidgetScale } from "@/app/ops-analysis/components/widgets/shared/screenMetrics";
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import { useDataVariableRuntime } from "@/app/ops-analysis/context/dataVariableRuntime";
+import { collectVariableIds, columnBlockReasonKey, substituteDataVariableUpstream } from "@/app/ops-analysis/utils/dataVariable";
 import {
   areTableQueryParamsEquivalent,
+  readExplicitPagePair,
   serializeTableQueryKey,
 } from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
@@ -95,7 +100,10 @@ import {
   dynamicQueryParamsOf,
   resolveOptionsQueryParams,
 } from "@/app/ops-analysis/utils/optionsQueryParamRefs";
-import { readComponentOptionsQueryUpstream } from "@/app/ops-analysis/utils/optionsQueryCandidates";
+import {
+  preferComponentSwitchLiveValue,
+  readComponentOptionsQueryUpstream,
+} from "@/app/ops-analysis/utils/optionsQueryCandidates";
 import { localizeOptionLoadError } from "@/app/ops-analysis/utils/paramInputOptionsLoader";
 
 const validateTopNData = (
@@ -270,8 +278,28 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    {},
+    () => readExplicitPagePair(config?.dataSourceParams),
   );
+  const savedPagePair = useMemo(
+    () => readExplicitPagePair(config?.dataSourceParams),
+    [config?.dataSourceParams],
+  );
+  const savedPageKey = `${savedPagePair.page ?? ""}:${savedPagePair.page_size ?? ""}`;
+  const savedPagePairRef = useRef(savedPagePair);
+  savedPagePairRef.current = savedPagePair;
+  const sourceParamsRef = useRef(dataSource?.params);
+  sourceParamsRef.current = dataSource?.params;
+  useEffect(() => {
+    const pair = savedPagePairRef.current;
+    const sourceParams = sourceParamsRef.current;
+    setTableQueryParams((prev) => {
+      const next = { ...prev };
+      delete next.page;
+      delete next.page_size;
+      Object.assign(next, pair);
+      return areTableQueryParamsEquivalent(prev, next, sourceParams) ? prev : next;
+    });
+  }, [savedPageKey]);
   const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
   const dashboardViewAuth = useDashboardViewAuth();
   const scenePermissionDenied = Boolean(
@@ -311,13 +339,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return dataSource.params.map((param) => {
       const override = overrides.find((item) => item.name === param.name);
       if (!override) return param;
-      if (param.name === 'analysis_mode') {
-        return { ...param, value: override.value ?? param.value };
-      }
       return {
         ...param,
         ...override,
-        visible_modes: param.visible_modes,
       };
     });
   }, [config?.dataSourceParams, dataSource?.params]);
@@ -362,26 +386,91 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       scheduleOptionsPhysical,
     ],
   );
+  const variableRuntime = useDataVariableRuntime();
+  const switchMultiple = isMultipleSelectInputConfig(componentSwitchParam?.inputConfig);
+  const rawSavedComponentSwitchValue = componentSwitchParam
+    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
+    : undefined;
+  const savedComponentSwitchValue = useMemo(() => {
+    if (!componentSwitchParam) return undefined;
+    if (switchMultiple) {
+      if (Array.isArray(rawSavedComponentSwitchValue)) {
+        const items = rawSavedComponentSwitchValue.filter(
+          (item): item is string | number => typeof item === "string" || typeof item === "number",
+        );
+        return items.length > 0 && items.length === rawSavedComponentSwitchValue.length
+          ? items
+          : undefined;
+      }
+      if (
+        typeof rawSavedComponentSwitchValue === "string"
+        || typeof rawSavedComponentSwitchValue === "number"
+      ) {
+        return [rawSavedComponentSwitchValue];
+      }
+      return undefined;
+    }
+    return typeof rawSavedComponentSwitchValue === "string"
+      || typeof rawSavedComponentSwitchValue === "number"
+      ? rawSavedComponentSwitchValue
+      : undefined;
+  }, [componentSwitchParam, rawSavedComponentSwitchValue, switchMultiple]);
+  const runtimeParamScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        chartType,
+        dataSource: config?.dataSource,
+        param: componentSwitchParam?.name,
+        inputConfig: componentSwitchParam?.inputConfig,
+        savedValue: savedComponentSwitchValue ?? null,
+      }),
+    [
+      chartType,
+      config?.dataSource,
+      componentSwitchParam?.inputConfig,
+      componentSwitchParam?.name,
+      savedComponentSwitchValue,
+    ],
+  );
+  const [runtimeParamState, setRuntimeParamState] = useState<{
+    scopeKey: string;
+    value?: string | number | Array<string | number>;
+  }>(() => ({
+    scopeKey: runtimeParamScopeKey,
+    value: savedComponentSwitchValue,
+  }));
+  const runtimeParamValue =
+    runtimeParamState.scopeKey === runtimeParamScopeKey
+      ? runtimeParamState.value
+      : savedComponentSwitchValue;
   const componentSwitchQuery = useMemo(() => {
     return resolveOptionsQueryParams(dynamicQueryParamsOf(componentSwitchParam?.inputConfig), (ref) => (
-      readComponentOptionsQueryUpstream({
+      preferComponentSwitchLiveValue(
         ref,
-        componentParams: effectiveComponentParams,
-        definitions: filterDefinitions || [],
-        filterBindings: config?.filterBindings,
-        readFilterValue: (id) => (
-          unifiedFilterValues && Object.prototype.hasOwnProperty.call(unifiedFilterValues, id)
-            ? unifiedFilterValues[id]
-            : undefined
-        ),
-      })
+        substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
+          ref,
+          componentParams: effectiveComponentParams,
+          definitions: filterDefinitions || [],
+          filterBindings: config?.filterBindings,
+          readFilterValue: (id) => (
+            unifiedFilterValues && Object.prototype.hasOwnProperty.call(unifiedFilterValues, id)
+              ? unifiedFilterValues[id]
+              : undefined
+          ),
+        }), variableRuntime?.columns),
+        componentSwitchParam
+          ? { name: componentSwitchParam.name, value: runtimeParamValue }
+          : undefined,
+      )
     ));
   }, [
     componentSwitchParam,
     config?.filterBindings,
     effectiveComponentParams,
     filterDefinitions,
+    runtimeParamValue,
     unifiedFilterValues,
+    variableRuntime?.columns,
   ]);
   const optionState = useParamInputOptions(
     componentSwitchParam?.inputConfig,
@@ -394,55 +483,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       optionsBlockReason: componentSwitchQuery.blockReason,
     },
   );
-  const rawSavedComponentSwitchValue = componentSwitchParam
-    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
-    : undefined;
-  const savedComponentSwitchValue =
-    typeof rawSavedComponentSwitchValue === "string" || typeof rawSavedComponentSwitchValue === "number"
-      ? rawSavedComponentSwitchValue
-      : undefined;
-  const runtimeParamScopeKey = useMemo(
-    () =>
-      JSON.stringify({
-        chartType,
-        dataSource: config?.dataSource,
-        param: componentSwitchParam?.name,
-        inputConfig: componentSwitchParam?.inputConfig,
-        savedValue:
-          typeof savedComponentSwitchValue === "string" || typeof savedComponentSwitchValue === "number"
-            ? getTypedValueKey(savedComponentSwitchValue)
-            : null,
-      }),
-    [
-      chartType,
-      config?.dataSource,
-      componentSwitchParam?.inputConfig,
-      componentSwitchParam?.name,
-      savedComponentSwitchValue,
-    ],
-  );
-  const runtimeParamInitialValue = useMemo(
-    () => {
-      const reconciled = optionState.status === "success"
-        ? reconcileComponentSwitchValue(savedComponentSwitchValue, optionState.options)
-        : savedComponentSwitchValue;
-      return typeof reconciled === "string" || typeof reconciled === "number"
-        ? reconciled
-        : undefined;
-    },
-    [optionState.status, optionState.options, savedComponentSwitchValue],
-  );
-  const [runtimeParamState, setRuntimeParamState] = useState<{
-    scopeKey: string;
-    value?: string | number;
-  }>(() => ({
-    scopeKey: runtimeParamScopeKey,
-    value: runtimeParamInitialValue,
-  }));
-  const runtimeParamValue =
-    runtimeParamState.scopeKey === runtimeParamScopeKey
-      ? runtimeParamState.value
-      : runtimeParamInitialValue;
 
   useEffect(() => {
     setRuntimeParamState((previous) =>
@@ -450,31 +490,47 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ? previous
         : {
           scopeKey: runtimeParamScopeKey,
-          value: runtimeParamInitialValue,
+          value: savedComponentSwitchValue,
         },
     );
-  }, [runtimeParamInitialValue, runtimeParamScopeKey]);
+  }, [runtimeParamScopeKey, savedComponentSwitchValue]);
 
   useEffect(() => {
-    if (optionState.status !== "success" && optionState.status !== "blocked") return;
+    if (
+      optionState.status !== "success"
+      && optionState.status !== "blocked"
+      && optionState.status !== "error"
+    ) return;
     setRuntimeParamState((previous) => {
       if (previous.scopeKey !== runtimeParamScopeKey) {
-        return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
+        return {
+          scopeKey: runtimeParamScopeKey,
+          value: optionState.status === "error" ? undefined : savedComponentSwitchValue,
+        };
+      }
+      if (optionState.status === "error") {
+        return previous.value === undefined
+          ? previous
+          : { ...previous, value: undefined };
       }
       const reconciled = optionState.status === "blocked"
         ? null
-        : reconcileComponentSwitchValue(previous.value, optionState.options);
-      const nextValue = typeof reconciled === "string" || typeof reconciled === "number"
-        ? reconciled
-        : undefined;
-      return nextValue === previous.value
+        : reconcileComponentSwitchSelection(previous.value, optionState.options, switchMultiple);
+      const nextValue = reconciled == null ? undefined : reconciled;
+      return sameParamValue(nextValue, previous.value)
         ? previous
-        : { ...previous, value: nextValue };
+        : { ...previous, value: nextValue as typeof previous.value };
     });
-  }, [optionState.status, optionState.options, runtimeParamInitialValue, runtimeParamScopeKey]);
+  }, [
+    optionState.options,
+    optionState.status,
+    runtimeParamScopeKey,
+    savedComponentSwitchValue,
+    switchMultiple,
+  ]);
 
   const handleRuntimeParamChange = useCallback(
-    (value: string | number) => {
+    (value: string | number | Array<string | number>) => {
       setRuntimeParamState({ scopeKey: runtimeParamScopeKey, value });
     },
     [runtimeParamScopeKey],
@@ -483,20 +539,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <ComponentParamSwitchControl
       inputConfig={componentSwitchParam?.inputConfig}
       options={optionState.options}
-      value={runtimeParamValue as string | number | undefined}
+      value={runtimeParamValue}
       onChange={handleRuntimeParamChange}
-      block={!headerRuntimeSlot}
+      block={false}
       chartThemeMode={config?.chartThemeMode}
+      scale={getScreenWidgetScale(screenRenderContext)}
     />
   ) : null;
   const runtimeHeaderControl =
-    chartType === "topN" && headerRuntimeSlot && componentSwitchControl
+    headerRuntimeSlot && componentSwitchControl
       ? createPortal(
         componentSwitchControl,
         headerRuntimeSlot,
       )
       : null;
-  const inlineComponentSwitchControl = headerRuntimeSlot
+  const componentSwitchShell = headerRuntimeSlot
     ? null
     : componentSwitchControl;
 
@@ -626,8 +683,43 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     ],
   );
 
+  const usesDataVariables = useMemo(() => collectVariableIds(config).length > 0, [config]);
+  const variableColumns = usesDataVariables && variableRuntime?.ready
+    ? variableRuntime.columns
+    : undefined;
+  const variableBlockReason = useMemo(
+    () => widgetDataVariableBlockReason({
+      config,
+      dataSource,
+      extraParams: requestExtraParams,
+      dataVariableColumns: variableColumns,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
+      chartType,
+      t,
+    }),
+    [
+      config,
+      dataSource,
+      requestExtraParams,
+      variableColumns,
+      unifiedFilterValues,
+      filterDefinitions,
+      dateRangeResolutionContext,
+      chartType,
+      t,
+    ],
+  );
+  const variableBlockMessage = variableBlockReason
+    ? t(columnBlockReasonKey(variableBlockReason))
+    : t("dashboard.noData");
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
+      return null;
+    }
+    if (usesDataVariables && !variableRuntime?.ready) {
       return null;
     }
 
@@ -640,6 +732,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
       chartType,
+      dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       t,
     });
   }, [
@@ -652,10 +745,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dateRangeResolutionContext,
     chartType,
     t,
+    usesDataVariables,
+    variableRuntime,
+    variableColumns,
   ]);
 
   const requestSignatureParams = useMemo(() => {
     if (!requestEnabled) {
+      return null;
+    }
+
+    if (usesDataVariables && !variableRuntime?.ready) {
       return null;
     }
 
@@ -668,6 +768,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
       chartType,
+      dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       t,
     });
   }, [
@@ -680,6 +781,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dateRangeResolutionContext,
     chartType,
     t,
+    usesDataVariables,
+    variableRuntime,
+    variableColumns,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -774,21 +878,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return localizeStructureMessage(validateCardListPayload(data, {
           titleField: config?.cardList?.titleField || "",
         }));
-      }
-
-      const mismatch = genericStructureMismatch(data, type);
-      if (mismatch) {
-        return {
-          isValid: false,
-          message: t(
-            "dashboard.structureMismatch",
-            "当前结果结构是 {current}，这个图表需要 {required}。请修改分析方式或更换图表。",
-            {
-              current: t(`dashboard.structureName.${mismatch.current}`, mismatch.current),
-              required: t(`dashboard.structureName.${mismatch.required}`, mismatch.required),
-            },
-          ),
-        };
       }
 
       const isDataEmpty = () =>
@@ -946,6 +1035,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         filterDefinitions,
         resolutionContext: dateRangeResolutionContext,
         chartType,
+        dataVariableColumns: usesDataVariables ? variableColumns : undefined,
       });
 
       // Discard stale response if a newer fetch has started
@@ -1254,7 +1344,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const hasRawPayload = rawData !== null && rawData !== undefined;
   const hasActiveRuntimeControl =
     hasActiveWidgetRuntimeParams(chartType, runtimeParams);
-  const isWaitingForInitialData = shouldWaitForInitialWidgetData({
+  const variablePending = usesDataVariables && Boolean(variableRuntime) && !variableRuntime?.ready;
+  const variableBlocked = usesDataVariables && requestEnabled && !variablePending && requestParams === null;
+  useEffect(() => {
+    if (variablePending || !variableBlocked) return;
+    setLoading(false);
+    setTableLoading(false);
+  }, [variableBlocked, variablePending]);
+  const isWaitingForInitialData = variablePending || (!variableBlocked && shouldWaitForInitialWidgetData({
     isSceneWidget,
     isTableLikeChart,
     hasDataSourceId: Boolean(normalizedDataSourceId),
@@ -1264,7 +1361,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     hasDataValidation: Boolean(dataValidation),
     requestEnabled,
     hasRequested: previousRequestRef.current.hasRequested,
-  });
+  }));
   const isWaitingForSwitchOptions = componentSwitchRequestGate === "pending";
   const isInitialNonTableLoading =
     shouldShowInitialWidgetLoading({
@@ -1275,6 +1372,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
 
   useEffect(() => {
+    if (variableBlocked) {
+      onRenderStatus?.(variableBlockReason === "request"
+        ? { widgetId, status: "failed", error: variableBlockMessage }
+        : { widgetId, status: "empty", error: variableBlockMessage });
+      return;
+    }
     if (
       isInitialNonTableLoading
       || isWaitingForInitialData
@@ -1309,6 +1412,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     isTableLikeChart,
     isWaitingForInitialData,
     isWaitingForSwitchOptions,
+    variableBlocked,
+    variableBlockMessage,
+    variableBlockReason,
     onRenderStatus,
     t,
     tableLoading,
@@ -1380,6 +1486,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         />
       </div>
     );
+  } else if (variableBlocked) {
+    body = (
+      <WidgetState
+        kind={variableBlockReason === "request" ? "error" : "empty"}
+        description={variableBlockMessage}
+      />
+    );
   } else if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
     body = (
       <div className="h-full flex items-center justify-center">
@@ -1421,7 +1534,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           onReady={handleRendererReady}
           onError={handleRendererError}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
-          componentSwitchControl={inlineComponentSwitchControl}
+          paginationResetKey={chartType === "table" ? JSON.stringify(runtimeParams) : undefined}
           errorMessage={
             hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
               ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
@@ -1439,10 +1552,19 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
+  const framedBody = componentSwitchShell ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 overflow-x-auto overflow-y-hidden px-3 py-px pt-2">
+        {componentSwitchShell}
+      </div>
+      <div className="min-h-0 flex-1">{body}</div>
+    </div>
+  ) : body;
+
   return (
     <ScreenWidgetThemeProvider mode={config?.chartThemeMode}>
       {runtimeHeaderControl}
-      {body}
+      {framedBody}
     </ScreenWidgetThemeProvider>
   );
 };

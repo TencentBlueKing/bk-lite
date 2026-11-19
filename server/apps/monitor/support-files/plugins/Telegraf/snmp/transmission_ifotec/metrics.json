@@ -5,6 +5,8 @@
   "plugin_desc": "Ifotec industrial fiber-optic transceiver and optical transmission SNMP child template for devices under enterprise PEN 21362. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds the confirmed ifoTemperatureTable chassis and module temperature from IFOTEC-SMI as device_temperature_celsius, scaled from tenths of a degree Celsius. CPU, memory, fan and power-supply health are N/A because no stable shared device-health objects are confirmed for them.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_ifotec'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Transmission",
   "icon": "mm-ifotec_ifotec",
   "type": "Network Device",

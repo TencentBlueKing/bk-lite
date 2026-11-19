@@ -1,4 +1,4 @@
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterBindings,
   FilterValue,
@@ -21,6 +21,8 @@ import {
   discoverFollowedFilterParams,
 } from './widgetDataTransform';
 import { rewriteParamQueryRefs } from './optionsQueryParamRefs';
+import { sanitizeComponentSwitchParams } from './componentParamSwitch';
+import { logStringParamMigrationWarnings } from './stringParamMultipleMigrate';
 
 export const EMPTY_REPORT_VIEW_SETS: ReportViewSets = {
   schema_version: 1,
@@ -113,11 +115,19 @@ const normalizeSection = (
       ),
     );
   }
+  const rawParams = value.valueConfig.dataSourceParams;
+  const sanitized = Array.isArray(rawParams)
+    ? sanitizeComponentSwitchParams(chartType, rawParams as ParamItem[])
+    : null;
+  if (sanitized && sanitized.warnings.length > 0) {
+    logStringParamMigrationWarnings(sanitized.warnings);
+  }
   return {
     id,
     valueConfig: {
       ...value.valueConfig,
       chartType,
+      ...(sanitized?.changed ? { dataSourceParams: sanitized.params } : {}),
       name:
         typeof value.valueConfig.name === 'string'
           ? value.valueConfig.name

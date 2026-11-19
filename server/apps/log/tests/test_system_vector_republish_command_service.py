@@ -25,13 +25,13 @@ def test_republish_command_replaces_legacy_snapshot_with_complete_current_contra
     assert state.desired_generation == 5
     assert state.published_generation == 5
     assert state.status == SystemVectorConfigState.Status.PUBLISHED
-    assert state.published_content.startswith("# bk-lite-system-vector-contract-version: 1\n")
+    assert state.published_content.startswith("# bk-lite-system-vector-contract-version: 2\n")
     assert "normalize_event:" in state.published_content
     assert "log_extractors:" in state.published_content
     assert "prepare_victoria_logs:" in state.published_content
     assert "victoria_logs:" in state.published_content
     assert "generation=5" in stdout.getvalue()
-    assert "contract_version=1" in stdout.getvalue()
+    assert "contract_version=2" in stdout.getvalue()
 
 
 @pytest.mark.integration

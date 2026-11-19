@@ -5,6 +5,7 @@ export interface CollectorNode {
   id: string;
   name: string;
   removed?: boolean;
+  active?: boolean;
 }
 
 interface PluginTooltipContentProps {

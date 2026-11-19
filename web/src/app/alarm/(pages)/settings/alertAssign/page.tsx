@@ -16,7 +16,8 @@ import { useSettingApi } from '@/app/alarm/api/settings';
 import { Button, Switch, Tag, Tooltip } from 'antd';
 import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
+import { weekMap } from '@/app/alarm/constants/settings';
+import { suppressionPeriodLabel, suppressionWeekdayLabel } from '@/app/alarm/utils/shieldDisplay';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
 import { useUserInfoContext } from '@/context/userInfo';
 import {
@@ -119,7 +120,7 @@ const AlertAssign: React.FC = () => {
         const start_time = config.start_time as string;
         const end_time = config.end_time as string;
         const week_month = config.week_month as number[] | undefined;
-        let label = typeLabel[type] || '';
+        let label = suppressionPeriodLabel(type, t);
 
         const fmt = (time: string, pattern = 'HH:mm:ss') =>
           dayjs(time, pattern).format(pattern);
@@ -127,7 +128,9 @@ const AlertAssign: React.FC = () => {
         if (type === 'one') {
           return `${fmt(start_time, 'YYYY-MM-DD HH:mm:ss')}-${fmt(end_time, 'YYYY-MM-DD HH:mm:ss')}`;
         } else if (type === 'week') {
-          label += ` ${(week_month || []).map((d: number) => weekMap[d]).join(',')}`;
+          label += ` ${(week_month || []).map((d: number) => (
+            suppressionWeekdayLabel(d, t, weekMap[d] || '')
+          )).join(',')}`;
         } else if (type === 'month') {
           label += ` ${(week_month || []).map((d: number) => `${d}日`).join(',')}`;
         }

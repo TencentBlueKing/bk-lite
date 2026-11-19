@@ -10,6 +10,12 @@ team_free 端点登记其「响应不含组织字段」断言测试。
 """
 
 TENANT_ISOLATION_COVERAGE = {
+    "node-mgmt/environment-install": [
+        "apps.node_mgmt.tests.test_environment_install_service::test_gateway_request_enforces_grant_organization",
+    ],
+    "node-mgmt/environment-install-status": [
+        "apps.node_mgmt.tests.test_environment_install_service::test_gateway_status_enforces_grant_organization_and_scope",
+    ],
     "workflow/trigger": [
         "apps.workflow.tests.test_trigger_entrypoints::test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant",
     ],

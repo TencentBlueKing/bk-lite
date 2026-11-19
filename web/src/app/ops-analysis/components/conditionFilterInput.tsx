@@ -19,7 +19,6 @@ interface ConditionFilterInputProps {
   value?: unknown;
   onChange?: (value: ConditionGroup) => void;
   fields: ConditionFieldOption[];
-  queryObject?: string;
   disabled?: boolean;
 }
 
@@ -64,7 +63,6 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
   value,
   onChange,
   fields,
-  queryObject = '',
   disabled = false,
 }) => {
   const { t } = useTranslation();
@@ -98,6 +96,12 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
         const valueType = field?.valueType || 'string';
         const operators = operatorsForFieldType(valueType);
         const multiple = item.op === 'in';
+        const tagValues = Array.isArray(item.value)
+          ? item.value.map((entry) => String(entry))
+          : item.value === undefined || item.value === null || item.value === ''
+            ? []
+            : [String(item.value)];
+        const valueHidden = item.op === 'empty';
         return (
           <div
             key={`${item.field || 'row'}-${index}`}
@@ -138,8 +142,8 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
               />
             </OperatorSlot>
             <ValueSlot>
-              {item.op === 'empty' ? <div className="min-h-8" /> : null}
-              {item.op !== 'empty' && valueType === 'number' ? (
+              {valueHidden ? <div className="min-h-8" /> : null}
+              {!valueHidden && valueType === 'number' ? (
                 <InputNumber
                   aria-label={t('dashboard.conditionFilter.value')}
                   data-testid="condition-value"
@@ -150,7 +154,25 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
                   onChange={(next) => emit(updateConditionRow(group, index, { value: next }))}
                 />
               ) : null}
-              {item.op !== 'empty' && valueType === 'enum' ? (
+              {!valueHidden && valueType === 'tag' ? (
+                <Select
+                  aria-label={t('dashboard.conditionFilter.value')}
+                  data-testid="condition-value"
+                  className="w-full"
+                  style={{ width: '100%' }}
+                  disabled={disabled}
+                  mode={(field?.options || []).length > 0 ? 'multiple' : 'tags'}
+                  value={tagValues}
+                  options={(field?.options || []).map((option) => ({
+                    label: option.label,
+                    value: option.value,
+                  }))}
+                  onChange={(next) => emit(updateConditionRow(group, index, {
+                    value: Array.isArray(next) ? next.map((entry) => String(entry).trim()).filter(Boolean) : [],
+                  }))}
+                />
+              ) : null}
+              {!valueHidden && valueType === 'enum' ? (
                 <Select
                   aria-label={t('dashboard.conditionFilter.value')}
                   data-testid="condition-value"
@@ -159,16 +181,14 @@ const ConditionFilterInput: React.FC<ConditionFilterInputProps> = ({
                   disabled={disabled}
                   mode={multiple ? 'multiple' : undefined}
                   value={multiple ? (Array.isArray(item.value) ? item.value : []) : item.value}
-                  options={(field?.options || []).filter((option) => (
-                    !queryObject || !option.query_objects?.length || option.query_objects.includes(queryObject)
-                  )).map((option) => ({
+                  options={(field?.options || []).map((option) => ({
                     label: option.label,
                     value: option.value,
                   }))}
                   onChange={(next) => emit(updateConditionRow(group, index, { value: next }))}
                 />
               ) : null}
-              {item.op !== 'empty' && valueType === 'string' ? (
+              {!valueHidden && valueType === 'string' ? (
                 <Input
                   aria-label={t('dashboard.conditionFilter.value')}
                   data-testid="condition-value"

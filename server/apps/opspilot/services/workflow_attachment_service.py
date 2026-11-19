@@ -1,22 +1,30 @@
 from __future__ import annotations
 
-import csv
 import re
 from datetime import timedelta
-from io import BytesIO, StringIO
+from io import BytesIO
 from uuid import uuid4
 
+import urllib3
 from django.conf import settings
 from django.core import signing
 from django.core.files.base import ContentFile
 from django.utils import timezone
 
-from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WorkflowAttachmentAsset
+from apps.opspilot.services.attachment_theme import build_docx_bytes as _build_docx_bytes
+from apps.opspilot.services.attachment_theme import build_pdf_bytes as _build_pdf_bytes
+from apps.opspilot.services.attachment_theme import build_xlsx_bytes as _build_xlsx_bytes
+from apps.opspilot.services.attachment_theme import inline_text as _inline_text
+from apps.opspilot.services.attachment_theme import iter_markdown_blocks as _iter_markdown_blocks
+from apps.opspilot.services.attachment_theme import should_prefix_title as _should_prefix_title
 
 # 工作流附件下载令牌的签名盐值与默认有效期(秒)。
 # 使用签名 + 过期时间替代原先可被猜测且永不失效的明文 token。
 WORKFLOW_ATTACHMENT_DOWNLOAD_SALT = "opspilot.workflow_attachment.download"
+MINIO_CONNECTION_FAILURE_MESSAGE = "连不上 MinIO，文件没有保存。请稍后再试，或联系管理员处理 MinIO。"
+_CONNECTION_ERROR_NAMES = frozenset({"NewConnectionError", "ConnectTimeoutError", "NameResolutionError", "ProtocolError"})
+_MINIO_HTTP_POOL = None
 
 
 def workflow_attachment_download_max_age() -> int:
@@ -277,7 +285,15 @@ def normalize_attachment_file_type(file_type: str, filename: str = "") -> tuple[
     return normalized_type, normalized_filename, config["mime_type"]
 
 
-def build_attachment_bytes(content: str, file_type: str, title: str = "") -> bytes:
+def build_attachment_bytes(
+    content: str,
+    file_type: str,
+    title: str = "",
+    *,
+    genre: str = "business_report",
+    header_rows: int = 1,
+    merges: list[str] | None = None,
+) -> bytes:
     normalized_type, _, _ = normalize_attachment_file_type(file_type)
     safe_content = content or ""
     safe_title = title or "Attachment"
@@ -285,17 +301,66 @@ def build_attachment_bytes(content: str, file_type: str, title: str = "") -> byt
     if normalized_type in ("md", "txt", "text", "html"):
         return safe_content.encode("utf-8")
     if normalized_type == "pdf":
-        return _build_pdf_bytes(safe_content, safe_title)
+        return _build_pdf_bytes(safe_content, safe_title, genre=genre)
     if normalized_type in ("docx", "word"):
-        return _build_docx_bytes(safe_content, safe_title)
+        return _build_docx_bytes(safe_content, safe_title, genre=genre)
     if normalized_type in ("pptx", "ppt", "powerpoint"):
         return _build_pptx_bytes(safe_content, safe_title)
     if normalized_type == "xlsx":
-        return _build_xlsx_bytes(safe_content)
+        return _build_xlsx_bytes(safe_content, header_rows=header_rows, merges=merges)
     if normalized_type == "csv":
         return _build_csv_bytes(safe_content)
 
     raise ValueError(f"不支持的附件类型: {file_type}")
+
+
+def _minio_http_pool():
+    """附件上传专用连接池：连接失败不重试。"""
+    global _MINIO_HTTP_POOL
+    if _MINIO_HTTP_POOL is None:
+        _MINIO_HTTP_POOL = urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=5, read=300),
+            maxsize=10,
+            retries=False,
+        )
+    return _MINIO_HTTP_POOL
+
+
+def _upload_workflow_attachment_bytes(*, filename: str, content_bytes: bytes, mime_type: str) -> str:
+    """用本次新建的 MinioBackend 上传。
+
+    django-minio-backend 3.6.0 把 Minio 客户端放在实例的 ``_MinioBackend__CLIENT`` 上，
+    初值为 None。``getattr`` 在实例没有该属性时会读到类上的同名缓存。
+    附件字段和其他 ``MinioBackend(bucket_name="munchkin-private")`` 只要共用那个客户端，
+    改 ``_http`` 或字段 storage 的 ``HTTP_CLIENT`` 就会让别的上传也不再重试。
+    这里只给本次上传一个自己的 storage，连接池不装到已有客户端上。
+    """
+    from django_minio_backend import MinioBackend
+
+    field = WorkflowAttachmentAsset._meta.get_field("file")
+    isolated = MinioBackend(bucket_name=field.storage.bucket, http_client=_minio_http_pool())
+    content = ContentFile(content_bytes, name=filename)
+    content.content_type = mime_type
+    object_name = field.generate_filename(WorkflowAttachmentAsset(), filename)
+    return isolated.save(object_name, content)
+
+
+def _is_minio_connection_error(exc: BaseException) -> bool:
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, (ConnectionError, TimeoutError)):
+            return True
+        if type(current).__name__ in _CONNECTION_ERROR_NAMES:
+            return True
+        for link in (getattr(current, "reason", None), current.__cause__, current.__context__):
+            if isinstance(link, BaseException):
+                pending.append(link)
+    return False
 
 
 def create_workflow_attachment_asset(
@@ -316,18 +381,24 @@ def create_workflow_attachment_asset(
 
     existing_asset = WorkflowAttachmentAsset.objects.filter(execution_id=execution_id, attachment_id=attachment_id).first()
     previous_file_name = existing_asset.file.name if (existing_asset and existing_asset.file) else None
-    asset, _ = WorkflowAttachmentAsset.objects.update_or_create(
-        execution_id=execution_id,
-        attachment_id=attachment_id,
-        defaults={
-            "flow_id": flow_id,
-            "source_node_id": source_node_id,
-            "filename": filename,
-            "mime_type": mime_type,
-            "file": ContentFile(content_bytes, name=filename),
-            "created_by": str(created_by or ""),
-        },
-    )
+    try:
+        saved_name = _upload_workflow_attachment_bytes(filename=filename, content_bytes=content_bytes, mime_type=mime_type)
+        asset, _ = WorkflowAttachmentAsset.objects.update_or_create(
+            execution_id=execution_id,
+            attachment_id=attachment_id,
+            defaults={
+                "flow_id": flow_id,
+                "source_node_id": source_node_id,
+                "filename": filename,
+                "mime_type": mime_type,
+                "file": saved_name,
+                "created_by": str(created_by or ""),
+            },
+        )
+    except Exception as exc:
+        if _is_minio_connection_error(exc):
+            raise ValueError(MINIO_CONNECTION_FAILURE_MESSAGE) from exc
+        raise
     # 替换了文件时清理旧的 MinIO 对象，避免遗留孤儿文件
     if previous_file_name and previous_file_name != asset.file.name:
         asset.file.storage.delete(previous_file_name)
@@ -372,110 +443,14 @@ def cleanup_expired_workflow_attachments(*, retention_days: int = 3) -> int:
     return deleted_count
 
 
-def _build_xlsx_bytes(content: str) -> bytes:
-    # 显著启动成本：openpyxl 仅在生成表格附件时需要，不得随 Django setup 加载。
-    from openpyxl import Workbook
-
-    workbook = Workbook()
-    sheet = workbook.active
-    for row in _csv_rows(content):
-        sheet.append(row)
-    buffer = BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
-
-
 def _build_csv_bytes(content: str) -> bytes:
     return (content or "").lstrip("\ufeff").encode("utf-8-sig")
 
 
-def _csv_rows(content: str) -> list[list[str]]:
-    rows = []
-    for row in csv.reader(StringIO(content or "")):
-        if any(cell.strip() for cell in row):
-            rows.append(row)
-    return rows or [[""]]
-
-
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
-_UL_RE = re.compile(r"^[-*]\s+(.*)$")
-_OL_RE = re.compile(r"^\d+[.)]\s+(.*)$")
-_TABLE_SEP_RE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
-
-
-def _plain_markdown_inline(text: str) -> str:
-    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text or "")
-    cleaned = cleaned.replace("**", "").replace("__", "").replace("`", "")
-    return cleaned.strip()
-
-
-def _split_markdown_row(line: str) -> list[str]:
-    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-    return [_plain_markdown_inline(cell) for cell in cells]
-
-
-def _breaks_markdown_paragraph(line: str) -> bool:
-    """无空行时，列表和分隔线也不能再并进上一段。"""
-    stripped = line.strip()
-    if not stripped or stripped in {"---", "***", "___"} or stripped.startswith("|"):
-        return True
-    return bool(_HEADING_RE.match(stripped) or _UL_RE.match(stripped) or _OL_RE.match(stripped))
-
-
-def _iter_markdown_blocks(content: str):
-    """把 Markdown 收成标题、列表、表格和段落，供 docx/pdf 按版式渲染。"""
-    lines = (content or "").splitlines()
-    index = 0
-    while index < len(lines):
-        stripped = lines[index].strip()
-        if not stripped:
-            index += 1
-            continue
-        heading = _HEADING_RE.match(stripped)
-        if heading:
-            yield ("heading", len(heading.group(1)), _plain_markdown_inline(heading.group(2)))
-            index += 1
-            continue
-        if stripped in {"---", "***", "___"}:
-            yield ("hr",)
-            index += 1
-            continue
-        if stripped.startswith("|") and index + 1 < len(lines) and _TABLE_SEP_RE.match(lines[index + 1].strip()):
-            header = _split_markdown_row(stripped)
-            index += 2
-            rows = []
-            while index < len(lines) and lines[index].strip().startswith("|"):
-                rows.append(_split_markdown_row(lines[index]))
-                index += 1
-            yield ("table", header, rows)
-            continue
-        if _UL_RE.match(stripped):
-            items = []
-            while index < len(lines) and _UL_RE.match(lines[index].strip()):
-                items.append(_plain_markdown_inline(_UL_RE.match(lines[index].strip()).group(1)))
-                index += 1
-            yield ("ul", items)
-            continue
-        if _OL_RE.match(stripped):
-            items = []
-            while index < len(lines) and _OL_RE.match(lines[index].strip()):
-                items.append(_plain_markdown_inline(_OL_RE.match(lines[index].strip()).group(1)))
-                index += 1
-            yield ("ol", items)
-            continue
-        paragraph = [stripped]
-        index += 1
-        while index < len(lines) and not _breaks_markdown_paragraph(lines[index]):
-            paragraph.append(lines[index].strip())
-            index += 1
-        yield ("paragraph", _plain_markdown_inline(" ".join(paragraph)))
-
-
-def _should_prefix_title(content: str, title: str) -> bool:
-    heading = _HEADING_RE.match((content or "").lstrip().splitlines()[0]) if (content or "").strip() else None
-    if not heading:
-        return bool(title)
-    return _plain_markdown_inline(heading.group(2)) != (title or "").strip()
+def _block_text(value) -> str:
+    if isinstance(value, str):
+        return value
+    return _inline_text(value)
 
 
 def _pptx_slides(content: str, title: str) -> list[dict]:
@@ -493,45 +468,26 @@ def _pptx_slides(content: str, title: str) -> list[dict]:
     for block in _iter_markdown_blocks(content):
         kind = block[0]
         if kind == "heading" and block[1] <= 2:
-            start(block[2])
+            start(_block_text(block[2]))
             continue
         if current is None:
             start(title)
         if kind == "heading":
-            current["bullets"].append(block[2])
+            current["bullets"].append(_block_text(block[2]))
         elif kind in {"ul", "ol"}:
-            current["bullets"].extend(block[1])
+            current["bullets"].extend(_block_text(item) for item in block[1])
         elif kind == "paragraph":
+            current["bullets"].append(_block_text(block[1]))
+        elif kind == "code":
             current["bullets"].append(block[1])
         elif kind == "table":
             for row in block[2]:
-                left = row[0] if row else ""
-                right = row[1] if len(row) > 1 else ""
+                left = _block_text(row[0]) if row else ""
+                right = _block_text(row[1]) if len(row) > 1 else ""
                 current["bullets"].append(f"{left}：{right}" if right else left)
     if not slides:
         start(title)
     return slides
-
-
-def _apply_docx_font(document, font_name: str = "微软雅黑") -> None:
-    from docx.oxml.ns import qn
-
-    normal = document.styles["Normal"]
-    normal.font.name = font_name
-    normal.element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
-
-    def paint(paragraph) -> None:
-        for run in paragraph.runs:
-            run.font.name = font_name
-            run._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
-
-    for paragraph in document.paragraphs:
-        paint(paragraph)
-    for table in document.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    paint(paragraph)
 
 
 def _apply_pptx_run_font(run, font_name: str = "微软雅黑") -> None:
@@ -575,162 +531,3 @@ def _build_pptx_bytes(content: str, title: str) -> bytes:
     buffer = BytesIO()
     presentation.save(buffer)
     return buffer.getvalue()
-
-
-def _build_docx_bytes(content: str, title: str) -> bytes:
-    # 显著启动成本：python-docx 仅在生成 Word 附件时需要；模块顶层导入会让
-    # Django AppConfig.ready() → nats_api → AgentNode 在 migrate 时触发 MemoryError。
-    from docx import Document
-
-    document = Document()
-    if _should_prefix_title(content, title):
-        document.add_heading(title, level=1)
-    for block in _iter_markdown_blocks(content):
-        kind = block[0]
-        if kind == "heading":
-            document.add_heading(block[2], level=min(block[1], 4))
-        elif kind == "ul":
-            for item in block[1]:
-                document.add_paragraph(item, style="List Bullet")
-        elif kind == "ol":
-            for item in block[1]:
-                document.add_paragraph(item, style="List Number")
-        elif kind == "table":
-            header, rows = block[1], block[2]
-            width = max([len(header), *[len(row) for row in rows]] or [1])
-            table = document.add_table(rows=1 + len(rows), cols=width)
-            table.style = "Table Grid"
-            for column, cell in enumerate(header):
-                table.rows[0].cells[column].text = cell
-            for row_index, row in enumerate(rows, start=1):
-                for column in range(width):
-                    table.rows[row_index].cells[column].text = row[column] if column < len(row) else ""
-        elif kind == "paragraph":
-            document.add_paragraph(block[1])
-    _apply_docx_font(document)
-    buffer = BytesIO()
-    document.save(buffer)
-    return buffer.getvalue()
-
-
-def _build_pdf_bytes(content: str, title: str) -> bytes:
-    # 显著启动成本：reportlab 仅在生成 PDF 附件时需要，不得随 Django setup 加载。
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
-
-    font_name = _resolve_pdf_font()
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=2 * cm,
-        leftMargin=2 * cm,
-        topMargin=2 * cm,
-        bottomMargin=2 * cm,
-        title=title,
-    )
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "AttachmentTitle",
-        parent=styles["Heading1"],
-        fontName=font_name,
-        fontSize=18,
-        leading=24,
-        spaceAfter=16,
-    )
-    body_style = ParagraphStyle(
-        "AttachmentBody",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=11,
-        leading=16,
-        spaceAfter=8,
-    )
-    heading_styles = {
-        level: ParagraphStyle(
-            f"AttachmentHeading{level}",
-            parent=styles["Heading2"],
-            fontName=font_name,
-            fontSize=16 - level,
-            leading=20,
-            spaceBefore=8,
-            spaceAfter=6,
-        )
-        for level in range(1, 5)
-    }
-    cell_style = ParagraphStyle(
-        "AttachmentTableCell",
-        parent=body_style,
-        fontName=font_name,
-        fontSize=10,
-        leading=14,
-        spaceBefore=0,
-        spaceAfter=0,
-    )
-    usable_width = A4[0] - 4 * cm
-
-    def render_table(header: list[str], rows: list[list[str]]) -> Table:
-        column_count = max([len(header), *[len(row) for row in rows]] or [1])
-
-        def render_row(row: list[str]) -> list[Paragraph]:
-            padded = list(row) + [""] * (column_count - len(row))
-            return [Paragraph(_escape_pdf_text(cell), cell_style) for cell in padded[:column_count]]
-
-        data = [render_row(header), *[render_row(row) for row in rows]]
-        return Table(data, colWidths=[usable_width / column_count] * column_count)
-
-    story = []
-    if _should_prefix_title(content, title):
-        story.extend([Paragraph(_escape_pdf_text(title), title_style), Spacer(1, 0.4 * cm)])
-    for block in _iter_markdown_blocks(content):
-        kind = block[0]
-        if kind == "heading":
-            story.append(Paragraph(_escape_pdf_text(block[2]), heading_styles[min(block[1], 4)]))
-        elif kind in {"ul", "ol"}:
-            for item in block[1]:
-                story.append(Paragraph(_escape_pdf_text(f"• {item}"), body_style))
-        elif kind == "table":
-            story.append(render_table(block[1], block[2]))
-            story.append(Spacer(1, 0.2 * cm))
-        elif kind == "paragraph":
-            story.append(Paragraph(_escape_pdf_text(block[1]), body_style))
-    if not story:
-        story.append(Paragraph(_escape_pdf_text(title or content or " "), body_style))
-    doc.build(story)
-    return buffer.getvalue()
-
-
-def _escape_pdf_text(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def _resolve_pdf_font() -> str:
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    from reportlab.pdfbase.ttfonts import TTFont
-
-    font_candidates = [
-        ("微软雅黑", "C:/Windows/Fonts/msyh.ttf"),
-        ("微软雅黑", "C:/Windows/Fonts/msyh.ttc"),
-        ("黑体", "C:/Windows/Fonts/simhei.ttf"),
-        ("宋体", "C:/Windows/Fonts/simsun.ttc"),
-        ("文泉驿微米黑", "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
-        ("DroidSansFallback", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
-        ("Heiti SC", "/System/Library/Fonts/STHeiti Light.ttc"),
-    ]
-    registered = set(pdfmetrics.getRegisteredFontNames())
-    for font_name, font_path in font_candidates:
-        if font_name in registered:
-            return font_name
-        try:
-            pdfmetrics.registerFont(TTFont(font_name, font_path))
-            return font_name
-        except Exception:
-            continue
-    font_name = "STSong-Light"
-    if font_name not in registered:
-        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
-    logger.warning("工作流附件 PDF 未找到可嵌入中文字体，使用标准中文字体 STSong-Light")
-    return font_name

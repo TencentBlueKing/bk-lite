@@ -1,11 +1,14 @@
 import json
 import logging
 import uuid
+from datetime import timedelta
+from threading import Event, Thread
+from time import monotonic, sleep
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.utils import timezone
 
 from apps.system_mgmt.models import (
@@ -1000,3 +1003,221 @@ def test_identity_invalidation_failure_keeps_the_previous_instance_config(channe
     assert channel.integration_instance.get_runtime_config()["app_id"] == "cli_xxx"
     assert channel.account_association.status == "ready"
     assert channel.status == "ready"
+
+
+_STALE_RELEASE_WARNING = "Released %s stale IM account association sync run(s): association_id=%s"
+_APPLY_FAILED = "event=im_account_association_sync_apply_failed run_id=%s association_id=%s failed_stage=%s error_type=%s"
+_APPLY_FAILED_SUMMARY = "IM account association update failed"
+_APPLY_FAILED_STAGE = "apply_local_result"
+_SECRET_EMAIL = "secret-email@example.com"
+
+
+def _age_running_run(channel, updated_at):
+    run = IMNotificationSyncRun.objects.create(
+        account_association=channel.account_association,
+        status="running",
+        summary="started",
+    )
+    IMNotificationSyncRun.objects.filter(pk=run.pk).update(started_at=updated_at, updated_at=updated_at)
+    run.refresh_from_db()
+    return run
+
+
+def _running_snapshot(channel):
+    return {
+        "integration_instance_id": channel.integration_instance_id,
+        "provider_key": channel.integration_instance.provider_key,
+        "platform_match_field": "email",
+        "external_match_field": "email",
+        "external_receive_field": "user_id",
+    }
+
+
+@pytest.mark.django_db
+def test_create_account_association_sync_run_releases_stale_running_run(monkeypatch, channel, caplog):
+    monkeypatch.setenv("IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS", "1800")
+    association_status = channel.account_association.status
+    stale_run = _age_running_run(channel, timezone.now() - timedelta(hours=1))
+
+    with caplog.at_level(logging.DEBUG, logger="system-manager"):
+        result = create_account_association_sync_run(channel.account_association_id)
+
+    stale_run.refresh_from_db()
+    channel.account_association.refresh_from_db()
+    replacement = IMNotificationSyncRun.objects.exclude(id=stale_run.id).get(account_association=channel.account_association)
+    assert result["result"] is True
+    assert result["data"]["run_id"] == replacement.id
+    assert stale_run.status == "failed"
+    assert stale_run.finished_at is not None
+    assert "timed out" in stale_run.summary
+    assert stale_run.running_guard is None
+    assert channel.account_association.status == association_status
+    warnings = [record for record in caplog.records if record.msg == _STALE_RELEASE_WARNING]
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
+    assert warnings[0].args == (1, channel.account_association_id)
+    rendered = warnings[0].getMessage()
+    assert "feishu-association" not in rendered
+    assert stale_run.summary not in rendered
+    assert "payload" not in rendered
+
+
+@pytest.mark.django_db
+def test_create_account_association_sync_run_keeps_fresh_running_run(monkeypatch, channel):
+    monkeypatch.setenv("IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS", "1800")
+    fresh_run = _age_running_run(channel, timezone.now() - timedelta(minutes=10))
+
+    result = create_account_association_sync_run(channel.account_association_id)
+
+    fresh_run.refresh_from_db()
+    assert result == {"result": False, "message": "IM account association update is already running"}
+    assert fresh_run.status == "running"
+    assert IMNotificationSyncRun.objects.filter(account_association=channel.account_association).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_list_external_users_refreshes_the_running_lease(monkeypatch, channel):
+    monkeypatch.setenv("IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS", "60")
+    run = IMNotificationSyncRun.objects.create(
+        account_association=channel.account_association,
+        status="running",
+        summary="started",
+        locked_config_snapshot=_running_snapshot(channel),
+    )
+    provider_entered = Event()
+    allow_provider_return = Event()
+    thread_errors = []
+    first_result = {}
+
+    def blocking_provider(**_kwargs):
+        provider_entered.set()
+        if not allow_provider_return.wait(5):
+            raise TimeoutError("test did not release provider")
+        return CapabilityExecutionResult.failed_result(
+            "provider unavailable",
+            code="provider.request_failed",
+            retryable=True,
+        )
+
+    def run_sync():
+        close_old_connections()
+        try:
+            first_result.update(execute_im_notification_sync_run(run.id))
+        except Exception as error:
+            thread_errors.append(error)
+        finally:
+            close_old_connections()
+
+    with (
+        patch(
+            "apps.system_mgmt.services.im_notification_service._get_im_account_association_sync_heartbeat_interval_seconds",
+            return_value=0.02,
+        ),
+        patch(
+            "apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute",
+            side_effect=blocking_provider,
+        ),
+    ):
+        sync_thread = Thread(target=run_sync)
+        sync_thread.start()
+        try:
+            assert provider_entered.wait(5)
+            stale_timestamp = timezone.now() - timedelta(minutes=2)
+            IMNotificationSyncRun.objects.filter(pk=run.pk).update(updated_at=stale_timestamp)
+            deadline = monotonic() + 5
+            while monotonic() < deadline:
+                run.refresh_from_db(fields=["updated_at"])
+                if run.updated_at > timezone.now() - timedelta(seconds=60):
+                    break
+                sleep(0.02)
+            else:
+                pytest.fail("list_external_users heartbeat did not refresh updated_at")
+        finally:
+            allow_provider_return.set()
+            sync_thread.join(timeout=5)
+
+    assert not sync_thread.is_alive()
+    assert thread_errors == []
+    assert first_result["result"] is False
+
+
+@pytest.mark.django_db
+def test_stale_release_stays_failed_when_insert_hits_integrity_error(monkeypatch, channel):
+    monkeypatch.setenv("IM_ACCOUNT_ASSOCIATION_SYNC_STALE_TIMEOUT_SECONDS", "1800")
+    stale_run = _age_running_run(channel, timezone.now() - timedelta(hours=1))
+
+    with patch(
+        "apps.system_mgmt.services.im_notification_service.IMNotificationSyncRun.objects.create",
+        side_effect=IntegrityError("duplicate running guard"),
+    ):
+        result = create_account_association_sync_run(channel.account_association_id)
+
+    stale_run.refresh_from_db()
+    assert result == {"result": False, "message": "IM account association update is already running"}
+    assert stale_run.status == "failed"
+    assert stale_run.running_guard is None
+    assert "timed out" in stale_run.summary
+    assert IMNotificationSyncRun.objects.filter(account_association=channel.account_association).count() == 1
+
+
+@pytest.mark.django_db
+def test_match_failure_fails_the_run_without_leaking_the_exception(channel, user, caplog):
+    from apps.core.logger import SafeLogException
+
+    mapping = _kept_mapping(channel, user)
+    run = IMNotificationSyncRun.objects.create(
+        account_association=channel.account_association,
+        status="running",
+        summary="started",
+        locked_config_snapshot=_running_snapshot(channel),
+    )
+    error = RuntimeError(_SECRET_EMAIL)
+
+    def raise_secret(**_kwargs):
+        raise error
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="system-manager"),
+        patch(
+            "apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute",
+            return_value=CapabilityExecutionResult.success_result("ok", payload={"external_users": []}),
+        ),
+        patch(
+            "apps.system_mgmt.services.im_notification_service._match_external_users",
+            side_effect=raise_secret,
+        ),
+    ):
+        result = execute_im_notification_sync_run(run.id)
+
+    run.refresh_from_db()
+    channel.account_association.refresh_from_db()
+    mapping.refresh_from_db()
+    assert result == {"result": False, "message": _APPLY_FAILED_SUMMARY}
+    assert run.status == "failed"
+    assert run.running_guard is None
+    assert run.summary == _APPLY_FAILED_SUMMARY
+    assert _SECRET_EMAIL not in run.summary
+    assert _SECRET_EMAIL not in json.dumps(run.payload)
+    assert channel.account_association.status == "ready"
+    assert mapping.external_identity_value == "old-keep"
+    assert IMNotificationUserMapping.objects.filter(account_association=channel.account_association).count() == 1
+    assert str(error) == _SECRET_EMAIL
+    matches = [record for record in caplog.records if record.msg == _APPLY_FAILED]
+    assert len(matches) == 1
+    record = matches[0]
+    assert record.levelno == logging.ERROR
+    assert record.args == (run.id, channel.account_association_id, _APPLY_FAILED_STAGE, "RuntimeError")
+    assert record.getMessage() == (
+        "event=im_account_association_sync_apply_failed "
+        f"run_id={run.id} association_id={channel.account_association_id} "
+        "failed_stage=apply_local_result error_type=RuntimeError"
+    )
+    assert record.exc_info[0] is SafeLogException
+    assert record.exc_info[2] is error.__traceback__
+    rendered = _rendered_log(record)
+    formatted = logging.Formatter().format(record)
+    assert _SECRET_EMAIL not in rendered
+    assert _SECRET_EMAIL not in formatted
+    assert _SECRET_EMAIL not in caplog.text
+    assert formatted.count("Traceback (most recent call last)") == 1
+    assert sum(item.levelno >= logging.ERROR for item in caplog.records) == 1

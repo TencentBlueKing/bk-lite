@@ -111,6 +111,11 @@ error:
   network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
   go_to_network_whitelist: 前往白名单管理
   connection_target_forbidden: 该目标地址不允许访问。
+  message_required: 请提供消息内容
+  execution_id_required: execution_id 为必填项
+  execution_not_found: 未找到执行记录
+  llm_timeout: 智能体执行超时（>{seconds}s），请稍后重试
+  agent_execution_failed: 智能体执行失败
   no_group_id: 无组 ID
   no_view_permission: 你没有权限查看此实例
   model_in_use: 无法删除，仍被 {count} 个知识图谱引用。
@@ -354,7 +359,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警；「当前」「有哪些」不会当关键字。可按状态、级别筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:
@@ -367,7 +372,7 @@ tools:
       log_list_groups:
         description: 列出可访问的日志分组。
       log_search_structured:
-        description: 按关键词查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
+        description: 按正文关键词查询日志。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
       log_search_raw:
         description: 使用原生 LogsQL 查询日志。没写时区的时间按当前用户时区理解，例如 2026-10-22 14:28:00；写了 Z 或 ±HH:MM 则按该偏移。不传则查近 24 小时。
   ops_analysis_dashboard:

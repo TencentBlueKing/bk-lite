@@ -4,7 +4,33 @@ export type ExtractorType =
   | 'kv'
   | 'regex'
   | 'regex_replace'
-  | 'json';
+  | 'json'
+  | 'grok';
+
+export const GROK_PATTERN_CATEGORIES = [
+  'common',
+  'number',
+  'network',
+  'path',
+  'datetime',
+  'level',
+  'composite'
+] as const;
+
+export type GrokPatternCategory = (typeof GROK_PATTERN_CATEGORIES)[number];
+
+export interface GrokPatternCatalogItem {
+  name: string;
+  category: GrokPatternCategory;
+  description: string;
+  example: string;
+  composite: boolean;
+  outputs: string[];
+}
+
+export interface GrokPatternCatalogResponse {
+  items: GrokPatternCatalogItem[];
+}
 
 export type PublicationState = 'pending' | 'generating' | 'published' | 'failed';
 

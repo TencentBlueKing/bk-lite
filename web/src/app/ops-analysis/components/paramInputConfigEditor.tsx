@@ -43,7 +43,6 @@ import type {
 import {
   conditionFieldFromDraft,
   draftFromConditionField,
-  legacyDynamicConditionSource,
   type ConditionFieldDraft,
 } from '@/app/ops-analysis/utils/conditionFieldSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
@@ -57,7 +56,6 @@ import {
   isOptionsQueryParamRef,
   normalizeOptionsQueryParamValue,
   collectOptionsQueryParamIssues,
-  hasOptionsQueryRef,
   isRejectedQueryParams,
   normalizeQueryParamsForStorage,
   stableStringify,
@@ -69,6 +67,7 @@ import {
   resolveOptionsQueryChoice,
   type OptionsQueryEditorContext,
 } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import { createDataVariableId, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { useTranslation } from '@/utils/i18n';
 
 interface StaticRow extends InputOption {
@@ -112,7 +111,6 @@ const conditionRowFromField = (field: ConditionFieldOption): ConditionFieldRow =
     value: draft.value,
     label: draft.label,
     valueMode: draft.valueMode,
-    query_objects: draft.query_objects,
     options: draft.options.map((option) => ({ ...option, uid: newId() })),
   };
 };
@@ -131,6 +129,10 @@ interface ParamInputConfigEditorProps {
   /** 同名多行时，正在编辑的筛选 id。校验图用它做节点名。 */
   editingNodeId?: string;
   optionsQueryContext?: OptionsQueryEditorContext;
+  /** 有数据变量时，控件类型多一项。选中后这个参数提交整列。 */
+  dataVariables?: Array<{ id: string; name: string }>;
+  /** 打开新建数据变量。保存后这条会出现在下拉里并被选中。 */
+  onCreateDataVariable?: (variable: DataVariable) => void;
 }
 
 interface SortableStaticRowProps {
@@ -376,11 +378,26 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   editingParamName,
   editingNodeId,
   optionsQueryContext,
+  dataVariables,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
   const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
+  const [dataVariableId, setDataVariableId] = useState<string | undefined>();
+  const [variableSelectOpen, setVariableSelectOpen] = useState(false);
+  const [listedVariables, setListedVariables] = useState(dataVariables ?? []);
+  const pendingVariableIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    setListedVariables(dataVariables ?? []);
+    const pending = pendingVariableIdRef.current;
+    if (!pending) return;
+    const created = (dataVariables ?? []).find((item) => item.id === pending && item.name);
+    if (!created) return;
+    pendingVariableIdRef.current = null;
+    setDataVariableId(created.id);
+  }, [dataVariables]);
   const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [multiple, setMultiple] = useState(false);
@@ -411,6 +428,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!open) return;
     if (!value) {
       setControl('input');
+      setDataVariableId(undefined);
       setPicker('dropdown');
       setComponentSwitch(false);
       setMultiple(false);
@@ -429,23 +447,22 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     }
 
     setControl(value.control);
+    setDataVariableId(value.control === 'dataVariable' ? value.dataVariableId : undefined);
     setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
       (value.control === 'select' || value.control === 'radio')
-        && Boolean(value.componentSwitch)
-        && hasOptionsQueryRef(value) === false,
+        && Boolean(value.componentSwitch),
     );
     setMultiple(
       value.control === 'select' ? Boolean(value.multiple) : false,
     );
     if (value.control === 'conditionFilter') {
       const fields = value.fields;
-      const legacy = legacyDynamicConditionSource(fields);
       const dynamic = fields.kind === 'dynamic' && fields.valueField && fields.labelField ? fields : null;
-      const sourceRef = dynamic?.sourceRef || legacy?.sourceRef;
-      const valueField = dynamic?.valueField || legacy?.valueField;
-      const labelField = dynamic?.labelField || legacy?.labelField;
-      const queryParams = dynamic?.queryParams || legacy?.queryParams;
+      const sourceRef = dynamic?.sourceRef;
+      const valueField = dynamic?.valueField;
+      const labelField = dynamic?.labelField;
+      const queryParams = dynamic?.queryParams;
       if (sourceRef && valueField && labelField) {
         setSourceType('dynamic');
         setExternalSourceRef(sourceRef);
@@ -496,7 +513,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (
       value.control === 'input'
       || value.control === 'organization'
-      || value.control === 'order'
+      || value.control === 'dataVariable'
     ) {
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -649,7 +666,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       value.control === 'input' ||
       value.control === 'organization' ||
       value.control === 'conditionFilter' ||
-      value.control === 'order' ||
+      value.control === 'dataVariable' ||
       value.optionsSource.type !== 'dynamic' ||
       !value.optionsSource.sourceRef ||
       dataSourceList.length === 0
@@ -869,8 +886,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     };
   };
 
-  const queryRefDisablesSwitch = queryParamRows.some((row) => row.mode === 'ref' && row.refName.trim());
-
   const handleConfirm = async () => {
     if (editingConditionFields && sourceType === 'static') {
       const blank = (row: ConditionFieldRow) => (
@@ -910,12 +925,19 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           value: row.value,
           label: row.label,
           valueMode: row.valueMode,
-          query_objects: row.query_objects,
           options: row.options.map((option) => ({ label: option.label, value: option.value })),
         });
         return field ? [field] : [];
       });
       onConfirm({ control: 'conditionFilter', fields: { kind: 'static', items } });
+      return;
+    }
+    if (!editingConditionFields && control === 'dataVariable') {
+      if (!dataVariableId) {
+        message.warning(t('dataVariable.selectVariable'));
+        return;
+      }
+      onConfirm({ control: 'dataVariable', dataVariableId });
       return;
     }
     if (!editingConditionFields && control === 'input') {
@@ -1098,7 +1120,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
     onConfirm({
       control,
-      componentSwitch: queryRefDisablesSwitch ? undefined : (componentSwitch ? true : undefined),
+      componentSwitch: componentSwitch ? true : undefined,
       ...buildOptionControlExtras(),
       optionsSource,
     });
@@ -1147,9 +1169,68 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
               { label: t('paramInput.control.select'), value: 'select' },
               { label: t('paramInput.control.radio'), value: 'radio' },
               { label: t('paramInput.control.organization'), value: 'organization' },
+              ...(dataVariables
+                ? [{ label: t('paramInput.control.dataVariable'), value: 'dataVariable' as const }]
+                : []),
             ]}
           />
         </Form.Item>
+        )}
+
+        {control === 'dataVariable' && !editingConditionFields && (
+          <Form.Item label={t('dataVariable.title')} className="mb-3" required>
+            <div className="flex w-full items-center gap-2">
+              <Select
+                className="min-w-0 flex-1"
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('dataVariable.selectVariable')}
+                value={dataVariableId}
+                open={onCreateDataVariable ? variableSelectOpen : undefined}
+                onOpenChange={onCreateDataVariable ? setVariableSelectOpen : undefined}
+                options={(onCreateDataVariable ? listedVariables : (dataVariables ?? [])).map((item) => ({
+                  value: item.id,
+                  label: item.name || item.id,
+                }))}
+                onChange={setDataVariableId}
+                dropdownRender={onCreateDataVariable ? (menu) => (
+                  <div>
+                    {menu}
+                    <div className="border-t border-[var(--color-border)] px-2 py-1">
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const created: DataVariable = {
+                            id: createDataVariableId(),
+                            name: '',
+                            dataSourceId: 0,
+                            valueField: '',
+                            params: {},
+                          };
+                          pendingVariableIdRef.current = created.id;
+                          setVariableSelectOpen(false);
+                          onCreateDataVariable(created);
+                        }}
+                      >
+                        {t('dataVariable.add')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : undefined}
+              />
+              {onCreateDataVariable ? (
+                <Button
+                  type="text"
+                  icon={<ReloadOutlined />}
+                  aria-label={t('common.refresh')}
+                  onClick={() => setListedVariables(dataVariables ?? [])}
+                />
+              ) : null}
+            </div>
+          </Form.Item>
         )}
 
         {control === 'select' && !editingConditionFields && (
@@ -1167,25 +1248,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
         {control === 'select' && !editingConditionFields && (
           <Form.Item label={t('paramInput.multiple')} className="mb-3">
-            <Tooltip
-              title={
-                componentSwitch
-                  ? t('paramInput.multipleDisabledByComponentSwitch')
-                  : undefined
-              }
-            >
-              <Switch
-                size="small"
-                checked={multiple}
-                disabled={componentSwitch}
-                onChange={(checked) => {
-                  setMultiple(checked);
-                  if (checked) {
-                    setComponentSwitch(false);
-                  }
-                }}
-              />
-            </Tooltip>
+            <Switch
+              size="small"
+              checked={multiple}
+              onChange={setMultiple}
+            />
           </Form.Item>
         )}
 
@@ -1203,28 +1270,17 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       ? t('dashboard.componentSwitchOccupied', undefined, {
                         label: componentSwitchOwner.label,
                       })
-                      : multiple
-                        ? t('dashboard.componentSwitchDisabledByMultiple')
-                        : queryRefDisablesSwitch
-                          ? t('dashboard.componentSwitchDisabledByQueryRef')
-                          : undefined
+                      : undefined
                   }
                 >
                   <Switch
                     size='small'
-                    checked={componentSwitch && queryRefDisablesSwitch === false}
+                    checked={componentSwitch}
                     disabled={Boolean(
-                      (componentSwitchOwner &&
-                        componentSwitchOwner.name !== editingParamName) ||
-                      multiple ||
-                      queryRefDisablesSwitch,
+                      componentSwitchOwner &&
+                        componentSwitchOwner.name !== editingParamName,
                     )}
-                    onChange={(checked) => {
-                      setComponentSwitch(checked);
-                      if (checked) {
-                        setMultiple(false);
-                      }
-                    }}
+                    onChange={setComponentSwitch}
                   />
                 </Tooltip>
               </Form.Item>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { cardListLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Alert } from 'antd';
-import DataLinkHintTooltip from '@/app/ops-analysis/components/dataLinkHintTooltip';
+import DataLinkHoverMark from '@/app/ops-analysis/components/dataLinkHoverMark';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
@@ -74,9 +74,9 @@ const ComCardList: React.FC<ComCardListProps> = ({
           }
         >
           {parsed.items.map((item, index) => (
-            <DataLinkHintTooltip key={`${item.primary}-${index}`} hint={hoverHint}>
               <article
-                className={`flex min-w-0 items-center gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2 ${dataLinkActive ? 'cursor-pointer' : ''}`}
+                key={`${item.primary}-${index}`}
+                className={`group/data-link flex min-w-0 items-center gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2 ${dataLinkActive ? 'cursor-pointer' : ''}`}
                 onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
               >
                 {item.leading ? (
@@ -87,8 +87,11 @@ const ComCardList: React.FC<ComCardListProps> = ({
                   />
                 ) : null}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-(--color-text-1)">
-                    {item.primary}
+                  <div className="flex min-w-0 items-center gap-1">
+                    <div className="truncate text-sm font-medium text-(--color-text-1)">
+                      {item.primary}
+                    </div>
+                    <DataLinkHoverMark show={dataLinkActive} label={hoverHint} />
                   </div>
                   {item.secondary ? (
                     <div className="mt-0.5 line-clamp-2 text-xs text-(--color-text-2)">
@@ -118,7 +121,6 @@ const ComCardList: React.FC<ComCardListProps> = ({
                   </div>
                 ) : null}
               </article>
-            </DataLinkHintTooltip>
           ))}
         </div>
       </div>

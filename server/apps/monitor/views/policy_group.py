@@ -21,6 +21,7 @@ from apps.monitor.models import (
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy_group import PolicyGroupService, group_detection_state, no_data_carrier_rule_ids
 from apps.monitor.utils.pagination import parse_page_params
+from apps.system_mgmt.models import Group
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -47,7 +48,7 @@ def _optional_positive_id(raw, param_name):
     return value
 
 
-def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=False):
+def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=False, metric_units=None):
     metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
     metric_name = ""
     if metric_id and metric_names is not None:
@@ -55,12 +56,16 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
     metric_name_list = []
     if metric_names is not None:
         metric_name_list = [metric_names[item] for item in PolicyGroupService.metric_ids_for_policy(rule.policy) if item in metric_names]
+    catalog_unit = ""
+    if metric_id and metric_units is not None:
+        catalog_unit = metric_units.get(metric_id) or ""
     query = rule.policy.query_condition if isinstance(rule.policy.query_condition, dict) else {}
     condition_thresholds = {}
     if query.get("type") == "multi":
         condition_thresholds = {item.get("ref"): item.get("threshold") or [] for item in query.get("queries") or [] if isinstance(item, dict)}
     plugin = rule.plugin
     counts = alert_counts or {}
+    policy_unit = rule.policy.threshold_unit or rule.policy.calculation_unit or rule.policy.metric_unit or ""
     return {
         "id": rule.id,
         "name": rule.name,
@@ -72,6 +77,7 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "query_type": query.get("type") or "",
         "condition_thresholds": condition_thresholds,
         "threshold": rule.policy.threshold,
+        "unit": policy_unit or catalog_unit,
         "alert_name": rule.policy.alert_name or "",
         "trigger_count": rule.policy.trigger_count,
         "recovery_condition": rule.policy.recovery_condition,
@@ -80,17 +86,29 @@ def _serialize_rule(rule, metric_names=None, alert_counts=None, no_data_carrier=
         "no_data_enabled": AlertConstants.NO_DATA in (rule.policy.enable_alerts or []),
         "policy_id": rule.policy_id,
         "open_alert_count": counts.get(rule.policy_id, 0),
+        "source_template_id": rule.source_template_id,
     }
 
 
-def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None, alert_counts=None):
+def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None, alert_counts=None, metric_units=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
     loaded_rules = list(group.rules.select_related("plugin", "policy"))
     visible_rules = PolicyGroupService.filter_rules_for_access(loaded_rules, plugin_id=plugin_id, collect_type=collect_type)
     carrier_ids = no_data_carrier_rule_ids(loaded_rules)
-    rules = [_serialize_rule(rule, metric_names, alert_counts, no_data_carrier=rule.id in carrier_ids) for rule in visible_rules]
+    if metric_units is None:
+        metric_units = PolicyGroupService.metric_units_for_policies([rule.policy for rule in loaded_rules])
+    rules = [
+        _serialize_rule(
+            rule,
+            metric_names,
+            alert_counts,
+            no_data_carrier=rule.id in carrier_ids,
+            metric_units=metric_units,
+        )
+        for rule in visible_rules
+    ]
     counts = alert_counts or {}
     open_alert_count = sum(counts.get(rule.policy_id, 0) for rule in loaded_rules)
     notice = _group_notice(loaded_rules)
@@ -174,7 +192,7 @@ def _group_enable(rules):
 
 def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
     policies = [rule.policy for group in groups for rule in group.rules.all()]
-    metric_names = PolicyGroupService.metric_names_for_policies(policies)
+    metric_names, metric_units = PolicyGroupService.metric_catalog_for_policies(policies)
     alert_counts = PolicyGroupService.open_alert_counts([policy.id for policy in policies])
     data = []
     for group in groups:
@@ -188,6 +206,7 @@ def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
                 plugin_id=plugin_id,
                 collect_type=collect_type,
                 alert_counts=alert_counts,
+                metric_units=metric_units,
             )
         )
     return data
@@ -195,6 +214,26 @@ def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
 
 def _legacy_policies(instance):
     return PolicyGroupService.legacy_policies(instance)
+
+
+def _read_only_membership(instance):
+    membership = PolicyGroupMembership.objects.filter(monitor_instance=instance).select_related("policy_group").first()
+    group = membership.policy_group if membership and membership.policy_group_id else None
+    group_organization = group.organization if group is not None else None
+    group_organization_name = ""
+    if group_organization is not None:
+        group_organization_name = Group.objects.filter(id=group_organization).values_list("name", flat=True).first() or ""
+    return {
+        "read_only": True,
+        "state": membership.state if membership else None,
+        "group_id": membership.policy_group_id if membership else None,
+        "group_name": group.name if group is not None else "",
+        "group_organization": group_organization,
+        "group_organization_name": group_organization_name,
+        "groups": [],
+        "templates": [],
+        "legacy_policies": _legacy_policies(instance),
+    }
 
 
 class PolicyGroupViewSet(viewsets.ViewSet):
@@ -254,6 +293,32 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         )
         return WebUtils.response_success({"id": group.id, "member_count": 0})
 
+    @action(methods=["post"], detail=False, url_path="set_templates")
+    @HasPermission("strategy_list-Edit")
+    def set_templates(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        requested_ids = request.data.get("template_ids")
+        if not isinstance(requested_ids, list):
+            raise BaseAppException("template_ids 必须是列表")
+        try:
+            requested_ids = [int(item) for item in requested_ids]
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("template_ids 必须是整数列表") from exc
+        templates_by_id = {item.id: item for item in PolicyTemplate.objects.filter(id__in=requested_ids).select_related("plugin", "monitor_object")}
+        templates = [templates_by_id[item_id] for item_id in requested_ids if item_id in templates_by_id]
+        result = PolicyGroupService.set_templates(group, templates, operator=_operator(scope))
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "策略组调整规则",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, **result},
+        )
+        return WebUtils.response_success(result)
+
     @action(methods=["post"], detail=False)
     @HasPermission("strategy_list-Edit")
     def join(self, request):
@@ -305,15 +370,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
     def members(self, request):
         scope = resolve_current_team_data_scope(request)
         group = _group_in_scope(scope, request.query_params.get("group_id"))
-        memberships = list(group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).select_related("monitor_instance"))
-        rows = [
-            {
-                "instance_id": membership.monitor_instance.id,
-                "name": membership.monitor_instance.name,
-            }
-            for membership in memberships
-        ]
-        return WebUtils.response_success(rows)
+        return WebUtils.response_success(PolicyGroupService.list_members(group))
 
     @action(methods=["get"], detail=False)
     def instance_groups(self, request):
@@ -328,8 +385,18 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         instance_ids = [str(item) for item in instance_ids if str(item).strip()]
         if len(instance_ids) > 100:
             raise BaseAppException("一次最多查询 100 个实例")
-        found = PolicyGroupService.member_group_names(instance_ids, int(scope.current_team))
-        rows = [{"instance_id": instance_id, "group_id": item["id"], "group_name": item["name"]} for instance_id, item in found.items()]
+        current_organization = int(scope.current_team)
+        found = PolicyGroupService.member_group_names(instance_ids, scope.data_team_ids)
+        rows = [
+            {
+                "instance_id": instance_id,
+                "group_id": item["id"],
+                "group_name": item["name"],
+                "group_organization": item["organization"],
+                "read_only": item["organization"] != current_organization,
+            }
+            for instance_id, item in found.items()
+        ]
         return WebUtils.response_success(rows)
 
     @action(methods=["get"], detail=False)
@@ -339,8 +406,11 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         instance = MonitorInstance.objects.filter(id=request.query_params.get("instance_id")).first()
         if instance is None:
             raise BaseAppException("实例不存在")
-        if not MonitorInstanceOrganization.objects.filter(monitor_instance=instance, organization=organization).exists():
-            raise BaseAppException("实例不属于当前组织")
+        instance_organizations = set(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
+        if organization not in instance_organizations:
+            if not instance_organizations.intersection(scope.data_team_ids):
+                raise BaseAppException("实例不属于当前组织")
+            return WebUtils.response_success(_read_only_membership(instance))
         membership = PolicyGroupMembership.objects.filter(monitor_instance=instance).select_related("policy_group").first()
         pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=instance.monitor_object_id).first()
         default_id = pointer.policy_group_id if pointer else None
@@ -359,6 +429,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
                 "groups": groups,
                 "legacy_policies": _legacy_policies(instance),
                 "templates": [{"id": item.id, "name": item.name} for item in templates.order_by("id")],
+                "read_only": False,
             }
         )
 

@@ -140,19 +140,18 @@ describe('pie load-time option delivery', () => {
     expect(onReady).toHaveBeenCalledWith(true);
   });
 
-  it('labels a paged category pie as the current page share', async () => {
+  it('draws a truncated category pie without a page-share notice', async () => {
     render(
       <ComPie
-        rawData={{
-          structure: 'category',
-          items: [{ name: '主机', value: 8 }, { name: '网络', value: 2 }],
-          count: 12,
-          page: 1,
-          page_size: 10,
-        }}
+        rawData={[
+          { name: '主机', value: 8 },
+          { name: '网络', value: 2 },
+        ]}
         loading={false}
       />,
     );
-    expect(screen.getByTestId('pie-page-share').textContent).toContain('dashboard.piePageShare');
+    await flush();
+    expect(screen.queryByText(/piePageShare|当前页占比/)).toBeNull();
+    expect(screen.getByTestId('echarts')).toBeTruthy();
   });
 });

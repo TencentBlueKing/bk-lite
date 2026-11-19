@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -97,6 +98,7 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     publish_node_finished,
     remember_planned_tool_steps,
 )
+from apps.opspilot.metis.llm.chain.planned_agent import create_planned_agent, result_token_limit_for_request
 from apps.opspilot.metis.llm.chain.prepare_llm_context import prepare_messages_for_llm
 from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
     SkillSandboxMixin,
@@ -133,6 +135,7 @@ from apps.opspilot.metis.llm.tools.conversation_skill_package_tool import build_
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.services.conversation_skill_package import ALLOWED_ENTRIES, AUTHORING_EXTRA_KEY, PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL
 from apps.opspilot.services.job_output_text import model_visible_text
+from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
 from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
     KIND_LIMIT_CONTINUE,
@@ -2700,6 +2703,7 @@ class ToolsNodes(
                     from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
                     legacy_middleware.append(PythonSandboxMiddleware(python_sandbox))
+                backend = build_result_backend(python_sandbox, backend)
                 agent_kwargs = self._build_deep_agent_kwargs(
                     llm=llm,
                     registered_tools=registered_tools,
@@ -2878,6 +2882,7 @@ class ToolsNodes(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
 
+            backend = build_result_backend(python_sandbox, backend)
             skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan) and not attachments
             active_tools = []
             always_visible, hidden_tools = self._build_planned_execution_tool_visibility(
@@ -2905,16 +2910,15 @@ class ToolsNodes(
                 ppt_authoring=ppt_authoring,
             )
             if python_sandbox is not None:
-                from apps.opspilot.metis.llm.agent.tool_execution_planner import planned_execution_compact_limits_for_request
                 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
-                max_tool_chars, _ = planned_execution_compact_limits_for_request(graph_request)
-                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox, threshold=min(4000, max_tool_chars)))
+                runtime_middleware.append(PythonSandboxMiddleware(python_sandbox))
             final_system_prompt = self._append_planned_execution_step_prompt(final_system_prompt)
             final_system_prompt += auto_instruction
 
             def _build_deep_agent():
-                return create_deep_agent(
+                return create_planned_agent(
+                    result_token_limit=result_token_limit_for_request(graph_request),
                     **self._build_deep_agent_kwargs(
                         llm=llm,
                         registered_tools=registered_tools,
@@ -2923,7 +2927,7 @@ class ToolsNodes(
                         backend=backend,
                         skill_sources=skill_sources,
                         interrupt_on=interrupt_on,
-                    )
+                    ),
                 )
 
             deep_agent = _build_deep_agent()
@@ -2938,6 +2942,7 @@ class ToolsNodes(
                 backend, skill_sources, sandbox_dir = await asyncio.to_thread(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
+                backend = build_result_backend(python_sandbox, backend)
                 if skill_sources:
                     skills_only = self._plan_is_skills_only(candidate_plan) and not ppt_authoring and not attachments
                     skill_guard.enabled = skills_only
@@ -2949,6 +2954,7 @@ class ToolsNodes(
                         )
                     elif skills_only:
                         always_visible -= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                        always_visible |= {"read_file", "grep"}
                         always_visible.add("execute")
                         visibility_middleware._hidden_tools = frozenset(
                             name for name in PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS if name != "execute"
@@ -3131,9 +3137,19 @@ class ToolsNodes(
                         type_line = f"file_type 必须是 {prior_type}，禁止改成其他格式。" if prior_type else "修改已有文件时必须保持原格式，禁止把 pptx 改成 md 或 docx。"
                         step_guidance = (
                             "\n【附件】本步调用一次 generate_attachment_file；已在沙箱生成文件时用 sandbox_path 指定文件路径，"
-                            "否则在 content 中写入全部章节。"
+                            "否则在 content 中写入全部章节。Word 和 PDF 写 Markdown，并用 genre 选成稿。"
+                            "分析、汇总、巡检、报告用 business_report。公文、函、请示、通知用 official。会议纪要、会议记录用 meeting_minutes。"
+                            'Excel 的 content 用一份 CSV。表头多于一行时 header_rows 传行数，最后一行是列名；需要合并时 merges 传 A1 范围，例如 ["A1:C1"]。'
                             f"{type_line}"
-                            "正文字体由系统设为微软雅黑，不要在回复里说不支持字体，也不要让用户自己改。"
+                            "正文字体由系统设为微软雅黑。"
+                            "business_report 在第一个章节前写一句简介，再各写一行「数据来源：」「查询时间：」「报告版本：」。"
+                            "单设一节「核心结论」，其中最多两个关键数字写成加粗，例如失败 **5** 次。"
+                            "做统计、汇总或清单时，不要只写数量。步骤摘要里有逐条字段，就按这些字段逐条展开。摘要里没有的字段不要编造。"
+                            "系统会另加封面。Word 目录带页码，PDF 目录不带页码。"
+                            "official 不要写封面、目录和运维分析报告，标题只放在 title。"
+                            "meeting_minutes 在第一个章节前各写一行「会议时间：」「会议地点：」「主持人：」「记录人：」。"
+                            "正文用「出席人员」「议题」「决议」「待办」。出席人员用表格。不要写运维分析报告，也不要写目录。"
+                            "不要自己写「封面」或「目录」。不要在回复里说不支持字体，也不要让用户自己改。"
                             "禁止因为写到中途就结束，禁止让用户再说一句才生成完整文件。"
                             "调用成功后不要在同一步里再调第二次，也不要 request_user_choice。"
                             "上一轮已经生成过，不能作为跳过本步的理由。"
@@ -3158,7 +3174,7 @@ class ToolsNodes(
                     if attachments:
                         step_guidance += "\n" + ATTACHMENT_README.format(workspace=python_sandbox.workspace)
                     if python_sandbox is not None and python_sandbox.files():
-                        step_guidance += "\n本任务工作区中的工具结果文件：" + ", ".join(python_sandbox.files())
+                        step_guidance += "\n本任务工作区中的工具结果文件：" + ", ".join("/large_tool_results/" + Path(path).name for path in python_sandbox.files())
                     finish_rule = "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     if ppt_authoring:
                         finish_rule = "本步只有写出 svg_output 里的页面才算完成。禁止只回复大纲或说即将开始。写完就停止，平台会导出 pptx。"

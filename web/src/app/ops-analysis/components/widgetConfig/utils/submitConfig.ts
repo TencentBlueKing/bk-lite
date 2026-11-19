@@ -154,7 +154,6 @@ export interface BuildWidgetSubmitConfigInput {
   filterBindings: FilterBindings;
   displayColumns: SubmitDisplayColumn[];
   filterFields: SubmitFilterField[];
-  columnModelKey?: string;
   /** 旧操作列。提交忽略它，保存时由 applyInteractionLink 删掉 valueConfig.actions。 */
   actions?: DashboardActionConfig[];
   /** 预览组装：映射与提交相同，但不因未填必填项拦截。 */
@@ -684,7 +683,6 @@ export const buildWidgetSubmitConfig = ({
   filterBindings,
   displayColumns,
   filterFields,
-  columnModelKey,
   forPreview = false,
   includeSingleStyle = true,
 }: BuildWidgetSubmitConfigInput): BuildWidgetSubmitConfigResult => {
@@ -705,7 +703,7 @@ export const buildWidgetSubmitConfig = ({
   }
 
   const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
-  if (validateComponentSwitchParams(values.dataSourceParams) && !forPreview) {
+  if (validateComponentSwitchParams(values.dataSourceParams)) {
     return { error: 'multipleComponentSwitchParams' };
   }
 
@@ -721,9 +719,6 @@ export const buildWidgetSubmitConfig = ({
       return { error: tableResult.error };
     }
     if (tableResult.tableConfig) {
-      if (columnModelKey) {
-        tableResult.tableConfig.columnModelKey = columnModelKey;
-      }
       result.tableConfig = tableResult.tableConfig;
     }
   }
@@ -815,33 +810,11 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (chartType === 'topN') {
-    const scalarFields: Array<{ field: string; label?: string }> = [];
-    (values.topNScalarFields || []).forEach((item) => {
-      const field = trimOptionalField(item?.field);
-      if (!field) {
-        return;
-      }
-      const label = trimOptionalField(item?.label);
-      scalarFields.push(label ? { field, label } : { field });
-    });
-    if (scalarFields.length > 0) {
-      result.topNScalarFields = scalarFields;
-      result.topNLabelField = undefined;
-      result.topNValueField = undefined;
-    } else {
-      result.topNLabelField = values.topNLabelField;
-      result.topNValueField = values.topNValueField;
-      result.topNScalarFields = undefined;
-    }
-    if (values.barMode === 'absolute') {
-      result.barMode = 'absolute';
-      result.barMax = isFiniteNumber(values.barMax) && values.barMax > 0
-        ? values.barMax
-        : undefined;
-    } else {
-      result.barMode = undefined;
-      result.barMax = undefined;
-    }
+    result.topNLabelField = values.topNLabelField;
+    result.topNValueField = values.topNValueField;
+    result.topNScalarFields = undefined;
+    result.barMode = undefined;
+    result.barMax = undefined;
   }
 
   if (chartType === 'nodeGraph') {

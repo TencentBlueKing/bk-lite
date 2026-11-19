@@ -349,7 +349,7 @@ describe('param input query params', () => {
     });
   });
 
-  it('turns component switch off when a query parameter uses a reference', async () => {
+  it('keeps component switch on when a query parameter uses a reference', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
     getDataSourceList.mockResolvedValue([deviceSource]);
@@ -379,14 +379,14 @@ describe('param input query params', () => {
     const label = within(dialog).getByText('组件内切换');
     const item = label.closest('.ant-form-item');
     const toggle = within(item as HTMLElement).getByRole('switch');
-    expect((toggle as HTMLButtonElement).disabled).toBe(true);
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(within(dialog).queryByText('局部选项依赖本卡其它局部值和已应用的全局筛选')).toBeNull();
 
     await user.click(within(dialog).getByRole('button', { name: /确\s*认/ }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalled());
     const saved = onConfirm.mock.calls[0]?.[0];
-    expect(saved.componentSwitch).toBeUndefined();
+    expect(saved.componentSwitch).toBe(true);
     expect(saved.optionsSource.queryParams.room_id).toEqual({ ref: 'site_id__string' });
   });
 
@@ -523,7 +523,7 @@ describe('param input query params', () => {
     expect(onConfirm).not.toHaveBeenCalled();
     expect(within(dialog).queryByText(/查询入参依赖超过/)).toBeNull();
     expect(within(dialog).queryByText(/__string/)).toBeNull();
-    expect(within(dialog).getByText('全局筛选 · 实例')).not.toBeNull();
+    expect(within(dialog).getAllByText('全局筛选 · 实例').length).toBeGreaterThan(0);
     errorSpy.mockRestore();
   });
 
@@ -1004,7 +1004,13 @@ describe('param input query params', () => {
         }}
         value={{
           control: 'conditionFilter',
-          fields: { kind: 'modelAttrs', modelParam: 'model_id' },
+          fields: {
+            kind: 'dynamic',
+            sourceRef: { type: 'rest_api', value: 'cmdb/list_cmdb_attr_options' },
+            valueField: 'attr_id',
+            labelField: 'attr_name',
+            queryParams: { model_id: { ref: 'model_id' } },
+          },
         }}
       />,
     );

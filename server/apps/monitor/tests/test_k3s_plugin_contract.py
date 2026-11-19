@@ -4,19 +4,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-
-PLUGIN_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "support-files"
-    / "plugins"
-    / "unknown"
-    / "k3s"
-    / "k3s"
-)
+PLUGIN_DIR = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "unknown" / "k3s" / "k3s"
 EXPECTED_OBJECTS = {
     "K3SCluster": ("base", ["instance_id"], 4),
-    "K3SNode": ("derivative", ["instance_id", "node"], 28),
-    "K3SPod": ("derivative", ["instance_id", "pod"], 8),
+    "K3SNode": ("derivative", ["instance_id", "node"], 29),
+    "K3SPod": ("derivative", ["instance_id", "pod"], 9),
 }
 
 
@@ -49,11 +41,7 @@ def test_k3s_plugin_queries_and_metric_references_are_self_contained():
         metric_names = {metric["name"] for metric in monitor_object["metrics"]}
         assert set(monitor_object["supplementary_indicators"]) <= metric_names
 
-        display_metric_names = {
-            metric_ref["metric"]
-            for display_field in monitor_object["display_fields"]
-            for metric_ref in display_field["metrics"]
-        }
+        display_metric_names = {metric_ref["metric"] for display_field in monitor_object["display_fields"] for metric_ref in display_field["metrics"]}
         assert display_metric_names <= metric_names
 
         queries = [monitor_object["default_metric"]]
@@ -93,9 +81,7 @@ def test_k3s_plugin_has_independent_localized_copy():
 
 @pytest.mark.django_db
 def test_k3s_plugin_import_is_idempotent_and_coexists_with_k8s():
-    from apps.monitor.management.services.plugin_migrate import (
-        _import_plugins_from_files,
-    )
+    from apps.monitor.management.services.plugin_migrate import _import_plugins_from_files
     from apps.monitor.models import Metric, MonitorObject
     from apps.monitor.models.plugin import MonitorPlugin
 
@@ -107,14 +93,6 @@ def test_k3s_plugin_import_is_idempotent_and_coexists_with_k8s():
     assert _import_plugins_from_files([plugin_path])[:2] == (1, 0)
 
     assert MonitorPlugin.objects.filter(name="K3S").count() == 1
-    assert set(
-        MonitorObject.objects.filter(name__in=EXPECTED_OBJECTS).values_list(
-            "name", flat=True
-        )
-    ) == set(EXPECTED_OBJECTS)
-    assert set(
-        MonitorObject.objects.filter(name__in={"Cluster", "Node", "Pod"}).values_list(
-            "name", flat=True
-        )
-    ) == {"Cluster", "Node", "Pod"}
-    assert Metric.objects.filter(monitor_plugin__name="K3S").count() == 40
+    assert set(MonitorObject.objects.filter(name__in=EXPECTED_OBJECTS).values_list("name", flat=True)) == set(EXPECTED_OBJECTS)
+    assert set(MonitorObject.objects.filter(name__in={"Cluster", "Node", "Pod"}).values_list("name", flat=True)) == {"Cluster", "Node", "Pod"}
+    assert Metric.objects.filter(monitor_plugin__name="K3S").count() == 42

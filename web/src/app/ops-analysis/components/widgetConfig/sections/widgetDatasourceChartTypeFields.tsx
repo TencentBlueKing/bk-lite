@@ -24,6 +24,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { ConfigSectionTitle } from '../configTitles';
@@ -86,6 +87,7 @@ interface WidgetDatasourceChartTypeFieldsProps {
   onOpenDataSourceSelector: () => void;
   onEditInputConfig: (param: ParamItem) => void;
   onParamOptionsResolved: (param: ParamItem, options: InputOption[]) => void;
+  dataVariables?: DataVariable[];
   children?: React.ReactNode;
 }
 
@@ -178,7 +180,7 @@ export const WidgetQueryFields: React.FC<
     't' | 'selectedDataSource' | 'effectiveDataSource' | 'hasQueryParams' |
     'shouldShowUnifiedFilterSection' | 'hasUnifiedFilterBindings' |
     'previewFilterDefinitions' | 'filterBindings' | 'globalFilters' | 'globalFilterValues' |
-    'onFilterBindingsChange' | 'onEditInputConfig' | 'onParamOptionsResolved' | 'children'>
+    'onFilterBindingsChange' | 'onEditInputConfig' | 'onParamOptionsResolved' | 'dataVariables' | 'children'>
 > = ({
   t,
   selectedDataSource,
@@ -193,6 +195,7 @@ export const WidgetQueryFields: React.FC<
   onFilterBindingsChange,
   onEditInputConfig,
   onParamOptionsResolved,
+  dataVariables,
   children,
 }) => (
   <section>
@@ -207,6 +210,7 @@ export const WidgetQueryFields: React.FC<
           globalFilters={globalFilters}
           filterBindings={filterBindings}
           globalFilterValues={globalFilterValues}
+          dataVariables={dataVariables}
           onEditInputConfig={onEditInputConfig}
           onParamOptionsResolved={(param, options) =>
             onParamOptionsResolved(param, options)
@@ -225,7 +229,6 @@ export const WidgetQueryFields: React.FC<
                   {t('dashboard.unifiedFilterBindingTip')}
                 </span>
               }
-              overlayInnerStyle={{ maxWidth: 340, width: 340 }}
               styles={{ body: { maxWidth: 340, width: 340 } }}
             >
               <QuestionCircleOutlined className="cursor-help text-(--color-text-3)" />

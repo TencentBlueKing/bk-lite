@@ -13,6 +13,10 @@ vi.mock('@/utils/i18n', () => ({
   }),
 }));
 
+vi.mock('@/context/locale', () => ({
+  useLocale: () => ({ locale: 'zh-Hans', setLocale: vi.fn() }),
+}));
+
 vi.mock('@/app/ops-analysis/api/screenDisplay', () => ({
   SCREEN_DISPLAY_DURATIONS: [1, 7, 30, 90],
   useScreenDisplayApi: () => ({
@@ -50,7 +54,7 @@ describe('screen display grant modal', () => {
     expect(screen.getByText(/opsAnalysis\.screen\.displayExpiresAt/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /登录|sign in/i })).toBeNull();
     await waitFor(() => {
-      expect(screen.getByText(/\/ops-analysis\/display\/t\/signed-token/)).toBeTruthy();
+      expect(screen.getByText(/\/ops-analysis\/display\/t\/signed-token\?locale=zh-Hans/)).toBeTruthy();
     });
   });
 

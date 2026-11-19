@@ -6,6 +6,7 @@ import asyncio
 import io
 import json
 import queue
+import re
 import threading
 
 import lark_oapi as lark
@@ -269,14 +270,16 @@ class LarkFeishuTransport:
         self._bot_open_id = open_id
         return open_id
 
-    def reply_text(self, message_id: str, text: str) -> str:
-        response = self._api.im.v1.message.reply(_text_reply(message_id, text))
+    def reply_markdown(self, message_id: str, text: str) -> str:
+        body = ReplyMessageRequestBody.builder().msg_type("post").content(_markdown_body(text)).build()
+        request = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
+        response = self._api.im.v1.message.reply(request)
         if not response.success() or response.data is None or not response.data.message_id:
             raise FeishuDeliveryError("reply rejected")
         return response.data.message_id
 
-    def update_text(self, message_id: str, text: str) -> None:
-        body = UpdateMessageRequestBody.builder().msg_type("text").content(_text_body(text)).build()
+    def update_markdown(self, message_id: str, text: str) -> None:
+        body = UpdateMessageRequestBody.builder().msg_type("post").content(_markdown_body(text)).build()
         request = UpdateMessageRequest.builder().message_id(message_id).request_body(body).build()
         response = self._api.im.v1.message.update(request)
         if not response.success():
@@ -363,13 +366,9 @@ def _reject(response, stage: str) -> None:
     raise FeishuDeliveryError(stage, code=str(code if code is not None else "-"), detail=detail)
 
 
-def _text_body(text: str) -> str:
-    return json.dumps({"text": text}, ensure_ascii=False)
-
-
-def _text_reply(message_id: str, text: str) -> ReplyMessageRequest:
-    body = ReplyMessageRequestBody.builder().msg_type("text").content(_text_body(text)).build()
-    return ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
+def _markdown_body(text: str) -> str:
+    text = re.sub(r"<(?=/?at(?:\s|>))", "&lt;", text, flags=re.IGNORECASE)
+    return json.dumps({"zh_cn": {"content": [[{"tag": "md", "text": text}]]}}, ensure_ascii=False)
 
 
 def open_feishu_sdk_transport(app_id: str, app_secret: str) -> LarkFeishuTransport:

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Optional
 
+from django.utils import translation
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -213,6 +214,25 @@ def _share_identity_app_names(principal) -> list[str]:
     )
 
 
+def request_oa_language(request) -> str | None:
+    """投屏和分享页的界面语言在 X-BK-Locale。匿名投屏没有账号 locale。"""
+    from apps.operation_analysis.services.builtin_i18n import normalize_oa_language
+
+    header = request.headers.get("X-BK-Locale") if hasattr(request, "headers") else None
+    if isinstance(header, str) and header.strip():
+        return normalize_oa_language(header)
+    user_locale = getattr(getattr(request, "user", None), "locale", None)
+    if isinstance(user_locale, str) and user_locale.strip():
+        return normalize_oa_language(user_locale)
+    return None
+
+
+def activate_request_language(request) -> None:
+    language = request_oa_language(request)
+    if language:
+        translation.activate(language)
+
+
 def _serialize_shared_resource(principal, language=None):
     resource = principal.resource
     from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload
@@ -284,6 +304,10 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         method = request.method.lower()
         self.action = self.action_map.get(method)
         return super().initialize_request(request, *args, **kwargs)
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        activate_request_language(request)
 
     def get_throttles(self):
         action = getattr(self, "action", None)
@@ -371,6 +395,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         return response
 
     def _load_principal(self, request, session_id):
+        activate_request_language(request)
         if getattr(request, "_screen_display", False):
             from apps.operation_analysis.services.display_service import resolve_display_request
 
@@ -389,7 +414,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
 
         log_share_access(request, action="open", principal=principal, visitor=request.user, result="ok")
-        return Response(_serialize_shared_resource(principal, language=getattr(request.user, "locale", None)))
+        return Response(_serialize_shared_resource(principal, language=request_oa_language(request)))
 
     @action(
         detail=False,

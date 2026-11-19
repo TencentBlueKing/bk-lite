@@ -856,6 +856,12 @@ screens:
     widgets:
       network-topology-builtin-main:
         title: 网络状态拓扑总览
+  "screen::监控值班总览_内置":
+    name: 监控概况大屏
+    desc: 基于当前监控数据快照，展示监控对象、运行规模、采集失败情况和当前未关闭的监控告警。
+  "screen::网络设备运行汇总_内置":
+    name: 网络设备运行汇总
+    desc: 基于当前监控数据快照，汇总网络设备的运行情况。总数、失联、采集失败和接口按整个网络设备分类统计。
 datasources:
   "监控异常严重度TOP5::monitor/query_latest_active_alerts":
     name: 监控异常严重度 TOP5

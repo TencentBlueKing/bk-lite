@@ -1,8 +1,7 @@
 import { useTranslation } from '@/utils/i18n';
 import { v4 as uuidv4 } from 'uuid';
 
-const WIN_BASE =
-  'collect_type:"winlogbeat" service.name:"bk-lite-analysis-sample" event.dataset:"winlogbeat"';
+import { WINDOWS_EVENT_BASE_QUERY as WIN_BASE } from './windowsEventLogQueries';
 const WIN_EVENT_ID = 'winlog.event_id';
 const WIN_CHANNEL = 'winlog.channel';
 const WIN_PROVIDER = 'winlog.provider_name';

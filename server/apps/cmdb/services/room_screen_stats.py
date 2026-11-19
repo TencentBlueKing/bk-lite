@@ -88,7 +88,7 @@ def resolve_target_room(*, server_room_id, permission_map, user, user_info, pars
         return _error("无权限查看当前机房", code=403), None
     text = "" if server_room_id in (None, "") else str(server_room_id).strip()
     if not text:
-        return _error("请在头部选择机房"), None
+        return _error("请选择机房"), None
     error, locator = _room_error_from_locator(text, parse_locator)
     if error:
         return error, None

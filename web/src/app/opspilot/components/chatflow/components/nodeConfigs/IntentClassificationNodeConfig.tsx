@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Input, Select, Button } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
-import { filterModelOption, getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { filterModelOption, getModelOptionText, renderModelOptionLabel, withBoundUnavailableModels } from '@/app/opspilot/utils/modelOption';
 import type { IntentClassificationNodeConfigProps } from './types';
 
 const { Option } = Select;
@@ -14,6 +14,13 @@ export const IntentClassificationNodeConfig: React.FC<IntentClassificationNodeCo
   loadingLlmModels,
   form,
 }) => {
+  const llmModelId = Form.useWatch('llmModel', form);
+  const llmModelName = Form.useWatch('llmModelName', form);
+  const modelChoices = withBoundUnavailableModels(
+    llmModels,
+    llmModelId,
+    typeof llmModelName === 'string' && llmModelName ? [{ id: Number(llmModelId), name: llmModelName }] : [],
+  );
   return (
     <div className="mb-4">
       <Form.Item
@@ -31,11 +38,14 @@ export const IntentClassificationNodeConfig: React.FC<IntentClassificationNodeCo
             form.setFieldsValue({ llmModelName: selectedModel?.name || '' });
           }}
         >
-          {llmModels.map((model) => (
-            <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
-              {renderModelOptionLabel(model)}
-            </Option>
-          ))}
+          {modelChoices.map(({ model, disabled }) => {
+            const unavailableMark = disabled ? t('modelOption.unavailable', '已停用') : undefined;
+            return (
+              <Option key={model.id} value={model.id} disabled={disabled} title={getModelOptionText(model, unavailableMark)}>
+                {renderModelOptionLabel(model, unavailableMark)}
+              </Option>
+            );
+          })}
         </Select>
       </Form.Item>
       <Form.Item name="llmModelName" className="hidden">

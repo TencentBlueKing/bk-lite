@@ -170,6 +170,20 @@ class NodeMgmt(object):
             organization_ids,
         )
 
+    def delete_owned_child_configs(self, config_ids):
+        """删除调用方拥有的子配置；父配置没有剩余子配置时一并删除。"""
+        return self.client.run("delete_owned_child_configs", config_ids)
+
+    def move_child_configs_to_node(self, config_ids, node_id, owner_config_ids, organization_ids):
+        """把子配置挂到组织范围内的目标节点；目标不在范围内则拒绝。"""
+        return self.client.run(
+            "move_child_configs_to_node",
+            config_ids,
+            node_id,
+            owner_config_ids,
+            organization_ids,
+        )
+
     def get_configs_by_ids(self, ids):
         """
         :param ids: 配置ID列表

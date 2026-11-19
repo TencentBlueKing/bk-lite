@@ -347,33 +347,12 @@ export const validateSchemaFields = (fields: SchemaField[]) => {
 };
 
 export const normalizeFieldSchema = (schemaFields: SchemaField[]) =>
-  schemaFields.map(({ key, title, value_type, description, table, role, modes }) => {
-    const normalized: {
-      key: string;
-      title: string;
-      value_type: SchemaField["value_type"];
-      description: string;
-      table?: false;
-      role?: SchemaField["role"];
-      modes?: string[];
-    } = {
-      key: key.trim(),
-      title: title.trim(),
-      value_type,
-      description: description?.trim() || "",
-    };
-    if (table === false) {
-      normalized.table = false;
-    }
-    if (role) {
-      normalized.role = role;
-    }
-    const selectedModes = (modes || []).map((mode) => mode.trim()).filter(Boolean);
-    if (selectedModes.length > 0) {
-      normalized.modes = selectedModes;
-    }
-    return normalized;
-  });
+  schemaFields.map(({ key, title, value_type, description }) => ({
+    key: key.trim(),
+    title: title.trim(),
+    value_type,
+    description: description?.trim() || "",
+  }));
 
 export const normalizeParams = (params: ParamItem[]) =>
   params
@@ -900,7 +879,7 @@ export interface DatasourceSourceFlags {
 }
 
 export function getDatasourceSourceFlags(
-  sourceType: DataSourceSourceType,
+  sourceType?: DataSourceSourceType,
 ): DatasourceSourceFlags {
   const isNatsSource = sourceType === SOURCE_TYPE_NATS;
   const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
@@ -1027,12 +1006,8 @@ export function buildHydratedDatasourceFormState(
   if (!row) {
     return {
       formValues: {
-        source_type: SOURCE_TYPE_NATS,
         connection_mode: "connection",
-        connection_config: {
-          method: "GET",
-          timeout: 10,
-        },
+        connection_config: {},
         query_config: {},
         transform_config: createDefaultTransformConfig(),
         ...(options?.selectedGroupId

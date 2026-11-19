@@ -308,6 +308,30 @@ email:
   password_expired_body: '<p>Hello {name},</p><p>Your password has expired. Please change it now.</p>'
 channel:
   opspilot_nats_trigger_description: NATS trigger channel created by an OpsPilot workflow
+  send_parameter:
+    channel_id: 'Always set this to {channel_id}, for the "{channel_name}" channel.'
+    channel_type: 'Always set this to {channel_type}.'
+    channel_type_im: Always set this to im_notification, to distinguish it from a regular channel with the same ID.
+    title_email: Email subject. Can be left empty.
+    title_enterprise_wechat: Enterprise WeChat app messages do not use a title; pass an empty string.
+    title_enterprise_wechat_bot: Enterprise WeChat bots send only the body; the title does not appear in the message. Pass an empty string.
+    title_feishu_bot: 'Feishu card title. If left empty, the channel displays "通知".'
+    title_dingtalk_bot: 'DingTalk markdown title. If left empty, the channel displays "通知".'
+    title_custom_webhook: Custom webhooks do not use a title; pass an empty string.
+    title_im_notification: IM app notification title. Can be left empty. Maximum 512 characters.
+    title_default: Title. Can be left empty. Maximum 512 characters.
+    content_email: Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.
+    content_enterprise_wechat: Enterprise WeChat app text message body.
+    content_enterprise_wechat_bot: Enterprise WeChat bot markdown body. Recipient names are appended to the body.
+    content_feishu_bot: Feishu card markdown body. Recipient names are appended to the body.
+    content_dingtalk_bot: DingTalk markdown body. Recipient names are appended to the body.
+    # format() turns {{{{content}}}} back into the literal {{content}}
+    content_custom_webhook: 'Notification body; it replaces {{{{content}}}} in the channel template. Recipient names are appended to the body.'
+    content_im_notification: IM app notification body. Required. Maximum 20,000 characters.
+    content_default: Notification body. Required. Maximum 20,000 characters.
+    receivers_system_user: Platform user ID strings from the id field returned by GET /openapi/v1/system-mgmt/users. They must belong to the current organization. Do not pass usernames. 1 to 100 items, no duplicates.
+    receivers_free_text: Channel-side recipient names, attached to the message as-is; not platform user IDs. 1 to 100 items, each at most 150 characters, no duplicates.
+    receivers_default: Recipient list.
 tag:
   # job
   job_execution: Job Execution

@@ -9,11 +9,12 @@ import zipfile
 from types import SimpleNamespace
 
 import pytest
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain_core.messages import ToolMessage
 
-from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 from apps.opspilot.metis.llm.tools.python.executor import python_execute_direct
 from apps.opspilot.metis.llm.tools.shell.shell_tools import shell_execute
+from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
 from apps.opspilot.services.python_sandbox.runtime import PythonSandbox
 from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
 
@@ -34,8 +35,10 @@ def test_offloaded_json_becomes_chinese_html_pdf_and_zip(sandbox):
     config = {"configurable": {"python_sandbox": sandbox}}
     payload = json.dumps({"items": [{"status": "active", "value": 2}, {"status": "closed", "value": 7}] * 200})
     message = ToolMessage(content=payload, tool_call_id="alerts")
-    offloaded = PythonSandboxMiddleware(sandbox).wrap_tool_call(SimpleNamespace(tool_call={"name": "alerts"}), lambda _: message)
-    assert "工具完整结果已保存" in offloaded.content
+    offloaded = FilesystemMiddleware(backend=build_result_backend(sandbox), tool_token_limit_before_evict=1000).wrap_tool_call(
+        SimpleNamespace(tool_call={"name": "alerts"}, runtime=None), lambda _: message
+    )
+    assert "/large_tool_results/alerts" in offloaded.content
     code = f"""
 from pathlib import Path
 import ijson

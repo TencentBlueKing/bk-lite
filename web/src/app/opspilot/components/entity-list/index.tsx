@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Dropdown, Input, message, Spin, Modal, Select, Space } from 'antd';
+import { Button, Input, message, Spin, Modal, Select, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -24,11 +24,11 @@ interface EntityListProps<T> {
   itemTypeSingle: string;
   typeConfig?: TypeConfig;
   beforeDelete?: (item: T, deleteCallback: () => void) => void;
-  onCreateFromTemplate?: (itemType: string) => void;
   onTogglePin?: (item: T) => Promise<void>;
   pageSize?: number;
   pageTitle?: string;
   pageDescription?: string;
+  afterHeader?: React.ReactNode;
 }
 
 interface ApiResponse<T> {
@@ -44,11 +44,11 @@ const EntityList = <T,>({
   itemTypeSingle,
   typeConfig,
   beforeDelete,
-  onCreateFromTemplate,
   onTogglePin,
   pageSize = 20,
   pageTitle,
   pageDescription,
+  afterHeader,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const { get, post, patch, del } = useApiClient();
@@ -254,49 +254,18 @@ const EntityList = <T,>({
     }
   };
 
-  const handleCreateFromTemplate = () => {
-    if (onCreateFromTemplate) {
-      onCreateFromTemplate(itemTypeSingle);
-    }
-  };
-
   const openCreateBlank = () => {
     setIsModalVisible(true);
     setEditingItem(null);
   };
 
-  const createAction =
-    itemTypeSingle === 'skill' && onCreateFromTemplate ? (
-      <PermissionWrapper requiredPermissions={['Add']}>
-        <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'blank',
-                label: t('skill.createBlankAgent'),
-                onClick: openCreateBlank,
-              },
-              {
-                key: 'template',
-                label: t('skill.createFromTemplate'),
-                onClick: handleCreateFromTemplate,
-              },
-            ],
-          }}
-          trigger={['click']}
-        >
-          <Button type="primary" icon={<PlusOutlined />}>
-            {t('common.new')}
-          </Button>
-        </Dropdown>
-      </PermissionWrapper>
-    ) : (
-      <PermissionWrapper requiredPermissions={['Add']}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateBlank}>
-          {t('common.new')}
-        </Button>
-      </PermissionWrapper>
-    );
+  const createAction = (
+    <PermissionWrapper requiredPermissions={['Add']}>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openCreateBlank}>
+        {t('common.new')}
+      </Button>
+    </PermissionWrapper>
+  );
 
   return (
     <div className="w-full h-full">
@@ -377,6 +346,7 @@ const EntityList = <T,>({
           {createAction}
         </div>
       )}
+      {afterHeader}
       {loading ? (
         <CardGridSkeleton />
       ) : (

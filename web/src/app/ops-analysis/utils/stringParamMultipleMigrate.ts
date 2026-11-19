@@ -15,7 +15,9 @@ export const LEGACY_STRING_LIST_TYPE = 'stringList';
 export interface StringParamMigrationWarning {
   code:
     | 'string_list_component_switch_conflict'
-    | 'string_list_dual_id_incompatible';
+    | 'string_list_dual_id_incompatible'
+    | 'component_switch_unsupported_chart'
+    | 'component_switch_extra_dropped';
   key?: string;
   message: string;
   fields?: string[];
@@ -78,8 +80,9 @@ export const areNormalizedInputConfigsCompatible = (
   if (left.control === 'input' || right.control === 'input'
     || left.control === 'organization' || right.control === 'organization'
     || left.control === 'conditionFilter' || right.control === 'conditionFilter'
-    || left.control === 'order' || right.control === 'order') {
-    return left.control === right.control;
+    || left.control === 'dataVariable' || right.control === 'dataVariable') {
+    return left.control === right.control
+      && (left.control !== 'dataVariable' || right.control !== 'dataVariable' || left.dataVariableId === right.dataVariableId);
   }
   const leftPicker = left.picker ?? 'dropdown';
   const rightPicker = right.picker ?? 'dropdown';
@@ -103,7 +106,7 @@ export const normalizeStringListInputConfig = (
   if (normalized.control === 'organization') {
     return { inputConfig: { control: 'organization' }, warnings };
   }
-  if (normalized.control === 'conditionFilter' || normalized.control === 'order') {
+  if (normalized.control === 'conditionFilter' || normalized.control === 'dataVariable') {
     return { inputConfig: normalized, warnings };
   }
 

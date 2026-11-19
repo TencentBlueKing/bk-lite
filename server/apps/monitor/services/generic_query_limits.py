@@ -3,6 +3,12 @@
 # 明细每页最多 100 条。
 DETAIL_PAGE_SIZE_MAX = 100
 
+# 不分页的告警明细最多 500 条，超出直接失败。
+ALERT_DETAIL_MAX = 500
+
+# 不分页的监控实例列表最多 500 条，超出直接失败。
+INSTANCE_LIST_MAX = 500
+
 # 统计分组最多 500 组。
 STAT_GROUP_MAX = 500
 
@@ -15,6 +21,9 @@ METRIC_SERIES_MAX = 20
 # 每条序列最多 1000 个点。query_range 闭区间包含起止两端，点数上界是
 # floor(时间范围秒 / 步长) + 1。请求校验与 VictoriaMetrics 实际返回用同一公式。
 METRIC_POINTS_MAX = 1000
+
+# 从 CMDB 资源做告警分布时，单次最多接受 2000 个 uuid。
+CMDB_ALERT_UUID_MAX = 2000
 
 # 监控告警时间范围最长 90 天。
 ALERT_RANGE_MAX_DAYS = 90

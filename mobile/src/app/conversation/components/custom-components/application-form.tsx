@@ -1,5 +1,6 @@
 import React, { useState, useRef, memo, useEffect } from 'react';
 import { Button, Input, Toast, DatePicker, Selector, Radio, Checkbox, TextArea, Stepper, Slider, Switch } from 'antd-mobile';
+import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 
 interface FormField {
@@ -31,6 +32,8 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
     onFormSubmit
 }) => {
     const { t } = useTranslation();
+    const { locale } = useLocale();
+    const dateLocale = locale.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
     const [formState, setFormState] = useState<'noSubmitted' | 'submitted'>(initialState);
     const [formData, setFormData] = useState<Record<string, any>>(() => {
         // 使用惰性初始化，只在组件挂载时执行一次
@@ -115,11 +118,11 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                 if (value) {
                     const date = new Date(value);
                     if (f.type === 'datetime') {
-                        displayValue = date.toLocaleString('zh-CN');
+                        displayValue = date.toLocaleString(dateLocale);
                     } else if (f.type === 'date') {
-                        displayValue = date.toLocaleDateString('zh-CN');
+                        displayValue = date.toLocaleDateString(dateLocale);
                     } else {
-                        displayValue = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                        displayValue = date.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' });
                     }
                 }
             } else if (f.type === 'switch') {
@@ -221,7 +224,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     : 'bg-white text-[var(--color-text-1)] cursor-pointer'
                                     }`}
                             >
-                                {dateValue ? dateValue.toLocaleString('zh-CN', {
+                                {dateValue ? dateValue.toLocaleString(dateLocale, {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit',
@@ -256,7 +259,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     : 'bg-white text-[var(--color-text-1)] cursor-pointer'
                                     }`}
                             >
-                                {dateValue ? dateValue.toLocaleDateString('zh-CN') : placeholder || t('chat.pleaseSelect', undefined, { label })}
+                                {dateValue ? dateValue.toLocaleDateString(dateLocale) : placeholder || t('chat.pleaseSelect', undefined, { label })}
                             </div>
                             <DatePicker
                                 visible={datePickerVisible === name}
@@ -285,7 +288,7 @@ const ApplicationFormComponent: React.FC<ApplicationFormProps> = ({
                                     : 'bg-white text-[var(--color-text-1)] cursor-pointer'
                                     }`}
                             >
-                                {dateValue ? dateValue.toLocaleTimeString('zh-CN', {
+                                {dateValue ? dateValue.toLocaleTimeString(dateLocale, {
                                     hour: '2-digit',
                                     minute: '2-digit'
                                 }) : placeholder || t('chat.pleaseSelect', undefined, { label })}

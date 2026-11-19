@@ -679,6 +679,7 @@
       "color": "颜色",
       "collectionNode": "采集节点",
       "collectorNodeRemoved": "采集节点已删除",
+      "collectorNodeOffline": "离线",
       "clearCollectorConfig": "清除采集配置",
       "clearCollectorConfigConfirm": "清除后，这份采集配置和对应子配置会被删除，实例保留。",
       "reassignCollectorNode": "更换采集节点",

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for IgniteNet MetroLinq 60 GHz radios (enterprise PEN 47307, IGNITENET-MIB). Besides standard IF-MIB interface traffic and uptime, it reports per-radio transmit power, local and remote RSSI and whether the 60 GHz link has failed over to the 5 GHz radio.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_ignitenet'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wireless",
   "icon": "mm-wireless_无线设备",
   "type": "Network Device",

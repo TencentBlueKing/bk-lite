@@ -4,7 +4,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.models import CollectConfig, CollectInstance, CollectType
 from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
@@ -1047,3 +1046,44 @@ def test_k8s_check_collect_status_allows_instance_level_view_permission(monkeypa
 
     assert response.status_code == 200
     check_collect_status.assert_called_once_with(instance.id)
+
+
+def test_reassign_collector_node_passes_current_user_permission(monkeypatch):
+    from apps.log.views import collect_config
+
+    scope = SimpleNamespace(
+        username="alice",
+        domain="default",
+        current_team=1,
+        include_children=False,
+        is_superuser=False,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        CollectInstanceViewSet,
+        "_authorize_instances",
+        lambda self, request, instance_ids, required_permission=None: ([SimpleNamespace(id="inst-1")], None),
+    )
+    monkeypatch.setattr(collect_config.LogAccessScopeService, "get_data_scope", lambda request: scope)
+
+    def _reassign(instance_id, node_id, permission_data=None):
+        captured["instance_id"] = instance_id
+        captured["node_id"] = node_id
+        captured["permission_data"] = permission_data
+
+    monkeypatch.setattr(collect_config.LogCollectorNodeExit, "reassign", _reassign)
+
+    response = CollectInstanceViewSet().reassign_collector_node(make_request({"instance_id": "inst-1", "node_id": "node-9"}))
+
+    assert response.status_code == 200
+    assert captured == {
+        "instance_id": "inst-1",
+        "node_id": "node-9",
+        "permission_data": {
+            "username": "alice",
+            "domain": "default",
+            "current_team": 1,
+            "include_children": False,
+            "is_superuser": False,
+        },
+    }

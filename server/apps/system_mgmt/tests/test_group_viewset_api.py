@@ -78,6 +78,37 @@ def test_search_group_list(super_client):
     assert resp.json()["result"] is True
 
 
+def _tree_names(nodes):
+    names = []
+    for node in nodes or []:
+        names.append(node.get("name"))
+        names.extend(_tree_names(node.get("subGroups") or node.get("children") or []))
+    return names
+
+
+def test_search_group_list_auditor_sees_guest_without_membership():
+    from apps.base.models import User as BaseUser
+
+    guest = Group.objects.create(name="OpsPilotGuest", parent_id=0)
+    other = Group.objects.create(name="AuditorForeignOrg", parent_id=0)
+    auditor = BaseUser.objects.create_user(username="gvauditor", password="pw", domain="domain.com", locale="en")
+    auditor.is_superuser = False
+    auditor.is_auditor = True
+    auditor.permission = {"system-manager": {"user_group-View"}}
+    auditor.group_list = []
+    auditor.save()
+    client = APIClient()
+    client.force_authenticate(user=auditor)
+
+    resp = client.get(f"{BASE}/search_group_list/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["result"] is True
+    names = _tree_names(body["data"])
+    assert guest.name in names
+    assert other.name in names
+
+
 # ---------------------------------------------------------------------------
 # get_detail
 # ---------------------------------------------------------------------------

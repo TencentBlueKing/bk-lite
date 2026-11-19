@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type { ColumnResult } from '@/app/ops-analysis/utils/dataVariable';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
-import { measureKeyFromFields } from '@/app/ops-analysis/utils/chartFieldContract';
-import { coerceTopNNumericValue } from '@/app/ops-analysis/utils/topNData';
+import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 
@@ -28,6 +28,7 @@ interface BuildRequestParamsInput {
   filterDefinitions?: UnifiedFilterDefinition[];
   resolutionContext?: DateRangeResolutionContext;
   chartType?: string;
+  dataVariableColumns?: Record<string, ColumnResult>;
   t?: (id: string, defaultMessage?: string) => string;
 }
 
@@ -115,8 +116,9 @@ export const buildCompareRequestParams = ({
   filterDefinitions,
   resolutionContext,
   chartType,
+  dataVariableColumns,
   t,
-}: BuildRequestParamsInput): { currentParams: RequestParams; baselineParams: RequestParams | null } => {
+}: BuildRequestParamsInput): { currentParams: RequestParams | null; baselineParams: RequestParams | null } => {
   const currentParams = buildWidgetRequestParams({
     config,
     dataSource,
@@ -126,10 +128,11 @@ export const buildCompareRequestParams = ({
     filterDefinitions,
     resolutionContext,
     chartType: chartType || config?.chartType,
+    dataVariableColumns,
     t,
   });
 
-  if (!config?.compare) {
+  if (!currentParams || !config?.compare) {
     return { currentParams, baselineParams: null };
   }
 
@@ -164,6 +167,9 @@ export const fetchCompareData = async ({
   ...rest
 }: FetchCompareDataInput): Promise<CompareQueryResult> => {
   const { currentParams, baselineParams } = buildCompareRequestParams(rest);
+  if (!currentParams) {
+    return { currentData: null, baselineData: null };
+  }
   const currentResult = await getSourceDataByApiId(dataSourceId, currentParams);
 
   if (!baselineParams) {
@@ -206,21 +212,19 @@ export const extractComparableValue = (
     if (present !== undefined) {
       return present;
     }
+    const rows = unwrapTopNData(data);
+    if (rows !== data) {
+      const fromRow = presentScalar(getValueByPath(rows, selectedField));
+      if (fromRow !== undefined) {
+        return fromRow;
+      }
+    }
     // 明确指定了字段但当前结果没有可用值时返回 null，不改读其它字段。
     return null;
   }
 
   if (typeof data === 'number' || typeof data === 'string' || typeof data === 'boolean') {
     return data;
-  }
-
-  const measureKey = measureKeyFromFields(data);
-  if (measureKey && data && typeof data === 'object' && !Array.isArray(data)) {
-    const present = presentScalar((data as Record<string, unknown>)[measureKey]);
-    if (present !== undefined) {
-      return present;
-    }
-    return null;
   }
 
   if (Array.isArray(data) && data.length > 0) {

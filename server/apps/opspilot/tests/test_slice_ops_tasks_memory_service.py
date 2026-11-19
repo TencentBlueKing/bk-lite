@@ -26,6 +26,7 @@ import pytest
 from apps.opspilot import tasks
 from apps.opspilot.models import Bot, BotWorkFlow, Memory, MemorySpace, MemoryWriteCache
 from apps.opspilot.tasks.memory import _MEMORY_WRITE_DEFERRED_FLUSH_LOG, _MEMORY_WRITE_DEFERRED_WRITE_LOG, MemoryWriteLlmUnavailable
+from apps.system_mgmt.models import User as SystemUser
 
 _LLM_PAYLOAD_SENTINEL = "RCA_PAYLOAD_SENTINEL_DO_NOT_LOG"
 
@@ -574,19 +575,20 @@ def _inline_native_thread(mocker):
     def _inline(func, *args, **kwargs):
         return func(*args, **kwargs)
 
+    mocker.patch("apps.opspilot.tasks.chatflow._run_in_native_thread", side_effect=_inline)
     mocker.patch.object(tasks, "_run_in_native_thread", side_effect=_inline)
 
 
 @pytest.mark.usefixtures("_inline_native_thread")
 class TestChatFlowCeleryTasks:
     def test_bot不存在短路不建引擎(self, mocker):
-        create = mocker.patch.object(tasks, "create_chat_flow_engine")
+        create = mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine")
         tasks.chat_flow_celery_task(bot_id=999999, node_id="n", message="hi")
         create.assert_not_called()
 
     def test_bot无chatflow短路(self, mocker):
         bot = Bot.objects.create(name="b", team=[1], usage_team=[1], online=True)
-        create = mocker.patch.object(tasks, "create_chat_flow_engine")
+        create = mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine")
         tasks.chat_flow_celery_task(bot_id=bot.id, node_id="n", message="hi")
         create.assert_not_called()
 
@@ -594,7 +596,7 @@ class TestChatFlowCeleryTasks:
         bot = Bot.objects.create(name="b", team=[1], usage_team=[1], online=True, created_by="creator")
         BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
         engine = _FakeEngine()
-        create = mocker.patch.object(tasks, "create_chat_flow_engine", return_value=engine)
+        create = mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine", return_value=engine)
         tasks.chat_flow_celery_task(bot_id=bot.id, node_id="nodeA", message="你好")
         create.assert_called_once_with(mocker.ANY, "nodeA", entry_type="celery")
         assert engine.executed == {
@@ -603,11 +605,44 @@ class TestChatFlowCeleryTasks:
             "bot_id": bot.id,
             "node_id": "nodeA",
             "entry_type": "celery",
+            "locale": "zh-Hans",
         }
         assert "caller_identity" not in engine.executed
 
+    def test_创建者语言写入流程输入(self, mocker):
+        SystemUser.objects.create(
+            username="creator",
+            domain="domain.com",
+            display_name="creator",
+            email="creator@example.com",
+            password="x",
+            locale="en",
+        )
+        bot = Bot.objects.create(name="b-locale", team=[1], usage_team=[1], online=True, created_by="creator")
+        BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+        engine = _FakeEngine()
+        mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine", return_value=engine)
+        tasks.chat_flow_celery_task(bot_id=bot.id, node_id="nodeA", message="你好")
+        assert engine.executed["locale"] == "en"
+
+    def test_创建者语言为空时用简体中文(self, mocker):
+        SystemUser.objects.create(
+            username="empty-locale",
+            domain="domain.com",
+            display_name="empty-locale",
+            email="empty-locale@example.com",
+            password="x",
+            locale="",
+        )
+        bot = Bot.objects.create(name="b-empty", team=[1], usage_team=[1], online=True, created_by="empty-locale")
+        BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+        engine = _FakeEngine()
+        mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine", return_value=engine)
+        tasks.chat_flow_celery_task(bot_id=bot.id, node_id="nodeA", message="你好")
+        assert engine.executed["locale"] == "zh-Hans"
+
     def test_test_execute_workflow不存在短路(self, mocker):
-        create = mocker.patch.object(tasks, "create_chat_flow_engine")
+        create = mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine")
         tasks.chat_flow_test_execute_task(workflow_id=999999, node_id="n", input_data={"last_message": "x"}, entry_type="openai", execution_id="e1")
         create.assert_not_called()
 
@@ -615,7 +650,7 @@ class TestChatFlowCeleryTasks:
         bot = Bot.objects.create(name="b", team=[1], usage_team=[1])
         wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
         engine = _FakeEngine()
-        mocker.patch.object(tasks, "create_chat_flow_engine", return_value=engine)
+        mocker.patch("apps.opspilot.tasks.chatflow.create_chat_flow_engine", return_value=engine)
         tasks.chat_flow_test_execute_task(workflow_id=wf.id, node_id="n", input_data={"last_message": "x"}, entry_type="restful", execution_id="e1")
         assert engine.is_test is True
         assert engine.entry_type == "restful"

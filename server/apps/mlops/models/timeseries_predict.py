@@ -166,6 +166,7 @@ class TimeSeriesPredictTrainJob(TrainJobConfigSyncMixin, MaintainerInfo, TimeInf
         verbose_name="算法模型",
         help_text="使用的时间序列预测算法模型",
     )
+    is_builtin = models.BooleanField(default=False, verbose_name="内置记录")
 
     dataset_version = models.ForeignKey(
         "TimeSeriesPredictDatasetRelease",
@@ -247,6 +248,7 @@ class TimeSeriesPredictServing(MaintainerInfo, TimeInfo):
         verbose_name="服务状态",
         help_text="发布状态(弃用，以容器状态为准)",
     )
+    is_builtin = models.BooleanField(default=False, verbose_name="内置记录")
 
     container_info = models.JSONField(
         default=dict,

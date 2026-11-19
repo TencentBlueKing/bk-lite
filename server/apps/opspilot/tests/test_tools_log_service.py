@@ -68,6 +68,21 @@ def test_log_search_structured_requires_paired_time():
     assert "start and end must be provided together" in out["error"]
 
 
+def test_log_search_status_and_time_do_not_become_keywords():
+    config = cfg()
+    config["configurable"]["user_timezone"] = "Asia/Shanghai"
+    config["configurable"]["user_message"] = "查询最近24小时的日志"
+    with patch("apps.opspilot.metis.llm.tools.log.utils.LogOperationAnaRpc") as rpc_cls:
+        rpc_cls.return_value.search_structured.return_value = {"result": True, "data": []}
+        log_search_structured.invoke(
+            {"keyword": "活动", "start": "2026-10-21 14:53:09", "end": "2026-10-21 15:03:09"},
+            config=config,
+        )
+    query_data = rpc_cls.return_value.search_structured.call_args.kwargs["query_data"]
+    assert query_data["keywords"] == []
+    assert query_data["time_range"] == ["2026-10-21T06:53:09.000Z", "2026-10-21T07:03:09.000Z"]
+
+
 def test_log_search_structured_maps_to_rpc():
     with patch("apps.opspilot.metis.llm.tools.log.utils.LogOperationAnaRpc") as rpc_cls:
         rpc_cls.return_value.search_structured.return_value = {"result": True, "data": []}

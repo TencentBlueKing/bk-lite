@@ -533,14 +533,46 @@ def allowed_share_namespace_ids(*, data_source_id: int) -> set[int]:
     return {int(namespace_id) for namespace_id in datasource.namespaces.values_list("id", flat=True)}
 
 
-def _enforce_share_fixed_params(*, dashboard, data_source_id: int, safe: dict) -> dict:
-    """fixed 可出现在请求中，但访问者不可改：单值覆盖，多组件冲突则校验落在允许集合。"""
-    schema_params = _datasource_param_specs(data_source_id)
-    # name -> 原始 fixed value（单组件路径直接写入，避免 json 解冻问题）
-    forced: dict[str, object] = {}
-    allowed_sets: dict[str, set] = {}
+def _spec_name(spec) -> str | None:
+    if not isinstance(spec, dict):
+        return None
+    name = spec.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
 
-    for value_config in _matching_value_configs(dashboard=dashboard, data_source_id=data_source_id):
+
+def _submitted_param_specs(value_config, schema_params) -> dict:
+    """与前端 widgetSourceParams 一致：组件有 dataSourceParams 就只用它，否则回落数据源 schema。"""
+    widget_params = value_config.get("dataSourceParams") or []
+    source = widget_params if isinstance(widget_params, list) and widget_params else schema_params
+    specs = {}
+    if isinstance(source, list):
+        for item in source:
+            name = _spec_name(item)
+            if name:
+                specs[name] = item
+    return specs
+
+
+def _enforce_share_fixed_params(*, dashboard, data_source_id: int, safe: dict) -> dict:
+    """固定值不能改成画布没声明的值。
+
+    参数名只要有组件标成 fixed，允许值是这些固定值，再加上其他组件实际提交的
+    params 值。filter 不进入这张表。只有一个允许值时覆盖并注入。有多个时保留
+    落在表内的请求值；缺省只在每个组件都会提交该参数时拒绝。
+    """
+    schema_params = _datasource_param_specs(data_source_id)
+    configs = list(_matching_value_configs(dashboard=dashboard, data_source_id=data_source_id))
+    fixed_raw: dict[str, object] = {}
+    authorized: dict[str, set] = {}
+    params_values: dict[str, set] = {}
+    submitted_counts: dict[str, int] = {}
+
+    for value_config in configs:
+        submitted = _submitted_param_specs(value_config, schema_params)
+        for name in submitted:
+            submitted_counts[name] = submitted_counts.get(name, 0) + 1
         effective = _merge_effective_param_specs(
             schema_params=schema_params,
             widget_params=value_config.get("dataSourceParams") or [],
@@ -549,20 +581,31 @@ def _enforce_share_fixed_params(*, dashboard, data_source_id: int, safe: dict) -
             if spec.get("filterType") != "fixed":
                 continue
             value = spec.get("value")
-            allowed_sets.setdefault(name, set()).add(_freeze_param_value(value))
-            if name not in forced:
-                forced[name] = value
-            elif forced[name] != value:
-                forced[name] = _SHARE_FIXED_CONFLICT
+            authorized.setdefault(name, set()).add(_freeze_param_value(value))
+            if name not in fixed_raw:
+                fixed_raw[name] = value
+            elif fixed_raw[name] != value:
+                fixed_raw[name] = _SHARE_FIXED_CONFLICT
+        for name, spec in submitted.items():
+            effective_spec = effective.get(name) if isinstance(effective.get(name), dict) else spec
+            if effective_spec.get("filterType") != "params":
+                continue
+            params_values.setdefault(name, set()).add(_freeze_param_value(spec.get("value")))
 
     result = dict(safe)
-    for name, allowed in allowed_sets.items():
-        if forced.get(name) is _SHARE_FIXED_CONFLICT:
-            frozen_request = _freeze_param_value(result.get(name))
-            if name not in result or frozen_request not in allowed:
+    widget_count = len(configs)
+    for name, fixed_allowed in authorized.items():
+        allowed = set(fixed_allowed)
+        allowed.update(params_values.get(name, set()))
+        if len(allowed) == 1 and fixed_raw.get(name) is not _SHARE_FIXED_CONFLICT:
+            result[name] = fixed_raw[name]
+            continue
+        if name not in result:
+            if widget_count and submitted_counts.get(name, 0) == widget_count:
                 raise ShareQueryParamsDenied(oa_message("messages.share_fixed_param", "参数 {name} 为固定值，不允许修改", name=name))
             continue
-        result[name] = forced[name]
+        if _freeze_param_value(result.get(name)) not in allowed:
+            raise ShareQueryParamsDenied(oa_message("messages.share_fixed_param", "参数 {name} 为固定值，不允许修改", name=name))
     return result
 
 

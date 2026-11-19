@@ -11,6 +11,7 @@ from apps.opspilot.services.wiki.chat_material_service import WIKI_MATERIAL_ACTO
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
+from apps.opspilot.utils.flow_locale import WORKBENCH_DEFAULT_LOCALE
 from apps.opspilot.utils.workflow_sensitive_config import decrypt_workflow_sensitive_config
 
 
@@ -34,6 +35,7 @@ class EnterpriseWechatAibotChatFlowUtils(BaseChatFlowUtils):
             "node_id": node_id,
             "channel": EnterpriseWechatAibotChatFlowUtils.channel_code,
             "is_third_party": True,
+            "locale": WORKBENCH_DEFAULT_LOCALE,
             "entry_type": EnterpriseWechatAibotChatFlowUtils.channel_code,
             "session_id": session_id,
             "response_url": message.get("response_url") or "",

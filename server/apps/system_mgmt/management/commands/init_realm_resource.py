@@ -58,6 +58,9 @@ class Command(BaseCommand):
                 print(f"create {app_obj['client_id']} roles success")
             Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
+            from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
+
+            ensure_platform_auditor_role()
             if _permission_signature() != permission_signature_before:
                 clear_all_permission_cache()
             from apps.system_mgmt.services.credential_service import seed_builtin_types

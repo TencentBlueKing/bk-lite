@@ -1,7 +1,6 @@
 import os
 
 import nats_client
-from django.db.models import Q
 
 from apps.mlops.models.anomaly_detection import (
     AnomalyDetectionDataset,
@@ -246,8 +245,10 @@ def get_mlops_module_list(locale=None, actor_context=None):
 
 
 def _predictable_timeseries_servings(queryset):
-    """只列出 container_info.port 可用、从而能 build_predict_url 的时序预测服务。"""
-    return queryset.exclude(Q(container_info__port__isnull=True) | Q(container_info__port="") | Q(container_info__port=0))
+    """只列出能发起预测的时序服务。普通发布要有端口，预置记录在基址存在时放行。"""
+    from apps.mlops.services.builtin_timeseries import predictable_timeseries_servings
+
+    return predictable_timeseries_servings(queryset)
 
 
 @nats_client.register
@@ -291,6 +292,10 @@ def get_mlops_module_data(
 
     model, team_lookup = entry
     queryset = model.objects.filter(**{f"{team_lookup}__contains": group_id})
+    if child_module == "timeseries_predict_serving":
+        from apps.mlops.services.builtin_timeseries import exclude_hidden_builtin
+
+        queryset = exclude_hidden_builtin(queryset)
     # 数据权限等共享目录走默认结果。只有智能体绑定显式传入时才按可预测端口过滤。
     if predictable_only is True and child_module == "timeseries_predict_serving":
         queryset = _predictable_timeseries_servings(queryset)

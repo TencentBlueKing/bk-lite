@@ -90,6 +90,18 @@ def test_intent_internal_temperature_omitted_for_fixed_unit_model():
     assert chat_kwargs["temperature"] is None
 
 
+def test_intent_prompt_omits_reply_language():
+    params = _build_intent_params()
+    params["skill_params"] = []
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(params, _llm_model())
+    prompt = chat_kwargs["system_message_prompt"]
+
+    assert "只返回意图名称本身" in prompt
+    assert "请用简体中文回复" not in prompt
+    assert "Reply in English" not in prompt
+
+
 def test_reply_language_follows_page_locale():
     en_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(locale="en"), _llm_model())
     zh_kwargs, _, _ = ChatService.format_chat_server_kwargs(_chat_kwargs(locale="zh-Hans"), _llm_model())

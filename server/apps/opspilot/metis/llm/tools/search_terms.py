@@ -1,8 +1,3 @@
-"""从用户原问抽出检索词，并按固定现象表展开同义词。
-
-不把两个概念粘成一个新短语。告警和日志共用这份词表，各自做一次或查询。
-"""
-
 from __future__ import annotations
 
 import re
@@ -26,6 +21,7 @@ _FILLERS = (
     "告警",
     "日志",
     "页面",
+    "查一下",
     "一下",
     "请问",
     "帮我",
@@ -36,6 +32,25 @@ _FILLERS = (
     "有什么",
     "哪些",
     "什么",
+    "我要查询",
+    "一小时",
+    "半小时",
+    "查询",
+    "小时",
+    "分钟",
+    "秒钟",
+    "今天",
+    "昨天",
+    "前天",
+    "本周",
+    "上周",
+    "本月",
+    "有多少条",
+    "有多少个",
+    "多少条",
+    "多少个",
+    "几条",
+    "几个",
     "多少",
     "怎么",
     "为什么",
@@ -46,9 +61,141 @@ _FILLERS = (
     "在",
 )
 
-# 从中文片段里剥下来单独保留的现象词。拒绝本身太宽，只走同义词表。
-_PEEL_KEEP = ("超时", "报错")
-_PEEL_DROP = ("拒绝", "太慢")
+_NOT_CONTENT = (
+    "自动关闭",
+    "自动恢复",
+    "未关闭",
+    "未分派",
+    "待响应",
+    "处理中",
+    "已关闭",
+    "已恢复",
+    "一小时",
+    "半小时",
+    "小时",
+    "分钟",
+    "秒钟",
+    "今天",
+    "昨天",
+    "前天",
+    "本周",
+    "上周",
+    "本月",
+    "活动",
+    "活跃",
+)
+_CHINESE_STOPS = frozenset((*_FILLERS, *_NOT_CONTENT, "我"))
+_SEGMENT_STOPS = tuple(sorted((word for word in _CHINESE_STOPS if len(word) >= 2), key=len, reverse=True))
+_ENGLISH_STOPS = frozenset(
+    {
+        "active",
+        "closed",
+        "pending",
+        "resolved",
+        "processing",
+        "unassigned",
+        "auto_close",
+        "auto_recovery",
+        "auto-close",
+        "auto-recovery",
+        "current",
+        "currently",
+        "open",
+        "today",
+        "yesterday",
+        "last",
+        "past",
+        "recent",
+        "now",
+        "ago",
+        "hour",
+        "hours",
+        "minute",
+        "minutes",
+        "second",
+        "seconds",
+        "day",
+        "days",
+        "week",
+        "weeks",
+        "month",
+        "months",
+        "hr",
+        "hrs",
+        "min",
+        "mins",
+        "sec",
+        "secs",
+        "which",
+        "what",
+        "how",
+        "why",
+        "many",
+        "search",
+        "query",
+        "alert",
+        "alerts",
+        "log",
+        "logs",
+        "page",
+        "please",
+        "show",
+        "list",
+        "find",
+        "get",
+        "the",
+        "for",
+        "do",
+        "have",
+        "of",
+        "and",
+        "to",
+        "in",
+        "on",
+        "is",
+        "are",
+        "an",
+        "with",
+        "from",
+        "me",
+        "my",
+        "there",
+        "this",
+        "that",
+        "was",
+        "were",
+        "be",
+        "does",
+        "did",
+        "has",
+        "had",
+        "any",
+        "about",
+        "at",
+        "by",
+        "or",
+        "not",
+        "new",
+        "recovered",
+        "word",
+        "docx",
+        "pdf",
+        "excel",
+        "ppt",
+        "pptx",
+    }
+)
+_GLUE_CHARS = frozenset("下条")
+_SINGLE_CHAR_STOPS = frozenset(word for word in _CHINESE_STOPS if len(word) == 1)
+_FIXED_ASCII_CONTENT = frozenset({"error", "errors", "timeout", "upstream"})
+_IDENTIFIER_MARK = re.compile(r"[0-9._:\-]")
+_TIME_UNIT_WORD = r"hours?|minutes?|seconds?|days?|weeks?|months?|hrs?|mins?|secs?|小时|分钟|秒钟|天|周|h|m|d|s"
+_TIME_QUANTITY = re.compile(
+    rf"(?<![A-Za-z0-9._:-])(\d+)\s*(?:{_TIME_UNIT_WORD})(?![A-Za-z0-9_:-])",
+    re.IGNORECASE,
+)
+_TIME_UNIT_TOKEN = re.compile(r"\d+(?:hrs|hr|mins|min|secs|sec|h|m|d|s)\Z", re.IGNORECASE)
+_LEADING_DIGITS = re.compile(r"\d+")
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{1,}")
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
@@ -102,35 +249,135 @@ def _dedupe(terms: Iterable[str]) -> list[str]:
     return ordered
 
 
-def _chinese_terms(text: str) -> list[str]:
-    cleaned = re.sub(r"[，。！？、,.!?;；:：\s]+", " ", text)
-    for filler in _FILLERS:
-        cleaned = cleaned.replace(filler, " ")
-    found: list[str] = []
-    for chunk in cleaned.split():
-        pieces = _CJK_RUN.findall(chunk)
-        if not pieces:
+def _without_sentence_period(token: str) -> str:
+    return str(token or "").strip().rstrip(".")
+
+
+def _ascii_tokens(text: str) -> list[str]:
+    tokens = []
+    for token in _ASCII_TOKEN.findall(text or ""):
+        cleaned = token.rstrip(".")
+        if cleaned:
+            tokens.append(cleaned)
+    return tokens
+
+
+def _time_numbers(text: str) -> set[str]:
+    found = {match.group(1) for match in _TIME_QUANTITY.finditer(text or "")}
+    for token in _ascii_tokens(text):
+        if not _TIME_UNIT_TOKEN.fullmatch(token):
             continue
-        rest = "".join(pieces)
-        for word in (*_PEEL_KEEP, *_PEEL_DROP):
-            if word not in rest:
-                continue
-            if word in _PEEL_KEEP:
-                found.append(word)
-            rest = rest.replace(word, " ")
-        for piece in rest.split():
-            if len(piece) >= 2:
-                found.append(piece)
+        digits = _LEADING_DIGITS.match(token)
+        if digits:
+            found.add(digits.group(0))
     return found
 
 
-def _synonyms(text: str) -> list[str]:
+def _longest_segment_stop(token: str, index: int) -> int:
+    rest = token[index:]
+    for word in _SEGMENT_STOPS:
+        if rest.startswith(word):
+            return len(word)
+    return 0
+
+
+def _tiled_by_stop_words(token: str) -> bool:
+    if not token or token.isdigit():
+        return False
+    index = 0
+    length = len(token)
+    consumed_multi = False
+    while index < length:
+        if token[index].isdigit():
+            index += 1
+            while index < length and token[index].isdigit():
+                index += 1
+            continue
+        hit = _longest_segment_stop(token, index)
+        if hit:
+            consumed_multi = True
+            index += hit
+            continue
+        if token[index] in _GLUE_CHARS or token[index] in _SINGLE_CHAR_STOPS:
+            index += 1
+            continue
+        if consumed_multi and length - index == 1:
+            return True
+        return False
+    return True
+
+
+def _is_non_content_token(token: str) -> bool:
+    token = _without_sentence_period(token)
+    if not token:
+        return True
+    if _TIME_UNIT_TOKEN.fullmatch(token) or _TIME_QUANTITY.search(token):
+        return True
+    if token in _CHINESE_STOPS or token.casefold() in _ENGLISH_STOPS:
+        return True
+    return _tiled_by_stop_words(token)
+
+
+def _is_observed_ascii_content(token: str) -> bool:
+    if token.casefold() in _FIXED_ASCII_CONTENT:
+        return True
+    return _IDENTIFIER_MARK.search(token) is not None
+
+
+def _ascii_content_terms(text: str) -> list[str]:
+    time_numbers = _time_numbers(text)
+    kept = []
+    for token in _ascii_tokens(text):
+        if token in time_numbers or _is_non_content_token(token) or not _is_observed_ascii_content(token):
+            continue
+        kept.append(token)
+    return kept
+
+
+def _keyword_is_content(keyword: str) -> bool:
+    token = _without_sentence_period(keyword)
+    if not token or _is_non_content_token(token):
+        return False
+    if _ASCII_TOKEN.fullmatch(token):
+        return True
+    return len("".join(_CJK_RUN.findall(token))) >= 2
+
+
+def _phenomenon_terms(text: str) -> list[str]:
     extra: list[str] = []
+    if "超时" in text:
+        extra.append("超时")
     if _timeout_mentioned(text):
         extra.extend(("timeout", "timed out"))
+    if "报错" in text:
+        extra.append("报错")
     if _gateway_refusal(text):
+        if "网关" in text:
+            extra.append("网关")
         extra.extend(("connection refused", "502", "upstream"))
     return extra
+
+
+def _observed_terms(text: str) -> list[str]:
+    if not text:
+        return []
+    return [*_ascii_content_terms(text), *_phenomenon_terms(text)]
+
+
+def _accepted_keyword_parts(model_keyword: str | None, text: str) -> list[str]:
+    raw = str(model_keyword or "").strip()
+    if not raw:
+        return []
+    time_numbers = _time_numbers(text)
+    kept = []
+    for part in re.split(r"\s+", raw):
+        part = _without_sentence_period(part)
+        if not part or part in time_numbers or not _keyword_is_content(part):
+            continue
+        if text and part.casefold() not in text.casefold():
+            continue
+        kept.append(part)
+    return kept
 
 
 def user_question_for_search(text: str) -> str:
@@ -156,23 +403,22 @@ def user_question_for_search(text: str) -> str:
 
 
 def build_search_terms(user_message: str) -> list[str]:
-    """问句原词 + 固定同义词。没有可用原词时返回空列表。"""
-    text = user_question_for_search(user_message)
-    if not text:
-        return []
-    ascii_terms = _ASCII_TOKEN.findall(text)
-    return _dedupe([*_chinese_terms(text), *ascii_terms, *_synonyms(text)])
+    return _dedupe(_observed_terms(user_question_for_search(user_message)))
+
+
+def keyword_has_content(keyword: str | None) -> bool:
+    return _keyword_is_content(str(keyword or "").strip())
+
+
+def accepted_model_keyword(keyword: str | None, user_message: str = "") -> str:
+    """模型关键字必须本身是正文。有用户原问时，还要原样出现在原问里。"""
+    parts = _accepted_keyword_parts(keyword, user_question_for_search(user_message))
+    return " ".join(parts)
 
 
 def resolve_search_terms(user_message: str, model_keyword: str | None = None) -> list[str]:
-    """有用户原问就用词表，忽略模型粘出来的短语。否则只按空白拆开模型关键字。"""
-    terms = build_search_terms(user_message)
-    if terms:
-        return terms
-    raw = str(model_keyword or "").strip()
-    if not raw:
-        return []
-    return _dedupe(part for part in re.split(r"\s+", raw) if part)
+    text = user_question_for_search(user_message)
+    return _dedupe([*_observed_terms(text), *_accepted_keyword_parts(model_keyword, text)])
 
 
 SEARCH_NOTE = "已按或条件检索上述词。空结果表示这些词都未命中，不要换关键字再搜。"

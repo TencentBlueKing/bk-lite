@@ -25,6 +25,10 @@ ASGI_APPLICATION = "asgi.application"
 
 DEBUG = os.getenv("DEBUG", "0").lower() in ["1", "true"]
 WEB_BASE_URL = os.getenv("WEB_BASE_URL", "").rstrip("/")
+# 告警作业完成后 job_mgmt 回调 alerts 的本服务入口。Celery 走 HTTP，不能写
+# 127.0.0.1/localhost（SSRFValidator.validate_callback 会拦 loopback）。
+# K8s Service 名与 Docker Compose 服务名都是 server:8000；未设置或留空时用该默认值。
+SELF_BASE_URL = (os.getenv("SELF_BASE_URL") or "http://server:8000").strip().rstrip("/")
 # 逗号分隔、host 精确匹配。默认空 = 禁用 legacy 外部回调。现网示例：bklite.ai,bklite.cn
 LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS = os.getenv("LEGACY_THIRD_LOGIN_ALLOWED_CALLBACK_HOSTS", "")
 STATIC_URL = "static/"

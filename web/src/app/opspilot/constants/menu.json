@@ -1,16 +1,52 @@
 {
   "zh": [
     {
+      "title": "智能体",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "children": [
+        {
+          "title": "设置",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "发布",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "历史",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web对话",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "模版",
+          "url": "/opspilot/skill/templates",
+          "name": "skill_templates",
+          "withParentPermission": true,
+          "isNotMenuItem": true
+        }
+      ],
+      "hasDetail": true
+    },
+    {
       "title": "工作台",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
       "name": "bot_list",
-      "tour": {
-        "title": "第四步: 与用户对话",
-        "description": "创建机器人指定智能体技能,并发布出去,与用户进行对话,检测机器人的使用情况。",
-        "target": "bot_list",
-        "order": 4
-      },
       "hasDetail": true,
       "children": [
         {
@@ -47,47 +83,6 @@
           "title": "对话",
           "url": "/opspilot/studio/chat",
           "name": "studio_chat",
-          "isNotMenuItem": true
-        }
-      ]
-    },
-    {
-      "title": "智能体",
-      "icon": "weibiaoti3",
-      "url": "/opspilot/skill",
-      "name": "skill_list",
-      "tour": {
-        "title": "第三步: 创建自己的智能体",
-        "description": "可以使用LLM大模型,引用私域知识,使用内置工具,让您的智能体技能更加丰富。",
-        "target": "skill_list",
-        "order": 3
-      },
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "设置",
-          "url": "/opspilot/skill/detail/settings",
-          "icon": "shezhi",
-          "name": "skill_setting"
-        },
-        {
-          "title": "发布",
-          "url": "/opspilot/skill/detail/channel",
-          "icon": "channel1",
-          "name": "skill_channel",
-          "withParentPermission": true
-        },
-        {
-          "title": "历史",
-          "url": "/opspilot/skill/detail/history",
-          "icon": "talk-line",
-          "name": "skill_history",
-          "withParentPermission": true
-        },
-        {
-          "title": "Web对话",
-          "url": "/opspilot/skill/chat",
-          "name": "skill_chat",
           "isNotMenuItem": true
         }
       ]
@@ -149,13 +144,6 @@
       "url": "/opspilot/provider",
       "name": "provide_list",
       "hasDetail": true,
-      "tour": {
-        "title": "第一步: 接入LLM大模型",
-        "description": "使用内置的大模型,或者自行接入大模型,以便智能体使用。",
-        "cover": "/app/tours/model_tour.png",
-        "target": "provide_list",
-        "order": 1
-      },
       "children": [
         {
           "title": "模型详情",
@@ -168,16 +156,52 @@
   ],
   "en": [
     {
+      "title": "Agent",
+      "icon": "weibiaoti3",
+      "url": "/opspilot/skill",
+      "name": "skill_list",
+      "children": [
+        {
+          "title": "Setting",
+          "url": "/opspilot/skill/detail/settings",
+          "icon": "shezhi",
+          "name": "skill_setting"
+        },
+        {
+          "title": "Channel Publish",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "History",
+          "url": "/opspilot/skill/detail/history",
+          "icon": "talk-line",
+          "name": "skill_history",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web Chat",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Templates",
+          "url": "/opspilot/skill/templates",
+          "name": "skill_templates",
+          "withParentPermission": true,
+          "isNotMenuItem": true
+        }
+      ],
+      "hasDetail": true
+    },
+    {
       "title": "Studio",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
       "name": "bot_list",
-      "tour": {
-        "title": "The Fourth Step: Talk to Users",
-        "description": "Create a bot with a specific skill, publish it, talk to users, and monitor bot usage.",
-        "target": "bot_list",
-        "order": 4
-      },
       "hasDetail": true,
       "children": [
         {
@@ -208,47 +232,6 @@
           "title": "Chat",
           "url": "/opspilot/studio/chat",
           "name": "studio_chat",
-          "isNotMenuItem": true
-        }
-      ]
-    },
-    {
-      "title": "Agent",
-      "icon": "weibiaoti3",
-      "url": "/opspilot/skill",
-      "name": "skill_list",
-      "tour": {
-        "title": "The Third Step: Create Your Own Agent",
-        "description": "You can use the LLM large model, reference private domain knowledge, use built-in tools, and make your agent skills more abundant.",
-        "target": "skill_list",
-        "order": 3
-      },
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "Setting",
-          "url": "/opspilot/skill/detail/settings",
-          "icon": "shezhi",
-          "name": "skill_setting"
-        },
-        {
-          "title": "Channel Publish",
-          "url": "/opspilot/skill/detail/channel",
-          "icon": "channel1",
-          "name": "skill_channel",
-          "withParentPermission": true
-        },
-        {
-          "title": "History",
-          "url": "/opspilot/skill/detail/history",
-          "icon": "talk-line",
-          "name": "skill_history",
-          "withParentPermission": true
-        },
-        {
-          "title": "Web Chat",
-          "url": "/opspilot/skill/chat",
-          "name": "skill_chat",
           "isNotMenuItem": true
         }
       ]
@@ -310,13 +293,6 @@
       "url": "/opspilot/provider",
       "name": "provide_list",
       "hasDetail": true,
-      "tour": {
-        "title": "The First Step: Access to LLM Large Model",
-        "description": "Use the built-in large model, or access the large model by yourself, so that the agent can use it.",
-        "cover": "/app/tours/model_tour.png",
-        "target": "provide_list",
-        "order": 1
-      },
       "children": [
         {
           "title": "Model Detail",

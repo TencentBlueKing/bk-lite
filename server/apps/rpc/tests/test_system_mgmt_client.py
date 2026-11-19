@@ -92,7 +92,7 @@ def test_get_user_menus_转发(client):
     assert client.client.calls[0] == (
         "get_user_menus",
         (),
-        {"client_id": "cid", "roles": ["admin"], "username": "alice", "is_superuser": True},
+        {"client_id": "cid", "roles": ["admin"], "username": "alice", "is_superuser": True, "is_auditor": False},
     )
 
 

@@ -9,7 +9,7 @@
 ## 运行契约
 
 - 每次 DeepAgent 节点运行一个工作区，首次访问才建立 `opspilot-run-*` 临时目录；没有启动期依赖。
-- 工具返回超过 4,000 字符的字符串时直接落盘，以路径和 500 字符预览代替完整上下文；落盘失败保留原结果。
+- 工具大结果通过 Deep Agents 原生文件系统落盘到本轮 `large_tool_results/`，用文件引用和头尾预览代替正文，支持原生 `read_file` / `grep`。分步路径的原生阈值随现有单消息额度配置；详见 `../opspilot-native-result-files/spec.md`。
 - Python 使用 Server 的 Python 解释器；Shell 使用 Server PATH 中的 `sh`。技能文件由本地文件后端准备，`execute` 与两个工具共享目录及依赖。
 - 不创建全局 `/workspace` 或 `/skills` 链接。模型收到本轮真实路径，执行可使用相对路径或 `OPSPILOT_WORKSPACE`。
   技能工具的 `/skills`、`/ppt-workspace` 别名映射到本轮目录；技能脚本内部应使用相对路径或该环境变量。

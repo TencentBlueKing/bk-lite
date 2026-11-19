@@ -216,6 +216,10 @@
 - `[operation_analysis#20260922-001]` 折线、柱状、饼图、多值、雷达数组、事件时间线按各自角色选列；排行榜、单值、仪表盘、通信关系、卡片列表共用字段名单、一次刷新和问号。未保存映射的旧组件仍按原形状认列。证据：`web/src/app/ops-analysis/utils/chartDataTransform.ts`、`web/src/app/ops-analysis/components/widgetConfig/utils/submitConfig.ts`、`specs/changes/ops-analysis-chart-field-roles/spec.md`。
 - `[operation_analysis#20260922-002]` 卡片列表字段名单改为字段定义并上样本列名，槽位和校验不变。证据：`web/src/app/ops-analysis/components/widgetConfig/utils/cardListSettingsModel.ts`。
 
+## 2026-11-18 主请求图表的组件内切换
+
+- `[operation_analysis#20261118-001]` 组件内切换对走主请求的图表开放。自己取数的场景组件和文本不提供。同一参数可以同时多选，选项查询也可以带引用。一张卡仍只有一个。有标题槽时控件在标题里，大屏无边框只在卡片内容区画一份。卡片上正在选的值只供给本卡选项查询，不写回配置，也不进入全局筛选。空选择或失效选择停住整张卡。打开画布或 AI 落盘时，去掉不支持图表上的切换标记和多余的第二个，保留多选与引用，并给出警告。换到不支持的图表时，该参数失去多选、最大数量和选择器样式。`20260921-001` 里 room3D 的组件内切换句子已被 `20261012-001` 取代，本条不恢复。证据：`specs/changes/ops-analysis-component-switch-main-request/spec.md`、`web/src/app/ops-analysis/utils/componentParamSwitch.ts`。
+
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
 
