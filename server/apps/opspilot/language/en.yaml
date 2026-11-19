@@ -364,7 +364,7 @@ tools:
       Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
     tools:
       alerts_list_alerts:
-        description: List alert-center tickets. status=active means open alerts. Content keywords must appear verbatim in the user text. Pass Chinese content in the keyword. Status, time, and query phrasing, such as current, which, active, or hours, are not keywords. Ordinary words and output formats are not keywords. error, hostnames, IPs, and metric names still count. Filter by status and level.
+        description: List alert-center tickets. status=active means open alerts. Content keywords must appear verbatim in the user text. Pass Chinese content in the keyword. Status, time, and query phrasing, such as current, which, active, or hours, are not keywords. Ordinary words and output formats are not keywords. error, hostnames, IPs, and metric names still count. Filter by status and level. Optional start and end filter created_at. Omit them to skip the time filter. Times without a timezone use the current user's timezone.
       alerts_get_alert_detail:
         description: Get alert details by alert ID.
       alerts_list_alert_events:
