@@ -14,6 +14,7 @@ from apps.monitor.models import (
     MonitorObject,
     MonitorPlugin,
     MonitorPolicy,
+    PolicyGroupDefault,
     PolicyGroupMembership,
     PolicyTemplate,
 )
@@ -131,6 +132,36 @@ def _world():
         child_instance=child_instance,
         legacy=legacy,
     )
+
+
+def test_list_reports_when_the_default_group_was_removed(monkeypatch):
+    world = _world()
+    PolicyGroupDefault.objects.create(organization=world.parent.id, monitor_object=world.monitor_object, policy_group=None)
+
+    removed = _data(
+        _call(
+            monkeypatch,
+            _scope(world.parent.id, [world.parent.id]),
+            "get",
+            "list",
+            "/monitor/api/policy_group/",
+            params={"monitor_object_id": world.monitor_object.id, "page": 1, "create_default": "false"},
+        )
+    )
+    assert removed["default_removed"] is True
+
+    PolicyGroupDefault.objects.filter(organization=world.parent.id, monitor_object=world.monitor_object).delete()
+    absent = _data(
+        _call(
+            monkeypatch,
+            _scope(world.parent.id, [world.parent.id]),
+            "get",
+            "list",
+            "/monitor/api/policy_group/",
+            params={"monitor_object_id": world.monitor_object.id, "page": 1, "create_default": "false"},
+        )
+    )
+    assert absent["default_removed"] is False
 
 
 def test_current_organization_membership_stays_editable(monkeypatch):

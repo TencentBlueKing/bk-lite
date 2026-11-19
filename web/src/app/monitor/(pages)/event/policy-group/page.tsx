@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Cookies from 'js-cookie';
-import { Alert, Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Pagination as AntPagination, Popconfirm, Popover, Segmented, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, InputNumber, Modal, Pagination as AntPagination, Popconfirm, Popover, Segmented, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import ToolbarSplitShell from '@/components/toolbar-split-shell';
@@ -27,7 +27,7 @@ import {
   joinCandidateCheckboxDisabled,
   joinCandidateGroupLabel,
 } from './joinCandidate';
-import { policyGroupListEmptyText } from './policyGroupListEmpty';
+import { appliedPolicyGroupSearch, policyGroupListEmptyText } from './policyGroupListEmpty';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { MODULE_OBJECT_QUERY_PARAM, resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import { buildMonitorObjectSidebarTree } from '@/app/monitor/utils/monitorObject';
@@ -49,13 +49,13 @@ import { formatUserName } from '@/utils/userDisplay';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
-  VIEW_MODE_OPTIONS,
   buildPolicyGroupRuleColumns,
   diffGroupTemplates,
   filterAndSortRules,
   filterPolicyGroupMembers,
   memberTemplateFilterOptions,
   pluginCounts,
+  readRuleTableFilters,
   renderPluginTag,
   rulesForTemplateIds,
   templateIdsFromRules,
@@ -142,7 +142,7 @@ const CHANNEL_ICON: Record<string, string> = {
   nats: 'dongzuo1',
 };
 
-const NAME_COLUMN_WIDTH = 162;
+const NAME_COLUMN_WIDTH = 280;
 const COMPACT_COLUMN_WIDTH = 120;
 const ACTION_COLUMN_WIDTH = 260;
 const CONFIG_HINT_CLASS = 'text-xs leading-5 text-[var(--color-text-3)]';
@@ -202,6 +202,7 @@ const PolicyGroupPage: React.FC = () => {
   });
   const [searchText, setSearchText] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  const [defaultRemoved, setDefaultRemoved] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
@@ -231,27 +232,16 @@ const PolicyGroupPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
-  const [viewMode, setViewMode] = useState<'workbench' | 'groupList'>('workbench');
+  const [viewMode, setViewMode] = useState<'rules' | 'groups'>('rules');
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-  const [workbenchKeyword, setWorkbenchKeyword] = useState('');
-  const [workbenchPluginFilter, setWorkbenchPluginFilter] = useState('all');
-  const [workbenchNoData, setWorkbenchNoData] = useState<'on' | 'off' | null>(null);
-  const [workbenchPagination, setWorkbenchPagination] = useState<Pagination>({
+  const [ruleKeyword, setRuleKeyword] = useState('');
+  const [rulePluginFilter, setRulePluginFilter] = useState('all');
+  const [ruleNoData, setRuleNoData] = useState<'on' | 'off' | null>(null);
+  const [rulePagination, setRulePagination] = useState<Pagination>({
     current: 1,
     total: 0,
     pageSize: 15,
   });
-
-  const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
-  const [ruleKeyword, setRuleKeyword] = useState('');
-  const [ruleNoData, setRuleNoData] = useState<'on' | 'off' | null>(null);
-  const [rulePluginFilter, setRulePluginFilter] = useState<string>('all');
-  const [rulePagination, setRulePagination] = useState<Pagination>({
-    current: 1,
-    total: 0,
-    pageSize: 10,
-  });
-  const openedRuleList = useRef(false);
   const [configGroup, setConfigGroup] = useState<PolicyGroupRow | null>(null);
   const [detectionInitial, setDetectionInitial] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
   const [detectionDraft, setDetectionDraft] = useState<DetectionDraft>(() => detectionDraftFromGroup({}));
@@ -287,6 +277,7 @@ const PolicyGroupPage: React.FC = () => {
       });
       const items = Array.isArray(data) ? data : data?.items || [];
       const total = Array.isArray(data) ? items.length : Number(data?.count || 0);
+      setDefaultRemoved(Boolean(!Array.isArray(data) && data?.default_removed));
       if (page > 1 && items.length === 0 && total > 0) {
         setPagination((prev) => ({ ...prev, current: page - 1, total }));
         return;
@@ -327,11 +318,13 @@ const PolicyGroupPage: React.FC = () => {
     void loadGroups(objectId);
   }, [objectId, pagination.current, pagination.pageSize, appliedSearch]);
 
-  const openRuleList = (group: PolicyGroupRow) => {
+  const showGroupRules = (group: PolicyGroupRow) => {
+    setSelectedGroupId(group.id);
+    setViewMode('rules');
     setRuleKeyword('');
     setRuleNoData(null);
+    setRulePluginFilter('all');
     setRulePagination((prev) => ({ ...prev, current: 1 }));
-    setRuleGroup(group);
   };
 
   const initializedUrlGroup = useRef(false);
@@ -343,11 +336,7 @@ const PolicyGroupPage: React.FC = () => {
       if (targetId && groups.some((item) => String(item.id) === targetId)) {
         initializedUrlGroup.current = true;
         setSelectedGroupId(Number(targetId));
-        if (!openedRuleList.current && searchParams.get('rules') === '1') {
-          openedRuleList.current = true;
-          const targetGroup = groups.find((item) => String(item.id) === targetId);
-          if (targetGroup) openRuleList(targetGroup);
-        }
+        setViewMode('rules');
         return;
       }
     }
@@ -490,19 +479,17 @@ const PolicyGroupPage: React.FC = () => {
       const added = Number(result?.added || 0);
       const removed = Number(result?.removed || 0);
       if (added > 0 && removed > 0) {
-        message.success(`已调整策略：新增 ${added} 条，移除 ${removed} 条`);
+        message.success(`已调整规则：新增 ${added} 条，移除 ${removed} 条`);
       } else if (added > 0) {
-        message.success(`已新增 ${added} 条策略，按接入插件匹配到的实例开始扫描`);
+        message.success(`已新增 ${added} 条规则，按接入插件匹配到的实例开始扫描`);
       } else if (removed > 0) {
-        message.success(`已从策略组移除 ${removed} 条策略`);
+        message.success(`已从策略组移除 ${removed} 条规则`);
       } else {
-        message.info('策略没有变化');
+        message.info('规则没有变化');
       }
       setCreateOpen(false);
       setAdjustingGroup(null);
-      const items = await loadGroups(objectId);
-      const next = (items || []).find((item) => item.id === targetId);
-      if (next && ruleGroup?.id === targetId) setRuleGroup(next);
+      await loadGroups(objectId);
     } finally {
       setCreateSaving(false);
     }
@@ -513,7 +500,7 @@ const PolicyGroupPage: React.FC = () => {
       const existingIds = templateIdsFromRules(adjustingGroup.rules || []);
       const { addedIds, removedIds } = diffGroupTemplates(existingIds, selectedTemplateIds);
       if (addedIds.length === 0 && removedIds.length === 0) {
-        message.info('策略没有变化');
+        message.info('规则没有变化');
         setCreateOpen(false);
         setAdjustingGroup(null);
         return;
@@ -522,11 +509,11 @@ const PolicyGroupPage: React.FC = () => {
         const removedRules = rulesForTemplateIds(adjustingGroup.rules || [], removedIds);
         const alertCount = removedRules.reduce((sum, rule) => sum + (rule.open_alert_count || 0), 0);
         Modal.confirm({
-          title: '确认移除策略',
+          title: '确认移除规则',
           zIndex: 1100,
           content: (
             <div>
-              <p>将从本策略组移除以下策略。对应扫描会停止，未恢复告警会结束。策略模板本身不会删除。</p>
+              <p>将从本策略组移除以下规则。对应扫描会停止，未恢复告警会结束。策略模板本身不会删除。</p>
               <ul className="mb-0 mt-2 pl-5">
                 {removedRules.map((rule) => (
                   <li key={rule.id}>
@@ -737,7 +724,14 @@ const PolicyGroupPage: React.FC = () => {
         ];
         return (
           <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-            <span>{record.name}</span>
+            <Button
+              type="link"
+              size="small"
+              className="h-auto px-0"
+              onClick={() => showGroupRules(record as PolicyGroupRow)}
+            >
+              {record.name}
+            </Button>
             {badges.map((label) => (
               <StatusToneBadge key={label} tone="warning" label={label} />
             ))}
@@ -756,7 +750,7 @@ const PolicyGroupPage: React.FC = () => {
       title: '规则',
       dataIndex: 'rules',
       key: 'rules',
-      width: 130,
+      width: 168,
       render: (_, record) => {
         const rules = record.rules || [];
         const pluginCounts: Record<string, number> = {};
@@ -764,13 +758,16 @@ const PolicyGroupPage: React.FC = () => {
           const name = r.plugin_name || '其他';
           pluginCounts[name] = (pluginCounts[name] || 0) + 1;
         });
-        const pluginEntries = Object.entries(pluginCounts);
+        const pluginEntries = Object.entries(pluginCounts).sort(
+          (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'),
+        );
         const content = (
-          <div className="inline-flex flex-col">
+          <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
             <Button
               type="link"
-              className="px-0 w-fit"
-              onClick={() => openRuleList(record as PolicyGroupRow)}
+              size="small"
+              className="h-auto px-0 w-fit tabular-nums"
+              onClick={() => showGroupRules(record as PolicyGroupRow)}
             >
               {rules.length}
             </Button>
@@ -779,7 +776,7 @@ const PolicyGroupPage: React.FC = () => {
                 {pluginEntries.length} 类模板
               </span>
             )}
-          </div>
+          </span>
         );
         if (pluginEntries.length <= 1) return content;
         return (
@@ -791,14 +788,14 @@ const PolicyGroupPage: React.FC = () => {
             getPopupContainer={() => document.body}
             styles={{ body: { padding: 0, borderRadius: 8 } }}
             content={
-              <div className="w-[240px]">
+              <div className="w-[280px]">
                 <div className="border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-xs font-medium text-[var(--color-text-1)]">
                   涵盖监控模板分布
                 </div>
-                <div className="space-y-1.5 px-3 py-2">
+                <div className="max-h-[240px] space-y-1.5 overflow-y-auto overscroll-contain px-3 py-2">
                   {pluginEntries.map(([name, count]) => (
                     <div key={name} className="flex items-center justify-between gap-4 text-xs">
-                      <span className="min-w-0 truncate text-[var(--color-text-1)]">{name}</span>
+                      <span className="min-w-0 truncate text-[var(--color-text-1)]" title={name}>{name}</span>
                       <span className="shrink-0 font-mono tabular-nums text-[var(--color-text-2)]">{count} 条</span>
                     </div>
                   ))}
@@ -855,36 +852,47 @@ const PolicyGroupPage: React.FC = () => {
       fixed: 'right',
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
-          <Button
-            type="link"
-            className="px-0"
-            disabled={Boolean(record.is_default)}
-            onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
-          >
-            默认
-          </Button>
-          <Button type="link" onClick={() => openConfig(record as PolicyGroupRow)}>
-            配置
-          </Button>
-          <Button
-            type="link"
-            onClick={() => {
-              setCopySource(record as PolicyGroupRow);
-              setCopyName(`${record.name} 副本`);
-            }}
-          >
-            复制
-          </Button>
-          <Popconfirm
-            title={`删除后，成员记为不自动入组，将结束 ${record.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
-            onConfirm={async () => {
-              await deletePolicyGroup(Number(record.id));
-              message.success(t('common.successfullyDeleted'));
-              await loadGroups(objectId);
-            }}
-          >
-            <Button type="link">{t('common.delete')}</Button>
-          </Popconfirm>
+          <div className="inline-flex items-center gap-3">
+            {record.is_default ? null : (
+              <Button
+                type="link"
+                size="small"
+                className="h-auto px-0"
+                onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
+              >
+                设为默认
+              </Button>
+            )}
+            <Button
+              type="link"
+              size="small"
+              className="h-auto px-0"
+              onClick={() => openConfig(record as PolicyGroupRow)}
+            >
+              配置
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              className="h-auto px-0"
+              onClick={() => {
+                setCopySource(record as PolicyGroupRow);
+                setCopyName(`${record.name} 副本`);
+              }}
+            >
+              复制
+            </Button>
+            <Popconfirm
+              title={`删除后，成员记为不自动入组，将结束 ${record.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
+              onConfirm={async () => {
+                await deletePolicyGroup(Number(record.id));
+                message.success(t('common.successfullyDeleted'));
+                await loadGroups(objectId);
+              }}
+            >
+              <Button type="link" size="small" className="h-auto px-0">{t('common.delete')}</Button>
+            </Popconfirm>
+          </div>
         </Permission>
       ),
     },
@@ -898,24 +906,29 @@ const PolicyGroupPage: React.FC = () => {
     (memberPagination.current - 1) * memberPagination.pageSize,
     memberPagination.current * memberPagination.pageSize
   );
-  const ruleRows = ruleGroup?.rules || [];
-  const availablePlugins = React.useMemo(() => pluginCounts(ruleRows), [ruleRows]);
+  const currentGroup = groups.find((g) => g.id === selectedGroupId) || groups[0] || null;
+  const currentGroupRules = currentGroup?.rules || [];
+  const availablePlugins = React.useMemo(
+    () => pluginCounts(currentGroupRules),
+    [currentGroupRules]
+  );
   const filteredRules = React.useMemo(
     () =>
-      filterAndSortRules(ruleRows, {
+      filterAndSortRules(currentGroupRules, {
         pluginFilter: rulePluginFilter,
         noData: ruleNoData,
         keyword: ruleKeyword,
       }),
-    [ruleRows, rulePluginFilter, ruleNoData, ruleKeyword]
+    [currentGroupRules, ruleKeyword, rulePluginFilter, ruleNoData]
   );
-  const visibleRules = filteredRules.slice(
-    (rulePagination.current - 1) * rulePagination.pageSize,
-    rulePagination.current * rulePagination.pageSize
-  );
+  const visibleRules = React.useMemo(() => {
+    const start = (rulePagination.current - 1) * rulePagination.pageSize;
+    return filteredRules.slice(start, start + rulePagination.pageSize);
+  }, [filteredRules, rulePagination]);
   const listEmptyText = policyGroupListEmptyText({
     objectSelected: Boolean(objectId),
     search: appliedSearch,
+    defaultRemoved,
   });
   const joinCandidateState = (record: InstanceCandidate) => {
     const belongsToOtherOrganization = candidateBelongsToOtherOrganization(
@@ -934,26 +947,6 @@ const PolicyGroupPage: React.FC = () => {
     };
   };
 
-  const currentGroup = groups.find((g) => g.id === selectedGroupId) || groups[0] || null;
-  const currentGroupRules = currentGroup?.rules || [];
-  const availableWorkbenchPlugins = React.useMemo(
-    () => pluginCounts(currentGroupRules),
-    [currentGroupRules]
-  );
-  const filteredWorkbenchRules = React.useMemo(
-    () =>
-      filterAndSortRules(currentGroupRules, {
-        pluginFilter: workbenchPluginFilter,
-        noData: workbenchNoData,
-        keyword: workbenchKeyword,
-      }),
-    [currentGroupRules, workbenchKeyword, workbenchPluginFilter, workbenchNoData]
-  );
-  const visibleWorkbenchRules = React.useMemo(() => {
-    const start = (workbenchPagination.current - 1) * workbenchPagination.pageSize;
-    return filteredWorkbenchRules.slice(start, start + workbenchPagination.pageSize);
-  }, [filteredWorkbenchRules, workbenchPagination]);
-
   const openRuleEditor = (group: PolicyGroupRow | null, record: PolicyGroupRule) => {
     if (!group || !objectId) return;
     router.push(
@@ -968,26 +961,29 @@ const PolicyGroupPage: React.FC = () => {
     );
   };
 
-  const workbenchColumns = React.useMemo(
-    () =>
-      buildPolicyGroupRuleColumns({
-        t,
-        unitLabel: findUnitNameById,
-        noDataFilter: workbenchNoData,
-        nameClassName: 'font-medium text-[var(--color-text-1)]',
-        onEdit: (record) => openRuleEditor(currentGroup, record),
-      }),
-    [t, findUnitNameById, workbenchNoData, currentGroup, objectId, treeData]
-  );
-  const drawerRuleColumns = React.useMemo(
+  const ruleColumns = React.useMemo(
     () =>
       buildPolicyGroupRuleColumns({
         t,
         unitLabel: findUnitNameById,
         noDataFilter: ruleNoData,
-        onEdit: (record) => openRuleEditor(ruleGroup, record),
+        plugins: availablePlugins,
+        pluginFilter: rulePluginFilter,
+        nameClassName: 'font-medium text-[var(--color-text-1)]',
+        onEdit: (record) => openRuleEditor(currentGroup, record),
       }),
-    [t, findUnitNameById, ruleNoData, ruleGroup, objectId, treeData]
+    [t, findUnitNameById, ruleNoData, rulePluginFilter, availablePlugins, currentGroup, objectId, treeData]
+  );
+
+  const viewSwitch = (
+    <Segmented
+      value={currentGroup ? viewMode : 'groups'}
+      onChange={(val) => setViewMode(val as 'rules' | 'groups')}
+      options={[
+        { label: '规则', value: 'rules', disabled: !currentGroup },
+        { label: '策略组', value: 'groups' },
+      ]}
+    />
   );
 
   return (
@@ -1003,179 +999,90 @@ const PolicyGroupPage: React.FC = () => {
                 setObjectId(key);
                 syncObjectId(key);
                 setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+                setRuleKeyword('');
+                setRulePluginFilter('all');
+                setRuleNoData(null);
+                setRulePagination((prev) => ({ ...prev, current: 1 }));
               }}
             />
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          {viewMode === 'workbench' && currentGroup ? (
+          {viewMode === 'rules' && currentGroup ? (
             <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-              {/* 标准工具条：左侧视图与策略组选择，右侧搜索与操作成组 */}
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Segmented
-                    value={viewMode}
-                    onChange={(val) => setViewMode(val as 'workbench' | 'groupList')}
-                    options={[...VIEW_MODE_OPTIONS]}
-                  />
-                  {groups.length > 1 ? (
-                    <Select
-                      value={currentGroup.id}
-                      onChange={(val) => {
-                        setSelectedGroupId(val);
-                        setWorkbenchPluginFilter('all');
-                        setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                      }}
-                      className="w-56"
-                      options={groups.map((g) => ({
-                        label: `${g.name}${g.is_default ? ' (默认)' : ''}`,
-                        value: g.id,
-                      }))}
-                    />
-                  ) : (
-                    <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
-                      {currentGroup.name}
-                    </span>
-                  )}
-                  {currentGroup.is_default ? (
-                    <StatusToneBadge tone="primary" label="默认" />
-                  ) : (
-                    <Permission requiredPermissions={['Edit']}>
-                      <Button
-                        type="link"
-                        size="small"
-                        className="px-0 text-xs"
-                        onClick={() => void setDefaultPolicyGroup(Number(currentGroup.id)).then(() => loadGroups(objectId))}
-                      >
-                        设为默认
-                      </Button>
-                    </Permission>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Input
-                    allowClear
-                    placeholder="搜索规则名称或模板"
-                    value={workbenchKeyword}
-                    className="w-60"
-                    onChange={(event) => {
-                      setWorkbenchKeyword(event.target.value);
-                      setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                    }}
-                    onClear={() => {
-                      setWorkbenchKeyword('');
-                      setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                    }}
-                  />
-                  <Button onClick={() => openConfig(currentGroup)}>
-                    配置
-                  </Button>
-                  <Permission requiredPermissions={['Edit']}>
-                    <Button onClick={() => void openAdjustRules(currentGroup)}>
-                      调整策略
-                    </Button>
-                  </Permission>
-                  <Button
-                    onClick={() => {
-                      setCopySource(currentGroup);
-                      setCopyName(`${currentGroup.name} 副本`);
-                    }}
-                  >
-                    复制
-                  </Button>
-                  <Permission requiredPermissions={['Edit']}>
-                    <Popconfirm
-                      title={`删除后，成员记为不自动入组，将结束 ${currentGroup.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
-                      onConfirm={async () => {
-                        await deletePolicyGroup(Number(currentGroup.id));
-                        message.success(t('common.successfullyDeleted'));
-                        setSelectedGroupId(null);
-                        await loadGroups(objectId);
-                      }}
-                    >
-                      <Button danger>
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  </Permission>
-                  <Permission requiredPermissions={['Edit']}>
-                    <Button type="primary" icon={<PlusOutlined />} disabled={!objectId} onClick={() => void openCreate()}>
-                      {t('common.new')}
-                    </Button>
-                  </Permission>
-                </div>
-              </div>
-
-              {/* 策略组轻量属性行 */}
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-1)] pb-2 text-[12px] text-[var(--color-text-3)]">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <span>生效数量:</span>
-                    <Button
-                      type="link"
-                      size="small"
-                      className="px-0 font-medium"
-                      onClick={() => void openMembers(currentGroup)}
-                    >
-                      {currentGroup.member_count || 0} 台
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span>生效状态:</span>
-                    <Permission requiredPermissions={['Edit']}>
-                      <Switch
-                        size="small"
-                        loading={enableSavingId === currentGroup.id}
-                        checked={Boolean(currentGroup.enable)}
-                        onChange={(val) => changeGroupEnable(currentGroup, val)}
-                      />
-                    </Permission>
-                  </div>
-                </div>
-
-                {availableWorkbenchPlugins.length > 1 && (
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="text-[var(--color-text-3)] mr-0.5">接入模板:</span>
-                    <Tag.CheckableTag
-                      checked={workbenchPluginFilter === 'all'}
-                      onChange={() => {
-                        setWorkbenchPluginFilter('all');
-                        setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
-                      }}
-                    >
-                      全部 ({currentGroupRules.length}条规则)
-                    </Tag.CheckableTag>
-                    {availableWorkbenchPlugins.map(({ name }) => (
-                      <Tag.CheckableTag
-                        key={name}
-                        checked={workbenchPluginFilter === name}
-                        onChange={() => {
-                          setWorkbenchPluginFilter(name);
-                          setWorkbenchPagination((prev) => ({ ...prev, current: 1 }));
+              <ToolbarSplitShell
+                leading={(
+                  <>
+                    {viewSwitch}
+                    {groups.length > 1 ? (
+                      <Select
+                        value={currentGroup.id}
+                        onChange={(val) => {
+                          const next = groups.find((item) => item.id === val);
+                          if (next) showGroupRules(next);
                         }}
-                      >
-                        {name}
-                      </Tag.CheckableTag>
-                    ))}
-                  </div>
+                        className="w-56"
+                        options={groups.map((g) => ({
+                          label: `${g.name}${g.is_default ? ' (默认)' : ''}`,
+                          value: g.id,
+                        }))}
+                      />
+                    ) : (
+                      <span className="text-[13px] font-semibold text-[var(--color-text-1)]">
+                        {currentGroup.name}
+                      </span>
+                    )}
+                    {currentGroup.is_default ? (
+                      <StatusToneBadge tone="primary" label="默认" />
+                    ) : (
+                      <Permission requiredPermissions={['Edit']}>
+                        <Button
+                          type="link"
+                          size="small"
+                          className="px-0 text-xs"
+                          onClick={() => void setDefaultPolicyGroup(Number(currentGroup.id)).then(() => loadGroups(objectId))}
+                        >
+                          设为默认
+                        </Button>
+                      </Permission>
+                    )}
+                  </>
                 )}
-              </div>
+                trailing={(
+                  <>
+                    <Input
+                      allowClear
+                      placeholder="搜索规则名称或模板"
+                      value={ruleKeyword}
+                      className="w-60"
+                      onChange={(event) => {
+                        setRuleKeyword(event.target.value);
+                        setRulePagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                    />
+                    <Permission requiredPermissions={['Edit']}>
+                      <Button onClick={() => void openAdjustRules(currentGroup)}>
+                        调整规则
+                      </Button>
+                    </Permission>
+                  </>
+                )}
+              />
 
               {/* 规则清单表格与底部固定分页 */}
               <div className="min-h-0 min-w-0 flex-1 flex flex-col justify-between overflow-hidden">
                 <div className="min-h-0 min-w-0 flex-1 overflow-auto">
                   <CustomTable
                     rowKey="id"
-                    columns={workbenchColumns}
-                    dataSource={visibleWorkbenchRules}
+                    columns={ruleColumns}
+                    dataSource={visibleRules}
                     loading={loading}
                     pagination={false}
                     onChange={(_pagination, filters) => {
-                      const selected = filters?.no_data_enabled;
-                      const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
-                      setWorkbenchNoData(value === 'on' || value === 'off' ? value : null);
-                      setWorkbenchPagination((prev) => ({
+                      const next = readRuleTableFilters(filters);
+                      setRuleNoData(next.noData);
+                      setRulePluginFilter(next.plugin);
+                      setRulePagination((prev) => ({
                         ...prev,
                         current: 1,
                       }));
@@ -1184,18 +1091,18 @@ const PolicyGroupPage: React.FC = () => {
                 </div>
                 <div className="mt-2.5 flex items-center justify-between border-t border-[var(--color-border-1)] pt-2.5 shrink-0 text-xs">
                   <span className="text-[var(--color-text-3)] font-medium">
-                    共 {filteredWorkbenchRules.length} 条规则
+                    共 {filteredRules.length} 条规则
                   </span>
                   <AntPagination
                     size="small"
-                    current={workbenchPagination.current}
-                    pageSize={workbenchPagination.pageSize}
-                    total={filteredWorkbenchRules.length}
+                    current={rulePagination.current}
+                    pageSize={rulePagination.pageSize}
+                    total={filteredRules.length}
                     showSizeChanger
                     pageSizeOptions={['10', '15', '20', '50']}
                     showQuickJumper
                     onChange={(page, pageSize) => {
-                      setWorkbenchPagination((prev) => ({
+                      setRulePagination((prev) => ({
                         ...prev,
                         current: pageSize !== prev.pageSize ? 1 : page,
                         pageSize,
@@ -1208,29 +1115,19 @@ const PolicyGroupPage: React.FC = () => {
           ) : (
             <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
               <ToolbarSplitShell
-                leading={
-                  groups.length > 0 ? (
-                    <Segmented
-                      value={viewMode}
-                      onChange={(val) => setViewMode(val as 'workbench' | 'groupList')}
-                      options={[...VIEW_MODE_OPTIONS]}
-                    />
-                  ) : undefined
-                }
+                leading={viewSwitch}
                 trailing={(
                   <>
                     <Input.Search
-                      placeholder={t('common.searchPlaceHolder')}
+                      placeholder="搜索策略组名称"
                       allowClear
                       enterButton
                       className="w-60"
                       value={searchText}
-                      onPressEnter={() => {
-                        setAppliedSearch(searchText.trim());
-                        setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
-                      }}
-                      onSearch={() => {
-                        setAppliedSearch(searchText.trim());
+                      onSearch={(value) => {
+                        const next = appliedPolicyGroupSearch(value);
+                        setSearchText(next);
+                        setAppliedSearch(next);
                         setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
                       }}
                       onChange={(event) => setSearchText(event.target.value)}
@@ -1524,97 +1421,6 @@ const PolicyGroupPage: React.FC = () => {
         )}
       </Drawer>
       <Drawer
-        title={ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
-        open={Boolean(ruleGroup)}
-        width={780}
-        closable={false}
-        onClose={() => {
-          setRuleGroup(null);
-          setRuleKeyword('');
-          setRuleNoData(null);
-          setRulePluginFilter('all');
-          setRulePagination((prev) => ({ ...prev, current: 1 }));
-        }}
-      >
-        <Alert
-          type="info"
-          showIcon
-          className="mb-4"
-          message="监控模板与接入方式生效说明"
-          description="策略组打包了多种采集模板的规则。主机实际接入时，仅会匹配其对应接入方式生效（如远程接入的主机仅生效 Host Remote 规则，其余规则因无该时序数据源自动保持静默，不会造成误报）。"
-        />
-
-        {availablePlugins.length > 1 && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12px]">
-            <span className="text-[var(--color-text-3)] mr-1">接入模板:</span>
-            <Tag.CheckableTag
-              checked={rulePluginFilter === 'all'}
-              onChange={() => {
-                setRulePluginFilter('all');
-                setRulePagination((prev) => ({ ...prev, current: 1 }));
-              }}
-            >
-              全部 ({ruleRows.length})
-            </Tag.CheckableTag>
-            {availablePlugins.map(({ name, count }) => (
-              <Tag.CheckableTag
-                key={name}
-                checked={rulePluginFilter === name}
-                onChange={() => {
-                  setRulePluginFilter(name);
-                  setRulePagination((prev) => ({ ...prev, current: 1 }));
-                }}
-              >
-                {name} ({count})
-              </Tag.CheckableTag>
-            ))}
-          </div>
-        )}
-
-        <SearchActionBar
-          searchProps={{
-            placeholder: '搜索名称或模板',
-            value: ruleKeyword,
-            onChange: (event) => {
-              setRuleKeyword(event.target.value);
-              setRulePagination((prev) => ({ ...prev, current: 1 }));
-            },
-          }}
-          actions={
-            ruleGroup ? (
-              <Permission requiredPermissions={['Edit']}>
-                <Button onClick={() => void openAdjustRules(ruleGroup)}>调整策略</Button>
-              </Permission>
-            ) : null
-          }
-        />
-        <CustomTable
-          rowKey="id"
-          dataSource={visibleRules}
-          pagination={{ ...rulePagination, total: filteredRules.length }}
-          scroll={{ y: 'auto' }}
-          onChange={(next, filters, _sorter, extra) => {
-            if (extra?.action === 'filter') {
-              const selected = filters?.no_data_enabled;
-              const value = Array.isArray(selected) && selected.length ? String(selected[0]) : '';
-              setRuleNoData(value === 'on' || value === 'off' ? value : null);
-              setRulePagination((prev) => ({
-                ...prev,
-                current: 1,
-                pageSize: next.pageSize || prev.pageSize,
-              }));
-              return;
-            }
-            setRulePagination((prev) => ({
-              ...prev,
-              current: next.pageSize !== prev.pageSize ? 1 : next.current || 1,
-              pageSize: next.pageSize || prev.pageSize,
-            }));
-          }}
-          columns={drawerRuleColumns}
-          />
-      </Drawer>
-      <Drawer
         title={configGroup ? `${configGroup.name} 的配置` : '配置'}
         open={Boolean(configGroup)}
         width={760}
@@ -1771,7 +1577,7 @@ const PolicyGroupPage: React.FC = () => {
         })()}
       </Drawer>
       <Drawer
-        title={adjustingGroup ? `调整 ${adjustingGroup.name} 的策略` : '新建策略组'}
+        title={adjustingGroup ? `调整 ${adjustingGroup.name} 的规则` : '新建策略组'}
         open={createOpen}
         width={760}
         closable={false}
@@ -1813,7 +1619,7 @@ const PolicyGroupPage: React.FC = () => {
         </div>
         {adjustingGroup ? (
           <div className={`mb-3 ${CONFIG_HINT_CLASS}`}>
-            已勾选的是组内当前策略。取消勾选会从本策略组移除，不会删除模板。已接入对应插件的实例才会写入覆盖并开始扫描。
+            已勾选的是组内当前规则。取消勾选会从本策略组移除，不会删除模板。已接入对应插件的实例才会写入覆盖并开始扫描。
           </div>
         ) : (
           <div className="mb-3">
