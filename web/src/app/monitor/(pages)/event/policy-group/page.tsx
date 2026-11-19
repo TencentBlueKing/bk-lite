@@ -142,7 +142,7 @@ const CHANNEL_ICON: Record<string, string> = {
   nats: 'dongzuo1',
 };
 
-const NAME_COLUMN_WIDTH = 162;
+const NAME_COLUMN_WIDTH = 280;
 const COMPACT_COLUMN_WIDTH = 120;
 const ACTION_COLUMN_WIDTH = 260;
 const CONFIG_HINT_CLASS = 'text-xs leading-5 text-[var(--color-text-3)]';
@@ -726,6 +726,7 @@ const PolicyGroupPage: React.FC = () => {
           <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
             <Button
               type="link"
+              size="small"
               className="h-auto px-0"
               onClick={() => showGroupRules(record as PolicyGroupRow)}
             >
@@ -749,7 +750,7 @@ const PolicyGroupPage: React.FC = () => {
       title: '规则',
       dataIndex: 'rules',
       key: 'rules',
-      width: 130,
+      width: 168,
       render: (_, record) => {
         const rules = record.rules || [];
         const pluginCounts: Record<string, number> = {};
@@ -761,10 +762,11 @@ const PolicyGroupPage: React.FC = () => {
           (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'),
         );
         const content = (
-          <div className="inline-flex flex-col">
+          <span className="inline-flex items-baseline gap-2 whitespace-nowrap">
             <Button
               type="link"
-              className="px-0 w-fit"
+              size="small"
+              className="h-auto px-0 w-fit tabular-nums"
               onClick={() => showGroupRules(record as PolicyGroupRow)}
             >
               {rules.length}
@@ -774,7 +776,7 @@ const PolicyGroupPage: React.FC = () => {
                 {pluginEntries.length} 类模板
               </span>
             )}
-          </div>
+          </span>
         );
         if (pluginEntries.length <= 1) return content;
         return (
@@ -850,36 +852,47 @@ const PolicyGroupPage: React.FC = () => {
       fixed: 'right',
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
-          <Button
-            type="link"
-            className="px-0"
-            disabled={Boolean(record.is_default)}
-            onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
-          >
-            默认
-          </Button>
-          <Button type="link" onClick={() => openConfig(record as PolicyGroupRow)}>
-            配置
-          </Button>
-          <Button
-            type="link"
-            onClick={() => {
-              setCopySource(record as PolicyGroupRow);
-              setCopyName(`${record.name} 副本`);
-            }}
-          >
-            复制
-          </Button>
-          <Popconfirm
-            title={`删除后，成员记为不自动入组，将结束 ${record.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
-            onConfirm={async () => {
-              await deletePolicyGroup(Number(record.id));
-              message.success(t('common.successfullyDeleted'));
-              await loadGroups(objectId);
-            }}
-          >
-            <Button type="link">{t('common.delete')}</Button>
-          </Popconfirm>
+          <div className="inline-flex items-center gap-3">
+            {record.is_default ? null : (
+              <Button
+                type="link"
+                size="small"
+                className="h-auto px-0"
+                onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
+              >
+                设为默认
+              </Button>
+            )}
+            <Button
+              type="link"
+              size="small"
+              className="h-auto px-0"
+              onClick={() => openConfig(record as PolicyGroupRow)}
+            >
+              配置
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              className="h-auto px-0"
+              onClick={() => {
+                setCopySource(record as PolicyGroupRow);
+                setCopyName(`${record.name} 副本`);
+              }}
+            >
+              复制
+            </Button>
+            <Popconfirm
+              title={`删除后，成员记为不自动入组，将结束 ${record.open_alert_count || 0} 条未恢复告警。若这是默认组，之后新实例不再自动告警。`}
+              onConfirm={async () => {
+                await deletePolicyGroup(Number(record.id));
+                message.success(t('common.successfullyDeleted'));
+                await loadGroups(objectId);
+              }}
+            >
+              <Button type="link" size="small" className="h-auto px-0">{t('common.delete')}</Button>
+            </Popconfirm>
+          </div>
         </Permission>
       ),
     },
