@@ -5,6 +5,7 @@ from django.db import transaction
 from apps.itsm.flowable.client import FlowableError
 from apps.itsm.models import Ticket, TicketTask
 from apps.itsm.models.extend import Handover
+from apps.itsm.services.ticket.actions import validated_opinion
 from apps.itsm.services.ticket.batch import validate_ids
 from apps.itsm.services.ticket.service import TaskAssigneeChanged, TransferRejected
 from apps.itsm.services.ticket.transfer import ASSIGNEE_MAX_LENGTH
@@ -23,6 +24,7 @@ def handover_user(value):
 def prepare_handover(item, service):
     item.from_user = handover_user(item.from_user)
     item.to_user = handover_user(item.to_user)
+    item.opinion = validated_opinion(item.opinion)
     if item.from_user == item.to_user:
         raise ValueError("交出人和接收人必须不同")
     item.ticket_ids = validate_ids(item.ticket_ids)
@@ -36,7 +38,7 @@ def prepare_handover(item, service):
     if {task.ticket_id for task in tasks} != set(item.ticket_ids):
         raise ValueError("部分所选工单已没有该交出人的待办")
     for task in tasks:
-        service.check_transfer_target(task.ticket, task, item.to_user, item.created_by or item.from_user, privileged=True)
+        service.check_transfer_target(task.ticket, task, item.to_user, item.created_by or item.from_user, privileged=True, opinion=item.opinion)
     item.results = [{"ticket_id": task.ticket_id, "task_id": task.id, "status": "pending", "message": "待执行"} for task in tasks]
     item.save()
 
@@ -64,7 +66,7 @@ def run_handover(item, service, actor):
                     task.ticket,
                     task,
                     "transfer",
-                    {"target": item.to_user},
+                    {"target": item.to_user, "opinion": item.opinion},
                     actor,
                     privileged=True,
                     expected_assignee=item.from_user,

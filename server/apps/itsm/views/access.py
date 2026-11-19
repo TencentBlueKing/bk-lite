@@ -11,6 +11,7 @@ from urllib3.exceptions import HTTPError
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableError
 from apps.itsm.models import Ticket
+from apps.itsm.services.ticket.actions import NodeActionValidationError
 
 
 def api_errors(view):
@@ -26,6 +27,8 @@ def api_errors(view):
             return WebUtils.response_error("流程引擎暂不可用，操作未完成", status_code=502)
         except PermissionError:
             return WebUtils.response_403("无权执行此操作")
+        except NodeActionValidationError as exc:
+            return WebUtils.response_error(error_message=str(exc))
         except (ValueError, KeyError, TypeError) as exc:
             errors = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {}
             return WebUtils.response_error({"errors": errors}, "请求参数或表单校验失败")

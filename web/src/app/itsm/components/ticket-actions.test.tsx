@@ -61,3 +61,48 @@ describe('工单操作权限与确认', () => {
     expect(operate).not.toHaveBeenCalled();
   });
 });
+
+it('节点必填意见为空或全空白时不得提交，即点保存也需确认', async () => {
+  const operate = vi.fn().mockResolvedValue(true);
+  const task = { ...ticket.tasks[0], allowed_actions: ['save'], required_opinion_actions: ['save'] };
+  render(<TicketActions ticket={{ ...ticket, tasks: [task] }} busy={false} operate={operate} />);
+  fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/ }));
+  const confirm = await screen.findByRole('button', { name: /确认保\s*存/ });
+  const input = screen.getByLabelText('处理意见');
+  expect(confirm).toHaveProperty('disabled', true);
+  fireEvent.change(input, { target: { value: '  \n  ' } });
+  fireEvent.click(confirm);
+  expect(operate).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: '  保存原因  ' } });
+  fireEvent.click(confirm);
+  await waitFor(() => expect(operate).toHaveBeenCalledWith('save', task, expect.objectContaining({ opinion: '保存原因' })));
+});
+
+it('回退选择已有完成记录的节点，权限刷新后不再允许确认', async () => {
+  const operate = vi.fn().mockResolvedValue(true);
+  const task = {
+    ...ticket.tasks[0],
+    allowed_actions: ['return'],
+    required_opinion_actions: ['return'],
+    return_targets: [{ node_id: 'submit', name: '提单', completed_at: '2026-11-19T01:00:00Z' }],
+  };
+  const record = { ...ticket, tasks: [task] };
+  const { rerender } = render(<TicketActions ticket={record} busy={false} operate={operate} />);
+  fireEvent.click(screen.getByRole('button', { name: /^回\s*退$/ }));
+  const button = await screen.findByRole('button', { name: /确认回\s*退/ });
+  fireEvent.change(screen.getByLabelText('处理意见'), { target: { value: '需补充内容' } });
+  expect(button).toHaveProperty('disabled', true);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '回退节点' }));
+  fireEvent.click(await screen.findByText('提单', { selector: '.ant-select-item-option-content span' }));
+  expect(button).toHaveProperty('disabled', false);
+  rerender(<TicketActions ticket={{ ...record, tasks: [{ ...task, can_operate: false }] }} busy={false} operate={operate} />);
+  expect(button).toHaveProperty('disabled', true);
+  fireEvent.click(button);
+  expect(operate).not.toHaveBeenCalled();
+  rerender(<TicketActions ticket={record} busy={false} operate={operate} />);
+  fireEvent.click(button);
+  await waitFor(() => expect(operate).toHaveBeenCalledWith('return', task, {
+    opinion: '需补充内容',
+    return_node_id: 'submit',
+  }));
+});

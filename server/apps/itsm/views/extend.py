@@ -4,7 +4,7 @@ from functools import wraps
 
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -41,7 +41,9 @@ from apps.itsm.models.extend import (
     Trigger,
     UserPreference,
 )
+from apps.itsm.services.ticket.actions import node_actions, node_required_opinions
 from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
+from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.tickets import _service, _user
 
@@ -262,7 +264,7 @@ def resources(request, kind):
     if kind == "handovers":
         if request.method != "POST":
             return WebUtils.response_error("不支持的请求方法", status_code=405)
-        item = Handover(**values, created_by=_user(request), updated_by=_user(request))
+        item = Handover(**values, opinion=payload.get("opinion", ""), created_by=_user(request), updated_by=_user(request))
         _apply_handover(item)
         return WebUtils.response_success(_public(item, fields))
     try:
@@ -327,14 +329,33 @@ def handover_candidates(request):
     if not has_permission(request, "ticket-View"):
         raise PermissionError()
     source = handover_user(request.GET.get("from_user"))
-    tasks = TicketTask.objects.filter(ticket_id=OuterRef("pk"), assignee=source, status__in=ACTIVE_STATUSES)
-    tickets = ticket_scope(request).filter(Exists(tasks)).exclude(status__key__in=["suspended", "finished", "terminated", "cancelled"])
+    tasks = TicketTask.objects.filter(assignee=source, status__in=ACTIVE_STATUSES)
+    tickets = (
+        ticket_scope(request)
+        .filter(Exists(tasks.filter(ticket_id=OuterRef("pk"))))
+        .exclude(status__key__in=["suspended", "finished", "terminated", "cancelled"])
+    )
     keyword = (request.GET.get("q") or "").strip()
     if keyword:
         tickets = tickets.filter(Q(sn__icontains=keyword) | Q(title__icontains=keyword))
-    paginator = Paginator(tickets.values("id", "sn", "title").order_by("-id"), 20)
+    tickets = (
+        tickets.select_related("workflow_version")
+        .only("id", "sn", "title", "workflow_version__design")
+        .prefetch_related(Prefetch("tasks", queryset=tasks.only("ticket_id", "node_id", "status"), to_attr="handover_tasks"))
+    )
+    paginator = Paginator(tickets.order_by("-id"), 20)
     page = paginator.get_page(request.GET.get("page"))
-    return WebUtils.response_success({"items": list(page), "count": paginator.count})
+    items = []
+    for ticket in page:
+        design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+        required = False
+        for task in ticket.handover_tasks:
+            node = _find_node(design, node_id=task.node_id)
+            if "transfer" in node_required_opinions(node, node_actions(node, task)):
+                required = True
+                break
+        items.append({"id": ticket.id, "sn": ticket.sn, "title": ticket.title, "requires_opinion": required})
+    return WebUtils.response_success({"items": items, "count": paginator.count})
 
 
 @csrf_exempt
@@ -387,6 +408,8 @@ def batch_operate(request):
     options, _ = selection(request, list(dict.fromkeys(ids)))
     if action not in {"follow", "unfollow"} and options["mixed_nodes"]:
         return WebUtils.response_success({"items": [{"id": pk, "ok": False, "error": options["reason"]} for pk in dict.fromkeys(ids)]})
+    if action in options["required_opinion_actions"] and not opinion.strip():
+        return WebUtils.response_success({"items": [{"id": pk, "ok": False, "error": "请填写处理意见"} for pk in dict.fromkeys(ids)]})
     username = _user(request)
     privileged = bool(getattr(request.user, "is_superuser", False))
     principals = {

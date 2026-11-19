@@ -223,3 +223,20 @@ it('在导出时选择系统字段和表单字段，保留原列表筛选', asyn
   await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ workflow_id: '' }), ['people'], undefined,
     { columns: ['sn', 'service'], form_workflow_id: '4' }));
 });
+
+it('提供批量审批所需的意见后才允许执行', async () => {
+  api.batchOptions.mockResolvedValue({ actions: ['approve'], required_opinion_actions: ['approve'], reason: '' });
+  render(<TicketWorkbench />);
+  fireEvent.click(await screen.findByRole('button', { name: '测试工单' }));
+  const open = screen.getByRole('button', { name: '批量处理' });
+  await waitFor(() => expect(open).toHaveProperty('disabled', false));
+  fireEvent.click(open);
+  const confirm = await screen.findByRole('button', { name: '确认执行' });
+  expect(confirm).toHaveProperty('disabled', true);
+  const opinion = screen.getByRole('textbox', { name: '批量操作意见' });
+  fireEvent.change(opinion, { target: { value: '   ' } });
+  expect(confirm).toHaveProperty('disabled', true);
+  fireEvent.change(opinion, { target: { value: '  批量核验  ' } });
+  fireEvent.click(confirm);
+  await waitFor(() => expect(api.batchTickets).toHaveBeenCalledWith([1], 'approve', '批量核验'));
+});

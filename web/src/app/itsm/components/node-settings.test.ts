@@ -24,3 +24,15 @@ it('转交范围随节点保存，切回不限时清除旧范围', () => {
   const legacy = canvasFromDesign({ nodes: [{ id: 'legacy', type: 'handle', name: '旧节点' }], edges: [] });
   expect(designFromCanvas(legacy.nodes, []).nodes[0].transfer_scope).toBeUndefined();
 });
+
+it('节点的必填意见按钮往返保存，清空后不会恢复旧配置', () => {
+  const design: FlowDesign = {
+    nodes: [{ id: 'approval', type: 'approval', name: '审批', required_opinion_actions: ['approve'] }],
+    edges: [],
+  };
+  const graph = canvasFromDesign(design);
+  expect(graph.nodes[0].data.requiredOpinionActions).toEqual(['approve']);
+  expect(designFromCanvas(graph.nodes, []).nodes[0].required_opinion_actions).toEqual(['approve']);
+  graph.nodes[0].data.requiredOpinionActions = [];
+  expect(designFromCanvas(graph.nodes, []).nodes[0].required_opinion_actions).toEqual([]);
+});

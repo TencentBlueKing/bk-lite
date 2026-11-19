@@ -3,6 +3,10 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.itsm.services.ticket.actions import SIDE_OPINION_ACTIONS, TASK_ACTIONS
+
+OPINION_ACTIONS = TASK_ACTIONS | SIDE_OPINION_ACTIONS | {"resume"}
+
 ACTION_LABELS = {
     "create": "发起工单",
     "submit": "提交",
@@ -33,13 +37,18 @@ def ticket_history(ticket, tasks, design):
     for log in ticket.logs.all():
         task = task_map.get(log.task_id)
         label = ACTION_LABELS.get(log.action, "流程处理")
+        detail = log.detail or {}
+        destination = detail.get("return_node_name") if log.action == "return" else None
+        opinion = detail.get("opinion") if log.operator != "system" and log.action in OPINION_ACTIONS else None
+        if destination:
+            label = f"回退至 {destination}"
         node_id = (
             task.node_id
             if task
             else (
                 next((key for key, node in nodes.items() if node.get("type") == "start"), "start")
                 if log.action == "create"
-                else (log.detail or {}).get("node_id", "")
+                else detail.get("node_id", "")
             )
         )
         rows.append(
@@ -54,6 +63,7 @@ def ticket_history(ticket, tasks, design):
                 "started_at": task.created_at.isoformat() if task else log.created_at.isoformat(),
                 "finished_at": log.created_at.isoformat(),
                 "message": log.message if log.message != log.action else "",
+                **({"opinion": opinion} if isinstance(opinion, str) and opinion.strip() else {}),
             }
         )
     stale_at = timezone.now() - timedelta(minutes=5)

@@ -114,7 +114,7 @@ export function useItsmApi() {
     [post],
   );
   const operateTicket = useCallback(
-    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_mode?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
+    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_node_id?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
     [post],
   );
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);

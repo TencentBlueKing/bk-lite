@@ -15,7 +15,10 @@ export function WorkflowPreview({ schema, design }: { schema: FormSchema; design
   const node = design.nodes.find(item=>item.id===selected) || design.nodes[0];
   const nodeName = (item: FlowDesign['nodes'][number]) => item.name || NODE_PALETTE.find(entry=>entry.type===item.type)?.label || item.id;
   const interactive = node && ['submit','approval','manual','handle','manual_trigger','subprocess_handle'].includes(node.type);
-  const actions = node?.actions ?? NODE_PALETTE.find(item=>item.type===node?.type)?.actions ?? [];
+  const requiredOpinions = node?.required_opinion_actions ?? [];
+  const defaultActions = NODE_PALETTE.find(item => item.type === node?.type)?.actions ?? [];
+  const actions = node?.actions ?? Array.from(new Set([...defaultActions, ...requiredOpinions]));
+  const requiredLabels = NODE_ACTIONS.filter(option => actions.includes(option.value) && requiredOpinions.includes(option.value)).map(option => option.label);
   return <section aria-label="流程预览" className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
       <div><span className="text-sm font-medium">节点预览</span><p className="mt-1 text-xs text-[var(--color-text-3)]">仅预览配置，不会创建工单或执行流程。</p></div>
@@ -28,7 +31,13 @@ export function WorkflowPreview({ schema, design }: { schema: FormSchema; design
       </nav>
       <div className="min-h-0 overflow-auto bg-[var(--color-fill-1)] p-4 md:p-6">
         <div className="min-h-full w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-5">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4"><div className="flex items-center gap-2">{node && <NodeGlyph type={node.type} compact />}<span className="text-sm font-semibold">{node ? nodeName(node) : '尚未配置节点'}</span><Tag>{NODE_PALETTE.find(item=>item.type===node?.type)?.label || '节点'}</Tag></div><div aria-label="节点操作预览" className="flex flex-wrap gap-1">{actions.map(action=><Tag key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Tag>)}</div></div>
+          <div className="mb-5 border-b border-[var(--color-border)] pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">{node && <NodeGlyph type={node.type} compact />}<span className="text-sm font-semibold">{node ? nodeName(node) : '尚未配置节点'}</span><Tag>{NODE_PALETTE.find(item=>item.type===node?.type)?.label || '节点'}</Tag></div>
+              <div aria-label="节点操作预览" className="flex flex-wrap gap-1">{actions.map(action=><Tag key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Tag>)}</div>
+            </div>
+            {requiredLabels.length > 0 && <p className="mt-2 text-right text-xs text-[var(--color-text-3)]">{requiredLabels.join('、')}前需填写处理意见。</p>}
+          </div>
           {interactive ? <FormRenderer key={`${node.id}-${revision}`} form={form} schema={schema} fieldPerm={node.field_perm as Parameters<typeof FormRenderer>[0]['fieldPerm']} fetchContext={{preview:true,schema}} hideSubmit onSubmit={()=>undefined} /> : node ? <Alert type="info" showIcon message="此节点由流程引擎执行，无需填写表单。请选择提单、审批或人工处理节点查看表单。" /> : <Empty description="请先添加流程节点" />}
         </div>
       </div>

@@ -17,9 +17,11 @@ export function HandoverForm({ onCreated, onClose }: {
   const { searchHandoverCandidates, createHandover } = useItsmApi();
   const fromId = useId();
   const toId = useId();
+  const opinionId = useId();
   const [fromUser, setFromUser] = useState('');
   const [toUser, setToUser] = useState('');
-  const [selected, setSelected] = useState<number[]>([]);
+  const [opinion, setOpinion] = useState('');
+  const [selected, setSelected] = useState(() => new Map<number, boolean>());
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState({ keyword: '', page: 1 });
   const [result, setResult] = useState<{
@@ -45,18 +47,26 @@ export function HandoverForm({ onCreated, onClose }: {
 
   const changeSource = ([username = '']: string[]) => {
     setFromUser(username);
-    setSelected([]);
+    setSelected(new Map());
     setSearch('');
     setQuery({ keyword: '', page: 1 });
   };
   const sameUser = Boolean(fromUser && fromUser === toUser);
-  const overLimit = selected.length > MAX_TICKETS;
-  const canSubmit = Boolean(fromUser && toUser && selected.length && !sameUser && !overLimit);
+  const selectedIds = Array.from(selected.keys());
+  const opinionRequired = Array.from(selected.values()).some(Boolean);
+  const note = opinion.trim();
+  const overLimit = selectedIds.length > MAX_TICKETS;
+  const canSubmit = Boolean(fromUser && toUser && selectedIds.length && !sameUser && !overLimit && (!opinionRequired || note));
 
   return <ItsmModal open title="新建交接" width={760} okText="确认交接" onCancel={onClose}
-    formValue={{ fromUser, toUser, selected }} okButtonProps={{ disabled: !canSubmit }} onOk={async () => {
+    formValue={{ fromUser, toUser, selectedIds, opinion }} okButtonProps={{ disabled: !canSubmit }} onOk={async () => {
       if (!canSubmit) return;
-      onCreated(await createHandover({ from_user: fromUser, to_user: toUser, ticket_ids: selected }));
+      onCreated(await createHandover({
+        from_user: fromUser,
+        to_user: toUser,
+        ticket_ids: selectedIds,
+        ...(note ? { opinion: note } : {}),
+      }));
     }}>
     <div className="flex flex-col gap-4 py-2">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -71,9 +81,15 @@ export function HandoverForm({ onCreated, onClose }: {
             value={toUser ? [toUser] : []} onChange={([username = '']) => setToUser(username)} />
         </div>
       </div>
+      <div className="flex flex-col gap-2">
+        <label htmlFor={opinionId}>处理意见{opinionRequired && <span className="text-[var(--color-text-3)]">（必填）</span>}</label>
+        <Input.TextArea id={opinionId} aria-label="处理意见" required={opinionRequired}
+          placeholder={opinionRequired ? '所选工单要求填写处理意见' : '填写处理意见（选填）'}
+          value={opinion} maxLength={2000} rows={2} onChange={event => setOpinion(event.target.value)} />
+      </div>
       {sameUser && <Alert type="warning" showIcon message="请选择不同的交出人和接收人" />}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span>已选 {selected.length} 张工单</span>
+        <span>已选 {selectedIds.length} 张工单</span>
         <Input.Search className="w-64 max-w-full" aria-label="搜索待办工单" placeholder="搜索单号或标题" allowClear
           disabled={!fromUser} value={search} onChange={event => setSearch(event.target.value)}
           onSearch={value => setQuery({ keyword: value.trim(), page: 1 })} />
@@ -85,9 +101,15 @@ export function HandoverForm({ onCreated, onClose }: {
         scroll={{ y: 300 }} pagination={false}
         locale={{ emptyText: fromUser ? (page?.failed ? '加载失败' : '没有匹配的待办工单') : '请先选择交出人' }}
         rowSelection={{
-          selectedRowKeys: selected,
+          selectedRowKeys: selectedIds,
           preserveSelectedRowKeys: true,
-          onChange: keys => setSelected(keys.map(Number)),
+          onChange: (keys, rows) => {
+            const requirements = new Map(rows.map(item => [item.id, item.requires_opinion]));
+            setSelected(previous => new Map(keys.map(key => {
+              const id = Number(key);
+              return [id, requirements.get(id) ?? previous.get(id) ?? false];
+            })));
+          },
           getCheckboxProps: item => ({ title: `选择 ${item.sn}`, 'aria-label': `选择 ${item.sn}` }),
         }}
         columns={[

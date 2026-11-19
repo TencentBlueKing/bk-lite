@@ -58,6 +58,7 @@ class TicketTask(ItsmModel):
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="tasks")
     flowable_task_id = models.CharField(max_length=64, blank=True, default="")
+    process_instance_id = models.CharField(max_length=64, blank=True, default="")
     node_id = models.CharField(max_length=64)
     node_name = models.CharField(max_length=128, blank=True, default="")
     assignee = models.CharField(max_length=64, blank=True, default="")

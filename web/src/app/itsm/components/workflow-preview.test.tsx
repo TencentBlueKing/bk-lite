@@ -19,3 +19,13 @@ it('手动触发显示人工确认表单，子流程提交由引擎执行',()=>{
   fireEvent.click(screen.getByRole('button',{name:'预览提交子流程'}));
   expect(screen.queryByTestId('permissions')).toBeNull();
 });
+
+it('切换节点时预览该节点的处理意见要求', () => {
+  render(<WorkflowPreview schema={{ version: 1, fields: [] }} design={{ nodes: [
+    { id: 's', type: 'submit', name: '申请', actions: ['submit'] },
+    { id: 'a', type: 'approval', name: '审批', actions: ['approve'], required_opinion_actions: ['approve'] },
+  ], edges: [] }} />);
+  expect(screen.queryByText('同意前需填写处理意见。')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '预览审批' }));
+  expect(screen.getByText('同意前需填写处理意见。')).toBeTruthy();
+});

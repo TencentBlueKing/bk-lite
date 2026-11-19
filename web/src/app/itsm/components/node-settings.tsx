@@ -27,6 +27,9 @@ export function NodeSettings({ data: source, fields, onChange: commit }: { data:
   const flat = flattenNodeFields(fields);
   const actionOptions = NODE_ACTIONS.filter(action => !['retry','manual_run','template','respond'].includes(action.value) && (data.nodeType === 'approval' ? action.value !== 'submit' : !['approve','reject'].includes(action.value)) && (data.nodeType !== 'submit' || action.value !== 'return'));
   const actions = data.actions ?? actionOptions.map(action => action.value);
+  const opinionOptions = actionOptions.filter(option => actions.includes(option.value));
+  const requiredOpinionOptions = opinionOptions.filter(option => data.requiredOpinionActions?.includes(option.value));
+  const requiredOpinionActions = requiredOpinionOptions.map(option => option.value);
   const transferEnabled = actions.includes('transfer');
   const transferScope = data.transferScope;
   const transferUsers = transferScope?.type === 'users' && Array.isArray(transferScope.users) &&
@@ -81,7 +84,13 @@ export function NodeSettings({ data: source, fields, onChange: commit }: { data:
     <Button onClick={() => { setDraft(source); setTab('preview'); setOpen(true); }}>预览该节点</Button>
     <OperateModal title={`${data.label} · 节点配置`} open={open} formValue={data} onCancel={() => { setOpen(false); setDraft(undefined); }} width={1000} onOk={() => { commit(data); setOpen(false); setDraft(undefined); }} okText="应用到流程草稿" okButtonProps={{ disabled: transferEnabled && Boolean(transferScopeError) }}>
       <Tabs activeKey={tab} onChange={setTab} items={[
-        {key:"preview", label:"节点预览", children:<>{previewForm}<Space className="mt-4" wrap>{actions.map(action=><Button key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Button>)}</Space></>},
+        {key:"preview", label:"节点预览", children:<>
+          {previewForm}
+          <Space className="mt-4" wrap>{actions.map(action=><Button key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Button>)}</Space>
+          {requiredOpinionOptions.length > 0 && <p className="mt-2 text-xs text-[var(--color-text-3)]">
+            {requiredOpinionOptions.map(option => option.label).join('、')}前需填写处理意见。
+          </p>}
+        </>},
         {key:'handler',label:'处理人',children:<div className="flex flex-col gap-4">
           <Select aria-label="处理人来源" value={data.assigneeSource || 'users'} options={[{value:'users',label:'指定人员'},{value:'handler_group',label:'指定处理组'},{value:'variable',label:'引用人员字段 / 提单人'}]} onChange={source => onChange({assigneeSource:source,assignees:[],assigneeValue:undefined})} />
           {(!data.assigneeSource || data.assigneeSource === 'users') && <UserSelector value={data.assignees} onChange={assignees => onChange({assignees})} />}
@@ -94,7 +103,22 @@ export function NodeSettings({ data: source, fields, onChange: commit }: { data:
         {key:'actions',label:'操作按钮',children:<div className="flex flex-col gap-4">
           <div className="rounded border border-[var(--color-border)] p-3"><Space wrap>{actions.map(action=><Button key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Button>)}</Space></div>
           <span className="text-xs text-[var(--color-text-3)]">配置允许的操作；实际可见按钮还会按当前节点状态、处理人和操作权限过滤。</span>
-          <Checkbox.Group options={actionOptions} value={actions} onChange={value=>onChange({actions:value.map(String)})} />
+          <Checkbox.Group options={actionOptions} value={actions} onChange={value => {
+            const enabled = value.map(String);
+            onChange({
+              actions: enabled,
+              requiredOpinionActions: data.requiredOpinionActions === undefined ? undefined : requiredOpinionActions.filter(action => enabled.includes(action)),
+            });
+          }} />
+          {opinionOptions.length > 0 && <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-medium">处理意见必填</legend>
+            <Checkbox.Group value={requiredOpinionActions} onChange={value => onChange({ requiredOpinionActions: value.map(String) })}>
+              {opinionOptions.map(option => <Checkbox key={option.value} value={option.value} aria-label={`${option.label}处理意见必填`}>
+                {option.label}
+              </Checkbox>)}
+            </Checkbox.Group>
+            <span className="text-xs text-[var(--color-text-3)]">勾选后，办理人执行该操作前需填写处理意见。</span>
+          </fieldset>}
           {transferEnabled && <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-medium">转交范围</legend>
             <Radio.Group

@@ -12,6 +12,7 @@ export interface DesignNode {
   multi?: { mode: string };
   fallback?: string;
   actions?: string[];
+  required_opinion_actions?: string[];
   transfer_scope?: TransferScope | null;
   field_perm?: Record<string, string>;
   auto?: Record<string, unknown>;
@@ -39,6 +40,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   orSign: boolean;
   multiMode?: string;
   actions?: string[];
+  requiredOpinionActions?: string[];
   transferScope?: TransferScope | null;
   notify?: boolean;
   fieldPerm?: Record<string, string>;
@@ -108,6 +110,7 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
       multiMode: node.multi?.mode,
       fieldPerm: node.field_perm,
       actions: node.actions,
+      requiredOpinionActions: node.required_opinion_actions,
       transferScope: node.transfer_scope,
       auto: node.auto,
       original: node,
@@ -143,6 +146,9 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
     }
     if (node.data.actions !== undefined) {
       designNode.actions = node.data.actions;
+    }
+    if (node.data.requiredOpinionActions !== undefined) {
+      designNode.required_opinion_actions = node.data.requiredOpinionActions;
     }
     if (node.data.transferScope === null) {
       delete designNode.transfer_scope;

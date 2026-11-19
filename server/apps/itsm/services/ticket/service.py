@@ -7,6 +7,16 @@ from apps.itsm.services.form.fetch import validate_submission
 from apps.itsm.services.notify.service import dispatch_notification
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
+from apps.itsm.services.ticket.actions import (
+    TASK_ACTIONS,
+    NodeActionValidationError,
+    node_actions,
+    node_required_opinions,
+    side_action_enabled,
+    side_required_opinions,
+    validated_opinion,
+)
+from apps.itsm.services.ticket.returns import resolve_return_target
 from apps.itsm.services.ticket.transfer import require_transfer_target, transfer_users
 from apps.itsm.services.todo_sync import schedule_sync
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
@@ -117,17 +127,22 @@ class TicketService:
             task_id = str(item.get("id") or "")
             seen.add(task_id)
             assignee = str(item.get("assignee") or "").strip('"')
+            process_id = str(item.get("processInstanceId") or "")
             task, created = TicketTask.objects.get_or_create(
                 ticket=ticket,
                 flowable_task_id=task_id,
                 defaults={
                     "node_id": item.get("taskDefinitionKey") or "",
+                    "process_instance_id": process_id,
                     "node_name": item.get("name") or "",
                     "assignee": assignee,
                     "created_by": "system",
                     "updated_by": "system",
                 },
             )
+            if process_id and task.process_instance_id != process_id:
+                task.process_instance_id = process_id
+                task.save(update_fields=["process_instance_id", "updated_at"])
             if created:
                 from apps.itsm.services.triggers import fire_triggers
 
@@ -140,7 +155,9 @@ class TicketService:
                 current = (ticket.form_data or {}).get(rule.get("field"))
                 if rule.get("field") and str(current) == str(rule.get("value")):
                     ticket._auto_returning = True
-                    self.operate(ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system", privileged=True)
+                    self.operate(
+                        ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system", privileged=True, automatic_return=True
+                    )
             if created and task.assignee:
 
                 def notify_created(current_ticket=ticket, current_task=task):
@@ -178,6 +195,7 @@ class TicketService:
         privileged: bool = False,
         *,
         expected_assignee: str | None = None,
+        automatic_return: bool = False,
     ) -> Ticket:
         ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
         if task is not None:
@@ -188,6 +206,12 @@ class TicketService:
             raise TaskAssigneeChanged("原待办或处理人已变化")
         try:
             node = self._action_node(ticket, task, action, operator, privileged)
+            design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+            required_opinions = (
+                node_required_opinions(node, [action]) if action in TASK_ACTIONS else side_required_opinions(design, ticket.tasks.all(), [action])
+            )
+            if required_opinions or "opinion" in data:
+                data = {**data, "opinion": validated_opinion(data.get("opinion", ""), bool(required_opinions))}
             if action == "transfer":
                 if task is None:
                     raise ValueError("需要待办任务")
@@ -197,6 +221,22 @@ class TicketService:
             if expected_assignee is not None:
                 raise TransferRejected("待办暂时无法转交所选人员") from exc
             raise
+        if action == "return":
+            if task is None:
+                raise NodeActionValidationError("需要待办任务")
+            target = resolve_return_target(ticket, task, design, data, automatic=automatic_return)
+            if self.client and ticket.process_instance_id and not automatic_return:
+                runtime = self.client.list_tasks(ticket.process_instance_id)
+                runtime_tasks = runtime.get("data") or []
+                multi = (node.get("multi") or {}).get("mode") in {"any", "all", "serial"}
+                if (
+                    runtime.get("total", len(runtime_tasks)) != len(runtime_tasks)
+                    or (len(runtime_tasks) > 1 and not multi)
+                    or not any(row.get("id") == task.flowable_task_id for row in runtime_tasks)
+                    or any(row.get("taskDefinitionKey") != task.node_id for row in runtime_tasks)
+                ):
+                    raise NodeActionValidationError("当前流程任务已变化，请刷新后回退")
+            data = {**data, "return_node_id": target["node_id"], "return_node_name": target["name"]}
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
             return self._side_action(ticket, task, action, data, operator, node)
         if task is None:
@@ -258,12 +298,12 @@ class TicketService:
         node = self._action_node(ticket, task, "transfer", operator, privileged)
         return transfer_users(ticket.domain, node)
 
-    def check_transfer_target(self, ticket, task, target, operator, privileged=False):
-        require_transfer_target(self.transfer_candidates(ticket, task, operator, privileged), target)
+    def check_transfer_target(self, ticket, task, target, operator, privileged=False, *, opinion=""):
+        node = self._action_node(ticket, task, "transfer", operator, privileged)
+        validated_opinion(opinion, bool(node_required_opinions(node, ["transfer"])))
+        require_transfer_target(transfer_users(ticket.domain, node), target)
 
     def _action_node(self, ticket, task, action, operator, privileged):
-        from apps.itsm.services.ticket.actions import TASK_ACTIONS, node_actions, side_action_enabled
-
         self.authorize(ticket, task, action, operator, privileged)
         state = ticket.status.key if ticket.status_id else ""
         if state == "suspended" and action not in {"resume", "withdraw", "terminate", "close", "urge"}:
@@ -316,17 +356,15 @@ class TicketService:
         principals = set(TicketProxy.objects.filter(domain=ticket.domain, agent=operator, is_enabled=True).values_list("principal", flat=True)) | {
             operator
         }
-        if task is not None:
-            if task.assignee not in principals:
-                raise PermissionError()
-        elif action in {"withdraw", "urge", "reopen"}:
+        if action in {"withdraw", "urge", "reopen"}:
             if ticket.creator not in principals:
+                raise PermissionError()
+        elif task is not None:
+            if task.assignee not in principals:
                 raise PermissionError()
         elif action == "save":
             raise PermissionError("保存必须指定当前任务")
         elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
-            raise PermissionError()
-        if action == "withdraw" and ticket.creator not in principals:
             raise PermissionError()
 
     def _save_form(self, ticket, node, data):
@@ -404,18 +442,11 @@ class TicketService:
             task.assignee = target
             task.save(update_fields=["assignee", "updated_at"])
         elif action == "return":
-            if task is None:
-                raise ValueError("需要待办任务")
-            mode = str(data.get("return_mode") or "submit")
-            target_node = "submit"
-            if mode == "previous":
-                previous = ticket.tasks.filter(status=TicketTask.TaskStatus.DONE).exclude(node_id=task.node_id).order_by("-id").first()
-                if previous is None:
-                    raise ValueError("没有上一节点")
-                target_node = previous.node_id
-            elif mode != "submit":
-                raise ValueError("退回模式只支持 submit 或 previous")
-            self._set_status(ticket, "new" if target_node == "submit" else "processing")
+            target_node = data["return_node_id"]
+            design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+            target_status = "new" if _find_node(design, node_id=target_node).get("type") == "submit" else "processing"
+            if not ticket.status_id or ticket.status.key != target_status:
+                self._set_status(ticket, target_status)
             if self.client and ticket.process_instance_id and task.node_id:
                 self.client.change_state(ticket.process_instance_id, [task.node_id], [target_node])
             task.status = TicketTask.TaskStatus.DONE

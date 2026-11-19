@@ -101,6 +101,7 @@ export interface HandoverDraft {
   from_user: string;
   to_user: string;
   ticket_ids: number[];
+  opinion?: string;
 }
 
 export type HandoverResultStatus = 'pending' | 'succeeded' | 'failed' | 'skipped' | 'unconfirmed';
@@ -122,6 +123,7 @@ export interface HandoverCandidate {
   id: number;
   sn: string;
   title: string;
+  requires_opinion?: boolean;
 }
 
 export interface WorkflowListItem extends NamedItem {
@@ -130,8 +132,16 @@ export interface WorkflowListItem extends NamedItem {
   current_version_id: number | null;
 }
 
+export interface TicketReturnTarget {
+  node_id: string;
+  name: string;
+  completed_at: string;
+}
+
 export interface TicketTaskItem {
   allowed_actions?: string[];
+  required_opinion_actions?: string[];
+  return_targets?: TicketReturnTarget[];
   id: number;
   node_id: string;
   node_name: string;
@@ -211,6 +221,7 @@ export interface TicketHistoryItem {
   started_at: string;
   finished_at: string;
   message: string;
+  opinion?: string;
   execution_id?: number;
   can_retry?: boolean;
 }
@@ -239,6 +250,7 @@ export interface TicketDetail {
   created_at?: string;
   workflow_name?: string;
   allowed_actions?: string[];
+  required_opinion_actions?: string[];
   can_survey?: boolean;
   id: number;
   sn: string;

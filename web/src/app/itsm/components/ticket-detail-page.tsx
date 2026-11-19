@@ -74,7 +74,7 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
         action,
         target: extra?.target || '',
         opinion: extra?.opinion || '',
-        return_mode: extra?.return_mode,
+        return_node_id: extra?.return_node_id,
         form_data: ['submit', 'approve', 'reject', 'save'].includes(action) ? await form.validateFields() : undefined,
       });
       message.success(t('itsm.ticket.operateOk'));

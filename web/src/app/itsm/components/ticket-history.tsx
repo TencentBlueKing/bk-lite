@@ -20,6 +20,7 @@ export function TicketHistory({ items, nodes, retry, busy }: TicketHistoryProps)
     const type = nodeTypes.get(item.node_id) || 'unknown';
     const label = NODE_PALETTE.find((node) => node.type === type)?.label || '流程操作';
     const executionId = item.execution_id;
+    const note = item.action === 'auto' ? item.message : item.opinion;
     return {
       key: item.id,
       dot: <span aria-label={label} className="inline-flex rounded-lg bg-[var(--color-bg)]"><NodeGlyph type={type} compact /></span>,
@@ -30,9 +31,9 @@ export function TicketHistory({ items, nodes, retry, busy }: TicketHistoryProps)
           <Tag icon={<UserOutlined />}>{item.operator || '未分配'}</Tag>
           {item.state === 'current' ? <Tag color="processing">{item.action === 'auto' ? item.action_label : '待处理'}</Tag> : null}
           {item.state === 'failed' ? <Tag color="error">执行失败</Tag> : null}
-          {item.action === 'auto_retry' ? <Tag>{item.action_label}</Tag> : null}
+          {item.action === 'auto_retry' || item.action === 'return' ? <Tag>{item.action_label}</Tag> : null}
         </div>
-        {item.action === 'auto' && item.message ? <span className="text-xs text-[var(--color-text-2)]">{item.message}</span> : null}
+        {note ? <span className="whitespace-pre-wrap break-words text-xs text-[var(--color-text-2)]">{note}</span> : null}
         {item.can_retry && executionId && retry ? (
           <Popconfirm title={`重试「${item.name}」？`} description="系统会根据执行记录恢复此节点。" okText="确认重试" onConfirm={() => retry(executionId)}>
             <Button size="small" className="self-start" disabled={busy}>重试节点</Button>

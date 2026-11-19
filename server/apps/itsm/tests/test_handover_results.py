@@ -170,6 +170,9 @@ def test_candidates_require_view_and_only_return_visible_tickets_for_source(task
     assert view(request(payload=params, username="handler", permissions=["ticket-View"])).status_code == 403
     response = view(request(payload=params, username="handler", permissions=["handover-Add", "ticket-View"]))
     assert response.status_code == 200
-    assert json.loads(response.content)["data"] == {"items": [{"id": first.ticket_id, "sn": first.ticket.sn, "title": "待交接 A"}], "count": 1}
+    assert json.loads(response.content)["data"] == {
+        "items": [{"id": first.ticket_id, "sn": first.ticket.sn, "title": "待交接 A", "requires_opinion": False}],
+        "count": 1,
+    }
     invisible = view(request(payload=params, username="outsider", permissions=["handover-Add", "ticket-View"]))
     assert json.loads(invisible.content)["data"] == {"items": [], "count": 0}

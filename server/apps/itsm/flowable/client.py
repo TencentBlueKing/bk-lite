@@ -51,7 +51,7 @@ class FlowableClient:
         return self._request("GET", "/flowable-rest/service/runtime/tasks", params={"processInstanceId": process_instance_id})
 
     def list_tasks_including_children(self, process_instance_id: str) -> list[dict[str, Any]]:
-        items = list(self.list_tasks(process_instance_id).get("data") or [])
+        items = [{**item, "processInstanceId": process_instance_id} for item in self.list_tasks(process_instance_id).get("data") or []]
         children = self._request(
             "GET",
             "/flowable-rest/service/runtime/process-instances",
@@ -60,7 +60,7 @@ class FlowableClient:
         for child in children.get("data") or []:
             child_id = str(child.get("id") or "")
             if child_id:
-                items.extend(self.list_tasks(child_id).get("data") or [])
+                items.extend({**item, "processInstanceId": child_id} for item in self.list_tasks(child_id).get("data") or [])
         return items
 
     def complete_task(self, task_id: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:

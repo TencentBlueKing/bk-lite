@@ -87,3 +87,20 @@ it('旧的缺项转交配置可在抽屉里修正', async () => {
   fireEvent.click(apply);
   await waitFor(() => expect(change).toHaveBeenCalledWith(expect.objectContaining({ transferScope: null })));
 });
+
+it('设置单个按钮的意见必填，停用按钮后清除该设置', async () => {
+  const change = vi.fn();
+  render(<NodeSettings data={{ ...data, actions: ['approve', 'return'] }} fields={fields} onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: '配置节点' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '操作按钮' }));
+  const group = screen.getByRole('group', { name: '处理意见必填' });
+  fireEvent.click(within(group).getByRole('checkbox', { name: '同意处理意见必填' }));
+  fireEvent.click(within(group).getByRole('checkbox', { name: '回退处理意见必填' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '回退' }));
+  expect(within(group).queryByRole('checkbox', { name: '回退处理意见必填' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '应用到流程草稿' }));
+  await waitFor(() => expect(change).toHaveBeenCalledWith(expect.objectContaining({
+    actions: ['approve'],
+    requiredOpinionActions: ['approve'],
+  })));
+});

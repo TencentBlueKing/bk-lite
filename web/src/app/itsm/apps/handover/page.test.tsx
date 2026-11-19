@@ -114,3 +114,46 @@ it('跨页选中超过 50 张时禁止提交，取消最后一张后可确认', 
   fireEvent.click(screen.getByRole('checkbox', { name: '选择 REQ51' }));
   expect(confirm).toHaveProperty('disabled', false);
 });
+
+it('批量交接把填写的处理意见一并提交', async () => {
+  api.searchHandoverCandidates.mockResolvedValue({ items: [{ id: 11, sn: 'REQ0011', title: '待交请求' }], count: 1 });
+  api.createHandover.mockResolvedValue({ ...record, results });
+  render(<Page />);
+  fireEvent.click(await screen.findByRole('button', { name: '新建交接' }));
+  fireEvent.change(screen.getByLabelText('交出人'), { target: { value: 'alice' } });
+  fireEvent.change(screen.getByLabelText('接收人'), { target: { value: 'bob' } });
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择 REQ0011' }));
+  fireEvent.change(screen.getByLabelText('处理意见'), { target: { value: '  转交原因  ' } });
+  fireEvent.click(screen.getByRole('button', { name: '确认交接' }));
+  await waitFor(() => expect(api.createHandover).toHaveBeenCalledExactlyOnceWith({
+    from_user: 'alice',
+    to_user: 'bob',
+    ticket_ids: [11],
+    opinion: '转交原因',
+  }));
+});
+
+it('跨页选择需要意见的工单时禁止空白提交，取消该工单后恢复选填', async () => {
+  api.searchHandoverCandidates.mockImplementation((_source, _q, page: number) => Promise.resolve({
+    items: page === 1
+      ? [{ id: 11, sn: 'REQ0011', title: '需要意见', requires_opinion: true }]
+      : [{ id: 12, sn: 'REQ0012', title: '意见可选' }],
+    count: 21,
+  }));
+  render(<Page />);
+  fireEvent.click(await screen.findByRole('button', { name: '新建交接' }));
+  fireEvent.change(screen.getByLabelText('交出人'), { target: { value: 'alice' } });
+  fireEvent.change(screen.getByLabelText('接收人'), { target: { value: 'bob' } });
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择 REQ0011' }));
+  fireEvent.click(screen.getByTitle('2'));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择 REQ0012' }));
+  const input = screen.getByLabelText('处理意见');
+  const confirm = screen.getByRole('button', { name: '确认交接' });
+  expect(input).toHaveProperty('required', true);
+  fireEvent.change(input, { target: { value: '   ' } });
+  expect(confirm).toHaveProperty('disabled', true);
+  fireEvent.click(screen.getByTitle('1'));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择 REQ0011' }));
+  expect(input).toHaveProperty('required', false);
+  expect(confirm).toHaveProperty('disabled', false);
+});

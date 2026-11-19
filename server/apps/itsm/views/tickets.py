@@ -12,10 +12,11 @@ from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
-from apps.itsm.services.ticket.actions import node_actions, side_action_enabled
+from apps.itsm.services.ticket.actions import node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
+from apps.itsm.services.ticket.returns import return_targets
 from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.users import search_users
@@ -92,9 +93,12 @@ def tickets(request):
 
 
 @csrf_exempt
+@require_POST
 @api_errors
 @HasPermission("ticket-Operate")
 def operate_ticket(request, ticket_id):
+    if not has_permission(request, "ticket-View"):
+        raise PermissionError()
     payload = _body(request)
     ticket = get_ticket(request, ticket_id)
     task = TicketTask.objects.get(id=payload["task_id"], ticket=ticket) if payload.get("task_id") else None
@@ -261,9 +265,35 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         from django.utils.dateparse import parse_datetime
 
         progress_history = [row for row in history if row["started_at"] and parse_datetime(row["started_at"]) >= round_start]
+
+    task_rows = []
+    for task in pending:
+        node = _find_node(design, node_id=task.node_id)
+        editable = can_operate and not terminal and status_key != "suspended" and (privileged or task.assignee in principals)
+        available = node_actions(node, task) if editable else []
+        targets = return_targets(ticket, task, tasks, design, round_start) if "return" in available else []
+        if "return" in available and not targets:
+            available.remove("return")
+        task_rows.append(
+            {
+                "id": task.id,
+                "node_id": task.node_id,
+                "node_name": task.node_name,
+                "assignee": task.assignee,
+                "status": task.status,
+                "node_type": node.get("type", ""),
+                "field_perm": node.get("field_perm", {}),
+                "can_operate": editable,
+                "allowed_actions": available,
+                "required_opinion_actions": node_required_opinions(node, available),
+                "return_targets": targets,
+            }
+        )
+
     return {
         "history": history,
         "allowed_actions": allowed_actions if can_operate else [],
+        "required_opinion_actions": side_required_opinions(design, tasks, allowed_actions) if can_operate else [],
         "can_survey": can_operate and ticket.creator == username and status_key == "finished",
         "id": ticket.id,
         "sn": ticket.sn,
@@ -276,22 +306,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         "fields": fields,
         "stages": stages,
         "extra_actions": extra_actions,
-        "tasks": [
-            {
-                "id": task.id,
-                "node_id": task.node_id,
-                "node_name": task.node_name,
-                "assignee": task.assignee,
-                "status": task.status,
-                "node_type": _find_node(design, node_id=task.node_id).get("type", ""),
-                "field_perm": _find_node(design, node_id=task.node_id).get("field_perm", {}),
-                "can_operate": can_operate and not terminal and status_key != "suspended" and (privileged or task.assignee in principals),
-                "allowed_actions": node_actions(_find_node(design, node_id=task.node_id), task)
-                if can_operate and not terminal and status_key != "suspended" and (privileged or task.assignee in principals)
-                else [],
-            }
-            for task in pending
-        ],
+        "tasks": task_rows,
         "nodes": [
             node_progress(
                 {

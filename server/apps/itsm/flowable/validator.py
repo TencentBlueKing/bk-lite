@@ -1,4 +1,5 @@
 from apps.itsm.flowable.design_schema import PHASE1_TYPES, DesignDocument
+from apps.itsm.services.ticket.actions import validate_opinion_settings
 
 
 def validate_design(payload: dict) -> list[str]:
@@ -16,7 +17,11 @@ def validate_design(payload: dict) -> list[str]:
         linked.add(edge.to)
     if not any(node.type == "end" for node in document.nodes):
         errors.append("缺少结束节点")
-    for node in document.nodes:
+    for raw_node, node in zip(payload["nodes"], document.nodes):
+        try:
+            validate_opinion_settings(raw_node)
+        except ValueError as exc:
+            errors.append(f"节点 {node.name or node.id}：{exc}")
         if node.type in {"manual_trigger", "rule_trigger"}:
             config = node.auto or {}
             kind = config.get("kind")

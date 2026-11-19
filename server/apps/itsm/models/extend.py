@@ -158,6 +158,7 @@ class PrintTemplate(ItsmModel):
 
 
 class Handover(ItsmModel):
+    opinion = models.CharField(max_length=2000, blank=True, default="")
     from_user = models.CharField(max_length=64)
     to_user = models.CharField(max_length=64)
     ticket_ids = models.JSONField(default=list)
