@@ -396,6 +396,13 @@ tools:
     tools:
       generate_attachment_file:
         description: Generate a txt, md, pdf, docx, pptx, xlsx, or csv attachment and return its download link. txt and md are plain text. pptx becomes slides. xlsx and csv require comma-separated data with a header row. Use pptx when the user asks for a PowerPoint file; do not downgrade it to docx. Keep txt when the user asked for txt.
+  conversation_skill_package:
+    name: Generate Skill Package
+    description: |
+      Draft a skill package from the current conversation. Only a confirm click writes it. Do not call this tool unless the user explicitly asked.
+    tools:
+      prepare_conversation_skill_package:
+        description: Draft a skill package from the current conversation and send a confirm card.
   kubernetes:
     name: Kubernetes Tools
     description: |

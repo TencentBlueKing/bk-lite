@@ -391,6 +391,13 @@ tools:
     tools:
       generate_attachment_file:
         description: 生成 txt、md、pdf、docx、pptx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；pptx 按标题分页；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 PPT 时必须用 pptx，禁止降级成 docx。用户要 txt 时不要改成 md。
+  conversation_skill_package:
+    name: 生成技能包
+    description: |
+      把当前对话整理成技能包成稿。只有用户点确认后才写入。用户没有明确要求时不要调用。
+    tools:
+      prepare_conversation_skill_package:
+        description: 把当前对话整理成技能包成稿，并发出确认卡。
   kubernetes:
     name: Kubernetes工具
     description: |

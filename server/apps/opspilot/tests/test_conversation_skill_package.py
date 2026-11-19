@@ -10,10 +10,7 @@ from django.core.cache import cache
 from django.test import override_settings
 from langchain_core.messages import AIMessage
 
-from apps.opspilot.metis.llm.agent.tool_execution_planner import (
-    ToolExecutionPlan,
-    enforce_prepare_conversation_skill_package,
-)
+from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, enforce_prepare_conversation_skill_package
 from apps.opspilot.metis.llm.chain.deepagent_assembly import DeepAgentAssemblyMixin
 from apps.opspilot.metis.llm.middleware.conversation_skill_package import ConversationSkillPackageMiddleware
 from apps.opspilot.models import LLMSkill, SkillPackage
@@ -338,9 +335,7 @@ def test_confirm_rechecks_permission_and_entry():
 
     _prepared, _request = _issue(skill)
     draft = peek_pending_question("thread:thread-1")["skill_package_draft"]
-    blocked = try_commit_conversation_skill_package(
-        _confirm_params(skill, draft, **{AUTHORING_EXTRA_KEY: authoring_context(_user(), "feishu")})
-    )
+    blocked = try_commit_conversation_skill_package(_confirm_params(skill, draft, **{AUTHORING_EXTRA_KEY: authoring_context(_user(), "feishu")}))
     assert "当前入口" in blocked
     assert SkillPackage.objects.count() == 0
 
@@ -469,3 +464,106 @@ def test_confirm_stream_does_not_load_model(monkeypatch):
     assert "TEXT_MESSAGE_CONTENT" in text
     assert "添加技能包" in text
     assert text.count("TEXT_MESSAGE_START") == 1
+    assert text.index("RUN_STARTED") < text.index("TEXT_MESSAGE_CONTENT") < text.index("RUN_FINISHED")
+
+
+def test_tools_loader_discovers_conversation_skill_package():
+    from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+
+    tools = ToolsLoader.load_tools("langchain:conversation_skill_package")
+
+    assert [tool.name for tool in tools] == [PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL]
+
+
+def test_builtin_descriptor_is_opt_in_catalog_tool():
+    from apps.core.utils.loader import LanguageLoader
+    from apps.opspilot.metis.llm.tools import conversation_skill_package as package
+    from apps.opspilot.services import builtin_tools
+
+    class _EmptyLoader:
+        def get(self, key):
+            return ""
+
+    zh = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+    en = LanguageLoader(app="opspilot", default_lang="en")
+    descriptor = builtin_tools.build_builtin_conversation_skill_package_tool(zh)
+    english = builtin_tools.build_builtin_conversation_skill_package_tool(en)
+    fallback = builtin_tools.build_builtin_conversation_skill_package_tool(_EmptyLoader())
+    runtime = builtin_tools.build_builtin_conversation_skill_package_runtime_tool({})
+    builtin_ids = [value for name, value in vars(builtin_tools).items() if name.endswith("_TOOL_ID")]
+    subtool = next(tool for tool in descriptor["tools"] if tool["name"] == PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL)
+
+    assert descriptor["id"] == -13
+    assert descriptor["is_build_in"] is True
+    assert descriptor["name"] == "conversation_skill_package"
+    assert descriptor["params"]["url"] == "langchain:conversation_skill_package"
+    assert descriptor["params"]["kwargs"] == []
+    assert descriptor["display_name"] == "生成技能包"
+    assert "确认" in descriptor["description"]
+    assert "明确要求" in descriptor["description"]
+    assert "确认卡" in subtool["description"]
+    assert english["display_name"] == "Generate Skill Package"
+    assert "confirm click" in english["description"]
+    assert fallback["description"] == (package.__doc__ or "").strip()
+    assert runtime["url"] == "langchain:conversation_skill_package"
+    assert builtin_ids.count(-13) == 1
+
+
+def test_collect_skips_skill_package_tool_when_authoring_has_no_selected_tools():
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    node = ToolsNodes()
+    node.all_tools = []
+    node.tools = []
+    request = SimpleNamespace(
+        extra_config={
+            AUTHORING_EXTRA_KEY: authoring_context(_user(), "skill_test"),
+        }
+    )
+
+    tools = node._collect_deepagent_tools(request)
+
+    assert PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL not in {getattr(tool, "name", "") for tool in tools}
+
+
+def test_selected_tools_include_conversation_skill_package():
+    from apps.opspilot.services.builtin_tools import selected_tools_include_conversation_skill_package
+
+    assert selected_tools_include_conversation_skill_package([{"id": -13}]) is True
+    assert selected_tools_include_conversation_skill_package([{"rawName": "conversation_skill_package", "name": "生成技能包"}]) is True
+    assert selected_tools_include_conversation_skill_package([{"name": "conversation_skill_package"}]) is True
+    assert selected_tools_include_conversation_skill_package([]) is False
+
+
+def test_authoring_prompt_follows_selected_catalog_tool():
+    from apps.opspilot.enum import SkillTypeChoices
+    from apps.opspilot.services.chat_service import ChatService
+
+    model = SimpleNamespace(
+        openai_api_base="http://llm.example/v1",
+        openai_api_key="key",
+        model_name="gpt-4",
+        protocol_type="openai",
+        vendor_id=None,
+        pk=1,
+        context_window_tokens=8000,
+    )
+
+    def _params(tools):
+        return {
+            "user_message": "请做成技能包",
+            "chat_history": [],
+            "conversation_window_size": 10,
+            "skill_prompt": "system",
+            "skill_params": [],
+            "user_id": 1,
+            "skill_type": SkillTypeChoices.KNOWLEDGE_TOOL,
+            AUTHORING_EXTRA_KEY: authoring_context(_user(), "skill_test"),
+            "tools": tools,
+        }
+
+    selected, _, _ = ChatService.format_chat_server_kwargs(_params([{"id": -13}]), model)
+    absent, _, _ = ChatService.format_chat_server_kwargs(_params([]), model)
+
+    assert AUTHORING_PROMPT_SUFFIX in selected["system_message_prompt"]
+    assert AUTHORING_PROMPT_SUFFIX not in absent["system_message_prompt"]
