@@ -65,18 +65,17 @@ describe('OpsPilot 风格原子表单', () => {
     expect(screen.getByDisplayValue('${workflow.input.message}')).not.toBeNull();
   });
 
-  it('智能体表单提供 OpsPilot 式资源入口和 Markdown 拖拽区', () => {
+  it('智能体在上传知识前直接展示任务内容和记忆上下文', () => {
     render(<App><OpsPilotAtomForm
       atomKey="bklite_agent"
       schema={{ type: 'object', required: ['agent_id', 'message'], properties: {
         agent_id: { type: 'integer', title: '智能体', enum: [2], 'x-enum-labels': { '2': '巡检助手' } },
-        prompt: { type: 'string', title: '补充提示词', 'x-widget': 'textarea' },
         knowledge_files: { type: 'array', title: '上传知识' },
-        message: { type: 'string', title: '输入内容' },
+        message: { type: 'string', title: '任务内容', 'x-widget': 'textarea' },
         memory_context: { type: 'string', title: '记忆上下文' },
       } }}
-      value={{ agent_id: 2, message: '检查主机' }}
-      references={[]}
+      value={{ agent_id: 2, message: '检查主机', memory_context: '${memory.output.context}' }}
+      references={[{ label: '记忆上下文', value: '${memory.output.context}', source: '记忆', type: 'string' }]}
       workflowId={null}
       nodeTitle="智能体"
       readOnly={false}
@@ -85,6 +84,12 @@ describe('OpsPilot 风格原子表单', () => {
     /></App>);
 
     expect(screen.getByRole('link', { name: /新增智能体/ }).getAttribute('href')).toBe('/opspilot/skill');
+    expect(screen.queryByText('运行数据')).toBeNull();
+    expect(screen.queryByText('补充提示词')).toBeNull();
+    expect(screen.getByDisplayValue('检查主机')).not.toBeNull();
+    expect(screen.getByDisplayValue('${memory.output.context}')).not.toBeNull();
+    const labels = screen.getAllByText(/^(选择智能体|任务内容|记忆上下文|上传知识)$/, { selector: 'label' });
+    expect(labels.map((label) => label.textContent)).toEqual(['选择智能体', '任务内容', '记忆上下文', '上传知识']);
     expect(screen.getByText('点击或拖拽 Markdown 文件到此区域上传')).not.toBeNull();
     expect(screen.getByText('首次上传前请先保存流程草稿')).not.toBeNull();
   });

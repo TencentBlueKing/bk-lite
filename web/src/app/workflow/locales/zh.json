@@ -200,8 +200,7 @@
           "description": "调用当前组织可用的 OpsPilot 智能体处理输入",
           "input": {
             "agent_id": "智能体",
-            "message": "输入内容",
-            "prompt": "补充提示词",
+            "message": "任务内容",
             "knowledge_files": "上传知识",
             "memory_context": "记忆上下文"
           },
@@ -906,8 +905,6 @@
       "selectAgent": "选择智能体",
       "pleaseSelectAgent": "请选择智能体",
       "addAgent": "新增智能体",
-      "prompt": "Prompt",
-      "promptAppendTooltip": "这段提示词会附加到本次输入之前。",
       "llmModel": "LLM 模型",
       "pleaseSelectLlmModel": "请选择 LLM 模型",
       "classificationRules": "分类规则",

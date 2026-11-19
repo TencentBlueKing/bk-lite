@@ -33,6 +33,24 @@ def _context(*, organization_id=7):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("reply_channel", [None, "WECOM_BOT"])
+def test_workflow_notification_audience_reaches_system_prompt_without_rewriting_question(mocker, reply_channel):
+    from apps.opspilot.services.chat_service import ChatService
+
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="notification-model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="on-call", skill_prompt="根据事实作答。", llm_model=model, team=[7], usage_team=[7])
+    invoke = mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "完成"}, None, None))
+    message = "查一下当前有哪些活动告警"
+    context = {**_context(), "reply_channel": reply_channel}
+    assert execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context}) == {"message": "完成"}
+    request = invoke.call_args.args[0]
+    assert request["user_message"] == message
+    assert "根据事实作答。" in request["skill_prompt"]
+    assert ("企业微信群" in request["skill_prompt"]) is bool(reply_channel)
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "trigger_type,message,expected,approval_trigger",
     [
@@ -60,7 +78,7 @@ def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_
 
     mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
     context = {**_context(), "trigger_type": trigger_type, "task_reference": "agent-a"}
-    result = execute_agent({"agent_id": skill.id, "message": message, "prompt": "附加提示", "__bklite_context": context})
+    result = execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})
     assert result == {"message": "处理完成"}
     assert seen.get("unattended", False) is expected
     assert seen["trigger_type"] == approval_trigger
@@ -234,7 +252,6 @@ def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker)
         {
             "agent_id": skill.id,
             "message": "inspect host",
-            "prompt": "return a summary",
             "knowledge_files": [{"kind": "workflow_agent_knowledge", "token": "signed"}],
             "memory_context": "known context",
             "__bklite_context": _context(),
