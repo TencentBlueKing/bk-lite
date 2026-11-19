@@ -6,7 +6,7 @@ import pytest
 from django.utils import timezone
 
 from apps.itsm.flowable.validator import validate_design
-from apps.itsm.models import Handover, TicketLog, TicketTask
+from apps.itsm.models import Handover, TicketLog, TicketStatus, TicketTask
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.tests.test_review_regressions import request
 from apps.itsm.tests.test_review_regressions import sample as sample_ticket
@@ -301,3 +301,103 @@ def test_cannot_urge_as_a_task_assignee(approval_ticket):
         dispatch.assert_not_called()
         assert operate_ticket(request("post", {"action": "urge", "opinion": "请尽快处理"}, "owner"), ticket.id).status_code == 200
         dispatch.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("node_type", "display"),
+    [
+        ("approval", None),
+        ("approval", {"action": "approve"}),
+        ("approval", ["approve"]),
+        ("approval", [{"action": 1}]),
+        ("approval", [{"action": "approve"}, {"action": "approve"}]),
+        ("approval", [{"action": "unsupported"}]),
+        ("approval", [{"action": "submit"}]),
+        ("approval", [{"action": "reject"}]),
+        ("start", [{"action": "approve"}]),
+        ("approval", [{"action": "approve", "label": 1}]),
+        ("approval", [{"action": "approve", "label": "复核\n通过"}]),
+        ("approval", [{"action": "approve", "label": "审" * 25}]),
+    ],
+)
+def test_publish_rejects_invalid_operation_presentation(node_type, display):
+    design = {
+        "nodes": [
+            {"id": "start", "type": "start"},
+            {"id": "node", "type": node_type, "name": "复核节点", "fallback": "admin", "actions": ["approve"], "action_display": display},
+            {"id": "end", "type": "end"},
+        ],
+        "edges": [{"from": "start", "to": "node"}, {"from": "node", "to": "end"}],
+    }
+    assert any("复核节点" in error and "按钮" in error for error in validate_design(design))
+
+
+def test_detail_projects_ordered_button_names_after_permission_and_return_checks(approval_ticket):
+    ticket, task = approval_ticket
+    configure(
+        ticket,
+        actions=["approve", "reject", "return", "urge", "suspend"],
+        required_opinion_actions=["approve"],
+        action_display=[
+            {"action": "return", "label": "返回经办"},
+            {"action": "reject", "label": "  "},
+            {"action": "approve", "label": "  审核通过  "},
+            {"action": "urge", "label": "提醒审批"},
+            {"action": "suspend", "label": "暂停审批"},
+        ],
+    )
+    detail = response_data(ticket_detail(request(username="handler"), ticket.id))
+    assert detail["tasks"][0].get("action_display") == [
+        {"action": "reject"},
+        {"action": "approve", "label": "审核通过"},
+        {"action": "suspend", "label": "暂停审批"},
+    ]
+    assert detail["tasks"][0]["required_opinion_actions"] == ["approve"]
+    assert detail.get("action_display") == [{"action": "suspend", "label": "暂停审批"}]
+
+    requester = response_data(ticket_detail(request(username="owner"), ticket.id))
+    assert requester.get("action_display") == [{"action": "urge", "label": "提醒审批"}]
+    assert not requester["tasks"][0]["allowed_actions"]
+    readonly = response_data(ticket_detail(request(username="handler", permissions=["ticket-View"]), ticket.id))
+    assert not readonly.get("action_display")
+    assert not readonly["tasks"][0].get("action_display")
+
+    with patch("apps.itsm.views.tickets._service", return_value=TicketService()):
+        without_opinion = operate_ticket(request("post", {"action": "approve", "task_id": task.id}, "handler"), ticket.id)
+        assert without_opinion.status_code == 400
+        assert not ticket.logs.filter(action="approve").exists()
+        approved = operate_ticket(request("post", {"action": "approve", "task_id": task.id, "opinion": "核查完成"}, "handler"), ticket.id)
+        assert approved.status_code == 200
+    assert ticket.logs.get(action="approve").message == "核查完成"
+
+
+def test_parallel_tasks_use_own_presentation_and_resume_keeps_default_name(approval_ticket):
+    ticket, _ = approval_ticket
+    configure(
+        ticket,
+        actions=["approve", "suspend", "terminate"],
+        action_display=[{"action": "approve", "label": "批准立项"}, {"action": "suspend", "label": "暂停立项"}, {"action": "terminate"}],
+    )
+    version = ticket.workflow_version
+    version.design["nodes"].append(
+        {
+            "id": "secondary",
+            "type": "handle",
+            "actions": ["submit", "suspend"],
+            "action_display": [{"action": "submit", "label": "完成评估"}, {"action": "suspend", "label": "暂停评估"}],
+        }
+    )
+    version.save(update_fields=["design"])
+    TicketTask.objects.create(ticket=ticket, node_id="secondary", assignee="handler")
+
+    detail = response_data(ticket_detail(request(username="handler"), ticket.id))
+    assert {task["node_id"]: task.get("action_display") for task in detail["tasks"]} == {
+        "approval_1": [{"action": "approve", "label": "批准立项"}, {"action": "suspend", "label": "暂停立项"}, {"action": "terminate"}],
+        "secondary": [{"action": "submit", "label": "完成评估"}, {"action": "suspend", "label": "暂停评估"}],
+    }
+    TicketStatus.objects.get_or_create(key="suspended", defaults={"name": "已挂起"})
+    with patch("apps.itsm.views.tickets._service", return_value=TicketService()):
+        assert operate_ticket(request("post", {"action": "suspend"}, "handler"), ticket.id).status_code == 200
+    suspended = response_data(ticket_detail(request(username="handler"), ticket.id))
+    assert suspended.get("action_display") == [{"action": "resume"}, {"action": "terminate"}]
+    assert all(not task["can_operate"] for task in suspended["tasks"])

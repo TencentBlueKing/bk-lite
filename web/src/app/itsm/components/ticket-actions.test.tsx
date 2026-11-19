@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TicketActions } from './ticket-actions';
 import type { TicketDetail } from '../types';
@@ -105,4 +105,42 @@ it('回退选择已有完成记录的节点，权限刷新后不再允许确认'
     opinion: '需补充内容',
     return_node_id: 'submit',
   }));
+});
+
+it('按照配置顺序渲染获准操作，重命名同意仍需填写意见并提交原动作', async () => {
+  const operate = vi.fn().mockResolvedValue(true);
+  const task = { ...ticket.tasks[0], allowed_actions: ['approve', 'reject', 'return'], required_opinion_actions: ['approve'], action_display: [
+    { action: 'approve', label: '批准申请' }, { action: 'transfer', label: '未获权限' },
+    { action: 'return', label: '没有可退节点' }, { action: 'reject', label: '拒绝申请' },
+  ] };
+  render(<TicketActions ticket={{ ...ticket, tasks: [task] }} busy={false} operate={operate} />);
+  const bar = screen.getByRole('group', { name: '工单操作' });
+  expect(within(bar).getAllByRole('button').map(button => button.textContent)).toEqual(['批准申请', '拒绝申请']);
+  fireEvent.click(within(bar).getByRole('button', { name: '批准申请' }));
+  expect(await screen.findByRole('dialog', { name: '批准申请工单' })).toBeTruthy();
+  const confirm = screen.getByRole('button', { name: '确认批准申请' });
+  fireEvent.change(screen.getByLabelText('处理意见'), { target: { value: '   ' } });
+  expect(confirm).toHaveProperty('disabled', true);
+  fireEvent.click(confirm);
+  expect(operate).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('处理意见'), { target: { value: '核验通过' } });
+  fireEvent.click(confirm);
+  await waitFor(() => expect(operate).toHaveBeenCalledWith('approve', task, { opinion: '核验通过' }));
+});
+
+it('切换并行任务后仅使用当前任务配置，只读提单人的全局按钮使用工单配置', async () => {
+  const first = { ...ticket.tasks[0], action_display: [{ action: 'approve', label: '初审通过' }, { action: 'withdraw', label: '撤回初审工单' }] };
+  const second = { ...ticket.tasks[0], id: 3, node_name: '服务复核', action_display: [{ action: 'approve', label: '复核通过' }] };
+  const record = { ...ticket, tasks: [first, second], allowed_actions: ['withdraw'], action_display: [{ action: 'withdraw', label: '撤回对外申请' }] };
+  const { rerender } = render(<TicketActions ticket={record} busy={false} operate={vi.fn()} />);
+  const bar = screen.getByRole('group', { name: '工单操作' });
+  expect(within(bar).getByRole('button', { name: '初审通过' })).toBeTruthy();
+  expect(within(bar).getByRole('button', { name: '撤回初审工单' })).toBeTruthy();
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '处理任务' }));
+  fireEvent.click(screen.getByText('服务复核'));
+  expect(within(bar).getByRole('button', { name: '复核通过' })).toBeTruthy();
+  expect(within(bar).queryByRole('button', { name: /撤回初审工单|撤回对外申请/ })).toBeNull();
+  rerender(<TicketActions ticket={{ ...record, tasks: record.tasks.map(task => ({ ...task, can_operate: false })) }} busy={false} operate={vi.fn()} />);
+  expect(within(bar).getByRole('button', { name: '撤回对外申请' })).toBeTruthy();
+  expect(within(bar).queryByRole('button', { name: /初审通过|复核通过/ })).toBeNull();
 });

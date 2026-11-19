@@ -4,11 +4,12 @@ import { Button, Dropdown, Input, Select } from 'antd';
 import dayjs from 'dayjs';
 import { useId, useState } from 'react';
 import { ItsmModal as Modal } from '@/app/itsm/components/interaction-surfaces';
+import { displayActionLabel, ticketActionLabel } from '../constants/node-catalog';
 import { UserSelector } from './user-selector';
 import type { TicketDetail, TicketTaskItem } from '../types';
 
-const LABELS: Record<string, string> = { submit: '提交', approve: '同意', reject: '驳回', claim: '认领', save: '保存', return: '回退', transfer: '转交', withdraw: '撤回', urge: '催办', suspend: '挂起', resume: '恢复', terminate: '终止', close: '关闭', reopen: '重新打开', respond: '响应' };
 const IMMEDIATE_ACTIONS = new Set(['claim', 'save', 'respond', 'resume', 'urge']);
+const DANGER_ACTIONS = new Set(['reject', 'terminate', 'close']);
 
 export interface OperationInput {
   return_node_id?: string;
@@ -24,6 +25,7 @@ interface Props {
 
 interface PendingOperation {
   action: string;
+  label: string;
   ticketId: number;
   taskId?: number;
 }
@@ -57,32 +59,41 @@ export function TicketActions({ ticket, busy, operate }: Props) {
     && (action !== 'transfer' || target.length > 0)
     && (action !== 'return' || returnOptions.some(option => option.value === returnTarget));
 
-  const select = (value: string) => {
+  const select = (value: string, label: string) => {
     const selectedTask = taskActions.includes(value) ? task : undefined;
     const requiredActions = selectedTask ? selectedTask.required_opinion_actions : ticket.required_opinion_actions;
     if (IMMEDIATE_ACTIONS.has(value) && !requiredActions?.includes(value)) {
       void operate(value, selectedTask);
       return;
     }
-    setPending({ action: value, ticketId: ticket.id, taskId: selectedTask?.id });
+    setPending({ action: value, label, ticketId: ticket.id, taskId: selectedTask?.id });
     setTarget([]);
     setOpinion('');
     setReturnTarget(undefined);
   };
 
   const primary = taskActions.includes('approve') ? 'approve' : taskActions.includes('submit') ? 'submit' : '';
-  const visible = [...taskActions.filter(value => ['reject', 'return', 'save'].includes(value)), ...sideActions.filter(value => value === 'resume')];
-  const more = Array.from(new Set([...taskActions, ...sideActions])).filter(value => value !== primary && !visible.includes(value));
+  const available = new Set([...taskActions, ...sideActions]);
+  const configured = ((task ? task.action_display : ticket.action_display) ?? []).filter(row => available.has(row.action));
+  const configuredActions = new Set(configured.map(row => row.action));
+  const visible = [...taskActions.filter(value => ['reject', 'return', 'save'].includes(value)), ...sideActions.filter(value => value === 'resume')]
+    .filter(value => !configuredActions.has(value));
+  const more = [...available].filter(value => !configuredActions.has(value) && value !== primary && !visible.includes(value));
+  const renderButton = (value: string, label = ticketActionLabel(value)) => (
+    <Button key={value} type={value === primary ? 'primary' : 'default'} danger={DANGER_ACTIONS.has(value)}
+      loading={value === primary && busy} disabled={busy} onClick={() => select(value, label)}>{label}</Button>
+  );
 
   return <>
-    <div className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label="工单操作" className="flex flex-wrap items-center gap-2">
       {tasks.length > 1 ? <Select aria-label="处理任务" value={task?.id} onChange={setTaskId} options={tasks.map(item => ({ value: item.id, label: item.node_name || item.node_id }))} /> : null}
-      {visible.map(value => <Button key={value} disabled={busy} danger={value === 'reject'} onClick={() => select(value)}>{LABELS[value] || value}</Button>)}
-      {more.length ? <Dropdown disabled={busy} menu={{ items: more.map(value => ({ key: value, label: LABELS[value] || value, danger: ['terminate', 'close'].includes(value), onClick: () => select(value) })) }}><Button disabled={busy}>更多操作</Button></Dropdown> : null}
-      {primary ? <Button type="primary" loading={busy} onClick={() => select(primary)}>{LABELS[primary]}</Button> : null}
+      {configured.map(row => renderButton(row.action, displayActionLabel(row, ticketActionLabel)))}
+      {visible.map(value => renderButton(value))}
+      {more.length ? <Dropdown disabled={busy} menu={{ items: more.map(value => ({ key: value, label: ticketActionLabel(value), danger: DANGER_ACTIONS.has(value), onClick: () => select(value, ticketActionLabel(value)) })) }}><Button disabled={busy}>更多操作</Button></Dropdown> : null}
+      {primary && !configuredActions.has(primary) ? renderButton(primary) : null}
     </div>
-    <Modal formValue={{ target, opinion, returnTarget }} title={`${LABELS[action] || ''}工单`} open={Boolean(pending)}
-      confirmLoading={busy} okText={`确认${LABELS[action] || '操作'}`} cancelText="取消"
+    <Modal formValue={{ target, opinion, returnTarget }} title={`${pending?.label || ''}工单`} open={Boolean(pending)}
+      confirmLoading={busy} okText={`确认${pending?.label || '操作'}`} cancelText="取消"
       onCancel={() => setPending(undefined)} okButtonProps={{ disabled: !canConfirm }}
       onOk={async () => {
         if (!canConfirm) return;
@@ -95,6 +106,7 @@ export function TicketActions({ ticket, busy, operate }: Props) {
       }}>
       <div className="flex flex-col gap-4 py-3">
         {pending && !canOperate && <span role="alert">当前操作已不可用，请刷新工单。</span>}
+        {pending && pending.label !== ticketActionLabel(action) && <div className="text-sm text-[var(--color-text-3)]">操作类型：{ticketActionLabel(action)}</div>}
         {canOperate && confirmationTask && <div className="text-sm text-[var(--color-text-3)]">当前步骤：{confirmationTask.node_name || confirmationTask.node_id}</div>}
         {canOperate && action === 'transfer' && confirmationTask && <div className="flex flex-col gap-2">
           <label htmlFor={recipientInputId}>接收人</label>

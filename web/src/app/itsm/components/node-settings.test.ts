@@ -36,3 +36,15 @@ it('节点的必填意见按钮往返保存，清空后不会恢复旧配置', (
   graph.nodes[0].data.requiredOpinionActions = [];
   expect(designFromCanvas(graph.nodes, []).nodes[0].required_opinion_actions).toEqual([]);
 });
+
+it('发布草稿保存按钮顺序及名称，保留隐式启用规则', () => {
+  const design: FlowDesign = { nodes: [{ id: 'approval', type: 'approval', name: '审批',
+    action_display: [{ action: 'approve', label: '批准申请' }, { action: 'reject' }],
+  }], edges: [] };
+  const graph = canvasFromDesign(design);
+  expect(graph.nodes[0].data.actionDisplay).toEqual(design.nodes[0].action_display);
+  graph.nodes[0].data.actionDisplay = [{ action: 'reject' }, { action: 'approve', label: '验收通过' }];
+  expect(designFromCanvas(graph.nodes, []).nodes[0]).toEqual({ ...design.nodes[0],
+    action_display: [{ action: 'reject' }, { action: 'approve', label: '验收通过' }],
+  });
+});

@@ -104,3 +104,43 @@ it('设置单个按钮的意见必填，停用按钮后清除该设置', async (
     requiredOpinionActions: ['approve'],
   })));
 });
+
+it('在同一节点编辑按钮名称与顺序，预览生效并移除停用按钮的展示配置', async () => {
+  const change = vi.fn();
+  render(<NodeSettings data={{ ...data, actions: ['approve', 'reject', 'return'], requiredOpinionActions: ['approve'] }} fields={fields} onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: '配置节点' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '操作按钮' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '同意按钮名称' }), { target: { value: '  批准申请  ' } });
+  fireEvent.change(screen.getByRole('textbox', { name: '回退按钮名称' }), { target: { value: '发回补全' } });
+  fireEvent.click(screen.getByRole('button', { name: '上移拒绝' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '回退' }));
+  fireEvent.click(screen.getByRole('tab', { name: '节点预览' }));
+  const preview = screen.getByRole('group', { name: '节点操作预览' });
+  expect(within(preview).getAllByRole('button').map(button => button.textContent?.replace(/\s/g, ''))).toEqual(['驳回', '批准申请']);
+  expect(screen.getByText('批准申请前需填写处理意见。')).toBeTruthy();
+  expect(change).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '应用到流程草稿' }));
+  await waitFor(() => expect(change).toHaveBeenCalledWith(expect.objectContaining({
+    actions: ['approve', 'reject'],
+    actionDisplay: [{ action: 'reject' }, { action: 'approve', label: '批准申请' }],
+    requiredOpinionActions: ['approve'],
+  })));
+});
+
+it('只改旧节点名称时保留隐式启用规则，清空名称后恢复默认名称', async () => {
+  const change = vi.fn();
+  render(<NodeSettings data={data} fields={fields} onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: '配置节点' }));
+  fireEvent.click(await screen.findByRole('tab', { name: '操作按钮' }));
+  const name = screen.getByRole('textbox', { name: '同意按钮名称' });
+  fireEvent.change(name, { target: { value: '通过审批' } });
+  fireEvent.change(name, { target: { value: ' ' } });
+  fireEvent.click(screen.getByRole('tab', { name: '节点预览' }));
+  const preview = screen.getByRole('group', { name: '节点操作预览' });
+  expect(within(preview).getByRole('button', { name: /同\s*意/ })).toBeTruthy();
+  expect(within(preview).queryByRole('button', { name: '通过审批' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '应用到流程草稿' }));
+  await waitFor(() => expect(change).toHaveBeenCalled());
+  expect(change.mock.calls[0][0].actions).toBeUndefined();
+  expect(change.mock.calls[0][0].actionDisplay).toContainEqual({ action: 'approve' });
+});

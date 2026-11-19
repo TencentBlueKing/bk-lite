@@ -1,3 +1,5 @@
+import type { NodeActionDisplay } from '../types';
+
 export interface CatalogNode {
   type: string;
   label: string;
@@ -87,3 +89,22 @@ export const NODE_ACTIONS = [
   { label: '重试', value: 'retry' },
   { label: '手动执行', value: 'manual_run' },
 ];
+
+const nodeActionLabels = new Map(NODE_ACTIONS.map(({ value, label }) => [value, label]));
+const ticketActionLabels = new Map(Object.entries({ reject: '驳回', save: '保存', withdraw: '撤回', urge: '催办', suspend: '挂起', resume: '恢复', reopen: '重新打开' }));
+
+export const nodeActionLabel = (action: string) => nodeActionLabels.get(action) ?? action;
+export const ticketActionLabel = (action: string) => ticketActionLabels.get(action) ?? nodeActionLabel(action);
+export const displayActionLabel = ({ action, label }: NodeActionDisplay, defaultLabel = nodeActionLabel) => label?.trim() || defaultLabel(action);
+
+export function readNodeActionDisplay(value: unknown): NodeActionDisplay[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(row => typeof row?.action === 'string' && (row.label === undefined || typeof row.label === 'string'));
+}
+
+export function orderedNodeActions(actions: string[], display: NodeActionDisplay[] = []) {
+  const presentation = new Map(display.map(row => [row.action, row]));
+  const order = new Set([...presentation.keys(), ...actions]);
+  const enabled = new Set(actions);
+  return [...order].filter(action => enabled.has(action)).map(action => presentation.get(action) ?? { action });
+}

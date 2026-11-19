@@ -3,6 +3,7 @@ TASK_ACTIONS = {"submit", "approve", "reject", "claim", "save", "return", "trans
 SIDE_OPINION_ACTIONS = {"withdraw", "urge", "suspend", "close", "terminate"}
 HUMAN_NODE_TYPES = {"submit", "approval", "handle", "manual", "manual_trigger", "subprocess_handle"}
 OPINION_LENGTH_LIMIT = 2000
+ACTION_LABEL_LENGTH_LIMIT = 24
 
 
 class NodeActionValidationError(ValueError):
@@ -47,18 +48,62 @@ def _required_opinions(node):
     return {action for action in settings if isinstance(action, str)} if isinstance(settings, list) else set()
 
 
+def _enabled_node_actions(node):
+    node_type = node.get("type")
+    supported = _supported_task_actions(node_type) | SIDE_OPINION_ACTIONS if node_type in HUMAN_NODE_TYPES else set()
+    enabled = node.get("actions")
+    return supported if enabled is None else supported.intersection(enabled)
+
+
+def configured_action_display(node):
+    display = node.get("action_display", [])
+    if not isinstance(display, list):
+        raise ValueError("按钮展示设置必须为列表")
+    if not display:
+        return []
+    enabled = _enabled_node_actions(node)
+    seen = set()
+    entries = []
+    for entry in display:
+        if not isinstance(entry, dict) or not isinstance(entry.get("action"), str) or entry.keys() - {"action", "label"}:
+            raise ValueError("按钮展示设置只能包含动作标识和名称")
+        action = entry["action"]
+        if action not in enabled or action in seen:
+            raise ValueError("按钮展示设置只能使用当前节点已启用的按钮，且不可重复")
+        label = entry.get("label", "")
+        if not isinstance(label, str):
+            raise ValueError("按钮名称必须为文本")
+        label = label.strip()
+        if len(label) > ACTION_LABEL_LENGTH_LIMIT or len(label.splitlines()) > 1:
+            raise ValueError(f"按钮名称须为不超过 {ACTION_LABEL_LENGTH_LIMIT} 字的单行文本")
+        seen.add(action)
+        entries.append({"action": action, "label": label} if label else {"action": action})
+    return entries
+
+
+def node_action_display(node, available):
+    if not available:
+        return []
+    try:
+        entries = configured_action_display(node)
+    except ValueError:
+        return []
+    available_ids = {_side_action_key(action): action for action in available}
+    result = []
+    for entry in entries:
+        action = available_ids.get(entry["action"])
+        if action:
+            result.append(entry if action == entry["action"] else {"action": action})
+    return result
+
+
 def validate_opinion_settings(node):
     configured = node.get("required_opinion_actions", [])
     if not isinstance(configured, list) or any(not isinstance(action, str) for action in configured):
         raise ValueError("处理意见必填设置必须是按钮列表")
     if not configured:
         return
-    node_type = node.get("type")
-    supported = _supported_task_actions(node_type) | SIDE_OPINION_ACTIONS if node_type in HUMAN_NODE_TYPES else set()
-    enabled = node.get("actions")
-    if enabled is not None:
-        supported.intersection_update(enabled)
-    if len(set(configured)) != len(configured) or not set(configured).issubset(supported):
+    if len(set(configured)) != len(configured) or not set(configured).issubset(_enabled_node_actions(node)):
         raise ValueError("处理意见必填设置只能使用当前节点已启用的按钮，且不可重复")
 
 

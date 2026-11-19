@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WorkflowPreview } from './workflow-preview';
+import type { DesignNode } from '../constants/demo-flow';
 vi.mock('./form-renderer',()=>({FormRenderer:({fieldPerm}: {fieldPerm:Record<string,string>})=><div data-testid="permissions">{JSON.stringify(fieldPerm)}</div>}));
 Object.defineProperty(window,'matchMedia',{writable:true,value:()=>({matches:false,addListener:vi.fn(),removeListener:vi.fn()})});
 afterEach(cleanup);
@@ -28,4 +29,20 @@ it('切换节点时预览该节点的处理意见要求', () => {
   expect(screen.queryByText('同意前需填写处理意见。')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '预览审批' }));
   expect(screen.getByText('同意前需填写处理意见。')).toBeTruthy();
+});
+
+it('按保存的顺序预览已启用按钮和自定义名称', () => {
+  render(<WorkflowPreview schema={{ version: 1, fields: [] }} design={{ nodes: [{
+    id: 'a', type: 'approval', name: '审批', actions: ['approve', 'reject'], required_opinion_actions: ['approve'],
+    action_display: [{ action: 'reject', label: '不予受理' }, { action: 'return', label: '不可见的操作' }, { action: 'approve', label: '批准申请' }],
+  }], edges: [] }} />);
+  expect(screen.getByLabelText('节点操作预览').textContent).toBe('不予受理批准申请');
+  expect(screen.getByText('批准申请前需填写处理意见。')).toBeTruthy();
+});
+
+it.each([{}, [null, { action: 'approve', label: 123 }]])('可预览含未校验展示配置的导入草稿 %#', actionDisplay => {
+  render(<WorkflowPreview schema={{ version: 1, fields: [] }} design={{ nodes: [{
+    id: 'a', type: 'approval', name: '审批', action_display: actionDisplay as DesignNode['action_display'],
+  }], edges: [] }} />);
+  expect(screen.getByLabelText('节点操作预览').textContent).toBe('同意拒绝');
 });

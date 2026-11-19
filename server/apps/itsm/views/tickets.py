@@ -12,7 +12,7 @@ from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
-from apps.itsm.services.ticket.actions import node_actions, node_required_opinions, side_action_enabled, side_required_opinions
+from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
@@ -247,7 +247,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
             allowed_actions.extend(["resume" if status_key == "suspended" else "suspend", "close", "terminate"])
             if status_key == "new":
                 allowed_actions.append("respond")
-    allowed_actions = [action for action in allowed_actions if side_action_enabled(design, tasks, action)]
+    allowed_actions = [action for action in allowed_actions if can_operate and side_action_enabled(design, tasks, action)]
     history = ticket_history(ticket, tasks, design)
     active_executions = {
         execution.id: execution
@@ -285,14 +285,18 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
                 "field_perm": node.get("field_perm", {}),
                 "can_operate": editable,
                 "allowed_actions": available,
+                "action_display": node_action_display(node, [*available, *allowed_actions]) if editable else [],
                 "required_opinion_actions": node_required_opinions(node, available),
                 "return_targets": targets,
             }
         )
 
+    action_task = own_task or (pending[0] if pending else None)
+    action_node = _find_node(design, node_id=action_task.node_id) if action_task else {}
     return {
         "history": history,
-        "allowed_actions": allowed_actions if can_operate else [],
+        "allowed_actions": allowed_actions,
+        "action_display": node_action_display(action_node, allowed_actions),
         "required_opinion_actions": side_required_opinions(design, tasks, allowed_actions) if can_operate else [],
         "can_survey": can_operate and ticket.creator == username and status_key == "finished",
         "id": ticket.id,

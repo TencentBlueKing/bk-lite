@@ -1,4 +1,5 @@
-import type { ConditionGroup } from '../types';
+import type { ConditionGroup, NodeActionDisplay } from '../types';
+import { readNodeActionDisplay } from './node-catalog';
 
 export type TransferScope =
   | { type: 'users'; users: string[] }
@@ -12,6 +13,7 @@ export interface DesignNode {
   multi?: { mode: string };
   fallback?: string;
   actions?: string[];
+  action_display?: NodeActionDisplay[];
   required_opinion_actions?: string[];
   transfer_scope?: TransferScope | null;
   field_perm?: Record<string, string>;
@@ -40,6 +42,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   orSign: boolean;
   multiMode?: string;
   actions?: string[];
+  actionDisplay?: NodeActionDisplay[];
   requiredOpinionActions?: string[];
   transferScope?: TransferScope | null;
   notify?: boolean;
@@ -110,6 +113,7 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
       multiMode: node.multi?.mode,
       fieldPerm: node.field_perm,
       actions: node.actions,
+      actionDisplay: node.action_display === undefined ? undefined : readNodeActionDisplay(node.action_display),
       requiredOpinionActions: node.required_opinion_actions,
       transferScope: node.transfer_scope,
       auto: node.auto,
@@ -146,6 +150,9 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
     }
     if (node.data.actions !== undefined) {
       designNode.actions = node.data.actions;
+    }
+    if (node.data.actionDisplay !== undefined) {
+      designNode.action_display = node.data.actionDisplay;
     }
     if (node.data.requiredOpinionActions !== undefined) {
       designNode.required_opinion_actions = node.data.requiredOpinionActions;

@@ -138,8 +138,14 @@ export interface TicketReturnTarget {
   completed_at: string;
 }
 
+export interface NodeActionDisplay {
+  action: string;
+  label?: string;
+}
+
 export interface TicketTaskItem {
   allowed_actions?: string[];
+  action_display?: NodeActionDisplay[];
   required_opinion_actions?: string[];
   return_targets?: TicketReturnTarget[];
   id: number;
@@ -250,6 +256,7 @@ export interface TicketDetail {
   created_at?: string;
   workflow_name?: string;
   allowed_actions?: string[];
+  action_display?: NodeActionDisplay[];
   required_opinion_actions?: string[];
   can_survey?: boolean;
   id: number;

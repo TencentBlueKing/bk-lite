@@ -4,7 +4,7 @@ import { CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { FormRenderer } from './form-renderer';
 import { NodeGlyph } from './node-glyph';
-import { NODE_ACTIONS, NODE_PALETTE } from '../constants/node-catalog';
+import { NODE_PALETTE, displayActionLabel, nodeActionLabel, orderedNodeActions, readNodeActionDisplay, ticketActionLabel } from '../constants/node-catalog';
 import type { FlowDesign } from '../constants/demo-flow';
 import type { FormSchema } from '../types';
 
@@ -17,8 +17,11 @@ export function WorkflowPreview({ schema, design }: { schema: FormSchema; design
   const interactive = node && ['submit','approval','manual','handle','manual_trigger','subprocess_handle'].includes(node.type);
   const requiredOpinions = node?.required_opinion_actions ?? [];
   const defaultActions = NODE_PALETTE.find(item => item.type === node?.type)?.actions ?? [];
-  const actions = node?.actions ?? Array.from(new Set([...defaultActions, ...requiredOpinions]));
-  const requiredLabels = NODE_ACTIONS.filter(option => actions.includes(option.value) && requiredOpinions.includes(option.value)).map(option => option.label);
+  const configured = readNodeActionDisplay(node?.action_display);
+  const actions = node?.actions ?? [...defaultActions, ...requiredOpinions, ...configured.map(row => row.action)];
+  const previewLabel = configured.length ? ticketActionLabel : nodeActionLabel;
+  const displayActions = orderedNodeActions(actions, configured).map(row => ({ ...row, label: displayActionLabel(row, previewLabel) }));
+  const requiredLabels = displayActions.filter(row => requiredOpinions.includes(row.action)).map(row => row.label);
   return <section aria-label="流程预览" className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
       <div><span className="text-sm font-medium">节点预览</span><p className="mt-1 text-xs text-[var(--color-text-3)]">仅预览配置，不会创建工单或执行流程。</p></div>
@@ -34,7 +37,7 @@ export function WorkflowPreview({ schema, design }: { schema: FormSchema; design
           <div className="mb-5 border-b border-[var(--color-border)] pb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">{node && <NodeGlyph type={node.type} compact />}<span className="text-sm font-semibold">{node ? nodeName(node) : '尚未配置节点'}</span><Tag>{NODE_PALETTE.find(item=>item.type===node?.type)?.label || '节点'}</Tag></div>
-              <div aria-label="节点操作预览" className="flex flex-wrap gap-1">{actions.map(action=><Tag key={action}>{NODE_ACTIONS.find(item=>item.value===action)?.label || action}</Tag>)}</div>
+              <div aria-label="节点操作预览" className="flex flex-wrap gap-1">{displayActions.map(row => <Tag key={row.action}>{row.label}</Tag>)}</div>
             </div>
             {requiredLabels.length > 0 && <p className="mt-2 text-right text-xs text-[var(--color-text-3)]">{requiredLabels.join('、')}前需填写处理意见。</p>}
           </div>
