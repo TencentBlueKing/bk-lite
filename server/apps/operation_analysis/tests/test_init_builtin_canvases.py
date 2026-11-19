@@ -118,7 +118,7 @@ def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
         "3D机房大屏",
         "3D应用大屏",
         "应用拓扑大屏",
-        "监控值班总览",
+        "监控概况大屏",
         "网络设备运行汇总",
     ]
     duty = next(screen for screen in payload["screens"] if screen["key"] == "screen::监控值班总览_内置")
