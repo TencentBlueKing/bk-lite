@@ -44,6 +44,13 @@ const emptyUpstreamHint = (
   ) {
     return classificationHint;
   }
+  if (
+    inputConfig.control === 'select'
+    && inputConfig.optionsSource.type === 'dynamic'
+    && inputConfig.optionsSource.emptyUpstreamHintKey === 'dashboard.selectMonitorObjectFirst'
+  ) {
+    return translate('dashboard.selectMonitorObjectFirst');
+  }
   return translate('paramInput.dynamic.upstreamRequired');
 };
 

@@ -3560,6 +3560,68 @@
     ]
   },
   {
+    "key": "监控对象分类::monitor/list_monitor_object_type_options",
+    "name": "监控对象分类（选项）",
+    "desc": "全部分类，供下拉使用。本身不直接出图。",
+    "rest_api": "monitor/list_monitor_object_type_options",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+      {
+        "key": "id",
+        "title": "分类 ID",
+        "value_type": "string"
+      },
+      {
+        "key": "display_name",
+        "title": "展示名",
+        "value_type": "string",
+        "description": "当前语言下的展示名。没有译文时用库里的名称"
+      }
+    ]
+  },
+  {
+    "key": "分类下监控对象::monitor/list_monitor_objects_by_type",
+    "name": "分类下监控对象（选项）",
+    "desc": "传入一个或多个分类，返回这些分类下的监控对象，供下拉使用。不传分类则返回空。本身不直接出图。",
+    "rest_api": "monitor/list_monitor_objects_by_type",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [],
+    "params": [
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "desc": "要列出对象的分类。不传则返回空。"
+      }
+    ],
+    "field_schema": [
+      {
+        "key": "id",
+        "title": "监控对象 ID",
+        "value_type": "string"
+      },
+      {
+        "key": "name",
+        "title": "监控对象",
+        "value_type": "string"
+      },
+      {
+        "key": "display_name",
+        "title": "展示名",
+        "value_type": "string",
+        "description": "当前语言下的展示名。没有译文时用库里的名称"
+      }
+    ]
+  },
+  {
     "key": "监控指标列表::monitor/monitor_metrics",
     "name": "监控指标列表（选项）",
     "desc": "所选监控对象下的指标，供单指标查询使用，本身不直接出图",
@@ -4904,7 +4966,7 @@
   {
     "key": "监控实例数量统计::monitor/query_monitor_instance_counts",
     "name": "监控实例数量统计",
-    "desc": "统计当前组织权限内、所选监控对象下的实例数量，固定返回一行 instance_count。监控对象只能选一个。状态是启用、停用或全部。不返回实例明细，没有分页和排序。",
+    "desc": "统计当前组织权限内的实例数量，固定返回一行 instance_count。分类和监控对象都可以不选，不选就是全部实例，也可以多选。只选分类时包含该分类下的全部对象；分类和对象都选时，对象必须属于这些分类。状态是启用、停用或全部。不返回实例明细，没有分页和排序。",
     "rest_api": "monitor/query_monitor_instance_counts",
     "tag": [
       "monitor"
@@ -4915,22 +4977,48 @@
     ],
     "params": [
       {
-        "name": "monitor_object_id",
+        "name": "monitor_object_type_ids",
         "type": "string",
-        "value": "",
-        "required": true,
-        "alias_name": "监控对象",
+        "value": [],
+        "alias_name": "分类",
         "filterType": "params",
         "inputConfig": {
           "control": "select",
+          "multiple": true,
           "optionsSource": {
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "monitor/list_monitor_object_type_options"
             },
             "labelField": "display_name",
             "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_objects_by_type"
+            },
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {
+              "monitor_object_type_ids": {
+                "ref": "monitor_object_type_ids"
+              }
+            },
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
           }
         }
       },
@@ -4977,7 +5065,158 @@
         "key": "instance_count",
         "title": "实例数量",
         "value_type": "number",
-        "description": "所选监控对象下、当前状态范围内的实例数量"
+        "description": "当前组织权限内、所选分类和对象范围内的实例数量。都不选就是全部实例"
+      }
+    ]
+  },
+  {
+    "key": "监控实例分布::monitor/query_monitor_instance_distribution",
+    "name": "监控实例分布",
+    "desc": "按分类或对象统计当前组织权限内的实例数。分类、对象都可以不选，表示该维度下的全部。指定了对象就必须先指定分类，且对象必须属于这些分类。未指定范围时不返回实例数为 0 的分组；指定了分类或对象时保留 0。没有分类的对象不进入分类分布，在对象分布里单独成行。子对象按自己的实例计数，不并入父对象。隐藏对象同样计数。固定按实例数从高到低，数量相同再按目录顺序。不填返回条数则返回全部分组，超过 500 组失败。填写后只返回排序后的前 N 条，最多 500。不支持页码和排序参数。",
+    "rest_api": "monitor/query_monitor_instance_distribution",
+    "tag": [
+      "monitor"
+    ],
+    "chart_type": [
+      "bar",
+      "pie",
+      "topN"
+    ],
+    "params": [
+      {
+        "name": "group_by",
+        "type": "string",
+        "value": "",
+        "required": true,
+        "alias_name": "分布维度",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "分类",
+                "value": "monitor_object_type"
+              },
+              {
+                "label": "对象",
+                "value": "monitor_object"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_object_type_options"
+            },
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "desc": "先选分类后才出现。不选表示所选分类下的全部对象。",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_objects_by_type"
+            },
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {
+              "monitor_object_type_ids": {
+                "ref": "monitor_object_type_ids"
+              }
+            },
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {
+                "label": "全部",
+                "value": "all"
+              },
+              {
+                "label": "启用",
+                "value": "active"
+              },
+              {
+                "label": "停用",
+                "value": "inactive"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "page_size",
+        "type": "number",
+        "value": null,
+        "alias_name": "返回条数",
+        "filterType": "params",
+        "desc": "不填返回全部分组，超过 500 组失败。填写后只返回排序后的前 N 条，最多 500。"
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "organization"
+        }
+      }
+    ],
+    "field_schema": [
+      {
+        "key": "group_id",
+        "title": "分组标识",
+        "value_type": "string",
+        "description": "分类 ID 或监控对象 ID"
+      },
+      {
+        "key": "group_value",
+        "title": "分组名称",
+        "value_type": "string",
+        "description": "当前语言下的展示名。没有译文时用库里的名称"
+      },
+      {
+        "key": "instance_count",
+        "title": "实例数量",
+        "value_type": "number"
       }
     ]
   },
@@ -5197,7 +5436,7 @@
   {
     "key": "监控告警通用查询::monitor/query_monitor_alerts",
     "name": "监控告警列表查询",
-    "desc": "查询当前组织权限内的监控告警明细。不选监控对象就是全部对象，也可以多选。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。不填页码和每页条数时返回全部明细，超过 500 条会失败；两个都填则分页。告警值是触发或升级时留下的，不是当前采样。",
+    "desc": "查询当前组织权限内的监控告警明细。不选分类、不选监控对象就是全部告警，也可以多选。只选分类时包含该分类下的全部对象；分类和对象都选时，对象必须属于这些分类。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。不填页码和每页条数时返回全部明细，超过 500 条会失败；两个都填则分页。告警值是触发或升级时留下的，不是当前采样。",
     "rest_api": "monitor/query_monitor_alerts",
     "tag": [
       "monitor"
@@ -5209,9 +5448,29 @@
     ],
     "params": [
       {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_object_type_options"
+            },
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
         "name": "monitor_object_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "监控对象",
         "filterType": "params",
         "inputConfig": {
@@ -5221,37 +5480,16 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "monitor/list_monitor_objects_by_type"
             },
             "labelField": "display_name",
-            "valueField": "id"
-          }
-        }
-      },
-      {
-        "name": "instance_ids",
-        "type": "string",
-        "value": [],
-        "alias_name": "实例",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "select",
-          "multiple": true,
-          "optionsSource": {
-            "type": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "monitor/query_monitor_instances"
-            },
-            "labelField": "name",
-            "valueField": "instance_id",
+            "valueField": "id",
             "queryParams": {
-              "page": 1,
-              "page_size": 100,
-              "monitor_object_id": {
-                "ref": "monitor_object_id"
+              "monitor_object_type_ids": {
+                "ref": "monitor_object_type_ids"
               }
-            }
+            },
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
           }
         }
       },
@@ -5525,24 +5763,27 @@
       {
         "key": "start_event_time",
         "title": "开始时间",
-        "value_type": "datetime"
+        "value_type": "datetime",
+        "description": "当前时区的告警开始时间，格式为 2026-11-17 17:08:48。没有时间时为空。"
       },
       {
         "key": "end_event_time",
         "title": "结束时间",
-        "value_type": "datetime"
+        "value_type": "datetime",
+        "description": "当前时区的告警结束时间，格式为 2026-11-17 17:08:48。没有时间时为空。"
       },
       {
         "key": "created_at",
         "title": "创建时间",
-        "value_type": "datetime"
+        "value_type": "datetime",
+        "description": "当前时区的记录创建时间，格式为 2026-11-17 17:08:48。没有时间时为空。"
       }
     ]
   },
   {
     "key": "监控告警计数::monitor/query_monitor_alert_counts",
     "name": "监控告警数量统计",
-    "desc": "查询当前组织权限内的监控告警条数，固定返回一行 alert_count。不选监控对象就是全部对象，也可以多选。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
+    "desc": "查询当前组织权限内的监控告警条数，固定返回一行 alert_count。不选分类、不选监控对象就是全部告警，也可以多选。只选分类时包含该分类下的全部对象；分类和对象都选时，对象必须属于这些分类。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
     "rest_api": "monitor/query_monitor_alert_counts",
     "tag": [
       "monitor"
@@ -5552,9 +5793,29 @@
     ],
     "params": [
       {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_object_type_options"
+            },
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
         "name": "monitor_object_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "监控对象",
         "filterType": "params",
         "inputConfig": {
@@ -5564,37 +5825,16 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "monitor/list_monitor_objects_by_type"
             },
             "labelField": "display_name",
-            "valueField": "id"
-          }
-        }
-      },
-      {
-        "name": "instance_ids",
-        "type": "string",
-        "value": [],
-        "alias_name": "实例",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "select",
-          "multiple": true,
-          "optionsSource": {
-            "type": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "monitor/query_monitor_instances"
-            },
-            "labelField": "name",
-            "valueField": "instance_id",
+            "valueField": "id",
             "queryParams": {
-              "page": 1,
-              "page_size": 100,
-              "monitor_object_id": {
-                "ref": "monitor_object_id"
+              "monitor_object_type_ids": {
+                "ref": "monitor_object_type_ids"
               }
-            }
+            },
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
           }
         }
       },
@@ -5741,7 +5981,7 @@
   {
     "key": "监控告警分布::monitor/query_monitor_alert_distribution",
     "name": "监控告警分布",
-    "desc": "按所选字段统计当前组织权限内的告警条数，每个取值一行。分布字段必填，可以是级别、监控对象或告警类型。不选监控对象就是全部对象，也可以多选。按监控对象分组时，所选对象没有告警也返回 0。实例可来自不同监控对象；无效、不存在、没权限或不属于所选对象的实例会跳过，全部无效时返回空结果。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
+    "desc": "按所选字段统计当前组织权限内的告警条数，每个取值一行。分布字段必填，可以是级别、监控对象、告警类型或分类。不选分类、不选监控对象就是全部告警，也可以多选。只选分类时包含该分类下的全部对象；分类和对象都选时，对象必须属于这些分类。按监控对象分布时，点名选中但没有告警的对象也出一行 0。按分类分布时，点名选中但没有告警的分类也出一行 0；没有分类的告警不进入分类分布。不选状态只查未恢复；要查已恢复或已关闭，必须同时填写时间字段和时间范围。时间都空表示不按时间过滤，填写后最长 90 天。",
     "rest_api": "monitor/query_monitor_alert_distribution",
     "tag": [
       "monitor"
@@ -5757,9 +5997,29 @@
     ],
     "params": [
       {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {
+              "type": "rest_api",
+              "value": "monitor/list_monitor_object_type_options"
+            },
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
         "name": "monitor_object_id",
         "type": "string",
-        "value": "",
+        "value": [],
         "alias_name": "监控对象",
         "filterType": "params",
         "inputConfig": {
@@ -5769,10 +6029,16 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "monitor/list_monitor_objects_by_type"
             },
             "labelField": "display_name",
-            "valueField": "id"
+            "valueField": "id",
+            "queryParams": {
+              "monitor_object_type_ids": {
+                "ref": "monitor_object_type_ids"
+              }
+            },
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
           }
         }
       },
@@ -5799,35 +6065,12 @@
               {
                 "label": "告警类型",
                 "value": "alert_type"
+              },
+              {
+                "label": "分类",
+                "value": "monitor_object_type"
               }
             ]
-          }
-        }
-      },
-      {
-        "name": "instance_ids",
-        "type": "string",
-        "value": [],
-        "alias_name": "实例",
-        "filterType": "params",
-        "inputConfig": {
-          "control": "select",
-          "multiple": true,
-          "optionsSource": {
-            "type": "dynamic",
-            "sourceRef": {
-              "type": "rest_api",
-              "value": "monitor/query_monitor_instances"
-            },
-            "labelField": "name",
-            "valueField": "instance_id",
-            "queryParams": {
-              "page": 1,
-              "page_size": 100,
-              "monitor_object_id": {
-                "ref": "monitor_object_id"
-              }
-            }
           }
         }
       },
@@ -5968,7 +6211,7 @@
         "key": "group_value",
         "title": "分布项",
         "value_type": "string",
-        "description": "所选分布字段的展示名。级别和告警类型是中文，监控对象是当前语言下的对象名。"
+        "description": "所选分布字段的展示名。级别和告警类型是中文，监控对象和分类是当前语言下的名称。"
       },
       {
         "key": "alert_count",
@@ -7111,6 +7354,585 @@
         "value_type": "number",
         "description": "告警或事件的计数，不与明细字段混用"
       }
+    ]
+  },
+  {
+    "key": "监控实例采集查询::monitor/query_monitor_collection",
+    "name": "监控实例采集查询",
+    "desc": "查询当前组织权限内实例的采集情况，一行一台。分类和监控对象都可以不选，不选就是全部实例，也可以多选。只选分类时包含该分类下的全部对象；分类和对象都选时，对象必须属于这些分类。上报状态按各插件最近上报时间的最大值，超过 10 分钟或没有上报为失联。任一已配置插件没有状态上报则采集状态为失联；有自动配置则为自动，否则为手动。状态是启用、停用或全部。不填页码和每页条数时返回全部，超过 500 条会失败。",
+    "rest_api": "monitor/query_monitor_collection",
+    "tag": ["monitor"],
+    "chart_type": ["table"],
+    "params": [
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_object_type_options"},
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_objects_by_type"},
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}},
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "启用", "value": "active"},
+              {"label": "停用", "value": "inactive"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "report_status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "上报状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "正常", "value": "normal"},
+              {"label": "失联", "value": "unavailable"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "collect_status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "采集状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "正常", "value": "normal"},
+              {"label": "失联", "value": "offline"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "collect_mode",
+        "type": "string",
+        "value": "all",
+        "alias_name": "采集方式",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "自动", "value": "auto"},
+              {"label": "手动", "value": "manual"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "value": "",
+        "alias_name": "排序",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "最后采样时间", "value": "last_sample_at"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "order_dir",
+        "type": "string",
+        "value": "",
+        "alias_name": "排序方式",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "升序", "value": "asc"},
+              {"label": "降序", "value": "desc"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "page",
+        "type": "number",
+        "value": null,
+        "alias_name": "页码",
+        "filterType": "params",
+        "desc": "和每页条数成对填写。都空时返回全部实例，超过 500 条会失败。"
+      },
+      {
+        "name": "page_size",
+        "type": "number",
+        "value": null,
+        "alias_name": "每页条数",
+        "filterType": "params",
+        "desc": "和页码成对填写。最多 100 条。"
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {"control": "organization"}
+      }
+    ],
+    "field_schema": [
+      {"key": "instance_id", "title": "实例标识", "value_type": "string"},
+      {"key": "name", "title": "实例名称", "value_type": "string"},
+      {"key": "monitor_object_id", "title": "对象标识", "value_type": "string", "description": "监控对象的数字 id。"},
+      {"key": "monitor_object", "title": "对象英文名", "value_type": "string", "description": "监控对象的英文名，不随语言变化。"},
+      {"key": "monitor_object_type", "title": "分类", "value_type": "string", "description": "当前语言下的分类名。没有译文时用分类名称。"},
+      {"key": "monitor_object_name", "title": "对象", "value_type": "string", "description": "当前语言下的对象展示名。"},
+      {"key": "collect_mode", "title": "采集方式", "value_type": "string", "description": "自动或手动。有自动配置则为自动。"},
+      {"key": "report_status", "title": "上报状态", "value_type": "string", "description": "正常或失联。最后上报超过 10 分钟，或没有上报，为失联。"},
+      {"key": "collect_status", "title": "采集状态", "value_type": "string", "description": "正常或失联。任一已配置插件没有状态上报则为失联。"},
+      {"key": "last_sample_at", "title": "最后采样时间", "value_type": "string", "description": "各插件最近上报时间的最大值，按当前时区格式化为 2026-11-17 17:08:48。没有上报时为空。"}
+    ]
+  },
+  {
+    "key": "监控实例采集数量::monitor/query_monitor_collection_counts",
+    "name": "监控实例采集数量",
+    "desc": "统计当前组织权限内的实例采集数量，固定返回一行 instance_count。过滤与监控实例采集查询相同。不返回明细，没有分页和排序。",
+    "rest_api": "monitor/query_monitor_collection_counts",
+    "tag": ["monitor"],
+    "chart_type": ["single"],
+    "params": [
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_object_type_options"},
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_objects_by_type"},
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}},
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "启用", "value": "active"},
+              {"label": "停用", "value": "inactive"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "report_status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "上报状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "正常", "value": "normal"},
+              {"label": "失联", "value": "unavailable"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "collect_status",
+        "type": "string",
+        "value": "all",
+        "alias_name": "采集状态",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "正常", "value": "normal"},
+              {"label": "失联", "value": "offline"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "collect_mode",
+        "type": "string",
+        "value": "all",
+        "alias_name": "采集方式",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "自动", "value": "auto"},
+              {"label": "手动", "value": "manual"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {"control": "organization"}
+      }
+    ],
+    "field_schema": [
+      {"key": "instance_count", "title": "实例数量", "value_type": "number", "description": "当前过滤下的实例数。"}
+    ]
+  },
+  {
+    "key": "监控接口当前值::monitor/query_interface_current",
+    "name": "监控接口查询",
+    "desc": "查询当前用户有权实例上的接口，一行一个接口。分类、监控对象、实例都可以不选，不选就是全部有权接口。接口情况是全部、Up、Down、有错包或有丢包。Down 只认运行状态 2，休眠、不在位、下层 Down 不算。错包、丢包和流速按 5 分钟速率，流速优先用 64 位计数器。不填页码和每页条数时返回全部，超过 500 条会失败。",
+    "rest_api": "monitor/query_interface_current",
+    "tag": ["monitor"],
+    "chart_type": ["table"],
+    "params": [
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_object_type_options"},
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_objects_by_type"},
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}},
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
+          }
+        }
+      },
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "实例",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/query_monitor_instances"},
+            "labelField": "name",
+            "valueField": "instance_id",
+            "queryParams": {
+              "page": 1,
+              "page_size": 100,
+              "monitor_object_id": {"ref": "monitor_object_id"}
+            },
+            "emptyUpstreamHintKey": "dashboard.selectMonitorObjectFirst"
+          }
+        }
+      },
+      {
+        "name": "interface_match",
+        "type": "string",
+        "value": "all",
+        "alias_name": "接口情况",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "Up", "value": "up"},
+              {"label": "Down", "value": "down"},
+              {"label": "有错包", "value": "error"},
+              {"label": "有丢包", "value": "discard"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "value": "",
+        "alias_name": "排序",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "入流速", "value": "in_rate"},
+              {"label": "出流速", "value": "out_rate"},
+              {"label": "错包", "value": "error_rate"},
+              {"label": "接口名", "value": "if_name"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "order_dir",
+        "type": "string",
+        "value": "",
+        "alias_name": "排序方式",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "升序", "value": "asc"},
+              {"label": "降序", "value": "desc"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "page",
+        "type": "number",
+        "value": null,
+        "alias_name": "页码",
+        "filterType": "params",
+        "desc": "和每页条数成对填写。都空时返回全部接口，超过 500 条会失败。"
+      },
+      {
+        "name": "page_size",
+        "type": "number",
+        "value": null,
+        "alias_name": "每页条数",
+        "filterType": "params",
+        "desc": "和页码成对填写。最多 100 条。"
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {"control": "organization"}
+      }
+    ],
+    "field_schema": [
+      {"key": "instance_id", "title": "实例标识", "value_type": "string"},
+      {"key": "instance_name", "title": "实例名", "value_type": "string"},
+      {"key": "monitor_object_name", "title": "对象", "value_type": "string"},
+      {"key": "if_name", "title": "接口名", "value_type": "string"},
+      {"key": "oper_status", "title": "运行状态", "value_type": "string", "description": "Up、Down、Testing、Unknown、Dormant、NotPresent、LowerLayerDown。未识别的状态保留原数字。"},
+      {"key": "in_rate", "title": "入流速", "value_type": "string", "description": "5 分钟入向字节速率，按量级写成 220 KB/s。有 64 位计数器时用 64 位。没有采样时为空。"},
+      {"key": "out_rate", "title": "出流速", "value_type": "string", "description": "5 分钟出向字节速率，按量级写成 220 KB/s。有 64 位计数器时用 64 位。没有采样时为空。"},
+      {"key": "in_errors", "title": "入错包", "value_type": "number", "description": "5 分钟入向错误速率。"},
+      {"key": "out_errors", "title": "出错包", "value_type": "number", "description": "5 分钟出向错误速率。"},
+      {"key": "in_discards", "title": "入丢包", "value_type": "number", "description": "5 分钟入向丢包速率。"},
+      {"key": "out_discards", "title": "出丢包", "value_type": "number", "description": "5 分钟出向丢包速率。"}
+    ]
+  },
+  {
+    "key": "监控接口当前值数量::monitor/query_interface_current_counts",
+    "name": "监控接口数量统计",
+    "desc": "统计当前用户有权实例上的接口数量，固定返回一行 interface_count。过滤与监控接口查询相同。不返回明细，没有分页和排序。",
+    "rest_api": "monitor/query_interface_current_counts",
+    "tag": ["monitor"],
+    "chart_type": ["single"],
+    "params": [
+      {
+        "name": "monitor_object_type_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "分类",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_object_type_options"},
+            "labelField": "display_name",
+            "valueField": "id"
+          }
+        }
+      },
+      {
+        "name": "monitor_object_id",
+        "type": "string",
+        "value": [],
+        "alias_name": "监控对象",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/list_monitor_objects_by_type"},
+            "labelField": "display_name",
+            "valueField": "id",
+            "queryParams": {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}},
+            "emptyUpstreamHintKey": "dashboard.selectClassificationFirst"
+          }
+        }
+      },
+      {
+        "name": "instance_ids",
+        "type": "string",
+        "value": [],
+        "alias_name": "实例",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/query_monitor_instances"},
+            "labelField": "name",
+            "valueField": "instance_id",
+            "queryParams": {
+              "page": 1,
+              "page_size": 100,
+              "monitor_object_id": {"ref": "monitor_object_id"}
+            },
+            "emptyUpstreamHintKey": "dashboard.selectMonitorObjectFirst"
+          }
+        }
+      },
+      {
+        "name": "interface_match",
+        "type": "string",
+        "value": "all",
+        "alias_name": "接口情况",
+        "filterType": "params",
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "全部", "value": "all"},
+              {"label": "Up", "value": "up"},
+              {"label": "Down", "value": "down"},
+              {"label": "有错包", "value": "error"},
+              {"label": "有丢包", "value": "discard"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "organization",
+        "type": "string",
+        "value": "",
+        "alias_name": "组织",
+        "filterType": "filter",
+        "inputConfig": {"control": "organization"}
+      }
+    ],
+    "field_schema": [
+      {"key": "interface_count", "title": "接口数量", "value_type": "number", "description": "当前过滤下的接口数。"}
     ]
   }
 ]

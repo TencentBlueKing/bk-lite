@@ -113,6 +113,21 @@ export const useOpsAnalysisQueryState = () => {
     setNamespaceSearchVersion((current) => current + 1);
   }, []);
 
+  const applyOrganizationChange = useCallback((
+    nextOrganizationId: string | number | null | undefined,
+    nextValues: Record<string, FilterValue>,
+    nextAppliedValues: Record<string, FilterValue>,
+    requery: boolean,
+  ) => {
+    setOrganizationId(nextOrganizationId);
+    if (!requery) {
+      return;
+    }
+    setFilterValuesState({ ...nextValues });
+    setAppliedFilterValuesState({ ...nextAppliedValues });
+    setFilterSearchVersion((current) => current + 1);
+  }, []);
+
   const applyQuery = useCallback(
     (values: Record<string, FilterValue>, namespaceId: number | undefined) => {
       const nextValues = syncAndFillOrganizationFilterValues(
@@ -148,6 +163,7 @@ export const useOpsAnalysisQueryState = () => {
     setNamespaceDraftId,
     setAppliedNamespaceId,
     resetQueryState,
+    applyOrganizationChange,
     applyFilters,
     applyNamespace,
     applyQuery,

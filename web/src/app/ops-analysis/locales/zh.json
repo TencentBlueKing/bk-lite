@@ -1210,6 +1210,7 @@
     "chartFieldMissing": "字段 {field} 不在当前结果中",
     "optionPageLimitExceeded": "选项超过分页上限，无法继续加载",
     "selectClassificationFirst": "请先选择分类",
+    "selectMonitorObjectFirst": "请先选择监控对象",
     "conditionFilter": {
       "add": "添加条件",
       "delete": "删除条件",
@@ -1289,6 +1290,7 @@
     "title": "选择",
     "dataComponents": "数据源",
     "sceneComponents": "内置场景",
+    "allDataSources": "全部",
     "allSceneComponents": "全部内置场景",
     "sceneCategoryCmdb": "CMDB",
     "networkStatusTopology": "网络状态拓扑",

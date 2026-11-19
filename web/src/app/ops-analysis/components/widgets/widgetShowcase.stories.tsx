@@ -266,7 +266,7 @@ const TopNRuntimeDimensionPreview: React.FC<{
               超长云资源费用分布标题（验证窄组件标题优先截断）
             </h4>
           </div>
-          <div className="ml-auto max-w-[70%] shrink-0 overflow-x-auto">
+          <div className="ml-auto max-w-[70%] shrink-0 overflow-x-auto overflow-y-hidden py-px">
             <ComponentParamSwitchControl
               inputConfig={switchParam.inputConfig}
               options={options}

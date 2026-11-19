@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import SafeLogException, safe_log_value
 from apps.log.models import CollectConfig as LogCollectConfig
 from apps.log.models import CollectInstance, CollectType
@@ -10,11 +11,60 @@ from apps.log.services.collector_node_exit import LOG_EXIT_FINISHED_LOG, LogColl
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject
 from apps.monitor.services.collector_node_exit import MONITOR_EXIT_FINISHED_LOG, MonitorCollectorNodeExit
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
-from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Node
+from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Node, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.models.sidecar import ChildConfig
 from apps.node_mgmt.services.node_collection_exit import EXIT_FAILED_LOG, EXIT_FINISHED_LOG, NodeCollectionExitService
 from apps.node_mgmt.tasks import installer as installer_tasks
+
+_NODE_PERMISSION = {
+    "username": "admin",
+    "domain": "domain.com",
+    "current_team": 1,
+    "include_children": False,
+    "is_superuser": True,
+}
+
+
+def _allow_node_org(monkeypatch, org_ids=(1,)):
+    class _SystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"result": True, "data": list(org_ids)}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _SystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        lambda *args, **kwargs: {"team": list(org_ids), "instance": []},
+    )
+
+
+def _spy_node_mgmt(monkeypatch):
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    calls = []
+    original_auth = NodeMgmt.get_authorized_nodes_by_ids
+    original_move = NodeMgmt.move_child_configs_to_node
+    original_delete = NodeMgmt.delete_owned_child_configs
+
+    def get_authorized_nodes_by_ids(self, node_ids, permission_data=None):
+        calls.append(("auth", self.is_local_client, list(node_ids), permission_data))
+        return original_auth(self, node_ids, permission_data)
+
+    def move_child_configs_to_node(self, config_ids, node_id, owner_config_ids, organization_ids):
+        calls.append(("move", self.is_local_client, list(config_ids), node_id, list(organization_ids)))
+        return original_move(self, config_ids, node_id, owner_config_ids, organization_ids)
+
+    def delete_owned_child_configs(self, config_ids):
+        calls.append(("delete", self.is_local_client, list(config_ids)))
+        return original_delete(self, config_ids)
+
+    monkeypatch.setattr(NodeMgmt, "get_authorized_nodes_by_ids", get_authorized_nodes_by_ids)
+    monkeypatch.setattr(NodeMgmt, "move_child_configs_to_node", move_child_configs_to_node)
+    monkeypatch.setattr(NodeMgmt, "delete_owned_child_configs", delete_owned_child_configs)
+    return calls
 
 
 def _collector(collector_id, name):
@@ -71,7 +121,7 @@ def _monitor(instance_id, object_name, node_id=""):
 
 
 @pytest.mark.django_db
-def test_node_exit_retires_linked_host_and_frees_default_parent_name(monkeypatch):
+def test_node_exit_parks_linked_host_and_frees_default_parent_name(monkeypatch):
     closed = []
 
     def _close(instance_ids, *, operator, reason, policy_ids=None):
@@ -97,15 +147,21 @@ def test_node_exit_retires_linked_host_and_frees_default_parent_name(monkeypatch
         is_child=True,
     )
 
+    removed_node_id = node.id
+    removed_node_name = node.name
     NodeCollectionExitService.apply(node, operator="alice")
     node.delete()
 
     instance.refresh_from_db()
     parent.refresh_from_db()
     child.refresh_from_db()
-    assert instance.is_deleted is True
-    assert instance.is_active is False
+    parked = CollectConfig.objects.get(id=child.id)
+    assert instance.is_deleted is False
+    assert instance.is_active is True
     assert instance.node_id is None
+    assert parked.executor_node_removed is True
+    assert parked.executor_node_id == removed_node_id
+    assert parked.executor_node_name == removed_node_name
     assert child.content == "[[inputs.cpu]]"
     assert child.collector_config_id == parent.id
     assert parent.name == f"detached-{parent.id}"
@@ -168,11 +224,14 @@ def test_node_exit_keeps_unlinked_monitor_and_log_configs():
 
 
 @pytest.mark.django_db
-def test_reassign_moves_only_the_instance_child_and_clear_deletes_only_that_config():
+def test_reassign_moves_only_the_instance_child_and_clear_deletes_only_that_config(monkeypatch):
     region = CloudRegion.objects.create(name="exit-reassign-region")
     collector = _collector("exit-reassign-telegraf", "Telegraf")
     source = _node("exit-source-node", region, ip="10.4.4.1")
     target = _node("exit-target-node", region, ip="10.4.4.2")
+    NodeOrganization.objects.create(node=target, organization=1)
+    _allow_node_org(monkeypatch)
+    calls = _spy_node_mgmt(monkeypatch)
     parent = _parent(collector, source)
     mysql_child = _child(parent, "reassign-mysql", "[[inputs.mysql]]")
     redis_child = _child(parent, "reassign-redis", "[[inputs.redis]]")
@@ -193,7 +252,7 @@ def test_reassign_moves_only_the_instance_child_and_clear_deletes_only_that_conf
         )
 
     NodeCollectionExitService.apply(source, operator="alice")
-    MonitorCollectorNodeExit.reassign(mysql.id, target.id)
+    MonitorCollectorNodeExit.reassign(mysql.id, target.id, _NODE_PERMISSION)
 
     mysql_child.refresh_from_db()
     redis_child.refresh_from_db()
@@ -204,8 +263,11 @@ def test_reassign_moves_only_the_instance_child_and_clear_deletes_only_that_conf
     assert redis_child.collector_config_id == parent.id
     assert mysql_config.executor_node_removed is False
     assert redis_config.executor_node_removed is True
+    assert ("auth", True, [target.id], _NODE_PERMISSION) in calls
+    assert ("move", True, [mysql_child.id], target.id, [1]) in calls
 
     MonitorCollectorNodeExit.clear(redis.id)
+    assert ("delete", True, [redis_child.id]) in calls
 
     assert not ChildConfig.objects.filter(id=redis_child.id).exists()
     assert not CollectConfig.objects.filter(id=redis_child.id).exists()
@@ -214,11 +276,14 @@ def test_reassign_moves_only_the_instance_child_and_clear_deletes_only_that_conf
 
 
 @pytest.mark.django_db
-def test_log_clear_keeps_instance_and_reassign_sets_node():
+def test_log_clear_keeps_instance_and_reassign_sets_node(monkeypatch):
     region = CloudRegion.objects.create(name="exit-log-region")
     collector = _collector("exit-log-filebeat", "Filebeat")
     source = _node("exit-log-source", region, ip="10.5.5.1")
     target = _node("exit-log-target", region, ip="10.5.5.2")
+    NodeOrganization.objects.create(node=target, organization=1)
+    _allow_node_org(monkeypatch)
+    calls = _spy_node_mgmt(monkeypatch)
     parent = _parent(collector, source)
     child = _child(parent, "log-reassign-child", "paths: [/var/log/app]")
     collect_type = CollectType.objects.create(name="log-file", collector="Filebeat", icon="file")
@@ -226,7 +291,7 @@ def test_log_clear_keeps_instance_and_reassign_sets_node():
     LogCollectConfig.objects.create(id=child.id, collect_instance=instance, file_type="yaml", is_child=True)
 
     NodeCollectionExitService.apply(source, operator="alice")
-    LogCollectorNodeExit.reassign(instance.id, target.id)
+    LogCollectorNodeExit.reassign(instance.id, target.id, _NODE_PERMISSION)
 
     instance.refresh_from_db()
     child.refresh_from_db()
@@ -236,9 +301,12 @@ def test_log_clear_keeps_instance_and_reassign_sets_node():
     assert child.collector_config_id != parent.id
     assert list(child.collector_config.nodes.values_list("id", flat=True)) == [target.id]
     assert not parent.nodes.filter(id=target.id).exists()
+    assert ("auth", True, [target.id], _NODE_PERMISSION) in calls
+    assert ("move", True, [child.id], target.id, [1]) in calls
 
     NodeCollectionExitService.apply(target, operator="alice")
     LogCollectorNodeExit.clear(instance.id)
+    assert ("delete", True, [child.id]) in calls
 
     instance.refresh_from_db()
     assert instance.id == "log-reassign"
@@ -318,6 +386,17 @@ def test_shared_parent_exit_keeps_instances_still_served_by_another_node():
 def test_uninstall_controller_removes_node_after_collection_exit(monkeypatch, caplog):
     region = CloudRegion.objects.create(name="uninstall-exit-region")
     node = _node("uninstall-exit-node", region, ip="10.9.9.9")
+    NodeOrganization.objects.create(node=node, organization=9)
+    unlinked = []
+
+    def _unlink(node_obj, *, actor_scope, max_attempts=None):
+        assert Node.objects.filter(id=node_obj.id).exists()
+        unlinked.append((node_obj.id, dict(actor_scope)))
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.module_push.ModulePushService.best_effort_unlink_cmdb",
+        _unlink,
+    )
     task = ControllerTask.objects.create(cloud_region=region, type="uninstall", status="pending", created_by="alice")
     ControllerTaskNode.objects.create(
         task=task,
@@ -338,6 +417,7 @@ def test_uninstall_controller_removes_node_after_collection_exit(monkeypatch, ca
     installer_tasks.uninstall_controller(task.id)
 
     assert not Node.objects.filter(id=node.id).exists()
+    assert unlinked == [(node.id, {"allowed_org_ids": [9]})]
     task.refresh_from_db()
     assert task.status == "finished"
     finished = [record for record in caplog.records if record.msg == EXIT_FINISHED_LOG]
@@ -398,7 +478,13 @@ def test_node_exit_logs_bound_ids_and_omits_child_content(caplog):
     log_instance.refresh_from_db()
     assert node.id == "exit\r\nlog-node"
     assert child.content == CHILD_CONTENT_SENTINEL
-    assert instance.is_deleted is True
+    assert instance.is_deleted is False
+    assert instance.is_active is True
+    assert instance.node_id is None
+    parked = CollectConfig.objects.get(id=child.id)
+    assert parked.executor_node_removed is True
+    assert parked.executor_node_id == node.id
+    assert parked.executor_node_name == node.name
     assert log_instance.collector_node_removed is True
     assert log_instance.node_id is None
 
@@ -481,3 +567,120 @@ def test_monitor_exit_failure_logs_one_safe_traceback_and_keeps_exit(monkeypatch
     assert CHILD_CONTENT_SENTINEL not in caplog.text
     assert [record for record in caplog.records if record.msg == LOG_EXIT_FINISHED_LOG]
     assert [record for record in caplog.records if record.msg == EXIT_FINISHED_LOG]
+
+
+@pytest.mark.django_db
+def test_monitor_exit_rolls_back_when_alert_close_fails(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("close failed")
+
+    monkeypatch.setattr(MonitorInstanceRemovalService, "close_alerts_for_instances", _boom)
+    region = CloudRegion.objects.create(name="exit-rollback-region")
+    collector = _collector("exit-rollback-telegraf", "Telegraf")
+    node = _node("exit-rollback-node", region)
+    node.monitor_id = "rollback-host"
+    node.save(update_fields=["monitor_id"])
+    parent = _parent(collector, node)
+    child = _child(parent, "rollback-child", "[[inputs.cpu]]")
+    instance = _monitor("rollback-host", "Host", node.id)
+    CollectConfig.objects.create(
+        id=child.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+    )
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        MonitorCollectorNodeExit.on_node_removed(node, [child.id], "alice")
+
+    instance.refresh_from_db()
+    parked = CollectConfig.objects.get(id=child.id)
+    assert instance.node_id == node.id
+    assert instance.is_deleted is False
+    assert instance.is_active is True
+    assert parked.executor_node_removed is False
+    assert parked.executor_node_id == ""
+    assert parked.executor_node_name == ""
+
+
+def _removed_monitor_on_node(source, child_id):
+    collector = _collector(f"{child_id}-collector", "Telegraf")
+    parent = _parent(collector, source)
+    child = _child(parent, child_id, "[[inputs.cpu]]")
+    instance = _monitor(f"{child_id}-instance", "Host")
+    CollectConfig.objects.create(
+        id=child.id,
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+    )
+    NodeCollectionExitService.apply(source, operator="alice")
+    return instance, child, parent
+
+
+@pytest.mark.django_db
+def test_monitor_reassign_rejects_node_outside_authorized_org(monkeypatch):
+    region = CloudRegion.objects.create(name="exit-monitor-outside-region")
+    source = _node("exit-monitor-outside-source", region, ip="10.7.7.1")
+    outside = _node("exit-monitor-outside-target", region, ip="10.7.7.2")
+    NodeOrganization.objects.create(node=outside, organization=2)
+    instance, child, parent = _removed_monitor_on_node(source, "monitor-outside-child")
+    _allow_node_org(monkeypatch, (1,))
+    calls = _spy_node_mgmt(monkeypatch)
+
+    with pytest.raises(BaseAppException, match="采集节点不存在"):
+        MonitorCollectorNodeExit.reassign(instance.id, outside.id, _NODE_PERMISSION)
+
+    child.refresh_from_db()
+    parked = CollectConfig.objects.get(id=child.id)
+    assert child.collector_config_id == parent.id
+    assert parked.executor_node_removed is True
+    assert ("auth", True, [outside.id], _NODE_PERMISSION) in calls
+    assert not any(item[0] == "move" for item in calls)
+
+
+@pytest.mark.django_db
+def test_log_reassign_rejects_node_outside_authorized_org(monkeypatch):
+    region = CloudRegion.objects.create(name="exit-log-outside-region")
+    collector = _collector("exit-log-outside-filebeat", "Filebeat")
+    source = _node("exit-log-outside-source", region, ip="10.8.8.1")
+    outside = _node("exit-log-outside-target", region, ip="10.8.8.2")
+    NodeOrganization.objects.create(node=outside, organization=2)
+    parent = _parent(collector, source)
+    child = _child(parent, "log-outside-child", "paths: [/var/log/app]")
+    collect_type = CollectType.objects.create(name="log-outside", collector="Filebeat", icon="file")
+    instance = CollectInstance.objects.create(id="log-outside", name="app", collect_type=collect_type, node_id=source.id)
+    LogCollectConfig.objects.create(id=child.id, collect_instance=instance, file_type="yaml", is_child=True)
+    NodeCollectionExitService.apply(source, operator="alice")
+    _allow_node_org(monkeypatch, (1,))
+    calls = _spy_node_mgmt(monkeypatch)
+
+    with pytest.raises(BaseAppException, match="采集节点不存在"):
+        LogCollectorNodeExit.reassign(instance.id, outside.id, _NODE_PERMISSION)
+
+    instance.refresh_from_db()
+    child.refresh_from_db()
+    assert instance.collector_node_removed is True
+    assert instance.node_id is None
+    assert child.collector_config_id == parent.id
+    assert ("auth", True, [outside.id], _NODE_PERMISSION) in calls
+    assert not any(item[0] == "move" for item in calls)
+
+
+def test_monitor_and_log_exit_do_not_import_node_services():
+    import inspect
+
+    import apps.log.services.collector_node_exit as log_exit
+    import apps.monitor.services.collector_node_exit as monitor_exit
+
+    for module in (monitor_exit, log_exit):
+        source = inspect.getsource(module)
+        assert "node_collection_exit" not in source
+        assert "node_mgmt.models" not in source
+        assert "Node.objects" not in source

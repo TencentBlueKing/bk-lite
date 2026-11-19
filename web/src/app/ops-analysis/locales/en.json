@@ -1210,6 +1210,7 @@
     "chartFieldMissing": "Field {field} is not in the current result",
     "optionPageLimitExceeded": "Option page limit exceeded",
     "selectClassificationFirst": "Select a classification first",
+    "selectMonitorObjectFirst": "Select a monitor object first",
     "conditionFilter": {
       "add": "Add condition",
       "delete": "Delete condition",
@@ -1289,6 +1290,7 @@
     "title": "Select",
     "dataComponents": "Data Source",
     "sceneComponents": "Built-in Scenes",
+    "allDataSources": "All",
     "allSceneComponents": "All Built-in Scenes",
     "sceneCategoryCmdb": "CMDB",
     "networkStatusTopology": "Network Status Topology",

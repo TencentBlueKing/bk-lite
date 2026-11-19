@@ -65,4 +65,27 @@ describe('useTableServerQuery', () => {
     expect(result.current.pagination.current).toBe(2);
     expect(result.current.pagination.pageSize).toBe(20);
   });
+
+  it('returns to the first page when the reset key changes', () => {
+    const onQueryChange = vi.fn();
+    const { result, rerender } = renderHook(
+      (props: { paginationResetKey: string }) => useTableServerQuery({
+        rawData: pageOf(40, 2, 10),
+        sourceParams,
+        savedParams: [
+          { name: 'page', value: 2 },
+          { name: 'page_size', value: 10 },
+        ],
+        onQueryChange,
+        paginationResetKey: props.paginationResetKey,
+      }),
+      { initialProps: { paginationResetKey: 'all' } },
+    );
+
+    expect(result.current.pagination.current).toBe(2);
+
+    rerender({ paginationResetKey: 'down' });
+
+    expect(result.current.pagination.current).toBe(1);
+  });
 });

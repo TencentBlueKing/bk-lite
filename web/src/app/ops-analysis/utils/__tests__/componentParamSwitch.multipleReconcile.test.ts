@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   reconcileComponentParamValue,
   reconcileComponentSwitchValue,
+  sameParamValue,
 } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -27,6 +28,14 @@ describe('reconcileComponentParamValue multiple', () => {
     expect(reconcileComponentParamValue('missing', OPTIONS)).toBeNull();
     expect(reconcileComponentSwitchValue('missing', OPTIONS)).toBeNull();
     expect(reconcileComponentSwitchValue('1', [])).toBeNull();
+  });
+
+  test('内容相同的参数值视为没变，避免空数组再写进表单', () => {
+    expect(sameParamValue([], [])).toBe(true);
+    expect(sameParamValue(['12'], ['12'])).toBe(true);
+    expect(sameParamValue(['12'], [])).toBe(false);
+    expect(sameParamValue('12', '12')).toBe(true);
+    expect(sameParamValue(null, null)).toBe(true);
   });
 
   test('选项还没回来时保留现值，已经是空列表时清空失效值', () => {

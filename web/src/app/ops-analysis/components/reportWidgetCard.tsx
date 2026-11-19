@@ -204,7 +204,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                   </p>
                 )}
               </div>
-              <div ref={runtimeSlotRef} className="ml-auto min-w-0 max-w-[55%] overflow-x-auto" />
+              <div ref={runtimeSlotRef} className="ml-auto min-w-0 max-w-[55%] overflow-x-auto overflow-y-hidden py-px" />
               {renderStatus === 'failed' && (
                 <Tooltip title={t('common.retry')}>
                   <Button

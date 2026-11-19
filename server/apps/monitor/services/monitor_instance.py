@@ -423,6 +423,7 @@ class InstanceSearch:
                     "id": str(conf.executor_node_id),
                     "name": conf.executor_node_name or str(conf.executor_node_id),
                     "removed": True,
+                    "active": False,
                 }
 
         nodes_by_config_id = self._batch_collection_nodes_by_config_ids(
@@ -589,10 +590,13 @@ class InstanceSearch:
                 if not isinstance(node, dict) or node.get("id") in (None, ""):
                     continue
                 node_id = str(node["id"])
-                normalized_nodes[node_id] = {
+                normalized_node = {
                     "id": node_id,
                     "name": str(node.get("name") or node_id),
                 }
+                if isinstance(node.get("active"), bool):
+                    normalized_node["active"] = node["active"]
+                normalized_nodes[node_id] = normalized_node
             nodes_by_config_id[str(row["id"])] = list(normalized_nodes.values())
         return nodes_by_config_id
 
@@ -612,7 +616,12 @@ class InstanceSearch:
         for config_id in config_ids_by_instance_plugin.get((instance_id, plugin_key), set()):
             removed = removed_by_config_id.get(str(config_id))
             if removed and removed["id"] not in nodes_by_id:
-                nodes_by_id[removed["id"]] = removed
+                nodes_by_id[removed["id"]] = {
+                    "id": removed["id"],
+                    "name": removed.get("name") or removed["id"],
+                    "removed": True,
+                    "active": False,
+                }
             for node in nodes_by_config_id.get(str(config_id), []):
                 nodes_by_id[node["id"]] = node
         return sorted(

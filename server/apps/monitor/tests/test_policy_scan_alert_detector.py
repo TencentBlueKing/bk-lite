@@ -244,6 +244,7 @@ class TestGetMetricDisplayName:
         assert detector._get_metric_display_name() == "mid-7"
 
 
+@pytest.mark.django_db
 class TestDetectNoDataAlerts:
     def test_no_period_or_source_returns_empty(self):
         detector = AlertDetector(_policy(no_data_period={}), {}, {}, [], _mq())
@@ -369,6 +370,84 @@ class TestDetectNoDataAlerts:
         assert infos == []
         assert holds == []
         assert detector.detect_no_data_alerts() == []
+
+    def test_parked_instance_skips_no_data_but_threshold_still_fires(self):
+        from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject
+
+        monitor_object = MonitorObject.objects.create(name="ParkedHost", level="base")
+        parked_id = "('parked-host',)"
+        partial_id = "('partial-host',)"
+        live_id = "('live-host',)"
+        bare_id = "('bare-host',)"
+        parked = MonitorInstance.objects.create(id=parked_id, name="停采", monitor_object=monitor_object)
+        partial = MonitorInstance.objects.create(id=partial_id, name="部分", monitor_object=monitor_object)
+        live = MonitorInstance.objects.create(id=live_id, name="离线仍采集", monitor_object=monitor_object)
+        MonitorInstance.objects.create(id=bare_id, name="无配置", monitor_object=monitor_object)
+        CollectConfig.objects.create(
+            id="parked-cpu",
+            monitor_instance=parked,
+            collector="Telegraf",
+            collect_type="host",
+            config_type="cpu",
+            file_type="toml",
+            is_child=True,
+            executor_node_removed=True,
+            executor_node_id="gone-node",
+            executor_node_name="gone-node",
+        )
+        CollectConfig.objects.create(
+            id="partial-cpu",
+            monitor_instance=partial,
+            collector="Telegraf",
+            collect_type="host",
+            config_type="cpu",
+            file_type="toml",
+            is_child=True,
+            executor_node_removed=True,
+        )
+        CollectConfig.objects.create(
+            id="partial-mem",
+            monitor_instance=partial,
+            collector="Telegraf",
+            collect_type="host",
+            config_type="mem",
+            file_type="toml",
+            is_child=True,
+            executor_node_removed=False,
+        )
+        CollectConfig.objects.create(
+            id="live-cpu",
+            monitor_instance=live,
+            collector="Telegraf",
+            collect_type="host",
+            config_type="cpu",
+            file_type="toml",
+            is_child=True,
+            executor_node_removed=False,
+        )
+        instances_map = {
+            parked_id: "停采",
+            partial_id: "部分",
+            live_id: "离线仍采集",
+            bare_id: "无配置",
+        }
+        baselines = {instance_id: instance_id for instance_id in instances_map}
+        comparison = {"data": {"result": [{"metric": {"instance_id": "parked-host"}, "values": [[100, "95"]]}]}}
+        detector = AlertDetector(
+            _policy(source={"type": "instance", "values": list(instances_map)}),
+            instances_map,
+            baselines,
+            [],
+            _mq(comparison=comparison, formatted={}),
+        )
+
+        alerts, _infos, _holds = detector.detect_threshold_alerts()
+        assert len(alerts) == 1
+        assert "停采" in alerts[0]["content"]
+
+        no_data_ids = {event["monitor_instance_id"] for event in detector.detect_no_data_alerts()}
+        assert parked_id not in no_data_ids
+        assert no_data_ids == {partial_id, live_id, bare_id}
 
 
 class TestBuildDimensionNameMap:
@@ -562,6 +641,7 @@ class TestRecoverNoDataAlerts:
         notifier.return_value.notify_alerts.assert_called_once()
 
 
+@pytest.mark.django_db
 def test_no_data_event_keeps_mount_path_when_identity_is_fingerprinted():
     from apps.monitor.utils.dimension import is_metric_instance_fingerprint, metric_instance_storage_key
 

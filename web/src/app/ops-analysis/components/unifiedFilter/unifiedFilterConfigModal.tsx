@@ -10,11 +10,14 @@ import {
   Empty,
   Button,
   Select,
+  Space,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import {
   HolderOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import {
   ParamInputConfigEditor,
@@ -468,11 +471,11 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.filterKey'),
       dataIndex: 'key',
-      width: 170,
+      width: 150,
       render: (value: string, record: UnifiedFilterDefinition) => (
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <span className="font-mono text-xs">{value}</span>
-          <Tag className="m-0 px-1.5 text-[11px] leading-[18px]">
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
+          <span className="max-w-full truncate font-mono text-xs text-(--color-text-1)">{value}</span>
+          <Tag className="m-0 !inline-flex h-[18px] items-center px-1.5 !py-0 !text-[11px] !leading-none">
             {PARAM_TYPE_LABEL_KEYS.has(record.type)
               ? t(`dataSource.paramTypes.${record.type}`)
               : record.type}
@@ -483,7 +486,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('dashboard.filterName'),
       dataIndex: 'name',
-      width: 140,
+      width: 150,
       onCell: fillCell,
       render: (value: string, record: UnifiedFilterDefinition) => (
         <Input
@@ -497,11 +500,31 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     {
       title: t('paramInput.controlType'),
       dataIndex: 'inputMode',
-      width: 140,
+      width: 150,
       onCell: fillCell,
       render: (_: unknown, record: UnifiedFilterDefinition) => {
+        const renderControlCombo = (
+          select: React.ReactNode,
+          onConfigure?: () => void,
+        ) => (
+          onConfigure ? (
+            <Space.Compact block className="w-full min-w-0">
+              {select}
+              <Tooltip title={t('dashboard.configOptions')}>
+                <Button
+                  icon={<ProfileOutlined />}
+                  aria-label={t('dashboard.configOptions')}
+                  onClick={onConfigure}
+                />
+              </Tooltip>
+            </Space.Compact>
+          ) : (
+            select
+          )
+        );
+
         if (record.type === 'timeRange' || record.type === 'dateRange' || record.type === 'number') {
-          return (
+          return renderControlCombo(
             <Select
               disabled
               value={record.type}
@@ -517,7 +540,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
                 },
               ]}
               className="w-full"
-            />
+            />,
           );
         }
 
@@ -528,46 +551,35 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
           { value: 'radio', label: t('paramInput.control.radio') },
           { value: 'organization', label: t('paramInput.control.organization') },
         ];
+        const canConfigure = currentMode === 'select' || currentMode === 'radio';
 
-        return (
-          <div className="flex w-full min-w-0 items-center gap-1">
-            <div className="min-w-0 flex-1">
-              <Select
-                value={currentMode}
-                options={controlTypeOptions}
-                onChange={(value) =>
-                  handleControlTypeChange(
-                    record.id,
-                    value as UnifiedFilterInputMode,
-                  )
-                }
-                className="w-full"
-              />
-            </div>
-            {(currentMode === 'select' || currentMode === 'radio') && (
-              <Button
-                type="link"
-                size="small"
-                className="h-auto shrink-0 px-0"
-                onClick={() => handleOpenInputConfigModal(record.id)}
-              >
-                {t('dashboard.configure')}
-              </Button>
-            )}
-          </div>
+        return renderControlCombo(
+          <Select
+            value={currentMode}
+            options={controlTypeOptions}
+            onChange={(value) =>
+              handleControlTypeChange(
+                record.id,
+                value as UnifiedFilterInputMode,
+              )
+            }
+            className="w-full"
+          />,
+          canConfigure ? () => handleOpenInputConfigModal(record.id) : undefined,
         );
       },
     },
     {
       title: t('dashboard.defaultValue'),
       dataIndex: 'defaultValue',
-      width: 220,
+      width: 300,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
           return (
             <TimeSelector
               key={`${record.id}-${JSON.stringify(value)}`}
               onlyTimeSelect
+              className="w-full"
               defaultValue={getUnifiedFilterTimeSelectorDefaultValue(value)}
               onChange={(range, originValue) => {
                 if (range.length === 2) {
@@ -752,7 +764,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={840}
+      width={920}
       maskClosable={false}
       centered
       destroyOnHidden

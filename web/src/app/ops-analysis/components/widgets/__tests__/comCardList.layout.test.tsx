@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ComCardList from '../comCardList';
 import ScreenWidgetThemeProvider from '../../screenWidgetThemeProvider';
@@ -149,5 +149,27 @@ describe('ComCardList layout branch', () => {
     expect(root.style.getPropertyValue('--color-bg')).toBe(
       'rgba(91, 143, 249, 0.08)',
     );
+  });
+
+  it('keeps a data-linked card clickable without a hover tooltip', () => {
+    render(
+      <ComCardList
+        rawData={records}
+        config={{
+          ...titleConfig,
+          interaction: {
+            kind: 'data',
+            name: '查看模型资产',
+            url: 'https://example.com/models',
+            openMode: 'newTab',
+          },
+        }}
+      />,
+    );
+    const card = screen.getByText('Alpha');
+    fireEvent.mouseEnter(card);
+    expect(screen.queryByText('点击打开：查看模型资产')).toBeNull();
+    expect(screen.queryByText('dashboard.interactionHoverHint')).toBeNull();
+    expect(card.closest('article')?.className).toContain('cursor-pointer');
   });
 });

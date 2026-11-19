@@ -72,9 +72,9 @@ const CreateCronTaskPage = () => {
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
   // Cron editor state
-  const [cronMinute, setCronMinute] = useState('2');
+  const [cronMinute, setCronMinute] = useState('*');
   const [cronHour, setCronHour] = useState('*');
-  const [cronDay, setCronDay] = useState('1');
+  const [cronDay, setCronDay] = useState('*');
   const [cronMonth, setCronMonth] = useState('*');
   const [cronWeek, setCronWeek] = useState('*');
 
@@ -195,7 +195,11 @@ const CreateCronTaskPage = () => {
       parts.push(t('job.cronDescEveryHour'));
     }
     if (cronMinute !== '*') {
-      parts.push(t('job.cronDescMinute').replace('{minute}', cronMinute.padStart(2, '0')));
+      if (cronMinute.includes('/')) {
+        parts.push(t('job.cronDescMinuteInterval').replace('{interval}', cronMinute.replace('*/', '')));
+      } else {
+        parts.push(t('job.cronDescMinute').replace('{minute}', cronMinute.padStart(2, '0')));
+      }
     }
 
     return parts.join(' ') || getCronExpression();
@@ -522,11 +526,11 @@ const CreateCronTaskPage = () => {
             ) : (
               <div className="space-y-3">
                 <div className="text-(--color-text-3) flex gap-2 pl-1 text-xs">
-                  <span className="w-12 text-center">{t('job.cronMinute')}</span>
-                  <span className="w-12 text-center">{t('job.cronHour')}</span>
-                  <span className="w-12 text-center">{t('job.cronDay')}</span>
-                  <span className="w-12 text-center">{t('job.cronMonth')}</span>
-                  <span className="w-12 text-center">{t('job.cronWeek')}</span>
+                  <span className="w-20 text-center">{t('job.cronMinute')}</span>
+                  <span className="w-20 text-center">{t('job.cronHour')}</span>
+                  <span className="w-20 text-center">{t('job.cronDay')}</span>
+                  <span className="w-20 text-center">{t('job.cronMonth')}</span>
+                  <span className="w-20 text-center">{t('job.cronWeek')}</span>
                 </div>
                 <div className="flex gap-2">
                   {[
@@ -541,14 +545,14 @@ const CreateCronTaskPage = () => {
                       value={field.value}
                       onChange={(e) => field.setter(e.target.value)}
                       onBlur={(e) => { if (!e.target.value.trim()) field.setter('*'); }}
-                      className="w-12 border-[var(--color-primary)] text-center font-mono"
+                      className="w-20 border-[var(--color-primary)] text-center font-mono"
                     />
                   ))}
                 </div>
-                <div className="w-[296px] text-center text-sm text-(--color-text-2)">
+                <div className="w-[27rem] text-center text-sm text-(--color-text-2)">
                   {describeCron()}
                 </div>
-                <div className="w-[296px] text-center text-sm">
+                <div className="w-[27rem] text-center text-sm">
                   {previewLoading ? (
                     <>
                       <span className="text-(--color-text-3) text-xs">{t('job.cronNextRun')}</span>

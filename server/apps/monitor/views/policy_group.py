@@ -21,6 +21,7 @@ from apps.monitor.models import (
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.policy_group import PolicyGroupService, group_detection_state, no_data_carrier_rule_ids
 from apps.monitor.utils.pagination import parse_page_params
+from apps.system_mgmt.models import Group
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -215,6 +216,26 @@ def _legacy_policies(instance):
     return PolicyGroupService.legacy_policies(instance)
 
 
+def _read_only_membership(instance):
+    membership = PolicyGroupMembership.objects.filter(monitor_instance=instance).select_related("policy_group").first()
+    group = membership.policy_group if membership and membership.policy_group_id else None
+    group_organization = group.organization if group is not None else None
+    group_organization_name = ""
+    if group_organization is not None:
+        group_organization_name = Group.objects.filter(id=group_organization).values_list("name", flat=True).first() or ""
+    return {
+        "read_only": True,
+        "state": membership.state if membership else None,
+        "group_id": membership.policy_group_id if membership else None,
+        "group_name": group.name if group is not None else "",
+        "group_organization": group_organization,
+        "group_organization_name": group_organization_name,
+        "groups": [],
+        "templates": [],
+        "legacy_policies": _legacy_policies(instance),
+    }
+
+
 class PolicyGroupViewSet(viewsets.ViewSet):
     def list(self, request):
         scope = resolve_current_team_data_scope(request)
@@ -364,8 +385,18 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         instance_ids = [str(item) for item in instance_ids if str(item).strip()]
         if len(instance_ids) > 100:
             raise BaseAppException("一次最多查询 100 个实例")
-        found = PolicyGroupService.member_group_names(instance_ids, int(scope.current_team))
-        rows = [{"instance_id": instance_id, "group_id": item["id"], "group_name": item["name"]} for instance_id, item in found.items()]
+        current_organization = int(scope.current_team)
+        found = PolicyGroupService.member_group_names(instance_ids, scope.data_team_ids)
+        rows = [
+            {
+                "instance_id": instance_id,
+                "group_id": item["id"],
+                "group_name": item["name"],
+                "group_organization": item["organization"],
+                "read_only": item["organization"] != current_organization,
+            }
+            for instance_id, item in found.items()
+        ]
         return WebUtils.response_success(rows)
 
     @action(methods=["get"], detail=False)
@@ -375,8 +406,11 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         instance = MonitorInstance.objects.filter(id=request.query_params.get("instance_id")).first()
         if instance is None:
             raise BaseAppException("实例不存在")
-        if not MonitorInstanceOrganization.objects.filter(monitor_instance=instance, organization=organization).exists():
-            raise BaseAppException("实例不属于当前组织")
+        instance_organizations = set(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
+        if organization not in instance_organizations:
+            if not instance_organizations.intersection(scope.data_team_ids):
+                raise BaseAppException("实例不属于当前组织")
+            return WebUtils.response_success(_read_only_membership(instance))
         membership = PolicyGroupMembership.objects.filter(monitor_instance=instance).select_related("policy_group").first()
         pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=instance.monitor_object_id).first()
         default_id = pointer.policy_group_id if pointer else None
@@ -395,6 +429,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
                 "groups": groups,
                 "legacy_policies": _legacy_policies(instance),
                 "templates": [{"id": item.id, "name": item.name} for item in templates.order_by("id")],
+                "read_only": False,
             }
         )
 

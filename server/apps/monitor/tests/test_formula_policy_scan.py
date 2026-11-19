@@ -38,12 +38,8 @@ def _metric_query_service(**overrides):
     base = {
         "metric": None,
         "instance_id_keys": ["instance_id", "status"],
-        "query_comparison_metrics": lambda period, points=1: overrides.get(
-            "agg", {"data": {"result": []}}
-        ),
-        "query_existence_metrics": lambda period, points=1: overrides.get(
-            "agg", {"data": {"result": []}}
-        ),
+        "query_comparison_metrics": lambda period, points=1: overrides.get("agg", {"data": {"result": []}}),
+        "query_existence_metrics": lambda period, points=1: overrides.get("agg", {"data": {"result": []}}),
         "convert_metric_values": lambda data: data,
         "convert_thresholds": lambda thresholds: thresholds,
         "format_aggregation_metrics": lambda data: overrides.get("formatted", {}),
@@ -59,10 +55,7 @@ def _metric_query_service(**overrides):
 def test_formula_query_aggregation_uses_formula_query_and_anchor_group_by(mocker):
     policy = _policy(group_by=["instance_id"])
     compiled = SimpleNamespace(
-        query=(
-            "sum(a{}) by (instance_id,status) / "
-            "on(instance_id) group_left sum(b{}) by (instance_id)"
-        ),
+        query=("sum(a{}) by (instance_id,status) / " "on(instance_id) group_left sum(b{}) by (instance_id)"),
         group_by=["instance_id", "status"],
         result_name="错误率",
         warnings=[],
@@ -73,9 +66,7 @@ def test_formula_query_aggregation_uses_formula_query_and_anchor_group_by(mocker
         "apps.monitor.tasks.services.policy_scan.metric_query.build_formula_query",
         return_value=compiled,
     )
-    vm = mocker.patch(
-        "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-    )
+    vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
 
     def fake_query_range(query, start, end, step):
         captured["query"] = query
@@ -106,10 +97,7 @@ def test_metric_query_path_supports_or_filter_without_formula():
     service = MetricQueryService(policy, {})
     service.metric = SimpleNamespace(query="http_requests_total{__$labels__}")
 
-    assert service.format_pmq() == (
-        '(http_requests_total{service="checkout"}) or '
-        '(http_requests_total{status="500"})'
-    )
+    assert service.format_pmq() == ('(http_requests_total{service="checkout"}) or ' '(http_requests_total{status="500"})')
 
 
 def test_formula_metric_name_template_uses_result_name():
@@ -173,6 +161,7 @@ def test_formula_negative_threshold_conversion_prevents_false_alert():
     assert infos[0]["value"] == str(-5 * 1024**3)
 
 
+@pytest.mark.django_db
 def test_formula_no_data_detection_uses_final_result_group_by():
     missing_metric_instance = str(("h1", "500"))
     detector = AlertDetector(
@@ -224,9 +213,7 @@ def test_formula_baseline_refresh_uses_final_result_group_by():
     ):
         PolicyBaselineService(policy).refresh()
 
-    assert set(
-        policy.policyinstancebaseline_set.values_list("metric_instance_id", flat=True)
-    ) == {str(("h1", "500"))}
+    assert set(policy.policyinstancebaseline_set.values_list("metric_instance_id", flat=True)) == {str(("h1", "500"))}
 
 
 def test_metric_query_path_still_uses_policy_group_by(mocker):
@@ -236,9 +223,7 @@ def test_metric_query_path_still_uses_policy_group_by(mocker):
         algorithm="avg_over_time",
     )
     captured = {}
-    vm = mocker.patch(
-        "apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI"
-    )
+    vm = mocker.patch("apps.monitor.tasks.services.policy_scan.metric_query.VictoriaMetricsAPI")
 
     def fake_query_range(query, start, end, step):
         captured["query"] = query
@@ -247,9 +232,7 @@ def test_metric_query_path_still_uses_policy_group_by(mocker):
     vm.return_value.query_range.side_effect = fake_query_range
 
     service = MetricQueryService(policy, {})
-    service.metric = SimpleNamespace(
-        query="cpu{__$labels__}", data_type="Number", unit=""
-    )
+    service.metric = SimpleNamespace(query="cpu{__$labels__}", data_type="Number", unit="")
     service.query_comparison_metrics(policy.period)
 
     assert "cpu{}" in captured["query"]

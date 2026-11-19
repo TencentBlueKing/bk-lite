@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from django.test import override_settings
 
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.monitor_policy import MonitorAlert, MonitorPolicy
 from apps.monitor.services.generic_query import (
     GenericQueryError,
@@ -176,9 +177,9 @@ def test_instance_count_handler_counts_one_object_inside_the_org(monkeypatch):
     assert active["data"] == [{"instance_count": 1}]
     empty = query_monitor_instance_counts(monitor_object_id=other.id, status="inactive", user_info=user_info)
     assert empty["data"] == [{"instance_count": 0}]
-    missing = query_monitor_instance_counts(monitor_object_id="", user_info=user_info)
-    assert missing["result"] is False
-    assert "不能为空" in missing["message"]
+    opened = query_monitor_instance_counts(monitor_object_id="", user_info=user_info)
+    assert opened["result"] is True
+    assert opened["data"] == [{"instance_count": 3}]
     absent = query_monitor_instance_counts(monitor_object_id="999999", user_info=user_info)
     assert absent["result"] is False
     assert "不存在或无权访问" in absent["message"]
@@ -208,10 +209,75 @@ def test_instance_count_handler_does_not_count_without_permission(monkeypatch):
         "apps.monitor.nats.generic_query._get_monitor_instance_permission",
         lambda monitor_object_id, user_info: ({}, None),
     )
-    result = query_monitor_instance_counts(monitor_object_id=host.id, user_info={"user": "ada", "team": 1})
+    user_info = {"user": "ada", "team": 1}
+    result = query_monitor_instance_counts(monitor_object_id=host.id, user_info=user_info)
     assert result["result"] is False
     assert result["data"] == {"status": "forbidden"}
     assert "无权限" in result["message"]
+    opened = query_monitor_instance_counts(user_info=user_info)
+    assert opened["result"] is True
+    assert opened["data"] == [{"instance_count": 0}]
+
+
+def test_instance_count_sums_a_category_and_keeps_a_saved_object_id(monkeypatch):
+    from apps.monitor.models.monitor_object import MonitorInstanceOrganization
+    from apps.monitor.nats.generic_query import query_monitor_instance_counts
+
+    database_type = MonitorObjectType.objects.create(id="ctype-db", name="数据库分类", order=1)
+    network_type = MonitorObjectType.objects.create(id="ctype-net", name="网络分类", order=2)
+    mysql = MonitorObject.objects.create(name="count-mysql", level="base", type=database_type)
+    redis = MonitorObject.objects.create(name="count-redis", level="base", type=database_type)
+    switch = MonitorObject.objects.create(name="count-switch", level="base", type=network_type)
+    hidden = MonitorObject.objects.create(name="count-hidden", level="base", type=network_type, is_visible=False)
+    for obj, instance_id, active in (
+        (mysql, "mysql-1", True),
+        (redis, "redis-1", False),
+        (switch, "switch-1", True),
+        (switch, "switch-2", True),
+        (hidden, "hidden-1", True),
+    ):
+        item = _instance(obj, instance_id, active=active)
+        MonitorInstanceOrganization.objects.create(monitor_instance=item, organization=1)
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_actor_scope",
+        lambda user_info: (user_info, 1, False, [1], True, None),
+    )
+    user_info = {"user": "ada", "team": 1}
+
+    by_type = query_monitor_instance_counts(monitor_object_type_ids=[network_type.id], user_info=user_info)
+    assert by_type["result"] is True
+    assert by_type["data"] == [{"instance_count": 3}]
+    inactive_database = query_monitor_instance_counts(
+        monitor_object_type_ids=[database_type.id],
+        status="inactive",
+        user_info=user_info,
+    )
+    assert inactive_database["data"] == [{"instance_count": 1}]
+    database_all = query_monitor_instance_counts(monitor_object_type_ids=[database_type.id], user_info=user_info)
+    assert database_all["data"] == [{"instance_count": 2}]
+    named = query_monitor_instance_counts(
+        monitor_object_type_ids=[network_type.id],
+        monitor_object_id=[str(switch.id)],
+        user_info=user_info,
+    )
+    assert named["data"] == [{"instance_count": 2}]
+    saved = query_monitor_instance_counts(monitor_object_id=str(mysql.id), user_info=user_info)
+    assert saved["data"] == [{"instance_count": 1}]
+    several = query_monitor_instance_counts(
+        monitor_object_id=[str(mysql.id), str(switch.id)],
+        user_info=user_info,
+    )
+    assert several["data"] == [{"instance_count": 3}]
+    mismatched = query_monitor_instance_counts(
+        monitor_object_type_ids=[database_type.id],
+        monitor_object_id=[str(switch.id)],
+        user_info=user_info,
+    )
+    assert mismatched["result"] is False
+    assert "对象不属于所选分类" in mismatched["message"]
+    missing_type = query_monitor_instance_counts(monitor_object_type_ids=["missing-type"], user_info=user_info)
+    assert missing_type["result"] is False
+    assert "分类不存在" in missing_type["message"]
 
 
 def test_monitor_instance_page_size_and_statistics_group_limits():
@@ -820,6 +886,39 @@ def test_alert_distribution_returns_one_row_per_selected_field():
         query_alert_distribution(queryset, group_by="status")
 
 
+def test_alert_distribution_groups_by_category_and_keeps_named_zero_categories():
+    database_type = MonitorObjectType.objects.create(id="atype-db", name="数据库分类", order=1)
+    network_type = MonitorObjectType.objects.create(id="atype-net", name="网络分类", order=2)
+    empty_type = MonitorObjectType.objects.create(id="atype-empty", name="空分类", order=3)
+    mysql = MonitorObject.objects.create(name="typed-mysql", level="base", type=database_type)
+    redis = MonitorObject.objects.create(name="typed-redis", level="base", type=database_type)
+    switch = MonitorObject.objects.create(name="typed-switch", level="base", type=network_type)
+    loose = MonitorObject.objects.create(name="untyped-object", level="base")
+    mysql_policy = MonitorPolicy.objects.create(monitor_object=mysql, name="mysql", algorithm="avg")
+    redis_policy = MonitorPolicy.objects.create(monitor_object=redis, name="redis", algorithm="avg")
+    switch_policy = MonitorPolicy.objects.create(monitor_object=switch, name="switch", algorithm="avg")
+    loose_policy = MonitorPolicy.objects.create(monitor_object=loose, name="loose", algorithm="avg")
+    for policy_id, count in ((mysql_policy.id, 2), (redis_policy.id, 1), (switch_policy.id, 1), (loose_policy.id, 1)):
+        for _ in range(count):
+            MonitorAlert.objects.create(policy_id=policy_id, level="warning", status="new", alert_type="alert")
+    MonitorAlert.objects.create(policy_id=0, level="warning", status="new", alert_type="alert")
+    queryset = MonitorAlert.objects.all()
+
+    opened = {item["group_value"]: item["alert_count"] for item in query_alert_distribution(queryset, group_by="monitor_object_type")}
+    assert opened == {"数据库分类": 3, "网络分类": 1}
+
+    scoped = queryset.filter(policy_id__in=MonitorPolicy.objects.filter(monitor_object__type_id=database_type.id).values("id"))
+    named = {
+        item["group_value"]: item["alert_count"]
+        for item in query_alert_distribution(
+            scoped,
+            group_by="monitor_object_type",
+            selected_type_ids=[database_type.id, empty_type.id],
+        )
+    }
+    assert named == {"数据库分类": 3, "空分类": 0}
+
+
 def test_monitor_alerts_reject_unknown_choices():
     with pytest.raises(GenericQueryError, match="级别不受支持"):
         query_alert_counts(MonitorAlert.objects.none(), level="info")
@@ -873,21 +972,23 @@ def test_monitor_alerts_sort_level_by_severity_and_keep_deleted_policy_group(mon
         start_event_time=moment,
     )
     window = [moment.isoformat(), (moment + timedelta(days=1)).isoformat()]
-    ordered = query_alert_details(
-        MonitorAlert.objects.all(),
-        status=["new", "closed"],
-        time_field="start_event_time",
-        time_range=window,
-        order_by="level",
-        order_dir="asc",
-        page=1,
-        page_size=20,
-    )
+    with override_settings(TIME_ZONE="Asia/Shanghai", USE_TZ=True):
+        ordered = query_alert_details(
+            MonitorAlert.objects.all(),
+            status=["new", "closed"],
+            time_field="start_event_time",
+            time_range=window,
+            order_by="level",
+            order_dir="asc",
+            page=1,
+            page_size=20,
+        )
     assert [item["level"] for item in ordered["items"]] == ["无数据", "警告", "严重"]
     warning = next(item for item in ordered["items"] if item["level"] == "警告")
     assert warning["status"] == "未恢复"
     assert warning["alert_type"] == "阈值告警"
     assert warning["content"] == "磁盘满了"
+    assert warning["start_event_time"] == "2026-01-01 08:00:00"
     assert warning["monitor_object_name"] == "主机"
     assert warning["monitor_object_id"] == str(obj.id)
     assert "updated_at" not in warning
@@ -1036,7 +1137,7 @@ def test_alert_distribution_keeps_single_object_and_skips_invalid_instances(monk
 
 
 def test_alert_distribution_supports_multiple_objects_and_cross_object_instances(monkeypatch):
-    from apps.monitor.nats.generic_query import query_monitor_alert_distribution, query_monitor_instances
+    from apps.monitor.nats.generic_query import query_monitor_alert_counts, query_monitor_alert_distribution, query_monitor_instances
 
     host = _object()
     database = MonitorObject.objects.create(name="db-object", level="base")
@@ -1075,6 +1176,34 @@ def test_alert_distribution_supports_multiple_objects_and_cross_object_instances
     assert {item["group_value"] for item in distributed["data"]} == {"host-object", "db-object"}
     assert {item["alert_count"] for item in distributed["data"]} == {1}
 
+    quiet = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        monitor_object_id=[str(host.id), str(database.id)],
+        user_info=user_info,
+    )
+    assert quiet["result"] is True
+    by_name = {item["group_value"]: item["alert_count"] for item in quiet["data"]}
+    assert by_name["host-object"] == 1
+    assert by_name["db-object"] == 1
+
+    empty_object = MonitorObject.objects.create(name="idle-object", level="base")
+    with_zero = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        monitor_object_id=[str(host.id), str(empty_object.id)],
+        user_info=user_info,
+    )
+    assert with_zero["result"] is True
+    zero_rows = {item["group_value"]: item["alert_count"] for item in with_zero["data"]}
+    assert zero_rows == {"host-object": 1, "idle-object": 0}
+    opened = query_monitor_alert_distribution(group_by="monitor_object_id", user_info=user_info)
+    assert "idle-object" not in {item["group_value"] for item in opened["data"]}
+    rejected = query_monitor_alert_counts(
+        monitor_object_id=[str(host.id), "999999"],
+        user_info=user_info,
+    )
+    assert rejected["result"] is False
+    assert "不存在或无权访问" in rejected["message"]
+
     listed = query_monitor_instances(
         monitor_object_id=[str(host.id), str(database.id)],
         analysis_mode="detail",
@@ -1084,6 +1213,100 @@ def test_alert_distribution_supports_multiple_objects_and_cross_object_instances
     )
     assert listed["result"] is True
     assert {item["instance_id"] for item in listed["data"]["items"]} == {"host-1", "db-1"}
+
+
+def test_alert_sources_filter_by_category_without_zero_filling_objects(monkeypatch):
+    from apps.monitor.nats.generic_query import query_monitor_alert_counts, query_monitor_alert_distribution, query_monitor_alerts
+    from apps.monitor.nats.monitor import _filter_nats_visible_alerts
+
+    database_type = MonitorObjectType.objects.create(id="atype-db", name="数据库分类", order=1)
+    network_type = MonitorObjectType.objects.create(id="atype-net", name="网络分类", order=2)
+    empty_type = MonitorObjectType.objects.create(id="atype-empty", name="空分类", order=3)
+    mysql = MonitorObject.objects.create(name="typed-mysql", level="base", type=database_type)
+    MonitorObject.objects.create(name="typed-idle", level="base", type=database_type)
+    switch = MonitorObject.objects.create(name="typed-switch", level="base", type=network_type)
+    loose = MonitorObject.objects.create(name="untyped-object", level="base")
+    mysql_policy = MonitorPolicy.objects.create(monitor_object=mysql, name="mysql", algorithm="avg")
+    switch_policy = MonitorPolicy.objects.create(monitor_object=switch, name="switch", algorithm="avg")
+    loose_policy = MonitorPolicy.objects.create(monitor_object=loose, name="loose", algorithm="avg")
+    MonitorAlert.objects.create(
+        policy_id=mysql_policy.id, monitor_instance_name="mysql-a", level="warning", status="new", alert_type="alert", organizations=[1]
+    )
+    MonitorAlert.objects.create(
+        policy_id=mysql_policy.id, monitor_instance_name="mysql-b", level="error", status="new", alert_type="alert", organizations=[1]
+    )
+    MonitorAlert.objects.create(
+        policy_id=switch_policy.id, monitor_instance_name="switch-a", level="critical", status="new", alert_type="alert", organizations=[1]
+    )
+    MonitorAlert.objects.create(
+        policy_id=loose_policy.id, monitor_instance_name="loose-a", level="warning", status="new", alert_type="alert", organizations=[1]
+    )
+    MonitorAlert.objects.create(policy_id=0, monitor_instance_name="orphan", level="warning", status="new", alert_type="alert", organizations=[1])
+    _patch_alert_access(monkeypatch)
+    user_info = {"user": "ada", "team": 1, "domain": "example.com"}
+
+    counted = query_monitor_alert_counts(monitor_object_type_ids=[database_type.id], user_info=user_info)
+    assert counted["result"] is True
+    assert counted["data"] == [{"alert_count": 2}]
+
+    listed = query_monitor_alerts(monitor_object_type_ids=[database_type.id], user_info=user_info)
+    assert listed["result"] is True
+    assert {item["monitor_instance_name"] for item in listed["data"]} == {"mysql-a", "mysql-b"}
+
+    by_object = query_monitor_alert_distribution(
+        group_by="monitor_object_id",
+        monitor_object_type_ids=[database_type.id],
+        user_info=user_info,
+    )
+    assert by_object["result"] is True
+    assert {item["group_value"]: item["alert_count"] for item in by_object["data"]} == {"typed-mysql": 2}
+
+    by_type = query_monitor_alert_distribution(group_by="monitor_object_type", user_info=user_info)
+    assert by_type["result"] is True
+    assert {item["group_value"]: item["alert_count"] for item in by_type["data"]} == {"数据库分类": 2, "网络分类": 1}
+
+    named_empty = query_monitor_alert_distribution(
+        group_by="monitor_object_type",
+        monitor_object_type_ids=[empty_type.id, database_type.id],
+        user_info=user_info,
+    )
+    assert named_empty["result"] is True
+    assert {item["group_value"]: item["alert_count"] for item in named_empty["data"]} == {"数据库分类": 2, "空分类": 0}
+
+    objects_only = query_monitor_alert_counts(monitor_object_id=[str(loose.id)], user_info=user_info)
+    assert objects_only["result"] is True
+    assert objects_only["data"] == [{"alert_count": 1}]
+
+    mismatched = query_monitor_alert_counts(
+        monitor_object_type_ids=[database_type.id],
+        monitor_object_id=[str(switch.id)],
+        user_info=user_info,
+    )
+    assert mismatched["result"] is False
+    assert "对象不属于所选分类" in mismatched["message"]
+
+    missing_type = query_monitor_alert_distribution(
+        group_by="monitor_object_type",
+        monitor_object_type_ids=["missing-type"],
+        user_info=user_info,
+    )
+    assert missing_type["result"] is False
+    assert "分类不存在" in missing_type["message"]
+
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._get_nats_accessible_policy_queryset",
+        lambda user_info: (MonitorPolicy.objects.filter(id=mysql_policy.id), None),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.nats.generic_query._filter_nats_visible_alerts",
+        _filter_nats_visible_alerts,
+    )
+    skipped = query_monitor_alert_counts(
+        monitor_object_type_ids=[database_type.id, network_type.id],
+        user_info=user_info,
+    )
+    assert skipped["result"] is True
+    assert skipped["data"] == [{"alert_count": 2}]
 
 
 def test_cmdb_alert_distribution_maps_uuids_then_groups_like_alert_distribution(monkeypatch):
@@ -1163,6 +1386,14 @@ def test_cmdb_alert_distribution_maps_uuids_then_groups_like_alert_distribution(
     )
     assert by_level["result"] is True
     assert {item["group_value"]: item["alert_count"] for item in by_level["data"]} == {"警告": 1, "严重": 1, "错误": 1}
+
+    rejected_type = query_cmdb_alert_distribution(
+        uuids=mixed_uuids,
+        group_by="monitor_object_type",
+        user_info=user_info,
+    )
+    assert rejected_type["result"] is False
+    assert "分布字段不受支持" in rejected_type["message"]
 
     rejected_object = query_cmdb_alert_distribution(
         uuids=mixed_uuids,

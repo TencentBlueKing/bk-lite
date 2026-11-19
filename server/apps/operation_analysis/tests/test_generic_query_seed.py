@@ -49,7 +49,7 @@ def _option_values(param):
     return {item["value"] for item in param["inputConfig"]["optionsSource"]["staticItems"]}
 
 
-def test_monitor_instance_count_source_is_one_object_and_one_number():
+def test_monitor_instance_count_source_sums_categories_or_objects():
     data = json.loads(SEED.read_text(encoding="utf-8"))
     matches = [item for item in data if item.get("rest_api") == "monitor/query_monitor_instance_counts"]
     assert len(matches) == 1
@@ -58,16 +58,141 @@ def test_monitor_instance_count_source_is_one_object_and_one_number():
     assert source["name"] == "监控实例数量统计"
     assert source["chart_type"] == ["single", "gauge"]
     names = [param["name"] for param in source["params"]]
-    assert names == ["monitor_object_id", "status", "organization"]
+    assert names == ["monitor_object_type_ids", "monitor_object_id", "status", "organization"]
+    category = _param(source, "monitor_object_type_ids")
+    assert category["value"] == []
+    assert category["inputConfig"]["multiple"] is True
+    assert "desc" not in category
+    assert category["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/list_monitor_object_type_options"
     monitor_object = _param(source, "monitor_object_id")
-    assert monitor_object["required"] is True
-    assert monitor_object["inputConfig"].get("multiple") is not True
-    assert monitor_object["inputConfig"]["optionsSource"]["valueField"] == "id"
-    assert monitor_object["inputConfig"]["optionsSource"]["labelField"] == "display_name"
+    assert monitor_object.get("required") is not True
+    assert monitor_object["value"] == []
+    assert monitor_object["inputConfig"]["multiple"] is True
+    assert "desc" not in monitor_object
+    object_options = monitor_object["inputConfig"]["optionsSource"]
+    assert object_options["valueField"] == "id"
+    assert object_options["labelField"] == "display_name"
+    assert object_options["sourceRef"]["value"] == "monitor/list_monitor_objects_by_type"
+    assert object_options["queryParams"] == {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}}
+    assert object_options["emptyUpstreamHintKey"] == "dashboard.selectClassificationFirst"
     assert _param(source, "status")["value"] == "all"
     assert [field["key"] for field in source["field_schema"]] == ["instance_count"]
     for dropped in ("page", "page_size", "order_by", "order_dir", "instance_ids", "analysis_mode"):
         assert dropped not in names
+
+
+def test_collection_and_interface_sources_share_filters_between_table_and_count():
+    data = json.loads(SEED.read_text(encoding="utf-8"))
+    by_api = {item["rest_api"]: item for item in data}
+    collection = by_api["monitor/query_monitor_collection"]
+    collection_count = by_api["monitor/query_monitor_collection_counts"]
+    interface = by_api["monitor/query_interface_current"]
+    interface_count = by_api["monitor/query_interface_current_counts"]
+    assert interface["name"] == "监控接口查询"
+    assert interface["key"] == "监控接口当前值::monitor/query_interface_current"
+    assert interface_count["name"] == "监控接口数量统计"
+    assert interface_count["key"] == "监控接口当前值数量::monitor/query_interface_current_counts"
+    assert collection["chart_type"] == ["table"]
+    assert collection_count["chart_type"] == ["single"]
+    assert interface["chart_type"] == ["table"]
+    assert interface_count["chart_type"] == ["single"]
+    shared_collection = ["monitor_object_type_ids", "monitor_object_id", "status", "report_status", "collect_status", "collect_mode"]
+    count_names = [param["name"] for param in collection_count["params"]]
+    table_names = [param["name"] for param in collection["params"]]
+    assert count_names[:6] == shared_collection
+    assert table_names[:6] == shared_collection
+    assert "page" not in count_names
+    assert "order_by" not in count_names
+    for source in (collection, collection_count):
+        category = _param(source, "monitor_object_type_ids")
+        assert "desc" not in category
+        assert category["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/list_monitor_object_type_options"
+        monitor_object = _param(source, "monitor_object_id")
+        assert "desc" not in monitor_object
+        assert monitor_object["inputConfig"]["optionsSource"]["emptyUpstreamHintKey"] == "dashboard.selectClassificationFirst"
+    assert _option_values(_param(collection, "report_status")) == {"all", "normal", "unavailable"}
+    assert _option_values(_param(collection, "collect_status")) == {"all", "normal", "offline"}
+    assert _option_values(_param(collection, "collect_mode")) == {"all", "auto", "manual"}
+    last_sample = next(field for field in collection["field_schema"] if field["key"] == "last_sample_at")
+    assert "2026-11-17 17:08:48" in last_sample["description"]
+    assert [field["key"] for field in collection["field_schema"]] == [
+        "instance_id",
+        "name",
+        "monitor_object_id",
+        "monitor_object",
+        "monitor_object_type",
+        "monitor_object_name",
+        "collect_mode",
+        "report_status",
+        "collect_status",
+        "last_sample_at",
+    ]
+    assert [field["key"] for field in collection_count["field_schema"]] == ["instance_count"]
+    interface_shared = ["monitor_object_type_ids", "monitor_object_id", "instance_ids", "interface_match"]
+    assert [param["name"] for param in interface["params"]][:4] == interface_shared
+    assert [param["name"] for param in interface_count["params"]][:4] == interface_shared
+    assert "page" not in [param["name"] for param in interface_count["params"]]
+    switch = _param(interface, "interface_match")["inputConfig"]
+    assert switch["componentSwitch"] is True
+    assert _option_values(_param(interface, "interface_match")) == {"all", "up", "down", "error", "discard"}
+    assert "componentSwitch" not in _param(interface_count, "interface_match")["inputConfig"]
+    assert _param(interface, "instance_ids")["inputConfig"]["optionsSource"]["emptyUpstreamHintKey"] == "dashboard.selectMonitorObjectFirst"
+    assert [field["key"] for field in interface_count["field_schema"]] == ["interface_count"]
+    in_rate = next(field for field in interface["field_schema"] if field["key"] == "in_rate")
+    assert in_rate["value_type"] == "string"
+    assert "KB/s" in in_rate["description"]
+    assert "monitor/query_latest_interface_metrics" in by_api
+
+
+def test_monitor_instance_distribution_source_groups_by_type_or_object():
+    data = json.loads(SEED.read_text(encoding="utf-8"))
+    matches = [item for item in data if item.get("rest_api") == "monitor/query_monitor_instance_distribution"]
+    assert len(matches) == 1
+    source = matches[0]
+    assert source["key"] == "监控实例分布::monitor/query_monitor_instance_distribution"
+    assert source["name"] == "监控实例分布"
+    assert source["chart_type"] == ["bar", "pie", "topN"]
+    names = [param["name"] for param in source["params"]]
+    assert names == [
+        "group_by",
+        "monitor_object_type_ids",
+        "monitor_object_ids",
+        "status",
+        "page_size",
+        "organization",
+    ]
+    assert _param(source, "group_by")["required"] is True
+    assert _option_values(_param(source, "group_by")) == {"monitor_object_type", "monitor_object"}
+    assert _param(source, "monitor_object_type_ids")["inputConfig"]["multiple"] is True
+    assert _param(source, "monitor_object_ids")["inputConfig"]["multiple"] is True
+    category_query = _param(source, "monitor_object_type_ids")["inputConfig"]["optionsSource"]
+    assert category_query["sourceRef"]["value"] == "monitor/list_monitor_object_type_options"
+    assert "queryParams" not in category_query
+    object_query = _param(source, "monitor_object_ids")["inputConfig"]["optionsSource"]
+    assert object_query["sourceRef"]["value"] == "monitor/list_monitor_objects_by_type"
+    assert object_query["queryParams"] == {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}}
+    assert object_query["emptyUpstreamHintKey"] == "dashboard.selectClassificationFirst"
+    assert _param(source, "status")["value"] == "all"
+    page_size = _param(source, "page_size")
+    assert page_size["value"] is None
+    assert page_size["alias_name"] == "返回条数"
+    assert "超过 500" in page_size["desc"]
+    assert "最多 500" in page_size["desc"]
+    assert "最多 100" not in page_size["desc"]
+    assert "填写后只返回排序后的前 N 条" in page_size["desc"]
+    assert [field["key"] for field in source["field_schema"]] == ["group_id", "group_value", "instance_count"]
+    for dropped in ("page", "order_by", "order_dir", "instance_ids", "analysis_mode"):
+        assert dropped not in names
+    categories = next(item for item in data if item.get("rest_api") == "monitor/list_monitor_object_type_options")
+    assert categories["name"] == "监控对象分类（选项）"
+    assert categories["chart_type"] == []
+    assert categories["tag"] == ["monitor"]
+    assert categories["params"] == []
+    objects = next(item for item in data if item.get("rest_api") == "monitor/list_monitor_objects_by_type")
+    assert objects["name"] == "分类下监控对象（选项）"
+    assert objects["chart_type"] == []
+    assert objects["tag"] == ["monitor"]
+    assert [param["name"] for param in objects["params"]] == ["monitor_object_type_ids"]
 
 
 def test_generic_query_seed_declares_analysis_modes_and_paging_defaults():
@@ -439,6 +564,8 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert "页码" in alerts["desc"]
     assert any(item["name"] == "page" for item in alerts["params"])
     assert any(item["name"] == "page_size" for item in alerts["params"])
+    start_time = next(field for field in alerts["field_schema"] if field["key"] == "start_event_time")
+    assert "2026-11-17 17:08:48" in start_time["description"]
     options = next(
         item
         for item in json.loads(SEED.read_text(encoding="utf-8"))
@@ -451,11 +578,11 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     alert_names = {param["name"] for param in alerts["params"]}
     assert "filters" not in alert_names
     assert "instance_id" not in alert_names
-    assert "instance_ids" in alert_names
+    assert "instance_ids" not in alert_names
     assert _param(alerts, "monitor_object_id").get("required") is not True
-    assert _param(alerts, "instance_ids")["inputConfig"]["multiple"] is True
+    assert _param(alerts, "monitor_object_id")["inputConfig"]["multiple"] is True
+    assert _param(alerts, "monitor_object_id")["value"] == []
     assert _param(alerts, "level")["inputConfig"]["multiple"] is True
-    assert _param(alerts, "instance_ids")["inputConfig"]["optionsSource"]["queryParams"]["monitor_object_id"] == {"ref": "monitor_object_id"}
     assert "updated_at" not in _option_values(_param(alerts, "time_field"))
     assert "group_by" not in alert_names
     value_field = next(field for field in alerts["field_schema"] if field["key"] == "value")
@@ -556,14 +683,29 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert distribution["chart_type"] == ["pie", "bar", "line", "table", "topN", "multiValue", "cardList"]
     assert field_keys(distribution) == ["group_value", "alert_count"]
     assert _param(distribution, "group_by")["required"] is True
+    assert _param(distribution, "monitor_object_id")["inputConfig"]["multiple"] is True
+    assert _param(distribution, "monitor_object_id")["value"] == []
+    assert "instance_ids" not in {param["name"] for param in distribution["params"]}
+    assert _param(counts, "monitor_object_id")["inputConfig"]["multiple"] is True
+    assert _param(counts, "monitor_object_id")["value"] == []
     for rest_api in (
         "monitor/query_monitor_alerts",
         "monitor/query_monitor_alert_counts",
         "monitor/query_monitor_alert_distribution",
     ):
-        assert _param(sources[rest_api], "monitor_object_id")["inputConfig"]["multiple"] is True
+        category = _param(sources[rest_api], "monitor_object_type_ids")
+        assert category["value"] == []
+        assert category["inputConfig"]["multiple"] is True
+        assert "desc" not in category
+        category_options = category["inputConfig"]["optionsSource"]
+        assert category_options["sourceRef"]["value"] == "monitor/list_monitor_object_type_options"
+        assert "queryParams" not in category_options
+        object_options = _param(sources[rest_api], "monitor_object_id")["inputConfig"]["optionsSource"]
+        assert object_options["sourceRef"]["value"] == "monitor/list_monitor_objects_by_type"
+        assert object_options["queryParams"] == {"monitor_object_type_ids": {"ref": "monitor_object_type_ids"}}
+        assert object_options["emptyUpstreamHintKey"] == "dashboard.selectClassificationFirst"
+        assert "desc" not in _param(sources[rest_api], "monitor_object_id")
         assert "也可以多选" in sources[rest_api]["desc"]
-    assert _param(distribution, "instance_ids")["inputConfig"]["multiple"] is True
     assert _param(sources["monitor/query_monitor_instances"], "monitor_object_id")["inputConfig"].get("multiple") is not True
     assert _param(sources["monitor/query_monitor_metric"], "monitor_object_id")["inputConfig"].get("multiple") is not True
     cmdb_alert = sources["monitor/query_cmdb_alert_distribution"]
@@ -576,8 +718,14 @@ def test_model_query_schema_matches_detail_rows_without_touching_other_status():
     assert "monitor_object_id" not in {param["name"] for param in cmdb_alert["params"]}
     assert "model_id" not in {param["name"] for param in cmdb_alert["params"]}
     assert "page" not in {param["name"] for param in cmdb_alert["params"]}
+    assert "monitor_object_type_ids" not in {param["name"] for param in cmdb_alert["params"]}
     assert _option_values(_param(cmdb_alert, "group_by")) == {"level", "monitor_object_id", "alert_type"}
-    assert _option_values(_param(distribution, "group_by")) == {"level", "monitor_object_id", "alert_type"}
+    assert _option_values(_param(distribution, "group_by")) == {
+        "level",
+        "monitor_object_id",
+        "alert_type",
+        "monitor_object_type",
+    }
     assert "status" not in _option_values(_param(distribution, "group_by"))
     assert "analysis_mode" not in {param["name"] for param in distribution["params"]}
     assert "page" not in {param["name"] for param in distribution["params"]}
@@ -669,3 +817,21 @@ def test_model_query_resolver_keeps_explicit_values_and_skips_hidden_defaults():
     cleared_time = _resolve_request_params(legacy_time, {"time": "", "page": None})
     assert "time" not in cleared_time
     assert cleared_time["page"] is None
+
+
+def test_monitor_alert_sources_ignore_saved_instance_filters():
+    from apps.operation_analysis.views.datasource_view import _resolve_request_params
+
+    sources = _sources()
+    for rest_api in (
+        "monitor/query_monitor_alerts",
+        "monitor/query_monitor_alert_counts",
+        "monitor/query_monitor_alert_distribution",
+    ):
+        source = sources[rest_api]
+        resolved = _resolve_request_params(
+            SimpleNamespace(rest_api=rest_api, params=source["params"]),
+            {"monitor_object_id": ["12", "18"], "instance_ids": ["host-1"]},
+        )
+        assert resolved["monitor_object_id"] == ["12", "18"]
+        assert "instance_ids" not in resolved

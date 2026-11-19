@@ -119,7 +119,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             {t('topology.nodeConfig.displayField')}
             <Tooltip
               title={t('dashboard.displayFieldTip')}
-              overlayInnerStyle={{ maxWidth: 360 }}
+              styles={{ body: { maxWidth: 360 } }}
             >
               <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
             </Tooltip>
@@ -169,8 +169,8 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             handleFieldSelect(value as string | undefined)
           }
           className={`w-full ${fieldSelectorClassName}`}
-          popupClassName={fieldPopupClassName}
-          dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+          classNames={fieldPopupClassName ? { popup: { root: fieldPopupClassName } } : undefined}
+          styles={{ popup: { root: { maxHeight: 360, overflow: 'auto' } } }}
         />
       </Form.Item>
 

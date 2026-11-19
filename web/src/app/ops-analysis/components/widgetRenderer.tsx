@@ -30,6 +30,7 @@ interface WidgetRendererProps {
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
   componentSwitchControl?: React.ReactNode;
+  paginationResetKey?: string;
   errorMessage?: string;
   runtimeOwnerId?: string;
   runtimeActive?: boolean;
@@ -58,6 +59,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   layoutEditable,
   onTopologyLayoutChange,
   componentSwitchControl,
+  paginationResetKey,
   errorMessage,
   runtimeOwnerId,
   runtimeActive,
@@ -100,6 +102,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
         : {})}
       {...(scenePermissionDenied ? { scenePermissionDenied } : {})}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
+      {...(chartType === 'table' ? { paginationResetKey } : {})}
     />
   );
 };

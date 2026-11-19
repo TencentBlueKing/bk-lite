@@ -856,6 +856,12 @@ screens:
     widgets:
       network-topology-builtin-main:
         title: Network Status Topology Overview
+  "screen::监控值班总览_内置":
+    name: Monitoring Duty Overview
+    desc: Based on the current monitoring snapshot, shows monitored scale, collection failures, and alerts that are still open.
+  "screen::网络设备运行汇总_内置":
+    name: Network Device Operations Summary
+    desc: Based on the current monitoring snapshot, summarizes network device operations. Totals, unavailable devices, collection failures, and interfaces are counted for the network device category.
 datasources:
   "监控异常严重度TOP5::monitor/query_latest_active_alerts":
     name: Monitor Anomaly Severity TOP 5

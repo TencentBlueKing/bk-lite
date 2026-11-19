@@ -12,6 +12,7 @@ from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, Valu
 from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.models.monitor_object import MonitorInstance
+from apps.monitor.services.active_alert_ranking import format_active_alert_local_time
 from apps.monitor.services.authorized_metric_query import _instance_lookup_candidates
 from apps.monitor.services.generic_query_limits import (
     ALERT_DETAIL_MAX,
@@ -36,6 +37,7 @@ ALERT_LEVELS = {"warning", "error", "critical", "no_data"}
 ALERT_STATUSES = {"new", "closed", "recovered"}
 ALERT_TYPES = {"alert", "no_data"}
 ALERT_DISTRIBUTION_FIELDS = {"level", "monitor_object_id", "alert_type"}
+MONITOR_ALERT_DISTRIBUTION_FIELDS = ALERT_DISTRIBUTION_FIELDS | {"monitor_object_type"}
 _ALERT_CHOICE_LABELS = {
     "level": {
         "warning": "警告",
@@ -381,20 +383,32 @@ def query_alert_distribution(
     time_range=None,
     locale: str | None = None,
     include_object_identity: bool = False,
-    monitor_object_ids=None,
+    selected_object_ids=None,
+    selected_type_ids=None,
 ) -> list[dict]:
     if not _filled(group_by):
         raise GenericQueryError("请选择按什么分布")
-    if group_by not in ALERT_DISTRIBUTION_FIELDS:
+    if group_by not in MONITOR_ALERT_DISTRIBUTION_FIELDS:
         raise GenericQueryError("分布字段不受支持")
     queryset = _prepare_alerts(queryset, level, status, alert_type, instance_ids, time_field, time_range)
     if group_by == "monitor_object_id":
         grouped = _annotate_monitor_object(queryset).values("_monitor_object_id").annotate(alert_count=Count("id"))
+    elif group_by == "monitor_object_type":
+        grouped = (
+            _annotate_monitor_object_type(queryset)
+            .exclude(_monitor_object_type_id=None)
+            .exclude(_monitor_object_type_id="")
+            .values("_monitor_object_type_id")
+            .annotate(alert_count=Count("id"))
+        )
     else:
         grouped = queryset.values(group_by).annotate(alert_count=Count("id"))
     rows = list(grouped)
     if group_by == "monitor_object_id":
-        rows = _include_zero_alert_objects(rows, instance_ids, monitor_object_ids)
+        rows = _include_zero_alert_objects(rows, instance_ids)
+        rows = _include_selected_object_zeros(rows, selected_object_ids)
+    elif group_by == "monitor_object_type":
+        rows = _include_selected_type_zeros(rows, selected_type_ids)
     if len(rows) > STAT_GROUP_MAX:
         raise GenericQueryError(f"分布分组超过 {STAT_GROUP_MAX} 组")
     if group_by == "monitor_object_id":
@@ -407,6 +421,15 @@ def query_alert_distribution(
                 item["monitor_object_id"] = int(identity) if str(identity).isdigit() else identity
                 item["monitor_object_name"] = label
             items.append(item)
+    elif group_by == "monitor_object_type":
+        labels = _monitor_object_type_labels([row.get("_monitor_object_type_id") for row in rows], locale)
+        items = [
+            {
+                "group_value": labels.get(str(row.get("_monitor_object_type_id"))) or str(row.get("_monitor_object_type_id")),
+                "alert_count": row["alert_count"],
+            }
+            for row in rows
+        ]
     else:
         items = [{"group_value": _label_alert_choice(group_by, row.get(group_by)), "alert_count": row["alert_count"]} for row in rows]
     items.sort(key=lambda item: (-(item["alert_count"] or 0), str(item["group_value"])))
@@ -507,27 +530,44 @@ def _filter_alerts(queryset, level, status, alert_type, instance_ids, time_field
     return queryset.filter(**{f"{time_field}__gte": start, f"{time_field}__lt": end})
 
 
-def _include_zero_alert_objects(rows: list[dict], instance_ids, monitor_object_ids=None) -> list[dict]:
-    """按监控对象分布时，选中的对象，或这批实例所属但没有告警的对象，也返回 0。"""
+def _include_selected_type_zeros(rows: list[dict], type_ids) -> list[dict]:
+    """点名选中的分类没有告警时也保留一行 0。未点名则不补，也不发明未分类。"""
+    if not type_ids:
+        return rows
+    present = {str(row.get("_monitor_object_type_id")) for row in rows if row.get("_monitor_object_type_id") not in (None, "")}
+    missing = [type_id for type_id in type_ids if str(type_id) not in present]
+    if not missing:
+        return rows
+    return [*rows, *({"_monitor_object_type_id": type_id, "alert_count": 0} for type_id in missing)]
+
+
+def _include_selected_object_zeros(rows: list[dict], object_ids) -> list[dict]:
+    """点名选中的监控对象没有告警时也保留一行 0。未点名则不补。"""
+    if not object_ids:
+        return rows
+    present = {str(row.get("_monitor_object_id")) for row in rows if row.get("_monitor_object_id") not in (None, "")}
+    missing = [object_id for object_id in object_ids if str(object_id) not in present]
+    if not missing:
+        return rows
+    return [*rows, *({"_monitor_object_id": object_id, "alert_count": 0} for object_id in missing)]
+
+
+def _include_zero_alert_objects(rows: list[dict], instance_ids) -> list[dict]:
+    """按监控对象分布时，这批实例所属、但没有告警的对象也返回 0。"""
+    ids = _id_list(instance_ids)
+    if not ids:
+        return rows
     present = {str(row.get("_monitor_object_id")) for row in rows if row.get("_monitor_object_id") not in (None, "")}
     missing = []
     seen = set()
-
-    def add(object_id):
+    for object_id in MonitorInstance.objects.filter(id__in=ids).values_list("monitor_object_id", flat=True):
         if object_id in (None, ""):
-            return
+            continue
         text = str(object_id)
         if text in present or text in seen:
-            return
+            continue
         seen.add(text)
         missing.append(object_id)
-
-    ids = _id_list(instance_ids)
-    if ids:
-        for object_id in MonitorInstance.objects.filter(id__in=ids).values_list("monitor_object_id", flat=True):
-            add(object_id)
-    for object_id in _id_list(monitor_object_ids):
-        add(object_id)
     if not missing:
         return rows
     return [*rows, *({"_monitor_object_id": object_id, "alert_count": 0} for object_id in missing)]
@@ -538,6 +578,37 @@ def _annotate_monitor_object(queryset):
 
     object_id = MonitorPolicy.objects.filter(pk=OuterRef("policy_id")).values("monitor_object_id")[:1]
     return queryset.annotate(_monitor_object_id=Subquery(object_id))
+
+
+def _annotate_monitor_object_type(queryset):
+    from apps.monitor.models.monitor_policy import MonitorPolicy
+
+    type_id = MonitorPolicy.objects.filter(pk=OuterRef("policy_id")).values("monitor_object__type_id")[:1]
+    return queryset.annotate(_monitor_object_type_id=Subquery(type_id))
+
+
+def _monitor_object_type_labels(type_ids, locale: str | None) -> dict[str, str]:
+    from apps.monitor.models.monitor_object import MonitorObjectType
+
+    ids = []
+    for item in type_ids:
+        if item in (None, ""):
+            continue
+        text = str(item)
+        if text not in ids:
+            ids.append(text)
+    if not ids:
+        return {}
+    loader = LanguageLoader(app=LanguageConstants.APP, default_lang=locale or "en")
+    labels = {}
+    for item in MonitorObjectType.objects.filter(id__in=ids).only("id", "name"):
+        translated = loader.get(f"{LanguageConstants.MONITOR_OBJECT_TYPE}.{item.id}")
+        if isinstance(translated, str) and translated.strip():
+            labels[item.id] = translated.strip()
+            continue
+        stored = (item.name or "").strip()
+        labels[item.id] = stored or item.id
+    return labels
 
 
 def _severity_rank(value) -> int:
@@ -633,9 +704,9 @@ def _alert_row(alert, object_labels: dict[str, str]) -> dict:
         "status": _label_alert_choice("status", alert.status),
         "alert_type": _label_alert_choice("alert_type", alert.alert_type),
         "value": alert.value,
-        "start_event_time": _iso(alert.start_event_time),
-        "end_event_time": _iso(alert.end_event_time),
-        "created_at": _iso(alert.created_at),
+        "start_event_time": _display_time(alert.start_event_time),
+        "end_event_time": _display_time(alert.end_event_time),
+        "created_at": _display_time(alert.created_at),
     }
 
 
@@ -753,12 +824,12 @@ def _parse_dt(value) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _iso(value) -> str:
-    if value is None:
+def _display_time(value) -> str:
+    """返回当前时区的 `2026-11-17 17:08:48`。没有时间时为空，表格不再截断 ISO。"""
+    if value in (None, ""):
         return ""
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return str(value)
+    formatted = format_active_alert_local_time(value)
+    return formatted or ""
 
 
 def _epoch_name(value) -> str:

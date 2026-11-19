@@ -166,9 +166,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [connectionList, setConnectionList] = React.useState<DataConnectionItem[]>(
     [],
   );
-  const sourceType =
-    (Form.useWatch("source_type", form) as DataSourceSourceType | undefined) ||
-    SOURCE_TYPE_NATS;
+  const sourceType = Form.useWatch("source_type", form) as
+    | DataSourceSourceType
+    | undefined;
   const connectionMode =
     (Form.useWatch("connection_mode", form) as string | undefined) || "connection";
   const watchedConnectionConfig = Form.useWatch("connection_config", form);
@@ -177,10 +177,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
   );
   const sourceTypeOptions = [
     { label: t("dataSource.sourceTypes.nats"), value: SOURCE_TYPE_NATS },
-    { label: "MySQL", value: SOURCE_TYPE_MYSQL },
-    { label: "PostgreSQL", value: SOURCE_TYPE_POSTGRESQL },
-    { label: "REST API", value: SOURCE_TYPE_REST_API },
-    { label: "Excel", value: SOURCE_TYPE_EXCEL },
+    { label: t("dataSource.sourceTypes.restApi"), value: SOURCE_TYPE_REST_API },
+    { label: t("dataSource.sourceTypes.postgresql"), value: SOURCE_TYPE_POSTGRESQL },
+    { label: t("dataSource.sourceTypes.mysql"), value: SOURCE_TYPE_MYSQL },
+    { label: t("dataSource.sourceTypes.excel"), value: SOURCE_TYPE_EXCEL },
     { label: t("dataSource.sourceTypes.prometheus"), value: SOURCE_TYPE_PROMETHEUS },
     { label: t("dataSource.sourceTypes.elasticsearch"), value: SOURCE_TYPE_ELASTICSEARCH },
   ];
@@ -553,7 +553,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setExcelFileList([]);
       setExcelMaterialization(row?.excel_materialization || null);
 
-      const targetSourceType = row?.source_type || SOURCE_TYPE_NATS;
+      const targetSourceType = row?.source_type;
       hydratingSourceTypeRef.current = true;
       previousSourceTypeRef.current = targetSourceType;
 
@@ -633,7 +633,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   }, [open, supportsSharedConnection, sourceType, getDataConnectionList]);
 
   useEffect(() => {
-    if (!open || !!currentRow || namespaceList.length === 0) {
+    if (!open || !!currentRow || !isNatsSource || namespaceList.length === 0) {
       return;
     }
 
@@ -648,7 +648,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     form.setFieldsValue({ namespaces: [namespaceList[0].id] });
     // 只清掉这次程序赋值。命名空间列表可能晚于用户输入到达，不能把整张表单重新标成未改。
     form.setFields([{ name: "namespaces", touched: false }]);
-  }, [open, currentRow, namespaceList, form]);
+  }, [open, currentRow, isNatsSource, namespaceList, form]);
 
   useEffect(() => {
     if (!open) {
@@ -666,8 +666,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     const previousSourceType = previousSourceTypeRef.current;
-    if (!previousSourceType) {
-      previousSourceTypeRef.current = sourceType;
+    if (!sourceType) {
+      previousSourceTypeRef.current = undefined;
       return;
     }
 
@@ -744,11 +744,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setSchemaFields([]);
       fieldSchemaTableRef.current?.clearValidation();
       previousSourceTypeRef.current = sourceType;
+      // 首次选择来源只是把表单从「未选」带到该类型默认态，不应记成未保存修改
+      if (!previousSourceType) {
+        markFormPristine(form);
+      }
     }
   }, [open, sourceType, form, clearPreviewState, clearProcessInlineErrors]);
 
   const handlePreview = async () => {
-    if (isNatsSource) return;
+    if (!sourceType || isNatsSource) return;
 
     try {
       setPreviewLoading(true);
@@ -1338,6 +1342,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
             definitionReadOnly={definitionReadOnly}
             groupsReadOnly={groupsReadOnly}
             currentRow={currentRow}
+            sourceType={sourceType}
+            sourceTypeLocked={mode !== "add"}
             sourceTypeOptions={sourceTypeOptions}
             chartTypeOptions={chartTypeOptions}
             isNatsSource={isNatsSource}
@@ -1349,6 +1355,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           />
         </FormSection>
 
+        {sourceType ? (
         <FormSection
           id="process"
           step={2}
@@ -1521,6 +1528,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </FormSubsection>
         )}
         </FormSection>
+        ) : null}
         </div>
       </Form>
     </Drawer>

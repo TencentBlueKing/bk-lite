@@ -4,8 +4,8 @@ import json
 
 from langchain_core.messages import ToolMessage
 
-from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
 from apps.core.utils.loader import LanguageLoader
+from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
 from apps.opspilot.metis.llm.tools.search_terms import (
     accepted_model_keyword,
     build_search_terms,
@@ -13,6 +13,7 @@ from apps.opspilot.metis.llm.tools.search_terms import (
     user_message_from_config,
     user_question_for_search,
 )
+from apps.opspilot.services.workflow_attachment_service import MINIO_CONNECTION_FAILURE_MESSAGE
 
 
 def test_mall_question_keeps_phenomena_and_accepts_verbatim_nouns():
@@ -538,6 +539,28 @@ def test_unreachable_service_blocks_retry_for_any_tool():
     denied = repeated_or_search_denial(request)
     assert denied is not None
     assert "服务不可达" in denied.content
+
+
+def test_minio_connection_message_blocks_another_attachment_call():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "generate_attachment_file", "args": {"file_type": "docx"}},
+            "messages": [
+                ToolMessage(
+                    content=MINIO_CONNECTION_FAILURE_MESSAGE,
+                    tool_call_id="call-1",
+                    name="generate_attachment_file",
+                    status="error",
+                ),
+            ],
+        },
+    )()
+    denied = repeated_or_search_denial(request)
+    assert denied is not None
+    assert "服务不可达" in denied.content
+    assert "不要改参数重试" in denied.content
 
 
 def test_connection_refused_inside_successful_logs_is_not_a_service_failure():

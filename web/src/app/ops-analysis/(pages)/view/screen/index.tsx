@@ -31,7 +31,13 @@ import {
   UnifiedFilterConfigModal,
 } from "@/app/ops-analysis/components/unifiedFilter";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
-import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
+import { useShareOrganization } from "@/app/ops-analysis/context/shareOrganization";
+import { useDashboardSelectedGroup } from "@/app/ops-analysis/hooks/useDashboardModuleAccess";
+import {
+  applySelectedOrganizationToFilterValues,
+  isOrganizationFilterDefinition,
+  resolveCanvasOrganizationId,
+} from "@/app/ops-analysis/utils/unifiedFilterState";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
 import {
@@ -170,6 +176,7 @@ interface ScreenQuerySnapshot {
   appliedFilterValues: Record<string, FilterValue>;
   namespaceDraftId?: number;
   appliedNamespaceId?: number;
+  organizationId?: string | number | null;
 }
 
 const ScreenDataConfig = memo(
@@ -274,7 +281,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
   const { hasPermission } = useBtnPermissions();
   const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
-  const shareOrganizationSeed = useShareOrganizationSeed();
+  const selectedGroup = useDashboardSelectedGroup(shareMode);
+  const shareOrganization = useShareOrganization();
+  const selectedOrganizationId = resolveCanvasOrganizationId({
+    shareMode,
+    shareSpaceId: shareOrganization?.spaceId,
+    selectedGroupId: selectedGroup?.id,
+  });
+  const selectedOrganizationIdRef = useRef(selectedOrganizationId);
+  selectedOrganizationIdRef.current = selectedOrganizationId;
+  const previousOrganizationIdRef = useRef(selectedOrganizationId);
   const dataSourceManager = useDataSourceManager();
   const { dataSources } = dataSourceManager;
   const { syncCanvasResources } = useCanvasResources();
@@ -516,13 +532,13 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       filtersRef.current = loadedDefinitions;
       queryState.resetQueryState({
         definitions: loadedDefinitions,
-        organizationId: shareOrganizationSeed,
+        organizationId: selectedOrganizationIdRef.current,
       });
       setRefreshVersion((current) => current + 1);
       setRefreshCause("manual");
       void syncScreenCanvasResources(normalized);
     },
-    [labelSceneFilters, queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources],
+    [labelSceneFilters, queryState, setSavedRefreshInterval, syncScreenCanvasResources],
   );
   const screenDraft = useCanvasDraft({
     resourceType: "screen",
@@ -566,7 +582,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     setLoading(false);
     queryState.resetQueryState({
       definitions: normalized.filters ?? [],
-      organizationId: shareOrganizationSeed,
+      organizationId: selectedOrganizationIdRef.current,
     });
   }, [
     labelSceneFilters,
@@ -574,7 +590,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     playbackMode,
     queryState.resetQueryState,
     selectedScreen?.data_id,
-    shareOrganizationSeed,
   ]);
 
   useEffect(() => {
@@ -597,7 +612,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       setSavedRefreshInterval(0);
       queryState.resetQueryState({
         definitions: emptyViewSets.filters ?? [],
-        organizationId: shareOrganizationSeed,
+        organizationId: selectedOrganizationIdRef.current,
       });
       return;
     }
@@ -633,7 +648,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         setEditQuerySnapshot(null);
         queryState.resetQueryState({
           definitions: normalized.filters ?? [],
-          organizationId: shareOrganizationSeed,
+          organizationId: selectedOrganizationIdRef.current,
         });
       } catch (error) {
         console.error("Failed to load screen:", error);
@@ -648,7 +663,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           setEditQuerySnapshot(null);
           queryState.resetQueryState({
             definitions: fallback.filters ?? [],
-            organizationId: shareOrganizationSeed,
+            organizationId: selectedOrganizationIdRef.current,
           });
         }
       } finally {
@@ -667,8 +682,46 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     playbackMode,
     queryState.resetQueryState,
     selectedScreen?.data_id,
-    shareOrganizationSeed,
     syncScreenCanvasResources,
+  ]);
+
+  useEffect(() => {
+    const previousOrganizationId = previousOrganizationIdRef.current;
+    previousOrganizationIdRef.current = selectedOrganizationId;
+    if (selectedOrganizationId === undefined || queryState.definitions.length === 0) {
+      return;
+    }
+    if (previousOrganizationId === selectedOrganizationId) {
+      return;
+    }
+    const nextFilterValues = applySelectedOrganizationToFilterValues(
+      queryState.definitions,
+      queryState.filterValues,
+      selectedOrganizationId,
+    );
+    const nextAppliedValues = applySelectedOrganizationToFilterValues(
+      queryState.definitions,
+      queryState.appliedFilterValues,
+      selectedOrganizationId,
+    );
+    const unchanged = queryState.definitions
+      .filter((definition) => definition.enabled && isOrganizationFilterDefinition(definition))
+      .every((definition) => (
+        nextFilterValues[definition.id] === queryState.filterValues[definition.id]
+        && nextAppliedValues[definition.id] === queryState.appliedFilterValues[definition.id]
+      ));
+    queryState.applyOrganizationChange(
+      selectedOrganizationId,
+      unchanged ? queryState.filterValues : nextFilterValues,
+      unchanged ? queryState.appliedFilterValues : nextAppliedValues,
+      !unchanged,
+    );
+  }, [
+    queryState.appliedFilterValues,
+    queryState.applyOrganizationChange,
+    queryState.definitions,
+    queryState.filterValues,
+    selectedOrganizationId,
   ]);
 
   useEffect(() => {
@@ -1062,6 +1115,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       appliedFilterValues: queryState.appliedFilterValues,
       namespaceDraftId: queryState.namespaceDraftId,
       appliedNamespaceId: queryState.appliedNamespaceId,
+      organizationId: selectedOrganizationIdRef.current,
     });
     setEditMode(true);
     setSelectedItemId(null);
@@ -1087,6 +1141,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
         appliedFilterValues: queryState.appliedFilterValues,
         namespaceDraftId: queryState.appliedNamespaceId,
         appliedNamespaceId: queryState.appliedNamespaceId,
+        organizationId: selectedOrganizationIdRef.current,
       },
     );
     setEditQuerySnapshot(null);
