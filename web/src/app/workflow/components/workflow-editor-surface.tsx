@@ -30,6 +30,7 @@ export interface WorkflowPickerItem {
   description?: string;
   meta?: string;
   icon?: ReactNode;
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -172,7 +173,8 @@ export function WorkflowNodePickerPanel({
                   {group.items.map((item) => (
                     <WorkflowPermission key={item.key} operation="Edit" className="block w-full"><button
                       type="button"
-                      className="group w-full rounded-md px-3 py-2 text-left transition hover:bg-[var(--color-fill-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
+                      disabled={item.disabled}
+                      className={`group w-full rounded-md px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${item.disabled ? 'cursor-not-allowed' : 'hover:bg-[var(--color-fill-2)]'}`}
                       onClick={item.onClick}
                     >
                       <span className="flex items-start gap-3">

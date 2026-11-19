@@ -8,7 +8,8 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs
+from apps.system_mgmt.models import User
+from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs, _run_atom_with_heartbeat
 from apps.workflow.models import AtomExecution, Workflow, WorkflowExecution
 from apps.workflow.services.conductor import ConductorUnavailable
 from apps.workflow.services.data_contracts import seal_sensitive_inputs
@@ -404,8 +405,113 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
         "actor": {"username": "alice", "domain": "example.com"},
         "trigger_type": "FORM",
         "task_reference": "agent",
+        "caller_identity": {
+            "username": "alice",
+            "domain": "example.com",
+            "team_id": 7,
+            "include_children": False,
+        },
     }
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
+
+
+@pytest.mark.django_db
+def test_agent_caller_identity_follows_schedule_creator_or_webhook_caller(mocker):
+    workflow = Workflow.objects.create(
+        name="身份流程",
+        team=[7],
+        definition={},
+        created_by="carol",
+        domain="ops.example",
+    )
+    User.objects.bulk_create(
+        [
+            User(username="carol", domain="ops.example", display_name="carol", email="carol@ops.example", password="x", locale="en"),
+            User(username="dave", domain="hook.example", display_name="dave", email="dave@hook.example", password="x", locale="zh-Hans"),
+            User(username="erin", domain="domain.com", display_name="erin", email="erin@domain.com", password="x", locale="zh-Hant"),
+        ]
+    )
+    client = mocker.Mock()
+    handler = mocker.Mock(return_value={"message": "done"})
+    sequence = {"n": 0}
+
+    def run(trigger_type, started_by, *, mode="PRODUCTION", domain="domain.com", forged=None):
+        sequence["n"] += 1
+        execution = WorkflowExecution.objects.create(
+            workflow=workflow,
+            workflow_version=1,
+            conductor_workflow_id=f"workflow-identity-{sequence['n']}",
+            team=[7],
+            started_by=started_by,
+            domain=domain,
+            trigger_type=trigger_type,
+            mode=mode,
+        )
+        input_data = {"agent_id": 1, "message": "inspect"}
+        if forged is not None:
+            input_data["__bklite_context"] = {"caller_identity": forged}
+        Command._execute_task(
+            client,
+            "worker-1",
+            "bklite_agent",
+            {
+                "taskId": f"task-{execution.conductor_workflow_id}",
+                "workflowInstanceId": execution.conductor_workflow_id,
+                "referenceTaskName": "agent",
+                "inputData": input_data,
+            },
+            handler=handler,
+        )
+        context = handler.call_args.args[0]["__bklite_context"]
+        return context
+
+    schedule = run("SCHEDULE", "workflow-scheduler")
+    assert schedule["actor"] == {"username": "workflow-scheduler", "domain": "domain.com"}
+    assert schedule["caller_identity"] == {
+        "username": "carol",
+        "domain": "ops.example",
+        "team_id": 7,
+        "include_children": False,
+    }
+    assert schedule["locale"] == "en"
+    webhook = run("WEBHOOK", "dave", domain="hook.example")
+    assert webhook["caller_identity"] == {
+        "username": "dave",
+        "domain": "hook.example",
+        "team_id": 7,
+        "include_children": False,
+    }
+    assert webhook["locale"] == "zh-Hans"
+    nats = run("NATS", "nats-bridge")
+    assert "caller_identity" not in nats
+    assert "locale" not in nats
+    debug = run("SCHEDULE", "erin", mode="DEBUG")
+    assert debug["caller_identity"] == {
+        "username": "erin",
+        "domain": "domain.com",
+        "team_id": 7,
+        "include_children": False,
+    }
+    assert debug["locale"] == "zh-Hant"
+    forged = run(
+        "WEBHOOK",
+        "dave",
+        domain="hook.example",
+        forged={"username": "mallory", "domain": "evil.example", "team_id": 9, "include_children": True},
+    )
+    assert forged["caller_identity"] == {
+        "username": "dave",
+        "domain": "hook.example",
+        "team_id": 7,
+        "include_children": False,
+    }
+    assert forged["locale"] == "zh-Hans"
+
+    workflow.created_by = ""
+    workflow.save(update_fields=["created_by", "updated_at"])
+    missing_creator = run("SCHEDULE", "workflow-scheduler")
+    assert "caller_identity" not in missing_creator
+    assert "locale" not in missing_creator
 
 
 def test_agent_node_reference_comes_from_claimed_atom_not_input():
@@ -419,6 +525,36 @@ def test_agent_node_reference_comes_from_claimed_atom_not_input():
     assert payload["__bklite_context"]["task_reference"] == "agent-real"
 
 
+def test_completed_atom_returns_without_waiting_for_the_pool_thread_to_exit(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from apps.workflow.management.commands import run_workflow_worker as worker
+
+    class Executor(ThreadPoolExecutor):
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            if wait:
+                raise AssertionError("pool shutdown waited for the worker thread")
+            super().shutdown(wait=False, cancel_futures=cancel_futures)
+
+    monkeypatch.setattr(worker, "ThreadPoolExecutor", Executor)
+
+    result = _run_atom_with_heartbeat(
+        client=None,
+        execute=lambda _inputs: {"message": "done"},
+        runtime_inputs={},
+        interval=0.01,
+        atom_execution=None,
+        claim_token=None,
+        lease_duration=timedelta(seconds=60),
+        workflow_id="workflow-1",
+        task_id="task-1",
+        worker_id="worker-1",
+        task_type="bklite_agent",
+    )
+
+    assert result == {"message": "done"}
+
+
 @pytest.mark.django_db
 def test_worker_heartbeats_while_atom_is_running(mocker):
     client = mocker.Mock()
@@ -427,22 +563,18 @@ def test_worker_heartbeats_while_atom_is_running(mocker):
 
     def slow_handler(_inputs):
         started.set()
+        threading.Timer(0.05, release.set).start()
         release.wait(timeout=1)
         return {"ok": True}
 
-    timer = threading.Timer(0.05, release.set)
-    timer.start()
-    try:
-        Command._execute_task(
-            client,
-            "worker-1",
-            "bklite_inspection_group_targets",
-            {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
-            handler=slow_handler,
-            heartbeat_interval=0.01,
-        )
-    finally:
-        timer.cancel()
+    Command._execute_task(
+        client,
+        "worker-1",
+        "bklite_inspection_group_targets",
+        {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
+        handler=slow_handler,
+        heartbeat_interval=0.01,
+    )
 
     assert started.is_set()
     statuses = [call.args[0]["status"] for call in client.update_task.call_args_list]

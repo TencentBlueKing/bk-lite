@@ -16,6 +16,7 @@ from apps.workflow.services.atom_packages import atom_requires_trusted_context, 
 from apps.workflow.services.atoms import ATOM_HANDLERS, TASK_DEFINITIONS, execute_atom, package_atom_task_definitions
 from apps.workflow.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow.services.data_contracts import mask_secret_envelopes, resolve_secret_envelopes
+from apps.workflow.services.tool_caller_identity import tool_caller_identity, tool_caller_locale
 
 
 def _conductor_task_update(*, workflow_id, task_id, worker_id, status, output_data=None, callback_after_seconds=None, reason=None):
@@ -54,18 +55,27 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         return runtime_inputs
     if execution is None or not execution.team:
         raise ValueError("原子缺少可信的流程执行上下文")
+    context = {
+        "execution_id": str(execution.id),
+        "workflow_id": str(execution.workflow_id),
+        "workflow_version": execution.workflow_version,
+        "organization_id": execution.team[0],
+        "actor": {"username": execution.started_by, "domain": execution.domain},
+        "trigger_type": execution.trigger_type,
+    }
+    if task_type == "bklite_agent" and atom_execution is not None:
+        context["task_reference"] = atom_execution.task_reference
+    if task_type == "bklite_agent":
+        identity = tool_caller_identity(execution)
+        if identity is not None:
+            context["caller_identity"] = identity
+        locale = tool_caller_locale(execution)
+        if locale is not None:
+            context["locale"] = locale
     return {
         **runtime_inputs,
         "__execution_id": str(execution.id),
-        "__bklite_context": {
-            "execution_id": str(execution.id),
-            "workflow_id": str(execution.workflow_id),
-            "workflow_version": execution.workflow_version,
-            "organization_id": execution.team[0],
-            "actor": {"username": execution.started_by, "domain": execution.domain},
-            "trigger_type": execution.trigger_type,
-            **({"task_reference": atom_execution.task_reference} if task_type == "bklite_agent" and atom_execution else {}),
-        },
+        "__bklite_context": context,
     }
 
 
@@ -93,7 +103,8 @@ def _run_atom_with_heartbeat(
     worker_id,
     task_type,
 ):
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="workflow-atom") as executor:
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="workflow-atom")
+    try:
         future = executor.submit(execute, runtime_inputs)
         while True:
             try:
@@ -123,6 +134,9 @@ def _run_atom_with_heartbeat(
                         task_type,
                         task_id,
                     )
+    finally:
+        # 工作线程在结果已经返回后可能不再释放线程状态锁，join 会挡住成功回写。
+        executor.shutdown(wait=False, cancel_futures=False)
 
 
 def _finalize_atom_success(*, atom_execution, claim_token, output, task_type, task_id) -> bool:
