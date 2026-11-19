@@ -228,3 +228,32 @@ export interface TicketDetail {
   sla?: TicketSLAItem[];
   survey?: { score: number; comment: string } | null;
 }
+
+export type TicketFormOperator = 'contains' | 'eq' | 'gte' | 'lte';
+export interface TicketFormCondition {
+  key: string;
+  operator: TicketFormOperator;
+  value: string | number | null;
+}
+
+export interface TicketCenterFilters {
+  q: string;
+  status: string;
+  creator: string;
+  priority: string;
+  tag: string;
+  created_after: string;
+  created_before: string;
+  tab: string;
+  ordering: string;
+  workflow_id: string;
+  form_filters: TicketFormCondition[];
+}
+
+export interface TicketFilterWorkflow { id: number; name: string }
+export interface TicketFilterField {
+  key: string;
+  label: string;
+  type: 'input' | 'textarea' | 'number' | 'date' | 'radio' | 'select';
+  options: { label: string; value: string | number }[];
+}

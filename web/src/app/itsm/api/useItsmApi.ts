@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
+import type { TicketCenterFilters } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -31,7 +32,7 @@ export function useItsmApi() {
   const searchTicketTags = useCallback((q: string) => get('/itsm/api/tickets/filter_tags/', { params: { q } }), [get]);
   const centerSettings = useCallback(() => get('/itsm/api/tickets/center_settings/'), [get]);
   const saveTicketColumns = useCallback((columns: string[] | null) => put('/itsm/api/tickets/center_settings/', { columns }), [put]);
-  const saveTicketGroup = useCallback((name: string, filters: Record<string, string>) => post('/itsm/api/tickets/center_settings/', { name, filters }), [post]);
+  const saveTicketGroup = useCallback((name: string, filters: TicketCenterFilters) => post('/itsm/api/tickets/center_settings/', { name, filters }), [post]);
   const deleteTicketGroup = useCallback((id: number) => del('/itsm/api/tickets/center_settings/', { data: { id } }), [del]);
   const batchOptions = useCallback((ids: number[]) => post('/itsm/api/tickets/batch_options/', { ids }), [post]);
   const batchTickets = useCallback((ids: number[], action: string, opinion: string) => post('/itsm/api/tickets/batch_operate/', { ids, action, opinion }), [post]);
@@ -70,10 +71,14 @@ export function useItsmApi() {
     (id: number) => post(`/itsm/api/workflows/${id}/publish/`),
     [post],
   );
-  const listTickets = useCallback((query?: { q?: string; creator?: string; priority?: string; tag?: string; status?: string; page?: number; page_size?: number; tab?: string; relation_for?: number; fields?: string; ordering?: string; created_after?: string; created_before?: string }) => {
-    const params = Object.fromEntries(Object.entries(query || {}).filter(([, value]) => value));
+  const listTickets = useCallback((query?: Partial<TicketCenterFilters> & { page?: number; page_size?: number; relation_for?: number; fields?: string }) => {
+    const { form_filters, ...filters } = query || {};
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
+    if (form_filters?.length) params.form_filters = JSON.stringify(form_filters);
     return get('/itsm/api/tickets/', Object.keys(params).length ? { params } : undefined);
   }, [get]);
+  const ticketFilterWorkflows = useCallback((q: string) => get('/itsm/api/tickets/filter_fields/', { params: { q } }), [get]);
+  const ticketFilterFields = useCallback((workflowId: string) => get('/itsm/api/tickets/filter_fields/', { params: { workflow_id: workflowId } }), [get]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
   const createResource = useCallback((kind: string, body: Record<string, unknown>) => post(`/itsm/api/resources/${kind}/`, body), [post]);
   const updateResource = useCallback(
@@ -221,7 +226,7 @@ export function useItsmApi() {
     getDesign,
     saveDesign,
     publishWorkflow,
-    listTickets,
+    listTickets, ticketFilterWorkflows, ticketFilterFields,
     listResources,
     createResource,
     updateResource,

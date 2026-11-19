@@ -1,23 +1,21 @@
 import json
 
 from django.conf import settings
-from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.core.paginator import Paginator
-from django.db import connection
-from django.db.models import Exists, F, OuterRef, Prefetch, Q
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableClient
-from apps.itsm.models import TicketSLARecord, TicketSurvey, TicketTask, WorkflowVersion
-from apps.itsm.models.extend import VipUser
+from apps.itsm.models import TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
 from apps.itsm.services.ticket.actions import node_actions, side_action_enabled
+from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
-from apps.itsm.services.ticket.listing import COLUMNS, date_bound, personal_group, validate_filters
+from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 
@@ -46,68 +44,15 @@ def _user(request):
 @HasPermission("ticket-View")
 def tickets(request):
     if request.method == "GET":
-        filters = validate_filters(
-            {
-                key: request.GET[key]
-                for key in request.GET
-                if key in {"q", "creator", "priority", "tag", "status", "tab", "ordering", "created_after", "created_before", "workflow_id"}
-            }
-        )
+        params = {key: request.GET[key] for key in FILTER_KEYS | {"form_filters"} if key in request.GET}
         fields = set(request.GET["fields"].split(",")) if "fields" in request.GET else None
         if fields is not None and (not fields or fields - set(COLUMNS)):
             raise ValueError("不支持的展示列")
-        wanted = fields if fields is not None else set(COLUMNS)
-        queryset = ticket_scope(request).select_related("status").defer("form_data")
-        if "workflow" in wanted:
-            queryset = queryset.select_related("workflow")
-        if wanted.intersection({"node", "assignees"}):
-            queryset = queryset.prefetch_related(Prefetch("tasks", queryset=TicketTask.objects.filter(status__in=["pending", "claimed"])))
-        if "sla" in wanted:
-            queryset = queryset.prefetch_related(
-                Prefetch("sla_records", queryset=TicketSLARecord.objects.filter(finished_at__isnull=True).order_by("id"))
-            )
-        if "priority" in wanted:
-            queryset = queryset.annotate(_priority=F("form_data__priority"))
-        ordering = filters.get("ordering")
-        if ordering:
-            mapped = ordering.replace("status", "status__key")
-            queryset = queryset.order_by(mapped, "-id")
-        else:
-            queryset = queryset.annotate(
-                _vip=Exists(VipUser.objects.filter(domain=domain_of(request), username=OuterRef("creator"), is_enabled=True))
-            )
-            queryset = queryset.order_by("-_vip", "-id")
-        status_key = filters.get("status", "")
-        if status_key:
-            queryset = queryset.filter(status__key__in=status_key.split(","))
-        creator = (request.GET.get("creator") or "").strip()
-        if creator:
-            queryset = queryset.filter(creator=creator)
-        workflow_id = (request.GET.get("workflow_id") or "").strip()
-        if workflow_id:
-            queryset = queryset.filter(workflow_id=workflow_id)
-        tag = (request.GET.get("tag") or "").strip()
-        if tag:
-            queryset = queryset.filter(tags__name=tag).distinct()
-        priority = (request.GET.get("priority") or "").strip()
-        if priority:
-            queryset = queryset.filter(form_data__priority=priority)
-        created_after = (request.GET.get("created_after") or "").strip()
-        if created_after:
-            queryset = queryset.filter(created_at__gte=date_bound(created_after))
-        created_before = (request.GET.get("created_before") or "").strip()
-        if created_before:
-            queryset = queryset.filter(created_at__lt=date_bound(created_before, end=True))
-        keyword = (request.GET.get("q") or "").strip()
-        if keyword:
-            text = Q(title__icontains=keyword) | Q(sn__icontains=keyword)
-            if connection.vendor == "postgresql":
-                queryset = queryset.annotate(_search=SearchVector("title", "sn", config="simple")).filter(
-                    text | Q(_search=SearchQuery(keyword, config="simple"))
-                )
-            else:
-                queryset = queryset.filter(text)
-        queryset = personal_group(queryset, filters.get("tab", "all"), _user(request))
+        try:
+            queryset = filtered_tickets(request, ticket_scope(request), validate_filters(params))
+        except InvalidFormFilter as exc:
+            return WebUtils.response_error(str(exc))
+        queryset = project_columns(queryset, fields if fields is not None else set(COLUMNS))
         if request.GET.get("relation_for"):
             from apps.itsm.views.m2 import visible_relations
 
@@ -120,7 +65,13 @@ def tickets(request):
         page = Paginator(queryset, max(1, min(100, int(request.GET.get("page_size") or 20))))
         current = page.get_page(int(request.GET.get("page") or 1))
         items = [TicketListSerializer(item, context={"fields": fields}).data for item in current]
-        return WebUtils.response_success({"count": current.paginator.count, "items": items, "can_operate": has_permission(request, "ticket-Operate")})
+        return WebUtils.response_success(
+            {
+                "count": current.paginator.count,
+                "items": items,
+                "can_operate": has_permission(request, "ticket-Operate"),
+            }
+        )
     payload = _body(request)
     if not has_permission(request, "ticket-Add"):
         raise PermissionError()

@@ -64,7 +64,7 @@ from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
-from apps.itsm.views.ticket_center import center_settings, filter_tags
+from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
 from apps.itsm.views.tickets import operate_ticket, retry_auto_node, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
@@ -82,6 +82,7 @@ urlpatterns = [
     path("api/services/dashboard/", portal_dashboard, name="itsm-portal-dashboard"),
     path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),
     path("api/tickets/center_settings/", center_settings, name="itsm-ticket-center-settings"),
+    path("api/tickets/filter_fields/", filter_fields, name="itsm-ticket-filter-fields"),
     path("api/tickets/workflows/", ticket_workflows, name="itsm-ticket-workflows"),
     path("api/tickets/form/<int:version_id>/", ticket_form, name="itsm-ticket-form"),
     path("api/health/", health, name="itsm-health"),

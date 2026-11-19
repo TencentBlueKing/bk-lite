@@ -13,8 +13,9 @@ import { CloseOutlined, FilterOutlined, PlusOutlined, ReloadOutlined, SettingOut
 import CustomTable from '@/components/custom-table';
 import { UserSelector } from './user-selector';
 import { TicketTagSelector } from './ticket-tag-selector';
+import { TicketFormFilters, completeFormConditions } from './ticket-form-filters';
 import { useItsmApi } from '../api/useItsmApi';
-import type { TicketListItem } from '../types';
+import type { TicketCenterFilters as Filters, TicketListItem } from '../types';
 
 const DEFAULT_COLUMNS = ['sn', 'title', 'status', 'creator', 'node', 'created_at'];
 const FIELD_LABELS: Record<string, string> = { sn: '单号', title: '标题', status: '状态', creator: '提单人', node: '当前节点', assignees: '当前处理人', workflow: '流程', created_at: '创建时间', updated_at: '更新时间', priority: '优先级', sla: 'SLA截止时间' };
@@ -25,8 +26,7 @@ const STATUS = [
 ];
 const GROUPS = [{ key: 'all', label: '全部工单' }, { key: 'mine', label: '我的待办' }, { key: 'created', label: '我发起的' }, { key: 'following', label: '我关注的' }, { key: 'history', label: '我的历史' }];
 const ACTIONS = [{ value: 'follow', label: '关注' }, { value: 'unfollow', label: '取消关注' }, { value: 'submit', label: '提交' }, { value: 'approve', label: '审批通过' }, { value: 'reject', label: '审批拒绝' }, { value: 'claim', label: '认领' }, { value: 'urge', label: '催办' }, { value: 'suspend', label: '挂起' }, { value: 'resume', label: '恢复' }];
-interface Filters { q: string; status: string; creator: string; priority: string; tag: string; created_after: string; created_before: string; tab: string; ordering: string }
-const EMPTY: Filters = { q: '', status: '', creator: '', priority: '', tag: '', created_after: '', created_before: '', tab: 'all', ordering: '-created_at' };
+const EMPTY: Filters = { q: '', status: '', creator: '', priority: '', tag: '', created_after: '', created_before: '', tab: 'all', ordering: '-created_at', workflow_id: '', form_filters: [] };
 interface SavedView { id: number; name: string; filters: Partial<Filters> }
 interface Settings { columns: string[]; views: SavedView[] }
 interface BatchResult { id: number; ok: boolean; error?: string }
@@ -83,7 +83,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
       if (!active) return;
       const result = value as { items: TicketListItem[]; count: number; can_operate: boolean };
       setItems(result.items); setTotal(result.count);
-    }).catch((error: unknown) => { if (active) { setLoadError(errorText(error)); setItems([]); } }).finally(() => { if (active) setLoading(false); });
+    }).catch((error: unknown) => { if (active) { setLoadError(errorText(error)); setItems([]); setTotal(0); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api.ready, api.listTickets, settingsReady, query, columns, page, pageSize, refresh]);
 
@@ -103,6 +103,15 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   }, [selected, api.batchOptions]);
 
   const apply = (next: Filters) => { setQuery({ ...next }); setDraft(next); setPage(1); setSelected([]); };
+  const applyDraft = () => {
+    if (!completeFormConditions(draft.form_filters)) {
+      setFilterOpen(true);
+      message.warning('请填写完整的表单筛选条件');
+      return;
+    }
+    apply({ ...draft, q: draft.q.trim() });
+    setFilterOpen(false);
+  };
   const switchTab = (key: string) => {
     const saved = views.find(view => `view:${view.id}` === key);
     setTab(key); apply(saved ? { ...EMPTY, ...saved.filters } : { ...EMPTY, tab: key });
@@ -163,15 +172,16 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
     <ToolbarSplitShell trailing={<>
 
         <Select aria-label="筛选状态" mode="multiple" maxTagCount="responsive" className="w-40" allowClear placeholder="全部状态" options={STATUS} value={draft.status ? draft.status.split(',') : []} onChange={value => setDraft({ ...draft, status: value.join(',') })} />
-        <Popover trigger="click" placement="bottomRight" open={filterOpen} onOpenChange={setFilterOpen} title="更多筛选" content={<div className="grid w-96 grid-cols-2 gap-3">
+        <Popover trigger="click" placement="bottomRight" open={filterOpen} onOpenChange={setFilterOpen} title="更多筛选" content={<div className="grid max-h-[65vh] w-[min(500px,calc(100vw-48px))] grid-cols-2 gap-3 overflow-auto pr-1">
           <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">提单人<UserSelector ariaLabel="筛选提单人" multiple={false} allowClear placeholder="搜索并选择提单人" value={draft.creator ? [draft.creator] : []} onChange={value => setDraft({ ...draft, creator: value[0] || '' })} /></label>
           <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">标签<TicketTagSelector value={draft.tag} onChange={tag => setDraft({ ...draft, tag })} /></label>
           <label className="flex flex-col gap-1 text-xs text-[var(--color-text-2)]">优先级<Input aria-label="筛选优先级" allowClear placeholder="优先级" value={draft.priority} onChange={event => setDraft({ ...draft, priority: event.target.value })} /></label>
           <label className="col-span-2 flex flex-col gap-1 text-xs text-[var(--color-text-2)]">创建时间<DatePicker.RangePicker value={draft.created_after && draft.created_before ? [dayjs(draft.created_after), dayjs(draft.created_before)] : null} onChange={value => setDraft({ ...draft, created_after: value?.[0]?.format('YYYY-MM-DD') || '', created_before: value?.[1]?.format('YYYY-MM-DD') || '' })} /></label>
-          <Button className="col-span-2" type="primary" onClick={() => { apply({ ...draft }); setFilterOpen(false); }}>应用筛选</Button>
-        </div>}><Button aria-label="更多筛选" icon={<FilterOutlined />} type={draft.creator || draft.tag || draft.priority || draft.created_after || draft.created_before ? 'primary' : 'default'}>筛选</Button></Popover>
-        <Input aria-label="工单关键词" placeholder="输入部分单号或标题" className="!w-60" allowClear value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} onPressEnter={() => apply({ ...draft, q: draft.q.trim() })} />
-        <Button onClick={() => { apply({ ...draft, q: draft.q.trim(), creator: draft.creator.trim(), tag: draft.tag.trim(), priority: draft.priority.trim() }); setFilterOpen(false); }}>查询</Button>
+          <TicketFormFilters filters={draft} active={filterOpen} onChange={setDraft} />
+          <Button className="col-span-2" type="primary" disabled={!completeFormConditions(draft.form_filters)} onClick={applyDraft}>应用筛选</Button>
+        </div>}><Button aria-label="更多筛选" icon={<FilterOutlined />} type={draft.creator || draft.tag || draft.priority || draft.created_after || draft.created_before || draft.workflow_id ? 'primary' : 'default'}>筛选</Button></Popover>
+        <Input aria-label="工单关键词" placeholder="输入部分单号或标题" className="!w-60" allowClear value={draft.q} onChange={event => setDraft({ ...draft, q: event.target.value })} onPressEnter={applyDraft} />
+        <Button onClick={applyDraft}>查询</Button>
         <Button onClick={() => { apply({ ...EMPTY, ...(views.find(view => `view:${view.id}` === tab)?.filters || { tab: query.tab }) }); setFilterOpen(false); }}>重置</Button>
         <Tooltip title="刷新"><Button aria-label="刷新列表" icon={<ReloadOutlined />} onClick={() => { setSelected([]); setRefresh(value => value + 1); }} /></Tooltip>
       <Button type="primary" disabled={loading || selected.length === 0 || optionsLoading || !batchOptions.includes(action)} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
@@ -190,7 +200,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
       <p className="mb-4 text-sm text-[var(--color-text-3)]">仅对当前账号生效；单号和标题始终显示。</p>
       <Checkbox.Group className="grid grid-cols-2 gap-3" value={columnDraft} options={Object.entries(FIELD_LABELS).map(([value, label]) => ({ value, label, disabled: ['sn', 'title'].includes(value) }))} onChange={value => setColumnDraft(value as string[])} />
     </Modal>
-    <Modal formValue={{groupName,groupFilters}} title="新增筛选分组" width={600} open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() }}>
+    <Modal formValue={{groupName,groupFilters}} title="新增筛选分组" width={600} open={groupOpen} onCancel={() => !saving && setGroupOpen(false)} onOk={() => void saveGroup()} confirmLoading={saving} okText="保存分组" okButtonProps={{ disabled: !groupName.trim() || !completeFormConditions(groupFilters.form_filters) }}>
       <p className="mb-3 text-sm text-[var(--color-text-3)]">工单需同时满足以下条件；同一状态字段内可匹配任一选项。保存后自动更新分组结果。</p>
       <div className="grid grid-cols-2 gap-4">
         <label className="col-span-2 flex flex-col gap-1">分组名称<Input aria-label="分组名称" placeholder="例如：我关注的处理中工单" value={groupName} maxLength={40} onChange={event => setGroupName(event.target.value)} /></label>
@@ -201,6 +211,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         <label className="flex flex-col gap-1">标签<TicketTagSelector value={groupFilters.tag} onChange={value => setGroupFilters({ ...groupFilters, tag: value })} /></label>
         <label className="flex flex-col gap-1">优先级<Input aria-label="分组优先级" allowClear value={groupFilters.priority} onChange={event => setGroupFilters({ ...groupFilters, priority: event.target.value })} /></label>
         <label className="col-span-2 flex flex-col gap-1">创建时间<DatePicker.RangePicker value={groupFilters.created_after && groupFilters.created_before ? [dayjs(groupFilters.created_after), dayjs(groupFilters.created_before)] : null} onChange={value => setGroupFilters({ ...groupFilters, created_after: value?.[0]?.format('YYYY-MM-DD') || '', created_before: value?.[1]?.format('YYYY-MM-DD') || '' })} /></label>
+        <TicketFormFilters filters={groupFilters} active={groupOpen} onChange={setGroupFilters} />
       </div>
     </Modal>
     {selected.length > 0 && batchReason ? <Alert className="mb-3" type="warning" message={batchReason} /> : null}

@@ -3,7 +3,7 @@ import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
-const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
@@ -16,6 +16,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(window.matchMedia).mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) as unknown as MediaQueryList);
   api.searchUsers.mockResolvedValue({ items: [{ username: 'owner', display_name: '测试提单人' }], count: 1 });
+  api.ticketFilterWorkflows.mockResolvedValue({ workflows: [{ id: 4, name: "金额申请" }] });
+  api.ticketFilterFields.mockResolvedValue({ workflow: { id: 4, name: "金额申请" }, fields: [{ key: "amount", label: "申请金额", type: "number", options: [] }] });
   api.searchTicketTags.mockResolvedValue({ items: [{ name: '数据库' }] });
   api.centerSettings.mockResolvedValue({ columns: ['sn', 'title'], views: [] });
   api.listTickets.mockResolvedValue({ count: 1, items: [{ id: 1, sn: 'REQ1', title: '测试工单' }], can_operate: true });
@@ -156,4 +158,25 @@ it('新增分组带入未查询条件，保存后立即按弹窗条件刷新', a
   expect(api.saveTicketGroup).toHaveBeenCalledWith('数据库分组', expect.objectContaining({ q: '数据库' }));
   fireEvent.click(screen.getByRole('button', { name: /重\s*置/ }));
   await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ q: '数据库' })));
+});
+
+it('在分组中按流程配置动态条件并回查', async () => {
+  api.saveTicketGroup.mockImplementation(async (name, filters) => ({ id: 9, name, filters }));
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  fireEvent.click(screen.getByRole('button', { name: '保存为分组' }));
+  fireEvent.change(await screen.findByRole('textbox', { name: '分组名称' }), { target: { value: '金额筛选' } });
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '筛选流程' }));
+  fireEvent.click(await screen.findByText('金额申请', { selector: '.ant-select-item-option-content' }));
+  fireEvent.click(await screen.findByRole('button', { name: '添加表单条件' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '表单字段 1' }));
+  fireEvent.click(await screen.findByText('申请金额', { selector: '.ant-select-item-option-content' }));
+  fireEvent.change(screen.getByRole('spinbutton', { name: '条件值 1' }), { target: { value: '200' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存分组' }));
+  await waitFor(() => expect(api.saveTicketGroup).toHaveBeenCalledWith('金额筛选', expect.objectContaining({
+    workflow_id: '4', form_filters: [{ key: 'amount', operator: 'eq', value: 200 }],
+  })));
+  await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({
+    workflow_id: '4', form_filters: [{ key: 'amount', operator: 'eq', value: 200 }],
+  })));
 });

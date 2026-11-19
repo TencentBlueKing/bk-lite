@@ -4,12 +4,14 @@ import json
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import TicketSavedView, UserPreference
-from apps.itsm.services.ticket.listing import DEFAULT_COLUMNS, validate_columns, validate_filters
-from apps.itsm.views.access import api_errors, domain_of
+from apps.itsm.models import TicketSavedView, UserPreference, Workflow
+from apps.itsm.services.ticket.form_filters import InvalidFormFilter, field_catalog
+from apps.itsm.services.ticket.listing import DEFAULT_COLUMNS, filtered_tickets, validate_columns, validate_filters
+from apps.itsm.views.access import api_errors, domain_of, ticket_scope
 
 
 @csrf_exempt
@@ -36,7 +38,12 @@ def center_settings(request):
         name = payload.get("name")
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 40:
             raise ValueError("分组名称须为1至40字")
-        filters = validate_filters(payload.get("filters", {}))
+        try:
+            filters = validate_filters(payload.get("filters", {}))
+            if filters.get("form_filters"):
+                filtered_tickets(request, ticket_scope(request), filters)
+        except InvalidFormFilter as exc:
+            return WebUtils.response_error(str(exc))
         with transaction.atomic():
             pref, _ = UserPreference.objects.get_or_create(**scope)
             UserPreference.objects.select_for_update().get(pk=pref.pk)
@@ -54,7 +61,6 @@ def center_settings(request):
 @HasPermission("ticket-View")
 def filter_tags(request):
     from apps.itsm.models import TicketTag
-    from apps.itsm.views.access import ticket_scope
 
     if request.method != "GET":
         return WebUtils.response_error("不支持的请求方法", status_code=405)
@@ -63,3 +69,24 @@ def filter_tags(request):
     if keyword:
         tags = tags.filter(name__icontains=keyword)
     return WebUtils.response_success({"items": list(tags.order_by("name").values("name", "color")[:50])})
+
+
+@require_GET
+@api_errors
+@HasPermission("ticket-View")
+def filter_fields(request):
+    scoped_tickets = ticket_scope(request)
+    workflows = Workflow.objects.filter(domain=domain_of(request), pk__in=scoped_tickets.order_by().values("workflow_id"))
+    params = validate_filters({key: request.GET[key] for key in ("workflow_id", "q") if key in request.GET})
+    if workflow_id := params.get("workflow_id"):
+        workflow = get_object_or_404(workflows, pk=workflow_id)
+        catalog = field_catalog(request, scoped_tickets, workflow_id)
+        return WebUtils.response_success(
+            {
+                "workflow": {"id": workflow.id, "name": workflow.name},
+                "fields": [{key: value for key, value in field.items() if key != "version_ids"} for field in catalog.values()],
+            }
+        )
+    if keyword := params.get("q"):
+        workflows = workflows.filter(name__icontains=keyword)
+    return WebUtils.response_success({"workflows": list(workflows.order_by("name", "id").values("id", "name")[:50])})

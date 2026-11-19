@@ -202,3 +202,64 @@ def test_mixed_nodes_block_process_before_any_write(sample):
         result = data(batch_operate(request("post", {"ids": [ticket.id, second.id], "action": "approve"}, "handler")))
     assert not any(item["ok"] for item in result["items"])
     service.assert_not_called()
+
+
+@pytest.fixture
+def dynamic_tickets(sample):
+    ticket, _ = sample
+    version = ticket.workflow_version
+    version.design["form_schema"] = {
+        "fields": [
+            {"key": "title", "type": "input"},
+            {"key": "amount", "label": "申请金额", "type": "number"},
+            {"key": "notes", "label": "备注", "type": "input"},
+            {"key": "secret", "type": "input"},
+            {"key": "conditional", "type": "input", "visibleWhen": {"field": "amount", "op": ">", "value": 50}},
+            {"key": "nested", "type": "section", "children": [{"key": "nested_note", "type": "input"}]},
+        ]
+    }
+    version.design["nodes"][1]["field_perm"] = {"secret": "hidden", "nested": "hidden"}
+    version.save()
+    match = TicketService().create(version, {"title": "=1+1", "amount": 200, "notes": "Blue office"}, "owner")
+    TicketService().create(version, {"title": "数字较小", "amount": 9, "notes": "blue desk"}, "owner")
+    invisible = TicketService().create(version, {"title": "他人的工单", "amount": 200, "notes": "blue desk"}, "other")
+    return match, invisible
+
+
+def test_dynamic_filters_catalog_groups_and_invalid_conditions(dynamic_tickets):
+    from apps.itsm.views.ticket_center import center_settings, filter_fields
+
+    match, _ = dynamic_tickets
+    workflow_id = str(match.workflow_id)
+    params = {"workflow_id": workflow_id}
+    fields = data(filter_fields(request(payload=params, username="owner")))["fields"]
+    assert {field["key"] for field in fields} == {"amount", "notes"}
+    assert data(filter_fields(request(username="outsider")))["workflows"] == []
+    assert filter_fields(request(payload=params, username="outsider")).status_code == 404
+    assert filter_fields(request(payload=params, username="owner", domain="elsewhere")).status_code == 404
+    filters = {
+        **params,
+        "tab": "created",
+        "form_filters": [{"key": "amount", "operator": "gte", "value": 150}, {"key": "notes", "operator": "contains", "value": "blue"}],
+    }
+    saved = data(center_settings(request("post", {"name": "大额申请", "filters": filters}, "owner")))
+    query = {**saved["filters"], "form_filters": json.dumps(saved["filters"]["form_filters"])}
+    assert [row["id"] for row in data(tickets(request(payload=query, username="owner")))["items"]] == [match.id]
+    for clause in [
+        {"key": "secret", "operator": "eq", "value": "original"},
+        {"key": "amount", "operator": "contains", "value": "200"},
+        {"key": "notes", "operator": "eq", "value": ["blue"]},
+    ]:
+        assert tickets(request(payload={**params, "form_filters": json.dumps([clause])}, username="owner")).status_code == 400
+
+
+def test_dynamic_choice_accepts_numeric_value_stored_by_integration(dynamic_tickets):
+    match, _ = dynamic_tickets
+    version = match.workflow_version
+    version.design["form_schema"]["fields"].append({"key": "asset", "type": "select", "label": "关联资产"})
+    version.save(update_fields=["design"])
+    match.form_data["asset"] = 72
+    match.save(update_fields=["form_data"])
+    params = {"workflow_id": str(match.workflow_id), "form_filters": json.dumps([{"key": "asset", "operator": "eq", "value": "72"}])}
+    result = data(tickets(request(payload=params, username="owner")))
+    assert [row["id"] for row in result["items"]] == [match.id]
