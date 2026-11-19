@@ -1,5 +1,5 @@
-import re
 import os
+import re
 import uuid
 from urllib.parse import urlsplit
 
@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import node_logger as logger, safe_log_value
+from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.models import SidecarEnv
@@ -21,6 +21,9 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.services.sidecar_cache import build_sidecar_env_cache_key, invalidate_sidecar_env_cache
 from apps.node_mgmt.utils.proxy_address import normalize_proxy_address
 from apps.node_mgmt.utils.token_auth import generate_node_token
+from config.components.nats import NATS_NAMESPACE
+
+PROXY_PACKAGE_VERSION = 2
 
 
 class RegionService:
@@ -157,9 +160,20 @@ class RegionService:
         server_url = hub_env_vars.get("NODE_SERVER_URL") or os.getenv(
             "DEFAULT_ZONE_VAR_NODE_SERVER_URL"
         )
-        nats_url = hub_env_vars.get("NATS_SERVERS") or os.getenv(
-            "DEFAULT_ZONE_VAR_NATS_SERVERS"
-        )
+        leaf_config = {
+            "PROXY_NATS_LEAF_URL": os.getenv("PROXY_NATS_LEAF_URL"),
+            "PROXY_NATS_LEAF_USERNAME": os.getenv("PROXY_NATS_LEAF_USERNAME"),
+            "PROXY_NATS_LEAF_PASSWORD": os.getenv("PROXY_NATS_LEAF_PASSWORD"),
+            "PROXY_NATS_SOURCE_DOMAIN": os.getenv("PROXY_NATS_SOURCE_DOMAIN"),
+        }
+        # Select the contract from the hub configuration before calling webhookd.
+        # Once a hub enables v2, a partial configuration must fail closed.
+        use_v2 = any(leaf_config.values())
+        nats_url = hub_env_vars.get("NATS_SERVERS") or os.getenv("DEFAULT_ZONE_VAR_NATS_SERVERS")
+        installer_config = {
+            NodeConstants.NATS_INSTALLER_USERNAME_KEY: env_vars.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY),
+            NodeConstants.NATS_INSTALLER_PASSWORD_KEY: env_vars.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY),
+        }
         # NATS_USERNAME/NATS_PASSWORD 是区域内节点采集上报账号（受限，发 metrics.>/vector），
         # 渲染进区域 NATS 的监控槽位；区域 NATS 的管理员槽位（nats-executor/stargazer/bootstrap
         # 使用）必须取 NATS_ADMIN_USERNAME/NATS_ADMIN_PASSWORD。
@@ -179,7 +193,9 @@ class RegionService:
         missing_vars = []
         if not server_url:
             missing_vars.append("NODE_SERVER_URL")
-        if not nats_url:
+        if use_v2:
+            missing_vars.extend(key for key, value in (leaf_config | installer_config).items() if not str(value or "").strip())
+        elif not nats_url:
             missing_vars.append("NATS_SERVERS")
         if not nats_username:
             missing_vars.append("NATS_ADMIN_USERNAME")
@@ -195,7 +211,7 @@ class RegionService:
                 cloud_region_id,
                 ", ".join(missing_vars),
             )
-            raise BaseAppException("Cloud region environment configuration is incomplete")
+            raise BaseAppException("Cloud region environment configuration is incomplete: " + ", ".join(missing_vars))
 
         # nats.conf 按用户名渲染独立槽位，重名会让区域 NATS 因 duplicate user 无法启动。
         if nats_username == nats_monitor_username:
@@ -208,6 +224,10 @@ class RegionService:
                 "NATS_ADMIN_USERNAME 与 NATS_USERNAME 不能相同：请为管理员和节点采集配置两个独立的 NATS 账号"
             )
 
+        hub_admin_username = hub_env_vars.get("NATS_ADMIN_USERNAME") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")
+        if use_v2 and leaf_config["PROXY_NATS_LEAF_USERNAME"] == hub_admin_username:
+            raise BaseAppException("PROXY_NATS_LEAF_USERNAME must use a dedicated account")
+
         if not proxy_ip:
             logger.error(f"Missing proxy_address for cloud region {cloud_region_id}")
             raise BaseAppException("Cloud region proxy_address not configured")
@@ -217,6 +237,10 @@ class RegionService:
         redis_password = uuid.uuid4().hex[:12]
         apm_nats_username = f"apm_region_{cloud_region_id}"
         apm_nats_password = uuid.uuid4().hex
+
+        installer_username = installer_config[NodeConstants.NATS_INSTALLER_USERNAME_KEY]
+        if use_v2 and installer_username in {nats_username, nats_monitor_username, apm_nats_username}:
+            raise BaseAppException("NATS_INSTALLER_USERNAME conflicts with another Proxy NATS account")
 
         region_executor_instance_id = RegionService.get_region_service_instance_id(
             cloud_region.name,
@@ -228,7 +252,6 @@ class RegionService:
             "zone_id": str(cloud_region_id),
             "zone_name": cloud_region.name,
             "server_url": server_url,
-            "nats_url": nats_url,
             "nats_username": nats_username,
             "nats_password": nats_password,
             "api_token": api_token,
@@ -240,6 +263,20 @@ class RegionService:
             "apm_nats_password": apm_nats_password,
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
+
+        if use_v2:
+            webhook_params.update(
+                proxy_package_version=PROXY_PACKAGE_VERSION,
+                nats_leaf_url=leaf_config["PROXY_NATS_LEAF_URL"],
+                nats_leaf_username=leaf_config["PROXY_NATS_LEAF_USERNAME"],
+                nats_leaf_password=leaf_config["PROXY_NATS_LEAF_PASSWORD"],
+                nats_source_domain=leaf_config["PROXY_NATS_SOURCE_DOMAIN"],
+                nats_installer_username=installer_username,
+                nats_installer_password=installer_config[NodeConstants.NATS_INSTALLER_PASSWORD_KEY],
+                nats_bucket=NATS_NAMESPACE,
+            )
+        else:
+            webhook_params["nats_url"] = nats_url
 
         webhook_api_url = f"{webhook_url.rstrip('/')}/infra/proxy"
 
@@ -258,40 +295,42 @@ class RegionService:
             )
 
             if response.status_code != 200:
-                logger.error(
-                    "Webhook API error: status=%s region=%s body_len=%s body=%s",
-                    response.status_code,
-                    cloud_region_id,
-                    len(response.text or ""),
-                    safe_log_value(response.text),
-                )
+                logger.error("proxy_package_failed region=%s failed_stage=webhook_response status=%s", cloud_region_id, response.status_code)
                 raise BaseAppException("Failed to generate deploy script")
 
             webhook_response = response.json()
-            if webhook_response.get("status") == "error":
-                error_msg = webhook_response.get("message", "Unknown error")
-                logger.error(f"Webhook returned error for region {cloud_region_id}: {error_msg}")
-                raise BaseAppException(f"Webhook error: {error_msg}")
+            expected_version = PROXY_PACKAGE_VERSION if use_v2 else None
+            if not isinstance(webhook_response, dict) or webhook_response.get("proxy_package_version") != expected_version:
+                raise BaseAppException("Incompatible webhookd Proxy package version. Check the hub configuration and webhookd version.")
+
+            if webhook_response.get("status") != "success":
+                raise BaseAppException("Webhook failed to generate the Proxy package. Check the deployment configuration.")
 
             deploy_script = webhook_response.get("install_script")
-            if not deploy_script or not deploy_script.strip():
-                logger.error(f"Empty deploy script returned for region {cloud_region_id}")
+            if not isinstance(deploy_script, str) or not deploy_script.strip():
                 raise BaseAppException("Invalid response from webhook API")
 
-            logger.info(f"Successfully retrieved deploy script for cloud region {cloud_region_id}")
+            logger.info("proxy_package_generated region=%s", cloud_region_id)
             return deploy_script
 
         except requests.Timeout:
-            logger.error(f"Webhook API timeout for cloud region {cloud_region_id}")
-            raise BaseAppException("Deploy script request timeout")
-        except requests.RequestException as e:
-            logger.error(f"Webhook API request failed for region {cloud_region_id}: {str(e)}")
-            raise BaseAppException("Failed to connect to webhook service")
+            logger.warning("proxy_package_failed region=%s failed_stage=webhook_request error_type=Timeout", cloud_region_id)
+            raise BaseAppException("Deploy script request timeout") from None
+        except requests.RequestException as error:
+            logger.error("proxy_package_failed region=%s failed_stage=webhook_request error_type=%s", cloud_region_id, type(error).__name__)
+            raise BaseAppException("Failed to connect to webhook service") from None
         except BaseAppException:
             raise
-        except Exception as e:
-            logger.exception(f"Unexpected error generating deploy script for region {cloud_region_id}")
-            raise BaseAppException("Failed to generate deploy script")
+        except Exception as error:
+            error_type = type(error).__name__
+            sanitized = RuntimeError("Unexpected Proxy package generation failure")
+            logger.error(
+                "proxy_package_failed region=%s failed_stage=webhook_response error_type=%s",
+                cloud_region_id,
+                error_type,
+                exc_info=(RuntimeError, sanitized, error.__traceback__),
+            )
+            raise BaseAppException("Failed to generate deploy script") from None
 
     @staticmethod
     def _get_env_vars_dict(cloud_region_id: int) -> dict:
