@@ -50,12 +50,12 @@ assert.equal(validateComponentParamSwitch([switchParam, ordinaryParam]), null);
 assert.equal(validateComponentParamSwitch([switchParam, { ...switchParam, name: 'other' }]), 'multipleComponentSwitchParams');
 assert.equal(reconcileComponentParamValue('1', options), '1');
 assert.equal(reconcileComponentParamValue(1, options), 1);
-assert.equal(reconcileComponentParamValue('missing', options), 1);
-assert.equal(reconcileComponentParamValue('saved', []), 'saved');
-assert.deepEqual(reconcileComponentSwitchResult(null, options), { value: 1, changed: true });
-assert.deepEqual(reconcileComponentSwitchResult(undefined, options), { value: 1, changed: true });
-assert.deepEqual(reconcileComponentSwitchResult(true, []), { value: true, changed: false });
-assert.deepEqual(reconcileComponentSwitchResult([1, 2], []), { value: [1, 2], changed: false });
+assert.equal(reconcileComponentParamValue('missing', options), null);
+assert.equal(reconcileComponentParamValue('saved', []), null);
+assert.deepEqual(reconcileComponentSwitchResult(null, options), { value: null, changed: false });
+assert.deepEqual(reconcileComponentSwitchResult(undefined, options), { value: null, changed: true });
+assert.deepEqual(reconcileComponentSwitchResult(true, []), { value: null, changed: true });
+assert.deepEqual(reconcileComponentSwitchResult([1, 2], []), { value: null, changed: true });
 assert.deepEqual(reconcileComponentSwitchResult('1', options), { value: '1', changed: false });
 assert.deepEqual(reconcileComponentSwitchResult(1, options), { value: 1, changed: false });
 assert.deepEqual(buildComponentSwitchRuntimeParams(switchParam, '1', options), { group_by: '1' });
@@ -63,6 +63,25 @@ assert.deepEqual(buildComponentSwitchRuntimeParams(switchParam, 'missing', optio
 assert.deepEqual(buildComponentSwitchRuntimeParams({ ...switchParam, name: ' ' }, '1', options), {});
 assert.equal((clearComponentParamSwitch(switchParam).inputConfig as { componentSwitch?: boolean }).componentSwitch, undefined);
 assert.equal(clearComponentParamSwitch(switchParam).inputConfig?.control, 'select');
+const clearedMultiple = clearComponentParamSwitch({
+  ...switchParam,
+  inputConfig: {
+    control: 'select',
+    multiple: true,
+    maxCount: 2,
+    picker: 'table',
+    componentSwitch: true,
+    optionsSource: switchParam.inputConfig && 'optionsSource' in switchParam.inputConfig
+      ? switchParam.inputConfig.optionsSource
+      : { type: 'static', staticItems: options },
+  },
+});
+assert.deepEqual(clearedMultiple.inputConfig, {
+  control: 'select',
+  optionsSource: switchParam.inputConfig && 'optionsSource' in switchParam.inputConfig
+    ? switchParam.inputConfig.optionsSource
+    : { type: 'static', staticItems: options },
+});
 assert.equal(isComponentSwitchCandidate(switchParam), true);
 assert.equal(isComponentSwitchCandidate({ ...switchParam, filterType: 'fixed' }), false);
 assert.equal(isComponentSwitchCandidate({ ...switchParam, type: 'number' }), false);
@@ -77,12 +96,23 @@ const invalidInputConfig = { control: 'input', componentSwitch: true } as unknow
 assert.equal((clearComponentParamSwitch({ ...switchParam, inputConfig: invalidInputConfig }).inputConfig as { componentSwitch?: boolean }).componentSwitch, undefined);
 
 const resolvedRuntime = resolveComponentSwitchRuntime('topN', switchParam, options, 'missing');
-assert.deepEqual(resolvedRuntime, { value: 1, params: { group_by: 1 } });
+assert.deepEqual(resolvedRuntime, { value: undefined, params: {} });
 assert.equal(supportsComponentSwitch('topN'), true);
+assert.equal(supportsComponentSwitch('line'), true);
+assert.equal(supportsComponentSwitch('bar'), true);
+assert.equal(supportsComponentSwitch('text'), false);
 assert.equal(supportsComponentSwitch('room3D'), false);
-assert.equal(supportsComponentSwitch('bar'), false);
+assert.equal(supportsComponentSwitch('networkStatusTopology'), false);
 assert.deepEqual(resolveComponentSwitchRuntime('room3D', switchParam, options, '1'), { value: undefined, params: {} });
-assert.deepEqual(resolveComponentSwitchRuntime('bar', switchParam, options, '1'), { value: undefined, params: {} });
+assert.deepEqual(resolveComponentSwitchRuntime('bar', switchParam, options, '1'), { value: '1', params: { group_by: '1' } });
+assert.deepEqual(resolveComponentSwitchRuntime('line', {
+  ...switchParam,
+  inputConfig: { ...switchParam.inputConfig!, multiple: true },
+}, options, ['1']), { value: ['1'], params: { group_by: ['1'] } });
+assert.deepEqual(resolveComponentSwitchRuntime('line', {
+  ...switchParam,
+  inputConfig: { ...switchParam.inputConfig!, multiple: true },
+}, options, ['missing']), { value: undefined, params: {} });
 assert.equal(resolveComponentSwitchRequestGate({
   hasComponentSwitchParam: false,
   optionStatus: 'loading',
@@ -113,12 +143,13 @@ assert.equal(resolveComponentSwitchRequestGate({
   optionStatus: 'error',
   runtimeParams: {},
 }), 'blocked');
-const runtimeExtraParams = buildWidgetExtraParams({ isTableLikeChart: false, tableQueryParams: {}, runtimeParams: resolvedRuntime.params });
+const matchedRuntime = resolveComponentSwitchRuntime('topN', switchParam, options, '1');
+const runtimeExtraParams = buildWidgetExtraParams({ isTableLikeChart: false, tableQueryParams: {}, runtimeParams: matchedRuntime.params });
 assert.equal(buildWidgetRequestSignatureParams({
   config: { dataSourceParams: [switchParam] },
   dataSource: { params: [switchParam] } as any,
   extraParams: runtimeExtraParams,
-}).group_by, 1);
+}).group_by, '1');
 
 const submitResult = buildWidgetSubmitConfig({
   values: { name: 'TopN', chartType: 'topN', dataSourceParams: [switchParam, { ...switchParam, name: 'region' }] },
@@ -244,18 +275,25 @@ const room3DSource = readFileSync(new URL('../src/app/ops-analysis/components/wi
 const controlSource = readFileSync(new URL('../src/app/ops-analysis/components/componentParamSwitchControl.tsx', import.meta.url), 'utf8');
 const paramInputControlSource = readFileSync(new URL('../src/app/ops-analysis/components/paramInputControl.tsx', import.meta.url), 'utf8');
 const dashboardSource = readFileSync(new URL('../src/app/ops-analysis/(pages)/view/dashBoard/index.tsx', import.meta.url), 'utf8');
+const paramsConfigSource = readFileSync(new URL('../src/app/ops-analysis/components/paramsConfig.tsx', import.meta.url), 'utf8');
+const screenFrameSource = readFileSync(new URL('../src/app/ops-analysis/(pages)/view/screen/components/screenWidgetFrame.tsx', import.meta.url), 'utf8');
 const topologySource = readFileSync(new URL('../src/app/ops-analysis/(pages)/view/topology/utils/namespaceUtils.ts', import.meta.url), 'utf8');
 assert.match(editorSource, /componentSwitchEnabled/);
 assert.match(editorSource, /componentSwitchOccupied/);
 assert.match(widgetConfigSource, /resolvedParamOptionsRef/);
 assert.match(widgetConfigSource, /clearComponentParamSwitch/);
+assert.match(widgetConfigSource, /if \(!supportsComponentSwitch\(newChartType\)\)/);
 assert.doesNotMatch(widgetConfigSource, /runtimeParamControl/);
 assert.match(rendererSource, /useParamInputOptions\(\s*componentSwitchParam\?\.inputConfig/);
 assert.match(rendererSource, /suppressErrorNotification:\s*true/);
 assert.match(rendererSource, /optionState\.status === "error"/);
 assert.match(rendererSource, /optionState\.errorMessage/);
-assert.match(rendererSource, /getTypedValueKey\(savedComponentSwitchValue\)/);
+assert.match(rendererSource, /savedValue: savedComponentSwitchValue \?\? null/);
 assert.match(rendererSource, /resolveComponentSwitchRuntime/);
+assert.match(rendererSource, /preferComponentSwitchLiveValue/);
+assert.doesNotMatch(paramsConfigSource, /preferComponentSwitchLiveValue/);
+assert.match(screenFrameSource, /WidgetHeaderRuntimeSlotProvider/);
+assert.match(screenFrameSource, /!isBare &&/);
 assert.match(rendererSource, /resolveComponentSwitchRequestGate/);
 assert.match(rendererSource, /componentSwitchRequestGate === "ready"/);
 assert.match(rendererSource, /componentSwitchRequestGate === "blocked"/);
@@ -263,18 +301,20 @@ assert.match(rendererSource, /isWaitingForSwitchOptions/);
 assert.match(rendererSource, /requestExtraParams/);
 assert.match(
   rendererSource,
-  /const inlineComponentSwitchControl = headerRuntimeSlot\s*\?\s*null\s*:\s*componentSwitchControl/,
+  /const componentSwitchShell = headerRuntimeSlot\s*\?\s*null\s*:\s*componentSwitchControl/,
 );
-assert.match(widgetRendererSource, /componentSwitchControl/);
-assert.match(topNSource, /\{componentSwitchControl\}/);
+assert.doesNotMatch(widgetRendererSource, /componentSwitchControl/);
+assert.doesNotMatch(topNSource, /componentSwitchControl/);
 assert.doesNotMatch(room3DSource, /\{componentSwitchControl\}/);
 assert.doesNotMatch(room3DSource, /showRoomSwitcher/);
 assert.match(room3DSource, /resolveRoom3DCanvasSelection/);
 assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
+assert.match(controlSource, /mode="multiple"/);
+assert.match(controlSource, /maxTagCount="responsive"/);
 assert.match(controlSource, /<Select/);
 assert.match(controlSource, /block=\{block\}/);
-assert.match(paramInputControlSource, /useParamInputOptions\(inputConfig\)/);
+assert.match(paramInputControlSource, /useParamInputOptions\(\s*inputConfig/);
 assert.doesNotMatch(paramInputControlSource, /suppressErrorNotification/);
 assert.match(paramInputControlSource, /createParamInputOptionsNotifier/);
 assert.doesNotMatch(paramInputControlSource, /\[[^\]]*onOptionsResolved[^\]]*\]/);

@@ -33,8 +33,8 @@ export const resolveComponentSwitchPopup = (): {
 interface ComponentParamSwitchControlProps {
   inputConfig?: InputControlConfig;
   options: InputOption[];
-  value?: string | number;
-  onChange?: (value: string | number) => void;
+  value?: string | number | Array<string | number>;
+  onChange?: (value: string | number | Array<string | number>) => void;
   block?: boolean;
   chartThemeMode?: OpsChartThemeMode;
   /** 与表格、排行文字同一套屏幕缩放。1 表示按设计像素。 */
@@ -62,9 +62,10 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
     };
   }, []);
 
-  if (!isOptionInputControl(inputConfig) || !options.length || value === undefined) {
+  if (!isOptionInputControl(inputConfig) || !options.length) {
     return null;
   }
+  const multiple = Boolean(inputConfig.multiple);
 
   const resolvedScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   const fontSize = Math.round(13 * resolvedScale);
@@ -77,7 +78,24 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   } as React.CSSProperties;
 
   let control: React.ReactNode = null;
-  if (inputConfig.control === 'radio') {
+  if (multiple) {
+    const selected = Array.isArray(value)
+      ? value
+      : (typeof value === 'string' || typeof value === 'number' ? [value] : []);
+    control = (
+      <Select
+        mode="multiple"
+        maxTagCount="responsive"
+        maxCount={inputConfig.maxCount}
+        style={{ height, fontSize, width: '100%', maxWidth: Math.round(220 * resolvedScale) }}
+        styles={popupLayer.zIndex ? { popup: { root: { zIndex: popupLayer.zIndex } } } : undefined}
+        getPopupContainer={popupLayer.getPopupContainer}
+        options={options}
+        value={selected}
+        onChange={(nextValue) => onChange?.(nextValue)}
+      />
+    );
+  } else if (inputConfig.control === 'radio') {
     control = (
       <Segmented
         block={block}
@@ -89,7 +107,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
             </span>
           ),
         }))}
-        value={value}
+        value={typeof value === 'string' || typeof value === 'number' ? value : undefined}
         onChange={(nextValue) => onChange?.(nextValue as string | number)}
       />
     );
@@ -100,7 +118,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
         styles={popupLayer.zIndex ? { popup: { root: { zIndex: popupLayer.zIndex } } } : undefined}
         getPopupContainer={popupLayer.getPopupContainer}
         options={options}
-        value={value}
+        value={typeof value === 'string' || typeof value === 'number' ? value : undefined}
         onChange={(nextValue) => onChange?.(nextValue)}
       />
     );

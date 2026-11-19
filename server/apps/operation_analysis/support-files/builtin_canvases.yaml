@@ -5381,7 +5381,7 @@ screens:
       id: 93bd9edd-df5c-497d-bd10-b9c62a2991fa
       kind: text
       zIndex: 6
-      content: 基于当前监控数据快照，汇总交换机、路由器、防火墙、负载均衡的运行情况。
+      content: 基于当前监控数据快照，按整个网络设备分类汇总运行情况。
       textStyle:
         align: left
         color: '#8b9aaf'
@@ -5482,11 +5482,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5609,11 +5605,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5784,11 +5776,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5936,11 +5924,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6088,11 +6072,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6241,7 +6221,7 @@ screens:
           frame: bare
         dataSource: 监控实例分布::monitor/query_monitor_instance_distribution
         valueField: instance_count
-        description: 只统计交换机、路由器、防火墙、负载均衡。库里没有 WAN 优化这个监控对象。
+        description: 统计该分类下实际有实例的对象。
         dimensionField: group_value
         filterBindings:
           organization__string: true
@@ -6280,11 +6260,7 @@ screens:
         - desc: 先选分类后才出现。不选表示所选分类下的全部对象。
           name: monitor_object_ids
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6550,11 +6526,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6852,11 +6824,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:

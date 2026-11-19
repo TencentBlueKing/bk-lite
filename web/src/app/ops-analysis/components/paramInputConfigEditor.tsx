@@ -56,7 +56,6 @@ import {
   isOptionsQueryParamRef,
   normalizeOptionsQueryParamValue,
   collectOptionsQueryParamIssues,
-  hasOptionsQueryRef,
   isRejectedQueryParams,
   normalizeQueryParamsForStorage,
   stableStringify,
@@ -452,8 +451,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
       (value.control === 'select' || value.control === 'radio')
-        && Boolean(value.componentSwitch)
-        && hasOptionsQueryRef(value) === false,
+        && Boolean(value.componentSwitch),
     );
     setMultiple(
       value.control === 'select' ? Boolean(value.multiple) : false,
@@ -888,8 +886,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     };
   };
 
-  const queryRefDisablesSwitch = queryParamRows.some((row) => row.mode === 'ref' && row.refName.trim());
-
   const handleConfirm = async () => {
     if (editingConditionFields && sourceType === 'static') {
       const blank = (row: ConditionFieldRow) => (
@@ -1124,7 +1120,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
     onConfirm({
       control,
-      componentSwitch: queryRefDisablesSwitch ? undefined : (componentSwitch ? true : undefined),
+      componentSwitch: componentSwitch ? true : undefined,
       ...buildOptionControlExtras(),
       optionsSource,
     });
@@ -1252,25 +1248,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
         {control === 'select' && !editingConditionFields && (
           <Form.Item label={t('paramInput.multiple')} className="mb-3">
-            <Tooltip
-              title={
-                componentSwitch
-                  ? t('paramInput.multipleDisabledByComponentSwitch')
-                  : undefined
-              }
-            >
-              <Switch
-                size="small"
-                checked={multiple}
-                disabled={componentSwitch}
-                onChange={(checked) => {
-                  setMultiple(checked);
-                  if (checked) {
-                    setComponentSwitch(false);
-                  }
-                }}
-              />
-            </Tooltip>
+            <Switch
+              size="small"
+              checked={multiple}
+              onChange={setMultiple}
+            />
           </Form.Item>
         )}
 
@@ -1288,28 +1270,17 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       ? t('dashboard.componentSwitchOccupied', undefined, {
                         label: componentSwitchOwner.label,
                       })
-                      : multiple
-                        ? t('dashboard.componentSwitchDisabledByMultiple')
-                        : queryRefDisablesSwitch
-                          ? t('dashboard.componentSwitchDisabledByQueryRef')
-                          : undefined
+                      : undefined
                   }
                 >
                   <Switch
                     size='small'
-                    checked={componentSwitch && queryRefDisablesSwitch === false}
+                    checked={componentSwitch}
                     disabled={Boolean(
-                      (componentSwitchOwner &&
-                        componentSwitchOwner.name !== editingParamName) ||
-                      multiple ||
-                      queryRefDisablesSwitch,
+                      componentSwitchOwner &&
+                        componentSwitchOwner.name !== editingParamName,
                     )}
-                    onChange={(checked) => {
-                      setComponentSwitch(checked);
-                      if (checked) {
-                        setMultiple(false);
-                      }
-                    }}
+                    onChange={setComponentSwitch}
                   />
                 </Tooltip>
               </Form.Item>

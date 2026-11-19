@@ -703,7 +703,7 @@ export const buildWidgetSubmitConfig = ({
   }
 
   const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
-  if (validateComponentSwitchParams(values.dataSourceParams) && !forPreview) {
+  if (validateComponentSwitchParams(values.dataSourceParams)) {
     return { error: 'multipleComponentSwitchParams' };
   }
 

@@ -10,6 +10,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 import { migrateDashboardGridLayout } from '@/app/ops-analysis/utils/dashboardGridRows';
 import { isDashboardWidgetItem } from '@/app/ops-analysis/utils/dashboardGroups';
+import { sanitizeComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 import {
   migrateFilterBindings,
   migrateParamItemsFromStringList,
@@ -67,10 +68,15 @@ export const prepareDashboardPlaybackDocument = (
         ...(valueConfig.dataSourceParams
           ? (() => {
             const migratedParams = migrateParamItemsFromStringList(valueConfig.dataSourceParams);
-            logStringParamMigrationWarnings(migratedParams.warnings, {
-              canvasId: options.canvasId,
-            });
-            return { dataSourceParams: migratedParams.params };
+            const sanitized = sanitizeComponentSwitchParams(
+              valueConfig.chartType,
+              migratedParams.params,
+            );
+            logStringParamMigrationWarnings(
+              [...migratedParams.warnings, ...sanitized.warnings],
+              { canvasId: options.canvasId },
+            );
+            return { dataSourceParams: sanitized.params };
           })()
           : {}),
       },

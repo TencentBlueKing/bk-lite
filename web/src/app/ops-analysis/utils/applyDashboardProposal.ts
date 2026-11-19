@@ -1,6 +1,8 @@
 import type { CardListConfig } from '@/app/ops-analysis/utils/cardList';
 import type { InputControlConfig, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
+import { sanitizeComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
+import { logStringParamMigrationWarnings } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import type {
   DashboardLayoutItem,
   DashboardWidgetLayoutItem,
@@ -22,7 +24,6 @@ import { normalizeInputConfigResult } from '@/app/ops-analysis/utils/paramInputC
 import {
   collectOptionsQueryParamIssues,
   dynamicQueryParamsOf,
-  hasOptionsQueryRef,
   withoutRejectedQueryParams,
   type OptionsQueryNode,
   type OptionsQueryValidationIssue,
@@ -339,17 +340,6 @@ const enforceOptionsQueryGraph = (
   });
 };
 
-const clearComponentSwitchWhenQueryRef = (param: ParamItem): ParamItem => {
-  const inputConfig = param.inputConfig;
-  if (!inputConfig || hasOptionsQueryRef(inputConfig) === false || !('componentSwitch' in inputConfig)) {
-    return param;
-  }
-  if (inputConfig.componentSwitch !== true) return param;
-  const nextInputConfig = { ...inputConfig };
-  delete nextInputConfig.componentSwitch;
-  return { ...param, inputConfig: nextInputConfig };
-};
-
 /** 组件参数和筛定义共用同一套环、级数、类型校验。非法引用从该参数上丢掉。 */
 const enforceComponentOptionsQueryGraph = (
   params: ParamItem[],
@@ -432,13 +422,17 @@ const sanitizeLayoutQueryParams = (
     changed = true;
     dataSourceParams = graphed;
   }
-  const withoutSwitch = dataSourceParams.map((param) => {
-    const next = clearComponentSwitchWhenQueryRef(param);
-    if (next !== param) changed = true;
-    return next;
-  });
+  const sanitized = sanitizeComponentSwitchParams(item.valueConfig.chartType, dataSourceParams);
+  if (sanitized.changed) {
+    changed = true;
+    dataSourceParams = sanitized.params;
+    logStringParamMigrationWarnings(sanitized.warnings);
+    sanitized.warnings.forEach((warning) => {
+      warnings.push(`componentSwitch:${warning.code}:${warning.key || ''}`);
+    });
+  }
   if (!changed) return item;
-  return { ...item, valueConfig: { ...item.valueConfig, dataSourceParams: withoutSwitch } };
+  return { ...item, valueConfig: { ...item.valueConfig, dataSourceParams } };
 });
 
 const toFilterDefinition = (

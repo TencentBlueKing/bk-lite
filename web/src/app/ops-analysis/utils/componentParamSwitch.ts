@@ -1,15 +1,25 @@
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import { hasOptionsQueryRef } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
+import { isSelfFetchSceneWidget } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { isOptionInputControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import {
+  isMultipleSelectInputConfig,
+  type StringParamMigrationWarning,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
 type SwitchableInputConfig = NonNullable<ParamItem['inputConfig']> & {
   componentSwitch?: boolean;
 };
 
-const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'nodeGraph', 'table']);
+const NO_DATA_REQUEST_CHART_TYPES = new Set(['text']);
+
+export type ComponentSwitchRuntimeValue = string | number | Array<string | number>;
 
 export const supportsComponentSwitch = (chartType?: string): boolean =>
-  Boolean(chartType && COMPONENT_SWITCH_CHART_TYPES.has(chartType));
+  Boolean(
+    chartType
+    && !NO_DATA_REQUEST_CHART_TYPES.has(chartType)
+    && !isSelfFetchSceneWidget(chartType),
+  );
 
 export const getTypedValueKey = (value: string | number): string =>
   `${typeof value}:${String(value)}`;
@@ -19,8 +29,7 @@ export const isComponentSwitchCandidate = (param: ParamItem): boolean => {
   return param.filterType === 'params'
     && param.type === 'string'
     && (inputConfig?.control === 'select' || inputConfig?.control === 'radio')
-    && inputConfig.componentSwitch === true
-    && hasOptionsQueryRef(inputConfig) === false;
+    && inputConfig.componentSwitch === true;
 };
 
 export const getComponentSwitchCandidates = (params?: ParamItem[]): ParamItem[] =>
@@ -103,6 +112,27 @@ export const reconcileComponentSwitchResult = (
   return { value: reconciled, changed: reconciled !== value };
 };
 
+const isSwitchScalar = (value: unknown): value is string | number =>
+  typeof value === 'string' || typeof value === 'number';
+
+/** 组件内切换的当前选择。多选必须整组都在选项里，否则整组清空。 */
+export const reconcileComponentSwitchSelection = (
+  value: ParamItem['value'] | undefined,
+  options: InputOption[] | undefined,
+  multiple: boolean,
+): ParamItem['value'] | null | undefined => {
+  if (options == null) return value;
+  if (!multiple) return reconcileComponentSwitchValue(value, options);
+  const items = Array.isArray(value)
+    ? value
+    : (isSwitchScalar(value) ? [value] : []);
+  const scalars = items.filter(isSwitchScalar);
+  if (scalars.length === 0 || scalars.length !== items.length) return null;
+  const optionKeys = new Set(options.map((option) => getTypedValueKey(option.value)));
+  if (!scalars.every((item) => optionKeys.has(getTypedValueKey(item)))) return null;
+  return scalars;
+};
+
 export const clearComponentParamSwitch = (param: ParamItem): ParamItem => {
   const inputConfig = param.inputConfig as SwitchableInputConfig | undefined;
   if (!inputConfig || !('componentSwitch' in inputConfig)) return param;
@@ -127,13 +157,20 @@ export const buildComponentSwitchRuntimeParams = (
   param: ParamItem | undefined,
   value: unknown,
   options?: InputOption[],
-): Record<string, string | number> => {
-  if (!param || !isComponentSwitchCandidate(param) || !param.name.trim()) return {};
-  if (typeof value !== 'string' && typeof value !== 'number') return {};
-  if (!options?.some((option) => getTypedValueKey(option.value) === getTypedValueKey(value))) {
-    return {};
+): Record<string, ComponentSwitchRuntimeValue> => {
+  if (!param || !isComponentSwitchCandidate(param) || !param.name.trim() || !options?.length) return {};
+  const multiple = isMultipleSelectInputConfig(param.inputConfig);
+  const reconciled = reconcileComponentSwitchSelection(
+    value as ParamItem['value'],
+    options,
+    multiple,
+  );
+  if (multiple) {
+    if (!Array.isArray(reconciled) || reconciled.length === 0) return {};
+    return { [param.name]: reconciled };
   }
-  return { [param.name]: value };
+  if (!isSwitchScalar(reconciled)) return {};
+  return { [param.name]: reconciled };
 };
 
 export const resolveComponentSwitchRuntime = (
@@ -141,16 +178,64 @@ export const resolveComponentSwitchRuntime = (
   param: ParamItem | undefined,
   options: InputOption[],
   currentValue: ParamItem['value'] | undefined,
-): { value: string | number | undefined; params: Record<string, string | number> } => {
+): {
+  value: ComponentSwitchRuntimeValue | undefined;
+  params: Record<string, ComponentSwitchRuntimeValue>;
+} => {
   if (!supportsComponentSwitch(chartType) || !param || !isComponentSwitchCandidate(param) || !options.length) {
     return { value: undefined, params: {} };
   }
-  const reconciled = reconcileComponentSwitchResult(currentValue, options).value;
-  if (typeof reconciled !== 'string' && typeof reconciled !== 'number') {
-    return { value: undefined, params: {} };
+  const params = buildComponentSwitchRuntimeParams(param, currentValue, options);
+  const value = params[param.name];
+  return value === undefined ? { value: undefined, params: {} } : { value, params };
+};
+
+const omitComponentSwitchFlag = (param: ParamItem): ParamItem => {
+  const inputConfig = param.inputConfig;
+  if (!inputConfig || !('componentSwitch' in inputConfig)) return param;
+  const nextInputConfig = { ...inputConfig } as Record<string, unknown>;
+  delete nextInputConfig.componentSwitch;
+  return { ...param, inputConfig: nextInputConfig as ParamItem['inputConfig'] };
+};
+
+/** 打开画布或 AI 落盘时收口。不改多选，也不因为选项引用关掉切换。 */
+export const sanitizeComponentSwitchParams = (
+  chartType: string | undefined,
+  params: ParamItem[] | undefined,
+): { params: ParamItem[]; warnings: StringParamMigrationWarning[]; changed: boolean } => {
+  const source = params || [];
+  if (!supportsComponentSwitch(chartType)) {
+    let changed = false;
+    const warnings: StringParamMigrationWarning[] = [];
+    const next = source.map((param) => {
+      const inputConfig = param.inputConfig as SwitchableInputConfig | undefined;
+      if (inputConfig?.componentSwitch !== true) return param;
+      changed = true;
+      warnings.push({
+        code: 'component_switch_unsupported_chart',
+        key: param.name,
+        message: 'componentSwitch removed because this chart does not use the main data request',
+      });
+      return omitComponentSwitchFlag(param);
+    });
+    return { params: changed ? next : source, warnings, changed };
   }
-  const params = buildComponentSwitchRuntimeParams(param, reconciled, options);
-  return Object.keys(params).length ? { value: reconciled, params } : { value: undefined, params: {} };
+  const candidates = findComponentSwitchParams(source);
+  if (candidates.length <= 1) return { params: source, warnings: [], changed: false };
+  const keepName = candidates[0]?.name;
+  let changed = false;
+  const warnings: StringParamMigrationWarning[] = [];
+  const next = source.map((param) => {
+    if (!isComponentSwitchCandidate(param) || param.name === keepName) return param;
+    changed = true;
+    warnings.push({
+      code: 'component_switch_extra_dropped',
+      key: param.name,
+      message: 'componentSwitch removed because the card already has one',
+    });
+    return omitComponentSwitchFlag(param);
+  });
+  return { params: changed ? next : source, warnings, changed };
 };
 
 export type ComponentSwitchRequestGate = 'ready' | 'pending' | 'blocked';
