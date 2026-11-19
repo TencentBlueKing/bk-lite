@@ -187,10 +187,11 @@
         collect_type = "database"
         config_type = "mysql"
 
-# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 在 metric_version=2 下可能是字符串 Yes/No，
-# 也可能被 ParseValue 先收成整数 1/0。enum 查表前会把整数格式化成 "1"/"0"。
-# 只认 Yes 且 default=0 时，正在运行会被写成 0。两种都映射，不设 default，
-# 未知值不落成告警值。VictoriaMetrics 只收数值，所以写入独立的 _int 字段。
+# SHOW SLAVE/REPLICA STATUS 的 IO/SQL 源值是字符串 Yes/No。
+# _int 继续由 enum 写出；原字段也覆盖成 0/1，避免字符串无法作为数值写入 TSDB 时落成 0。
+# 有 dest 时不改源字段，无 dest 时覆盖源字段。先写 _int，再覆盖原字段，
+# 这样第二条读到的源值仍是 Yes。不设 default，未知值不落成告警值 0。
+# Connecting/Preparing 仍映射为 0。
 [[processors.enum]]
     namepass = ["mysql"]
     [processors.enum.tagpass]
@@ -201,9 +202,15 @@
         dest = "slave_slave_io_running_int"
         [processors.enum.mapping.value_mappings]
             Yes = 1
-            "1" = 1
             No = 0
-            "0" = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_io_running"
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
             Connecting = 0
             Preparing = 0
 
@@ -212,9 +219,14 @@
         dest = "slave_slave_sql_running_int"
         [processors.enum.mapping.value_mappings]
             Yes = 1
-            "1" = 1
             No = 0
-            "0" = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_sql_running"
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
             Preparing = 0
 
     [[processors.enum.mapping]]
@@ -222,9 +234,15 @@
         dest = "slave_replica_io_running_int"
         [processors.enum.mapping.value_mappings]
             Yes = 1
-            "1" = 1
             No = 0
-            "0" = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_io_running"
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
             Connecting = 0
             Preparing = 0
 
@@ -233,9 +251,14 @@
         dest = "slave_replica_sql_running_int"
         [processors.enum.mapping.value_mappings]
             Yes = 1
-            "1" = 1
             No = 0
-            "0" = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_replica_sql_running"
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
             Preparing = 0
 
 {% set _statements_on = (gather_perf_events_statements | default(false, true) | lower) %}
