@@ -99,6 +99,33 @@ function buildWebhookInputSchema(t: (key: string, defaultMessage?: string) => st
   };
 }
 
+function webhookBodyFields(schema: JsonSchema | undefined): JsonSchema {
+  const body = schema?.properties?.body;
+  return {
+    type: 'object',
+    properties: body?.properties || {},
+    required: Array.isArray(body?.required) ? body.required.filter((key): key is string => typeof key === 'string') : [],
+    additionalProperties: false,
+  };
+}
+
+function withWebhookBodyFields(schema: JsonSchema | undefined, bodyFields: JsonSchema): JsonSchema {
+  return {
+    type: 'object',
+    properties: {
+      body: {
+        type: 'object',
+        title: schema?.properties?.body?.title || '请求正文',
+        properties: bodyFields.properties || {},
+        required: bodyFields.required || [],
+        additionalProperties: true,
+      },
+    },
+    required: ['body'],
+    additionalProperties: false,
+  };
+}
+
 interface NatsTestSession {
   token: string;
   subject: string;
@@ -1459,6 +1486,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
   const matchesPickerQuery = (value: string) => !query.trim() || value.toLowerCase().includes(query.trim().toLowerCase());
   const firstNodeOnly = nodes.length === 0;
+  const webhookTriggerExists = workflowTriggerNodes(metadata).some((item) => item.trigger_type === 'WEBHOOK');
   const waitingWebhookExists = workflowTriggerNodes(metadata).some((item) => item.trigger_type === 'WEBHOOK' && item.config.response_mode === 'WAIT');
   const webhookResponseExists = (metadata.return_nodes || []).some((item) => item.return_type === 'WEBHOOK');
   const triggerHints = {
@@ -1507,8 +1535,17 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       key: 'return',
       title: t('workflowOrchestration.atom.nodeType.return', '响应'),
       description: t('workflowOrchestration.editor.responseGroupHint', '把流程结果返回给对应的触发入口。'),
-      items: (waitingWebhookExists && !webhookResponseExists ? ['WEBHOOK'] as const : [])
-        .map((type) => ({ key: type, title: returnLabels[type], description: t('workflowOrchestration.editor.returnHint', '结束当前路径并返回结果'), icon: <AtomIcon nodeType="RETURN" className="text-2xl" />, onClick: () => addReturn(type) }))
+      items: (webhookTriggerExists && !webhookResponseExists ? [{
+        key: 'WEBHOOK',
+        title: returnLabels.WEBHOOK,
+        description: waitingWebhookExists
+          ? t('workflowOrchestration.editor.returnHint', '结束当前路径，并把选定的节点输出返回给调用方')
+          : t('workflowOrchestration.editor.webhookReturnLockedHint', '先把响应模式改为「等待流程结果」，再添加这个节点。它会把选定的节点输出作为这次 HTTP 响应。'),
+        meta: waitingWebhookExists ? undefined : t('workflowOrchestration.editor.webhookReturnRequiresWait', '需改为等待'),
+        disabled: !waitingWebhookExists,
+        icon: <AtomIcon nodeType="RETURN" className="text-2xl" />,
+        onClick: () => addReturn('WEBHOOK'),
+      }] : [])
         .filter((item) => matchesPickerQuery(`${item.title} ${item.key} ${item.description}`)),
     },
   ];
@@ -1651,7 +1688,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           onLoad={changeTaskInputs}
           onLoadNodeTitle={changeTaskTitle}
         /> : undefined}
-        outputSchema={selectedTrigger?.trigger_type === 'SCHEDULE' ? scheduleOutputSchema : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookInputSchema : selectedTrigger?.input_schema || selectedAtom?.output_schema}
+        outputSchema={selectedTrigger?.trigger_type === 'SCHEDULE' ? scheduleOutputSchema : selectedTrigger?.input_schema || selectedAtom?.output_schema}
         outputData={metadata.node_test_data?.[selectedNode.id]}
         outputBusy={selectedTrigger?.trigger_type === 'NATS' ? natsTestBusy : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookTestBusy : nodeTestBusy && nodeTestReference === selectedNode.id}
         outputError={selectedTrigger?.trigger_type === 'NATS' ? natsTestError : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookTestError : nodeTestReference === selectedNode.id ? nodeTestError : ''}
@@ -1672,6 +1709,15 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               onChange={(config) => changeTrigger({ config })}
             />}
             {selectedTrigger.trigger_type === 'WEBHOOK' && <>
+              <section className="flex flex-col gap-4">
+                <Alert type="info" showIcon message={t('workflowOrchestration.editor.webhookInputHint', '定义外部请求可传入的业务参数，流程只接收通过契约校验的结构化输入。')} />
+                <FormSchemaEditor
+                  context="webhook"
+                  readOnly={formReadOnly}
+                  value={webhookBodyFields(selectedTrigger.input_schema)}
+                  onChange={(bodySchema) => changeTrigger({ input_schema: withWebhookBodyFields(selectedTrigger.input_schema, bodySchema) })}
+                />
+              </section>
               <WebhookTriggerPanel
                 workflowId={workflow.id || null}
                 nodeKey={selectedTrigger.id}
@@ -1681,7 +1727,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                 testError={webhookTestError}
                 onCancelTest={cancelWebhookTest}
               />
-              <Form.Item className="mb-0" label={t('workflowOrchestration.editor.responseMode', '响应模式')} tooltip={t('workflowOrchestration.editor.responseModeHint', '立即响应只确认已受理，流程继续异步执行；等待结果会保持请求，直到达 Webhook 响应节点。')}>
+              <Form.Item className="mb-0" label={t('workflowOrchestration.editor.responseMode', '响应模式')} tooltip={t('workflowOrchestration.editor.responseModeHint', '立即响应只确认已受理，流程继续异步执行；等待结果会保持请求，直到达 Webhook 响应节点。')} extra={t('workflowOrchestration.editor.webhookReturnDiscoverHint', '调用方要看到流程结果时，改为「等待流程结果」，再从节点列表添加「Webhook 响应」。')}>
                 <Select
                   disabled={formReadOnly}
                   value={String(selectedTrigger.config.response_mode || 'IMMEDIATE')}
