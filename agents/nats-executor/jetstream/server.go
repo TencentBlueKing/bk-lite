@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"nats-executor/logger"
 	"nats-executor/utils/downloaderr"
 	"os"
@@ -69,11 +70,28 @@ func ensureObjectStore(js objectStoreManager, bucketName string) (nats.ObjectSto
 }
 
 func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error {
+	return jsc.downloadToFile(ctx, fileKey, targetPath, fileName, false)
+}
+
+// DownloadToFileIfAbsent 只在目标位置没有同名文件时落盘。
+// 目标已存在（包括下载途中才出现）时不替换，返回 downloaderr.ErrTargetExists。
+func (jsc *JetStreamClient) DownloadToFileIfAbsent(ctx context.Context, fileKey, targetPath, fileName string) error {
+	return jsc.downloadToFile(ctx, fileKey, targetPath, fileName, true)
+}
+
+func (jsc *JetStreamClient) downloadToFile(ctx context.Context, fileKey, targetPath, fileName string, keepExisting bool) error {
 	if err := validateTargetFileName(fileName); err != nil {
 		return err
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	fullPath := filepath.Join(targetPath, fileName)
+	if keepExisting {
+		if _, err := os.Lstat(fullPath); err == nil {
+			return downloaderr.ErrTargetExists
+		}
 	}
 
 	obj, err := jsc.objectStore.Get(fileKey, nats.Context(ctx))
@@ -88,7 +106,6 @@ func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetP
 	}
 	defer obj.Close()
 
-	fullPath := filepath.Join(targetPath, fileName)
 	tempFile, err := createTempDownloadFile(targetPath, fileName+".tmp-*")
 	if err != nil {
 		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to create temporary file in %s: %w", targetPath, err))
@@ -127,7 +144,17 @@ func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetP
 	}
 	tempClosed = true
 
-	if err := renameDownloadFile(tempPath, fullPath); err != nil {
+	if keepExisting {
+		// 硬链接遇到同名目标会失败，不会替换它。
+		err := os.Link(tempPath, fullPath)
+		_ = removeDownloadFile(tempPath)
+		if errors.Is(err, fs.ErrExist) {
+			return downloaderr.ErrTargetExists
+		}
+		if err != nil {
+			return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to finalize download to %s: %w", fullPath, err))
+		}
+	} else if err := renameDownloadFile(tempPath, fullPath); err != nil {
 		_ = removeDownloadFile(tempPath)
 		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to finalize download to %s: %w", fullPath, err))
 	}

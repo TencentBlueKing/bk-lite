@@ -193,7 +193,13 @@ func handleDownloadToLocalMessage(data []byte, instanceId string, nc downloadCon
 
 	var resp ExecuteResponse
 	err := downloadToLocalFile(downloadRequest, nc)
-	if err != nil {
+	if errors.Is(err, downloaderr.ErrTargetExists) {
+		resp = ExecuteResponse{
+			Success:    true,
+			Output:     fmt.Sprintf("File already exists, successfully skipped: %s/%s", downloadRequest.TargetPath, downloadRequest.FileName),
+			InstanceId: instanceId,
+		}
+	} else if err != nil {
 		message := fmt.Sprintf("Failed to download file: %v", err)
 		code := utils.ErrorCodeDependencyFailure
 		switch {
