@@ -54,13 +54,18 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         return runtime_inputs
     if execution is None or not execution.team:
         raise ValueError("原子缺少可信的流程执行上下文")
-    agent_context = {}
+    organization_id = execution.team[0]
+    node_context = {}
+    if task_type in {"bklite_agent", "bklite_memory_read", "bklite_memory_write"}:
+        organization_id = execution.effective_execution_team_id
+        identity = execution.caller_identity
+        if identity and (identity["team_id"], identity["username"], identity["domain"]) == (organization_id, execution.started_by, execution.domain):
+            node_context["caller_identity"] = identity
     if task_type == "bklite_agent":
         if atom_execution:
-            agent_context["task_reference"] = atom_execution.task_reference
-        identity = execution.caller_identity
-        if identity and identity["team_id"] == execution.team[0]:
-            agent_context["caller_identity"] = identity
+            node_context["task_reference"] = atom_execution.task_reference
+        if organization_id != execution.team[0]:
+            node_context["workflow_organization_id"] = execution.team[0]
     return {
         **runtime_inputs,
         "__execution_id": str(execution.id),
@@ -68,10 +73,10 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
             "execution_id": str(execution.id),
             "workflow_id": str(execution.workflow_id),
             "workflow_version": execution.workflow_version,
-            "organization_id": execution.team[0],
+            "organization_id": organization_id,
             "actor": {"username": execution.started_by, "domain": execution.domain},
             "trigger_type": execution.trigger_type,
-            **agent_context,
+            **node_context,
         },
     }
 

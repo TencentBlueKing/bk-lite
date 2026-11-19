@@ -18,7 +18,7 @@ from apps.workflow.openapi_serializers import (
     WorkflowTriggerInvokeRequestSerializer,
     WorkflowWebhookTestRequestSerializer,
 )
-from apps.workflow.permissions import actor_can_operate_workflow_for_teams
+from apps.workflow.permissions import actor_can_access_workflow
 from apps.workflow.services.conductor import ConductorClient, ConductorUnavailable, ExecutionStartUnknown
 from apps.workflow.services.definitions import DefinitionValidationError, validate_workflow_inputs
 from apps.workflow.services.launch_plans import extract_target_fields
@@ -35,6 +35,37 @@ def _require_single_active_team(team):
     if authorized_team_id is None or not GroupUtils.active_queryset(id=authorized_team_id).exists():
         return None, {"result": False, "message": render_known_message(None, "调用方未绑定有效组织")}
     return authorized_team_id, None
+
+
+def _async_replay(execution, workflow, identity):
+    if (
+        execution.workflow_id != workflow.pk
+        or execution.effective_execution_team_id != identity["team_id"]
+        or (execution.started_by, execution.domain) != (identity["username"], identity["domain"])
+    ):
+        return {"result": False, "message": render_known_message(None, "流程不存在或不属于调用方组织")}
+    return {"accepted": True, "execution_id": str(execution.id)}
+
+
+def _gateway_execution_identity(user_info, authorized_teams, workflow):
+    # 网关注入用户名、域和授权组织列表。执行只采用一个实际有 Operate 的组织。
+    username = user_info.get("user") if isinstance(user_info, dict) else None
+    domain = user_info.get("domain") if isinstance(user_info, dict) else None
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or len(username) > 32
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or len(domain) > 100
+    ):
+        return None, {"result": False, "message": render_known_message(None, "流程执行身份非法")}
+    for team_id in workflow.team:
+        if team_id in authorized_teams and actor_can_access_workflow(
+            username=username, domain=domain, current_team=team_id, workflow=workflow, require_operate=True
+        ):
+            return {"username": username, "domain": domain, "team_id": team_id, "include_children": False}, None
+    return None, {"result": False, "message": render_known_message(None, "缺少流程实例操作权限")}
 
 
 @openapi_expose(
@@ -56,23 +87,18 @@ def openapi_workflow_trigger(trigger_id, idempotency_key, inputs=None, *, team=N
     trigger = queryset.filter(build_json_membership_query(queryset, "team", teams), pk=trigger_id).first()
     if trigger is None:
         return {"result": False, "message": render_known_message(None, "触发器不存在或不属于调用方组织")}
-    username = str((user_info or {}).get("user") or "openapi")[:32]
-    domain = str((user_info or {}).get("domain") or "domain.com")[:100]
-    if not actor_can_operate_workflow_for_teams(
-        username=username,
-        domain=domain,
-        team_ids=teams,
-        workflow=trigger.workflow,
-    ):
-        return {"result": False, "message": render_known_message(None, "缺少流程实例操作权限")}
+    identity, error = _gateway_execution_identity(user_info, set(teams).intersection(trigger.team), trigger.workflow)
+    if error:
+        return error
     client = ConductorClient()
     try:
         execution, created = invoke_trigger(
             trigger,
             inputs=inputs or {},
             idempotency_key=idempotency_key,
-            started_by=username,
-            domain=domain,
+            started_by=identity["username"],
+            domain=identity["domain"],
+            caller_identity=identity,
             client=client,
         )
         if trigger.config.get("response_mode", "IMMEDIATE") == "WAIT":
@@ -179,22 +205,14 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
     if workflow is None:
         return {"result": False, "message": render_known_message(None, "流程不存在或不属于调用方组织")}
 
-    username = str((user_info or {}).get("user") or "openapi")[:32]
-    domain = str((user_info or {}).get("domain") or "domain.com")[:100]
-    if not actor_can_operate_workflow_for_teams(
-        username=username,
-        domain=domain,
-        team_ids=[authorized_team_id],
-        workflow=workflow,
-    ):
-        return {"result": False, "message": render_known_message(None, "缺少流程实例操作权限")}
+    identity, error = _gateway_execution_identity(user_info, [authorized_team_id], workflow)
+    if error:
+        return error
 
     callback_key = hashlib.sha256(str(callback_token).encode("utf-8")).hexdigest()
     existing = WorkflowExecution.objects.filter(async_callback_key=callback_key).first()
     if existing:
-        if authorized_team_id not in (existing.team or []):
-            return {"result": False, "message": render_known_message(None, "流程不存在或不属于调用方组织")}
-        return {"accepted": True, "execution_id": str(existing.id)}
+        return _async_replay(existing, workflow, identity)
 
     version = WorkflowVersion.objects.filter(workflow=workflow, version=workflow.current_version).first()
     if version is None:
@@ -213,8 +231,8 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
             "callback_token": callback_token,
             "operator": async_ctx.get("operator") or "system",
             "timeout": timeout_seconds,
-            "user": username,
-            "domain": domain,
+            "user": identity["username"],
+            "domain": identity["domain"],
             "team_id": authorized_team_id,
         },
         "async_callback_deadline_at": timezone.now() + timedelta(seconds=timeout_seconds),
@@ -224,8 +242,9 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
         execution = start_execution(
             workflow,
             inputs=sealed_inputs,
-            started_by=username,
-            domain=domain,
+            started_by=identity["username"],
+            domain=identity["domain"],
+            caller_identity=identity,
             client=ConductorClient(),
             version_number=version.version,
             trigger_type="FORM",
@@ -238,9 +257,7 @@ def openapi_workflow_execute_async(workflow_id, callback_context, inputs=None, *
         existing = WorkflowExecution.objects.filter(async_callback_key=callback_key).first()
         if existing is None:
             raise
-        if authorized_team_id not in (existing.team or []):
-            return {"result": False, "message": render_known_message(None, "流程不存在或不属于调用方组织")}
-        return {"accepted": True, "execution_id": str(existing.id)}
+        return _async_replay(existing, workflow, identity)
     except (DefinitionValidationError, ValueError) as error:
         return {"result": False, "message": render_workflow_error(None, error)}
     except ConductorUnavailable as error:

@@ -34,10 +34,16 @@ def _context(*, organization_id=7):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "trigger_type,message,expected",
-    [("SCHEDULE", "检查告警", True), ("NATS", "检查告警", True), ("WEBHOOK", "检查告警", True), ("FORM", "检查告警", False), ("FORM", "/auto 检查告警", True)],
+    "trigger_type,message,expected,approval_trigger",
+    [
+        ("SCHEDULE", "检查告警", True, "unattended"),
+        ("NATS", "检查告警", True, "unattended"),
+        ("WEBHOOK", "检查告警", True, "unattended"),
+        ("FORM", "检查告警", False, "interactive"),
+        ("FORM", "/auto 检查告警", True, "interactive"),
+    ],
 )
-def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected):
+def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected, approval_trigger):
     from apps.opspilot.services.chat_service import ChatService
 
     vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
@@ -57,6 +63,7 @@ def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_
     result = execute_agent({"agent_id": skill.id, "message": message, "prompt": "附加提示", "__bklite_context": context})
     assert result == {"message": "处理完成"}
     assert seen.get("unattended", False) is expected
+    assert seen["trigger_type"] == approval_trigger
 
 
 @pytest.mark.django_db

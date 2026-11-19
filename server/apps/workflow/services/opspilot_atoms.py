@@ -10,6 +10,7 @@ from apps.workflow.services.agent_knowledge_inputs import resolve_uploaded_agent
 
 MAX_AGENT_OUTPUT_CHARS = 100_000
 MAX_MEMORY_CONTEXT_CHARS = 100_000
+AUTOMATIC_TRIGGERS = {"SCHEDULE", "NATS", "WEBHOOK"}
 
 
 def _trusted_context(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -94,7 +95,7 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "execution_id": str(context.get("execution_id") or ""),
         "entry_type": "workflow",
         "trigger_type": str(context.get("trigger_type") or ""),
-        "unattended": context.get("trigger_type") in {"SCHEDULE", "NATS", "WEBHOOK"},
+        "unattended": context.get("trigger_type") in AUTOMATIC_TRIGGERS,
     }
     if context.get("caller_identity") is not None:
         flow_input["caller_identity"] = context["caller_identity"]
@@ -126,7 +127,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     uploaded_files = resolve_uploaded_agent_knowledge(
         inputs.get("knowledge_files"),
         workflow_id=context.get("workflow_id"),
-        team=context["organization_id"],
+        team=context.get("workflow_organization_id", context["organization_id"]),
     )
     manager = _variable_manager(context, inputs)
     result = AgentNode(manager).execute(
@@ -203,6 +204,8 @@ def _memory_entity(space, context: dict[str, Any]):
     from apps.opspilot.memory.engines.base import MemoryEntity
 
     if space.scope == space.SCOPE_PERSONAL:
+        if context.get("trigger_type") in AUTOMATIC_TRIGGERS and not context.get("caller_identity"):
+            raise ValueError("自动流程访问个人记忆需要已验证的执行账号")
         return MemoryEntity(user_id=context["user_id"])
     return MemoryEntity(organization_id=context["organization_id"])
 

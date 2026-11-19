@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -7,6 +8,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+
+from apps.workflow.services.definitions import _walk_tasks
 
 
 class ConductorConfigurationError(ValueError):
@@ -44,21 +47,46 @@ def workflow_definition_digest(definition: dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _comparable_workflow_definition(definition: dict[str, Any]) -> dict[str, Any]:
-    """Keep fields that identify an immutable published workflow body."""
+# The metadata API materializes these defaults on GET after accepting a sparse definition on POST.
+_WORKFLOW_DEFAULTS = {
+    "inputParameters": [],
+    "outputParameters": {},
+    "variables": {},
+    "inputTemplate": {},
+    "timeoutSeconds": 0,
+    "timeoutPolicy": "ALERT_ONLY",
+    "restartable": True,
+    "workflowStatusListenerEnabled": False,
+    "enforceSchema": True,
+    "metadata": {},
+    "maskedFields": [],
+}
+_TASK_DEFAULTS = {
+    "startDelay": 0,
+    "optional": False,
+    "asyncComplete": False,
+    "permissive": False,
+    "decisionCases": {},
+    "defaultCase": [],
+    "defaultExclusiveJoinTask": [],
+    "forkTasks": [],
+    "joinOn": [],
+    "loopOver": [],
+    "metadata": {},
+    "onStateChange": {},
+}
 
-    return {
-        "name": definition.get("name"),
-        "version": definition.get("version"),
-        "tasks": definition.get("tasks") or [],
-        "inputParameters": definition.get("inputParameters") or [],
-        "outputParameters": definition.get("outputParameters") or {},
-        "variables": definition.get("variables") or {},
-        "timeoutSeconds": definition.get("timeoutSeconds"),
-        "timeoutPolicy": definition.get("timeoutPolicy"),
-        "restartable": definition.get("restartable"),
-        "workflowStatusListenerEnabled": definition.get("workflowStatusListenerEnabled"),
-    }
+
+def _comparable_workflow_definition(definition: dict[str, Any]) -> dict[str, Any]:
+    comparable = copy.deepcopy(definition)
+    for audit_field in ("createTime", "updateTime", "createdBy", "updatedBy"):
+        comparable.pop(audit_field, None)
+    for key, default in _WORKFLOW_DEFAULTS.items():
+        comparable.setdefault(key, default)
+    for task in _walk_tasks(comparable.get("tasks") or []):
+        for key, default in _TASK_DEFAULTS.items():
+            task.setdefault(key, default)
+    return comparable
 
 
 class ConductorClient:

@@ -137,6 +137,12 @@ def actor_can_access_workflow(
     """Shared instance-scope gate used by REST-equivalent OpenAPI entrypoints."""
 
     user = resolve_permission_actor(username=username, domain=domain)
+    return user_can_access_workflow(
+        user, current_team=current_team, workflow=workflow, require_operate=require_operate, include_children=include_children
+    )
+
+
+def user_can_access_workflow(user, *, current_team: int, workflow, require_operate: bool = False, include_children: bool = False) -> bool:
     if getattr(user, "is_superuser", False):
         workflow_teams = {int(item) for item in (getattr(workflow, "team", []) or []) if str(item).isdigit() or isinstance(item, int)}
         return int(current_team) in workflow_teams
@@ -147,26 +153,3 @@ def actor_can_access_workflow(
     )
     needed = "Operate" if require_operate else "View"
     return needed in permissions or (not require_operate and "Operate" in permissions)
-
-
-def actor_can_operate_workflow_for_teams(
-    *,
-    username: str,
-    domain: str,
-    team_ids,
-    workflow,
-) -> bool:
-    """Fail closed: Operate must hold in at least one authorized overlapping team."""
-
-    authorized = {int(item) for item in (team_ids or []) if isinstance(item, int) and not isinstance(item, bool)}
-    workflow_teams = {int(item) for item in (getattr(workflow, "team", []) or []) if isinstance(item, int) and not isinstance(item, bool)}
-    for team_id in authorized & workflow_teams:
-        if actor_can_access_workflow(
-            username=username,
-            domain=domain,
-            current_team=team_id,
-            workflow=workflow,
-            require_operate=True,
-        ):
-            return True
-    return False

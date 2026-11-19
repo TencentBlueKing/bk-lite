@@ -161,6 +161,7 @@ class WorkflowExecution(TimeInfo):
     mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.PRODUCTION, db_index=True)
     debug_kind = models.CharField(max_length=16, choices=DebugKind.choices, blank=True, default="")
     debug_task_reference = models.CharField(max_length=100, blank=True, default="")
+    execution_team_id = models.PositiveBigIntegerField(null=True, editable=False)
     caller_identity = models.JSONField(null=True, blank=True, editable=False)
     started_by = models.CharField(max_length=32, default="", db_index=True)
     domain = models.CharField(max_length=100, default="domain.com")
@@ -188,6 +189,11 @@ class WorkflowExecution(TimeInfo):
         db_index=True,
         verbose_name="下次无引擎 ID 对账时间",
     )
+
+    @property
+    def effective_execution_team_id(self):
+        """早期执行使用流程所属组织；执行记录的可见范围仍由 team 决定。"""
+        return self.execution_team_id or (self.team[0] if self.team else None)
 
     class Meta:
         db_table = "workflow_execution"

@@ -1,13 +1,15 @@
 'use client';
 
-import { ArrowLeftOutlined, CloseOutlined, CopyOutlined, FileSearchOutlined, HistoryOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CloseOutlined, CopyOutlined, FileSearchOutlined, HistoryOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined, SendOutlined, TeamOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import { applyEdgeChanges, Background, BackgroundVariant, ReactFlow, type Connection, type Edge, type EdgeChange, type Node, useEdgesState, useNodesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Alert, App, Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Tag, Timeline, Typography, Upload } from 'antd';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateModal from '@/components/operate-modal';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useApiClient, { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -36,6 +38,7 @@ import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges,
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
 import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
+import { executionOrganizationText } from '../lib/organization-display';
 import { jobTargetOperatingSystems } from '../lib/job-target-operating-systems';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionNodeDetail, ExecutionNodeState, ExecutionNodesResponse, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
@@ -284,6 +287,9 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const { message, modal } = App.useApp();
   const { get, patch, post } = useApiClient();
   const { t } = useTranslation();
+  const { username, selectedGroup, flatGroups } = useUserInfoContext();
+  const debugIdentityId = useId();
+  const defaultTeamId = selectedGroup?.id ? Number(selectedGroup.id) : undefined;
   const scheduleOutputSchema = useMemo(() => buildScheduleOutputSchema(t), [t]);
   const webhookInputSchema = useMemo(() => buildWebhookInputSchema(t), [t]);
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -501,10 +507,19 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     const visibleEdges = edges.map(({ id, source, target, sourceHandle, targetHandle }) => ({ id, source, target, sourceHandle, targetHandle }));
     return {
       ...metadata,
+      ...(metadata.trigger_nodes && {
+        trigger_nodes: metadata.trigger_nodes.map((trigger) => {
+          if (trigger.trigger_type !== 'SCHEDULE') return trigger;
+          const config = { ...trigger.config };
+          delete config.execution_username;
+          config.execution_team_id ??= defaultTeamId;
+          return { ...trigger, config };
+        }),
+      }),
       positions: Object.fromEntries(nodes.map((node) => [node.id, node.position])),
       edges: definition ? expandApprovalCanvasEdges(definition, visibleEdges) : visibleEdges,
     };
-  }, [definition, edges, metadata, nodes]);
+  }, [defaultTeamId, definition, edges, metadata, nodes]);
 
   const closeInspector = () => {
     natsTestAbort.current?.abort();
@@ -622,7 +637,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           : type === 'WEBHOOK'
             ? webhookInputSchema
             : { type: 'object', properties: {}, required: [], additionalProperties: false },
-      config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'] } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {},
+      config: type === 'SCHEDULE' ? { frequency: 'daily', time: ['02:00'], execution_team_id: defaultTeamId } : type === 'WEBHOOK' ? { response_mode: 'IMMEDIATE' } : {},
     };
     addNodeToCanvas(id, definition, { ...snapshotMetadata(), trigger_nodes: [...existing, item] });
   };
@@ -1259,8 +1274,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   };
 
   const openDebugDialog = () => {
-    const triggers = workflowTriggerNodes(metadata);
-    const preferred = triggers.find((item) => item.trigger_type === 'FORM') || triggers[0];
+    const preferred = defaultDebugTrigger;
     if (!preferred) {
       message.warning(t('workflowOrchestration.editor.noTriggerForDebug', '请先添加触发器再调试流程'));
       return;
@@ -1268,7 +1282,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     withPersistedDraft((savedWorkflowId) => {
       setDebugTriggerId(preferred.id);
       // 单一定时入口：与「执行节点」同手感，跳过调试表单直接开跑
-      if (triggers.length === 1 && preferred.trigger_type === 'SCHEDULE') {
+      if (debugTriggers.length === 1 && preferred.trigger_type === 'SCHEDULE') {
         void debug(savedWorkflowId, { trigger: preferred });
         return;
       }
@@ -1391,7 +1405,18 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
 
   const selectedNode = nodes.find((item) => item.id === selectedId);
   const debugTriggers = workflowTriggerNodes(metadata);
-  const debugTrigger = debugTriggers.find((item) => item.id === debugTriggerId) || debugTriggers[0];
+  const defaultDebugTrigger = debugTriggers.find((item) => item.trigger_type === 'FORM') || debugTriggers[0];
+  const debugTrigger = debugTriggers.find((item) => item.id === debugTriggerId) || defaultDebugTrigger;
+  const identityTrigger = debugOpen ? debugTrigger : defaultDebugTrigger;
+  const workflowTeamId = defaultTeamId != null && workflow.team?.includes(defaultTeamId)
+    ? defaultTeamId : workflow.team?.[0] ?? defaultTeamId;
+  const debugTeamId = identityTrigger?.trigger_type === 'SCHEDULE'
+    ? normalizeScheduleConfig(identityTrigger.config).execution_team_id ?? defaultTeamId : workflowTeamId;
+  const debugOrganization = executionOrganizationText(debugTeamId, flatGroups);
+  const debugIdentity = identityTrigger && t('workflowOrchestration.editor.debugIdentity', '调试账号 {account} · 组织 {organization}', {
+    account: username || '--',
+    organization: debugOrganization,
+  });
   const debugLocked = Boolean(debugExecution && ACTIVE_DEBUG_STATUSES.has(debugExecution.status));
   const formReadOnly = readOnly || debugLocked;
   const canvasEditable = !formReadOnly;
@@ -1599,19 +1624,36 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
           </WorkflowPermission>
         )}
         {!readOnly && !pickerOpen && (
-          debugExecution ? (
-            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2">
-              {debugSessionTerminal ? (
-                <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+          <div className="absolute bottom-8 left-1/2 z-20 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2">
+            {(!debugExecution || debugSessionTerminal) && (
+              <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
+                <span className="flex items-center">
                   <Button
                     className="h-9! rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
+                    aria-describedby={debugIdentity ? debugIdentityId : undefined}
                     icon={<PlayCircleOutlined />}
                     onClick={onDebugPrimaryClick}
                   >
-                    {t('workflowOrchestration.editor.debugAgain', '重新调试')}
+                    {debugExecution ? t('workflowOrchestration.editor.debugAgain', '重新调试') : t('workflowOrchestration.editor.debugWorkflow', '调试流程')}
                   </Button>
-                </WorkflowPermission>
-              ) : null}
+                  {debugIdentity && (
+                    <span
+                      role="group"
+                      aria-labelledby={debugIdentityId}
+                      className="absolute top-full left-1/2 mt-1.5 flex w-max max-w-[min(24rem,80vw)] -translate-x-1/2 items-center gap-1.5 bg-[var(--color-fill-1)] text-xs leading-4 text-[var(--color-text-2)]"
+                    >
+                      <span id={debugIdentityId} className="sr-only">{debugIdentity}</span>
+                      <UserOutlined aria-hidden="true" />
+                      <EllipsisWithTooltip text={username || '--'} disclosure="interactive" className="max-w-32 min-w-0 truncate" />
+                      <span aria-hidden="true" className="mx-0.5 h-2.5 w-px shrink-0 bg-[var(--color-border-3)]" />
+                      <TeamOutlined aria-hidden="true" />
+                      <EllipsisWithTooltip text={debugOrganization} disclosure="interactive" className="min-w-0 truncate" />
+                    </span>
+                  )}
+                </span>
+              </WorkflowPermission>
+            )}
+            {debugExecution && (
               <WorkflowPermission operation="View" area="executions" instancePermissions={debugExecution.permission}>
                 <Button
                   className="h-9! rounded-md! border-[var(--color-border-2)]! bg-[var(--color-bg)]! text-[var(--color-text-1)]! shadow-md"
@@ -1621,18 +1663,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   {t('workflowOrchestration.editor.debugDetails', '调试详情')}
                 </Button>
               </WorkflowPermission>
-            </div>
-          ) : (
-            <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
-              <Button
-                className="absolute bottom-6 left-1/2 z-20 h-9! -translate-x-1/2 rounded-md! border-[var(--theme-color-status-warning)]! bg-[var(--theme-color-status-warning)]! text-white! shadow-md"
-                icon={<PlayCircleOutlined />}
-                onClick={onDebugPrimaryClick}
-              >
-                {t('workflowOrchestration.editor.debugWorkflow', '调试流程')}
-              </Button>
-            </WorkflowPermission>
-          )
+            )}
+          </div>
         )}
         {issues.length > 0 && <Alert className="absolute bottom-20 left-1/2 z-10 w-[min(640px,calc(100%-32px))] -translate-x-1/2" type="error" showIcon closable message={t('workflowOrchestration.editor.pendingIssues', '流程存在待处理问题')} description={issues[0]} onClose={() => setIssues([])} />}
 
@@ -1665,6 +1697,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
             {selectedTrigger.trigger_type === 'FORM' && <section className="flex flex-col gap-4"><Alert type="info" showIcon message={t('workflowOrchestration.editor.triggerInputHint', '{trigger} 定义本入口的运行输入', { trigger: triggerLabels[selectedTrigger.trigger_type] })} /><FormSchemaEditor context="form" readOnly={formReadOnly} value={selectedTrigger.input_schema} onChange={(inputSchema) => changeTrigger({ input_schema: inputSchema })} /></section>}
             {selectedTrigger.trigger_type === 'SCHEDULE' && <ScheduleTriggerEditor
               value={selectedTrigger.config}
+              account={readOnly ? String(selectedTrigger.config.execution_username || '--') : username}
+              defaultTeamId={readOnly ? undefined : defaultTeamId}
               readOnly={formReadOnly}
               preview={schedulePreview}
               previewBusy={schedulePreviewBusy}
@@ -2010,10 +2044,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       footer={(
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {debugIdentity && <span id={`${debugIdentityId}-dialog`} className="mr-auto text-start text-xs break-all text-[var(--color-text-2)]">{debugIdentity}</span>}
           <Button onClick={() => setDebugOpen(false)}>{t('common.cancel', '取消')}</Button>
           <WorkflowPermission operation="Execute" instancePermissions={workflow.permission}>
-            <Button type="primary" disabled={!debugTrigger} onClick={() => void debug()}>{t('workflowOrchestration.editor.startDebug', '开始调试')}</Button>
+            <Button type="primary" aria-describedby={debugIdentity ? `${debugIdentityId}-dialog` : undefined} disabled={!debugTrigger} onClick={() => void debug()}>{t('workflowOrchestration.editor.startDebug', '开始调试')}</Button>
           </WorkflowPermission>
         </div>
       )}

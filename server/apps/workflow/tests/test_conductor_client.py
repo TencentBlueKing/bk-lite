@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import httpx
 import pytest
@@ -101,6 +102,58 @@ def test_register_workflow_accepts_orphaned_same_digest_without_overwrite():
         ("GET", "/api/metadata/workflow/demo"),
     ]
     assert "PUT" not in {request.method for request in requests}
+
+
+@pytest.mark.parametrize("changed", [None, "optional", "task_input", "timeout", "input_template", "schema"])
+def test_register_workflow_recognizes_engine_defaults_only(changed):
+    from apps.workflow.services.conductor import ConductorConflict
+
+    leaf = {"type": "SIMPLE", "name": "notify", "inputParameters": {"optional": False}}
+    definition = {"name": "demo", "version": 4, "tasks": [{"type": "SWITCH", "decisionCases": {"ok": [leaf]}}]}
+    existing = deepcopy(definition)
+    existing.update({"timeoutSeconds": 0, "timeoutPolicy": "ALERT_ONLY", "createTime": 123, "inputTemplate": {}, "enforceSchema": True})
+    task = existing["tasks"][0]["decisionCases"]["ok"][0]
+    task.update(
+        {
+            "startDelay": 0,
+            "optional": False,
+            "asyncComplete": False,
+            "permissive": False,
+            "decisionCases": {},
+            "defaultCase": [],
+            "defaultExclusiveJoinTask": [],
+            "forkTasks": [],
+            "joinOn": [],
+            "loopOver": [],
+            "metadata": {},
+            "onStateChange": {},
+        }
+    )
+    if changed == "optional":
+        task["optional"] = True
+    elif changed == "task_input":
+        del task["inputParameters"]["optional"]
+    elif changed == "timeout":
+        existing["timeoutSeconds"] = 30
+    elif changed == "input_template":
+        existing["inputTemplate"] = {"target": "other"}
+    elif changed == "schema":
+        existing["enforceSchema"] = False
+
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(409)
+        assert request.method == "GET"
+        assert request.url.params["version"] == "4"
+        return httpx.Response(200, json=existing)
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(handler))
+    if changed:
+        with pytest.raises(ConductorConflict, match="内容不一致"):
+            client.register_workflow(definition)
+    else:
+        client.register_workflow(definition)
+    assert definition["tasks"][0]["decisionCases"]["ok"][0]["inputParameters"] == {"optional": False}
 
 
 def test_register_workflow_rejects_conflicting_content_without_overwrite():

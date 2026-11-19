@@ -44,3 +44,8 @@ TBD - created by archiving change memory-engine-refactor. Update Purpose after a
 #### Scenario: 组织记忆实体
 - **WHEN** 记忆空间 `scope="team"`
 - **THEN** 构建 `MemoryEntity(organization_id=current_organization_id)`
+
+
+### 编排中心的执行身份
+
+编排中心的记忆节点在本次执行组织内校验空间。个人记忆使用执行账号的用户名和域，团队记忆使用执行组织 ID。自动触发且没有已验证个人身份时，只能使用组织记忆。定时流程在发布时固定执行账号和组织，OpenAPI 与受信任的 NATS 用户调用沿用入口身份。

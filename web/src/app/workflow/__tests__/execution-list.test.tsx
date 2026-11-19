@@ -141,6 +141,22 @@ describe('执行记录统一详情入口', () => {
     expect(screen.queryByText(/· v0/)).toBeNull();
   });
 
+  it('定时执行的记录和详情均显示实际执行账号和组织', async () => {
+    const record = { ...execution, trigger_type: 'SCHEDULE', started_by: 'scheduler-user', execution_team_id: 7, actionable_approval_ids: [] };
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url.endsWith('/executions/execution-1/')) return record;
+      if (url.endsWith('/executions/execution-1/nodes/')) return { nodes: [], default_node_reference: '' };
+      return { count: 1, items: [record] };
+    });
+    renderPage();
+    const row = await screen.findByRole('row', { name: /scheduler-user/ });
+    expect(within(row).getByText('当前组织')).not.toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    const summary = await screen.findByRole('region', { name: '执行概要' });
+    expect(within(summary).getByText('scheduler-user')).not.toBeNull();
+    expect(within(summary).getByText('当前组织')).not.toBeNull();
+  });
+
   it('系统发起人显示为双语映射文案', async () => {
     mocks.get.mockImplementation((url: string) => {
       if (String(url).includes('/executions/?')) {

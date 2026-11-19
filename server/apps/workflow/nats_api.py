@@ -9,12 +9,13 @@ from apps.workflow.services.validation_messages import render_definition_error, 
 
 
 @nats_client.register
-def trigger_orchestration_workflow_by_nats(data, actor_context):
+def trigger_orchestration_workflow_by_nats(data, actor_context, internal_auth=None):
     """Internal NATS RPC adapter; caller identity and organization scope are mandatory."""
     try:
         execution, created = invoke_nats_trigger(
             data,
             actor_context,
+            internal_auth=internal_auth,
             message_subject=str(data.get("subject") or "") if isinstance(data, dict) else "",
         )
     except (DefinitionValidationError, TriggerConflict) as error:

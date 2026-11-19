@@ -410,9 +410,8 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
 
 @pytest.mark.parametrize("caller_identity", [None, {"username": "alice", "domain": "example.com", "team_id": 8, "include_children": False}])
 def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_identity):
-    execution = SimpleNamespace(
-        id="run-1",
-        workflow_id="flow-1",
+    execution = WorkflowExecution(
+        workflow_id=1,
         workflow_version=1,
         team=[7],
         started_by="alice",
