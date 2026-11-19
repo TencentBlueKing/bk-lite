@@ -1,0 +1,19 @@
+[[inputs.bklite_rocketmq]]
+    startup_error_behavior = "retry"
+    namesrv_addrs = {{ namesrv_addrs | to_toml_str_array }}
+    {% if broker_addr %}
+    broker_addr = "{{ broker_addr }}"
+    {% endif %}
+    {% if access_key %}
+    access_key = "{{ access_key }}"
+    {% endif %}
+    {% if ENV_PASSWORD %}
+    secret_key = "${PASSWORD__{{ config_id }}}"
+    {% endif %}
+    response_timeout = "{{ response_timeout | default(10) }}s"
+    interval = "{{ interval }}s"
+    [inputs.bklite_rocketmq.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "rocketmq"
