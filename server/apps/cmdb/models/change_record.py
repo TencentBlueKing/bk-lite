@@ -26,6 +26,7 @@ COLLECT_AUTOMATION_CHANGE = "collect_automation_change"
 MODEL_MANAGEMENT_CHANGE = "model_management_change"
 CUSTOM_REPORTING_CHANGE = "custom_reporting_change"
 GOVERNANCE_CONFIRM = "governance_confirm"
+OWNER_HANDOVER = "owner_handover"
 
 SCENARIO_CHOICES = [
     (DEVICE_LIFECYCLE, "设备流转"),
@@ -35,6 +36,7 @@ SCENARIO_CHOICES = [
     (MODEL_MANAGEMENT_CHANGE, "模型管理变更"),
     (CUSTOM_REPORTING_CHANGE, "自定义上报变更"),
     (GOVERNANCE_CONFIRM, "确认仍有效"),
+    (OWNER_HANDOVER, "负责人交接"),
 ]
 
 # 用户在"通用实例属性编辑页"可以修正的场景集合

@@ -513,10 +513,25 @@ def sync_collect_task(  # noqa: C901
     """
     同步采集任务
     """
-    task_type = CollectModels._default_manager.filter(id=instance_id).values_list("task_type", flat=True).first()
+    task_row = CollectModels._default_manager.filter(id=instance_id).values_list("task_type", "enabled", "is_system").first()
+    if task_row is None:
+        task_type, task_enabled, task_is_system = None, True, False
+    else:
+        task_type, task_enabled, task_is_system = task_row
     if task_type == CollectPluginTypes.CONFIG_FILE:
         logger.info("[CollectTask] 配置文件任务由 Telegraf 周期调度，跳过 Server 执行 task_id=%s", instance_id)
         return {"status": "telegraf_managed", "task_id": instance_id}
+    started_execution = (
+        bool(execution_id)
+        and CollectModels._default_manager.filter(
+            id=instance_id,
+            exec_status=CollectRunStatusType.RUNNING,
+            task_id=execution_id,
+        ).exists()
+    )
+    if task_type == CollectPluginTypes.K8S and not task_enabled and not task_is_system and not started_execution:
+        logger.info("[CollectTask] 采集任务已关闭，跳过 K8s 执行 task_id=%s", instance_id)
+        return {"status": "task_disabled", "task_id": instance_id}
 
     run_started_at = time.monotonic()
     start_time = now()

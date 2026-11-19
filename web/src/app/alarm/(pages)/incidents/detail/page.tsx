@@ -79,6 +79,7 @@ const IncidentDetail: React.FC = () => {
     addAlertsToIncident,
     removeAlertsFromIncident,
     getImpactTopology,
+    getImpactTopologyAlerts,
   } = useIncidentsApi();
   const STATE_MAP = useStateMap();
   const searchParams = useSearchParams();
@@ -836,12 +837,14 @@ const IncidentDetail: React.FC = () => {
                     )}
                   />
                 ) : viewType === 'gantt' ? (
-                  <GanttChart
-                    loading={tabLoading}
-                    alarmData={tableData}
-                    selectedTasks={collectSelectedAlertIds(selectedRowKeys)}
-                    onSelectionChange={(keys) => setSelectedRowKeys(keys)}
-                  />
+                  <div className="min-h-0 min-w-0 w-full flex-1">
+                    <GanttChart
+                      loading={tabLoading}
+                      alarmData={tableData}
+                      selectedTasks={collectSelectedAlertIds(selectedRowKeys)}
+                      onSelectionChange={(keys) => setSelectedRowKeys(keys)}
+                    />
+                  </div>
                 ) : (
                   <ImpactTopologyView
                     alerts={tableData}
@@ -849,6 +852,7 @@ const IncidentDetail: React.FC = () => {
                     loading={tabLoading || impactLoading || (tableData.length > 0 && !impactReady)}
                     levels={levelList}
                     levelColors={levelMap}
+                    loadAlerts={(instUuid, page) => getImpactTopologyAlerts(rowDetailId, instUuid, page)}
                   />
                 )}
               </div>
