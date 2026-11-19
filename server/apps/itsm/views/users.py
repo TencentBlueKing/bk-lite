@@ -11,7 +11,7 @@ PAGE_SIZE = 10
 
 
 class UserSearchView(ItsmAPIView):
-    @HasPermission("portal-View,ticket-View")
+    @HasPermission("portal-View,ticket-View,workflow-Edit")
     def get(self, request):
         keyword = (request.GET.get("q") or "").strip()
         try:

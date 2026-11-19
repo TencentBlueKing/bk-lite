@@ -157,9 +157,20 @@ export interface TicketProgressEdge {
 export interface TicketSLAItem {
   target: string;
   due_at: string;
+  warning_at?: string;
   finished_at: string;
   breached: boolean;
   paused: boolean;
+  notices?: TicketSLANotice[];
+}
+
+export interface TicketSLANotice {
+  id: number;
+  kind: 'warning' | 'escalation';
+  triggered_at: string;
+  status: 'sent' | 'failed' | 'skipped';
+  recipients: string[];
+  message: string;
 }
 
 export interface TicketHistoryItem {

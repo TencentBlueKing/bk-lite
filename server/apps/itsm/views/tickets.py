@@ -349,9 +349,21 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
             {
                 "target": item.target,
                 "due_at": item.due_at.isoformat(),
+                "warning_at": item.warning_at.isoformat() if item.warning_at else "",
                 "finished_at": item.finished_at.isoformat() if item.finished_at else "",
                 "breached": item.breached,
                 "paused": bool(item.paused_at),
+                "notices": [
+                    {
+                        "id": notice.id,
+                        "kind": notice.kind,
+                        "status": notice.status,
+                        "triggered_at": notice.triggered_at.isoformat(),
+                        "recipients": notice.recipients,
+                        "message": notice.message,
+                    }
+                    for notice in item.notices.all()
+                ],
             }
             for item in ticket.sla_records.all()
         ],
@@ -364,7 +376,7 @@ def ticket_detail(request, ticket_id):
     ticket = (
         ticket_scope(request)
         .select_related("status", "workflow__form__current_version", "workflow_version", "survey")
-        .prefetch_related("tasks", "logs", "sla_records", "workflow__stages", "workflow__form__view_templates", "auto_executions")
+        .prefetch_related("tasks", "logs", "sla_records__notices", "workflow__stages", "workflow__form__view_templates", "auto_executions")
         .get(id=ticket_id)
     )
     can_operate = has_permission(request, "ticket-Operate")

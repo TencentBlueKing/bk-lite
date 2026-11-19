@@ -483,66 +483,117 @@ def cleanup_test_tickets(request):
     return WebUtils.response_success({"deleted": deleted})
 
 
-@csrf_exempt
-@api_errors
-@method_permission("workflow-View", "workflow-Edit")
-def sla_settings(request):
-    if request.method == "POST":
-        payload = _body(request)
-        if payload.get("kind") == "calendar":
-            if payload.get("id"):
-                item = ServiceCalendar.objects.filter(domain=domain_of(request)).get(id=payload["id"])
-                item.name = payload.get("name") or item.name
-                item.work_days = payload.get("work_days") or item.work_days
-                item.work_start = payload.get("work_start") or item.work_start
-                item.work_end = payload.get("work_end") or item.work_end
-                item.updated_by = _user(request)
-                item.save()
-                return WebUtils.response_success({"id": item.id})
-            item = ServiceCalendar.objects.create(
-                domain=domain_of(request),
-                name=payload["name"],
-                work_days=payload.get("work_days") or [1, 2, 3, 4, 5],
-                work_start=payload.get("work_start") or "09:00",
-                work_end=payload.get("work_end") or "18:00",
-                created_by=_user(request),
-                updated_by=_user(request),
-            )
-            return WebUtils.response_success({"id": item.id})
-        if payload.get("kind") == "policy" and not payload.get("policy_id"):
-            policy = SLAPolicy.objects.create(
-                domain=domain_of(request),
-                name=payload["name"],
-                target=payload.get("target") or "response",
-                minutes=int(payload.get("minutes") or 60),
-                calendar_id=payload["calendar_id"],
-                category=payload.get("category") or "sla",
-                workflow_id=payload.get("workflow_id"),
-                created_by=_user(request),
-                updated_by=_user(request),
-            )
-            return WebUtils.response_success({"id": policy.id})
-        policy = SLAPolicy.objects.filter(domain=domain_of(request)).get(id=payload["policy_id"])
-        if "is_enabled" in payload:
-            policy.is_enabled = bool(payload["is_enabled"])
-        category = payload.get("category")
-        if category in {"sla", "slo", "ola", "uc"}:
-            policy.category = category
-        if "minutes" in payload:
-            policy.minutes = int(payload["minutes"])
-        if payload.get("name"):
-            policy.name = payload["name"]
-        policy.updated_by = _user(request)
-        policy.save()
-        from apps.itsm.models.extend import SLAPolicyLog
+def _save_sla_policy(request, payload):
+    from django.utils import timezone
 
+    from apps.itsm.models.extend import SLAPolicyLog
+    from apps.itsm.services.sla import ServiceClock, calendar_config
+    from apps.itsm.services.sla_notices import active_recipients
+
+    org = domain_of(request)
+    policy_id = payload.get("policy_id")
+    policy = (
+        SLAPolicy.objects.select_for_update().get(domain=org, id=policy_id)
+        if policy_id
+        else SLAPolicy(domain=org, created_by=_user(request), minutes=60, target=SLAPolicy.Target.RESPONSE)
+    )
+    workflow_id = payload.get("workflow_id", policy.workflow_id)
+    calendar_id = payload.get("calendar_id", policy.calendar_id)
+    target = payload.get("target", policy.target)
+    if type(workflow_id) is not int or type(calendar_id) is not int:
+        return WebUtils.response_error("请选择流程和服务窗口")
+    policy.workflow = Workflow.objects.get(domain=org, id=workflow_id)
+    policy.calendar = ServiceCalendar.objects.get(domain=org, id=calendar_id)
+    try:
+        ServiceClock(calendar_config(policy.calendar))
+    except (TypeError, ValueError, KeyError):
+        return WebUtils.response_error("服务窗口配置无效")
+    if target not in SLAPolicy.Target.values:
+        return WebUtils.response_error("请选择有效的计时目标")
+    if policy_id and policy.records.exclude(ticket__workflow_id=workflow_id, target=target).exists():
+        return WebUtils.response_error("已有工单使用此策略，不能更换流程或计时目标")
+    if SLAPolicy.objects.filter(domain=org, workflow_id=workflow_id, target=target).exclude(pk=policy_id).exists():
+        return WebUtils.response_error("该流程已有相同计时目标的策略")
+    policy.target = target
+    minutes = payload.get("minutes", policy.minutes)
+    warning = payload.get("warning_minutes", policy.warning_minutes)
+    if type(minutes) is not int or type(warning) is not int or not 1 <= minutes <= 525600 or not 0 <= warning < minutes:
+        return WebUtils.response_error("时限须为 1 到 525600 分钟，预警提前量须小于时限，0 表示关闭预警")
+    if "escalation_users" in payload:
+        recipients = payload["escalation_users"]
+        if (
+            not isinstance(recipients, list)
+            or len(recipients) > 20
+            or any(not isinstance(name, str) or not name or len(name) > 100 for name in recipients)
+        ):
+            return WebUtils.response_error("最多选择 20 位升级对象")
+        recipients = list(dict.fromkeys(recipients))
+        if active_recipients(org, recipients, timezone.now()) != recipients:
+            return WebUtils.response_error("升级对象必须为当前组织内的有效用户")
+        policy.escalation_users = recipients
+    name = payload.get("name", policy.name)
+    category = payload.get("category", policy.category)
+    enabled = payload.get("is_enabled", policy.is_enabled)
+    if not isinstance(name, str) or not name.strip() or len(name) > 128 or category not in {"sla", "slo", "ola", "uc"} or type(enabled) is not bool:
+        return WebUtils.response_error("策略名称、类别或启用状态无效")
+    policy.name = name.strip()
+    policy.category = category
+    policy.is_enabled = enabled
+    policy.minutes = minutes
+    policy.warning_minutes = warning
+    policy.updated_by = _user(request)
+    from django.db import IntegrityError
+
+    try:
+        with transaction.atomic():
+            policy.save()
+    except IntegrityError:
+        return WebUtils.response_error("该流程已有相同计时目标的策略")
+    if policy_id:
         SLAPolicyLog.objects.create(
             policy=policy,
+            domain=org,
             message=f"category={policy.category} enabled={policy.is_enabled}",
             created_by=_user(request),
             updated_by=_user(request),
         )
-        return WebUtils.response_success({"id": policy.id, "category": policy.category, "is_enabled": policy.is_enabled})
+    return WebUtils.response_success({"id": policy.id, "category": policy.category, "is_enabled": policy.is_enabled})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+@api_errors
+@method_permission("workflow-View", "workflow-Edit")
+@transaction.atomic
+def sla_settings(request):
+    if request.method == "POST":
+        payload = _body(request)
+        if payload.get("kind") == "calendar":
+            from apps.itsm.services.sla import ServiceClock, calendar_config
+
+            org = domain_of(request)
+            item = (
+                ServiceCalendar.objects.filter(domain=org).get(id=payload["id"])
+                if payload.get("id")
+                else ServiceCalendar(
+                    domain=org,
+                    work_days=[1, 2, 3, 4, 5],
+                    created_by=_user(request),
+                )
+            )
+            for field in ("name", "work_days", "work_start", "work_end", "timezone"):
+                if field in payload:
+                    setattr(item, field, payload[field])
+            try:
+                ServiceClock(calendar_config(item))
+            except (TypeError, ValueError, KeyError):
+                return WebUtils.response_error("服务窗口的工作日、工作时间或时区无效")
+            if not isinstance(item.name, str) or not item.name.strip() or len(item.name) > 128:
+                return WebUtils.response_error("请输入服务窗口名称")
+            item.updated_by = _user(request)
+            item.save()
+            return WebUtils.response_success({"id": item.id})
+        return _save_sla_policy(request, payload)
     calendars = [
         {"id": item.id, "name": item.name, "work_days": item.work_days, "work_start": item.work_start, "work_end": item.work_end}
         for item in ServiceCalendar.objects.filter(domain=domain_of(request)).all()
@@ -552,14 +603,18 @@ def sla_settings(request):
             "id": item.id,
             "name": item.name,
             "workflow_id": item.workflow_id,
+            "workflow_name": item.workflow.name if item.workflow_id else "",
+            "calendar_id": item.calendar_id,
             "target": item.target,
             "minutes": item.minutes,
+            "warning_minutes": item.warning_minutes,
+            "escalation_users": item.escalation_users,
             "category": item.category,
             "is_enabled": item.is_enabled,
         }
-        for item in SLAPolicy.objects.filter(domain=domain_of(request)).all()
+        for item in SLAPolicy.objects.filter(domain=domain_of(request)).select_related("workflow")
     ]
-    return WebUtils.response_success({"calendars": calendars, "policies": policies})
+    return WebUtils.response_success({"calendars": calendars, "policies": policies, "can_edit": has_permission(request, "workflow-Edit")})
 
 
 @csrf_exempt

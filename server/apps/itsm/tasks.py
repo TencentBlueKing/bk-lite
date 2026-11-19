@@ -4,9 +4,8 @@ from email.policy import default as email_policy
 from pathlib import Path
 
 from celery import shared_task
-from django.utils import timezone
 
-from apps.itsm.models import EmailRule, TicketSLARecord
+from apps.itsm.models import EmailRule
 from apps.itsm.services.notify.service import deliver_with_retry
 
 
@@ -21,10 +20,9 @@ def send_notify(self, event: str, variables: dict, receivers: list[str], event_k
 
 @shared_task
 def sla_tick():
-    """把已过截止且未暂停、未完成的 SLA 标为超时。"""
-    now = timezone.now()
-    updated = TicketSLARecord.objects.filter(finished_at__isnull=True, paused_at__isnull=True, due_at__lt=now, breached=False).update(breached=True)
-    return {"breached": updated}
+    from apps.itsm.services.sla_notices import scan
+
+    return scan()
 
 
 def _ingest_eml(path: Path) -> bool:

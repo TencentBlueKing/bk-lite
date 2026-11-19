@@ -80,7 +80,7 @@ export function TicketCollaboration({ ticketId, extraTabs = [], historyFirst = f
   };
   return <>
     <Tabs className="h-full min-h-0 [&>.ant-tabs-nav]:shrink-0 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-y-auto [&>.ant-tabs-content-holder]:overscroll-contain" defaultActiveKey={historyFirst ? 'history' : 'comments'} items={[
-      ...(historyFirst ? extraTabs.filter((item) => item.key === 'history') : []),
+      ...(historyFirst ? extraTabs.filter((item) => item.key === 'history' || item.key === 'sla') : []),
       { key: 'comments', label: `评论 (${notes.length})`, children: <div className="flex flex-col gap-4">
         {notes.length ? notes.map((item) => {
           const parent = notes.find((note) => note.id === item.parent_id);
@@ -109,7 +109,7 @@ export function TicketCollaboration({ ticketId, extraTabs = [], historyFirst = f
           <div className="flex items-center gap-2"><Button size="small" icon={<DownloadOutlined />} onClick={() => void download(file)}>下载</Button>{file.can_delete ? <Popconfirm title="删除此附件？" description="评论中的附件引用也会移除。" onConfirm={async () => { try { await api.deleteAttachment(ticketId, file.id); setDraftFiles((ids) => ids.filter((id) => id !== file.id)); await refresh(); } catch (error) { failed(error); throw error; } }}><Button size="small" danger>删除</Button></Popconfirm> : null}</div>
         </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无附件" />}
       </div> },
-      ...extraTabs.filter((item) => !historyFirst || item.key !== 'history'),
+      ...extraTabs.filter((item) => !historyFirst || (item.key !== 'history' && item.key !== 'sla')),
     ]} />
     <Modal title={preview?.name} open={Boolean(preview)} footer={null} onCancel={() => setPreview(undefined)} destroyOnHidden>
       {/* 私有图片仅按需签发短期地址，不接受 HTML/SVG 作为图片预览。 */}
