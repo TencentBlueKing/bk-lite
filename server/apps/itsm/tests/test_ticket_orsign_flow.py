@@ -151,6 +151,8 @@ def test_auto_chain_then_human_finishes(_todo, _notify):
 def test_real_suspend_transfer_return_withdraw_and_reopen(_todo, _notify):
     from django.core.management import call_command
 
+    from apps.system_mgmt.models import User
+
     call_command("init_itsm")
     client = _client()
     key = "review_lifecycle_" + uuid4().hex[:12]
@@ -160,6 +162,7 @@ def test_real_suspend_transfer_return_withdraw_and_reopen(_todo, _notify):
     try:
         service = TicketService(client)
         ticket = service.create(version, {"title": "生命周期验收"}, "creator", is_test=True)
+        User.objects.create(domain=ticket.domain, username="handler", display_name="处理人")
         task = ticket.tasks.get(status="pending")
         service.operate(ticket, task, "suspend", {}, "creator")
         assert client.get_process_instance(ticket.process_instance_id)["suspended"] is True

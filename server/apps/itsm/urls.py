@@ -10,6 +10,7 @@ from apps.itsm.views.api import (
     form_detail,
     form_versions,
     forms,
+    handler_group_options,
     import_dictionaries,
     preview_form,
     publish_form,
@@ -65,7 +66,17 @@ from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
 from apps.itsm.views.ticket_export import download_export, export_fields, export_tasks, export_tickets, retry_export
-from apps.itsm.views.tickets import operate_ticket, retry_auto_node, ticket_detail, ticket_form, ticket_logs, ticket_survey, ticket_workflows, tickets
+from apps.itsm.views.tickets import (
+    operate_ticket,
+    retry_auto_node,
+    ticket_detail,
+    ticket_form,
+    ticket_logs,
+    ticket_survey,
+    ticket_workflows,
+    tickets,
+    transfer_candidates,
+)
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
@@ -96,6 +107,7 @@ urlpatterns = [
     path("api/tickets/export/tasks/<int:task_id>/download/", download_export, name="itsm-ticket-export-download"),
     path("api/tickets/export/tasks/<int:task_id>/retry/", retry_export, name="itsm-ticket-export-retry"),
     path("api/tickets/<int:ticket_id>/children/", create_child, name="itsm-ticket-child"),
+    path("api/tickets/<int:ticket_id>/tasks/<int:task_id>/transfer-candidates/", transfer_candidates, name="itsm-transfer-candidates"),
     path("api/tickets/<int:ticket_id>/print/", render_print, name="itsm-ticket-print"),
     path("api/tickets/<int:ticket_id>/auto/", run_auto, name="itsm-ticket-auto"),
     path("api/decisions/<int:decision_id>/execute/", execute_decision, name="itsm-decision-execute"),
@@ -115,6 +127,7 @@ urlpatterns = [
     path("api/dictionaries/export/", export_dictionaries, name="itsm-dictionary-export"),
     path("api/dictionaries/import/", import_dictionaries, name="itsm-dictionary-import"),
     path("api/workflows/", workflows, name="itsm-workflows"),
+    path("api/workflows/handler-group-options/", handler_group_options, name="itsm-handler-group-options"),
     path("api/workflows/<int:workflow_id>/design/", workflow_design, name="itsm-workflow-design"),
     path("api/workflows/<int:workflow_id>/publish/", publish_workflow, name="itsm-workflow-publish"),
     path("api/workflow_types/", workflow_types, name="itsm-workflow-types"),

@@ -5,6 +5,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -25,6 +26,7 @@ from apps.itsm.models import (
 )
 from apps.itsm.serializers import HandlerGroupSerializer, NotifyTemplateSerializer
 from apps.itsm.services.form.validator import FormValidator
+from apps.itsm.services.ticket.transfer import validate_transfer_scopes
 from apps.itsm.views.access import api_errors, domain_of, has_permission, method_permission
 from apps.itsm.views.base import ItsmAPIView
 
@@ -376,6 +378,7 @@ def publish_workflow(request, workflow_id):
 
     try:
         validate_subprocesses(version.design, workflow)
+        validate_transfer_scopes(version.design, workflow.domain)
     except ValueError as exc:
         return WebUtils.response_error(str(exc))
     try:
@@ -401,6 +404,14 @@ def publish_workflow(request, workflow_id):
     workflow.current_version = version
     workflow.save(update_fields=["current_version", "updated_at"])
     return WebUtils.response_success({"deployment_id": version.flowable_deployment_id})
+
+
+@require_GET
+@api_errors
+@HasPermission("workflow-Edit")
+def handler_group_options(request):
+    current = _page(request, HandlerGroup.objects.filter(domain=domain_of(request)).values("id", "name"))
+    return WebUtils.response_success({"items": list(current), "count": current.paginator.count})
 
 
 class HandlerGroupView(ItsmAPIView):

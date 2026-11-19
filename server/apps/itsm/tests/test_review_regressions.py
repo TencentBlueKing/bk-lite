@@ -696,8 +696,10 @@ def test_handover_updates_engine_and_claimed_local_task(sample):
 
     from apps.itsm.models.extend import Handover
     from apps.itsm.views.extend import _apply_handover
+    from apps.system_mgmt.models import User
 
     ticket, task = sample
+    User.objects.create(domain=ticket.domain, username="replacement", display_name="接替处理人")
     task.flowable_task_id = "engine-task"
     task.status = "claimed"
     task.save()

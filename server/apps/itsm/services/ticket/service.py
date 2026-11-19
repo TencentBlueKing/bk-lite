@@ -7,6 +7,7 @@ from apps.itsm.services.form.fetch import validate_submission
 from apps.itsm.services.notify.service import dispatch_notification
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
+from apps.itsm.services.ticket.transfer import require_transfer_target, transfer_users
 from apps.itsm.services.todo_sync import schedule_sync
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
 from apps.itsm.signals import itsm_event
@@ -163,49 +164,14 @@ class TicketService:
         ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
         if task is not None:
             task = ticket.tasks.select_for_update().get(pk=task.pk)
-        self.authorize(ticket, task, action, operator, privileged)
-        state = ticket.status.key if ticket.status_id else ""
-        if state == "suspended" and action not in {"resume", "withdraw", "terminate", "close", "urge"}:
-            raise ValueError("工单已挂起，请先恢复")
-        if state in {"finished", "terminated", "cancelled"} and action != "reopen":
-            raise ValueError("工单已结束，请先重新打开")
-        if action == "resume" and state != "suspended":
-            raise ValueError("只有挂起工单可以恢复")
-        if action == "reopen" and state not in {"finished", "terminated", "cancelled"}:
-            raise ValueError("只有已结束工单可以重新打开")
-        if action not in {
-            "submit",
-            "approve",
-            "reject",
-            "claim",
-            "suspend",
-            "resume",
-            "withdraw",
-            "return",
-            "transfer",
-            "terminate",
-            "close",
-            "reopen",
-            "urge",
-            "save",
-            "respond",
-        }:
-            raise ValueError("不支持的动作")
-        node = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id) if task else {}
-        from apps.itsm.services.ticket.actions import TASK_ACTIONS, node_actions, side_action_enabled
-
-        if action == "submit" and node.get("type") == "approval":
-            raise ValueError("审批节点只能通过或驳回")
-        if action in {"approve", "reject"} and node.get("type") != "approval":
-            raise ValueError("当前节点不是审批节点")
-        if action not in TASK_ACTIONS and not side_action_enabled(
-            ticket.workflow_version.design if ticket.workflow_version_id else {}, list(ticket.tasks.all()), action
-        ):
-            raise PermissionError("当前节点不允许此操作")
-        if task and action in TASK_ACTIONS and action not in node_actions(node, task):
-            raise PermissionError("当前节点不允许此操作")
+        node = self._action_node(ticket, task, action, operator, privileged)
+        if action == "transfer":
+            if task is None:
+                raise ValueError("需要待办任务")
+            target = require_transfer_target(transfer_users(ticket.domain, node), data.get("target"))
+            data = {**data, "target": target}
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
-            return self._side_action(ticket, task, action, data, operator)
+            return self._side_action(ticket, task, action, data, operator, node)
         if task is None:
             raise ValueError("需要待办任务")
         task.status = TicketTask.TaskStatus.CLAIMED if action == "claim" else TicketTask.TaskStatus.DONE
@@ -213,7 +179,6 @@ class TicketService:
         task.save(update_fields=["status", "assignee", "updated_at"])
         if action == "claim" and self.client and task.flowable_task_id:
             self.client.update_task_assignee(task.flowable_task_id, operator)
-        node = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
         self._save_form(ticket, node, data)
         TicketLog.objects.create(
             ticket=ticket,
@@ -261,6 +226,56 @@ class TicketService:
                         )
         schedule_sync(ticket)
         return ticket
+
+    def transfer_candidates(self, ticket, task, operator, privileged=False):
+        node = self._action_node(ticket, task, "transfer", operator, privileged)
+        return transfer_users(ticket.domain, node)
+
+    def check_transfer_target(self, ticket, task, target, operator, privileged=False):
+        require_transfer_target(self.transfer_candidates(ticket, task, operator, privileged), target)
+
+    def _action_node(self, ticket, task, action, operator, privileged):
+        from apps.itsm.services.ticket.actions import TASK_ACTIONS, node_actions, side_action_enabled
+
+        self.authorize(ticket, task, action, operator, privileged)
+        state = ticket.status.key if ticket.status_id else ""
+        if state == "suspended" and action not in {"resume", "withdraw", "terminate", "close", "urge"}:
+            raise ValueError("工单已挂起，请先恢复")
+        if state in {"finished", "terminated", "cancelled"} and action != "reopen":
+            raise ValueError("工单已结束，请先重新打开")
+        if action == "resume" and state != "suspended":
+            raise ValueError("只有挂起工单可以恢复")
+        if action == "reopen" and state not in {"finished", "terminated", "cancelled"}:
+            raise ValueError("只有已结束工单可以重新打开")
+        if action not in {
+            "submit",
+            "approve",
+            "reject",
+            "claim",
+            "suspend",
+            "resume",
+            "withdraw",
+            "return",
+            "transfer",
+            "terminate",
+            "close",
+            "reopen",
+            "urge",
+            "save",
+            "respond",
+        }:
+            raise ValueError("不支持的动作")
+        design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+        node = _find_node(design, node_id=task.node_id) if task else {}
+        if action == "submit" and node.get("type") == "approval":
+            raise ValueError("审批节点只能通过或驳回")
+        if action in {"approve", "reject"} and node.get("type") != "approval":
+            raise ValueError("当前节点不是审批节点")
+        if action not in TASK_ACTIONS and not side_action_enabled(design, list(ticket.tasks.all()), action):
+            raise PermissionError("当前节点不允许此操作")
+        if task and action in TASK_ACTIONS and action not in node_actions(node, task):
+            raise PermissionError("当前节点不允许此操作")
+        return node
 
     def authorize(self, ticket, task, action, operator, privileged=False):
         if not operator:
@@ -310,7 +325,7 @@ class TicketService:
         materialize_subforms(self, ticket, schema, ticket.updated_by or ticket.creator)
         ticket.save(update_fields=["form_data", "updated_at"])
 
-    def _side_action(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str) -> Ticket:
+    def _side_action(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str, node: dict) -> Ticket:
         if action == "suspend":
             self._set_status(ticket, "suspended")
             if self.client and ticket.process_instance_id:
@@ -352,18 +367,11 @@ class TicketService:
         elif action == "respond":
             self._set_status(ticket, "processing")
         elif action == "save":
-            node = (
-                _find_node(ticket.workflow_version.design, node_id=task.node_id)
-                if task
-                else _find_node(ticket.workflow_version.design, node_type="submit")
-            )
+            if task is None:
+                node = _find_node(ticket.workflow_version.design, node_type="submit")
             self._save_form(ticket, node, data)
         elif action == "transfer":
-            if task is None:
-                raise ValueError("需要待办任务")
-            target = str(data.get("target") or "").strip()
-            if not target:
-                raise ValueError("需要转单目标")
+            target = data["target"]
             if self.client and task.flowable_task_id:
                 self.client.update_task_assignee(task.flowable_task_id, target)
             task.assignee = target

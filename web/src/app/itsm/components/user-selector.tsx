@@ -12,6 +12,7 @@ interface UserOption {
 }
 
 interface UserSelectorProps {
+  id?: string;
   value?: string[];
   onChange?: (value: string[]) => void;
   multiple?: boolean;
@@ -19,16 +20,18 @@ interface UserSelectorProps {
   disabled?: boolean;
   ariaLabel?: string;
   allowClear?: boolean;
+  transfer?: { ticketId: number; taskId: number };
 }
 
 const PAGE_SIZE = 10;
 
-export function UserSelector({ value = [], onChange, multiple = true, placeholder, disabled, ariaLabel, allowClear = false }: UserSelectorProps) {
+export function UserSelector({ id, value = [], onChange, multiple = true, placeholder, disabled, ariaLabel, allowClear = false, transfer }: UserSelectorProps) {
   const { t } = useTranslation();
   const api = useItsmApi();
   const [opened, setOpened] = useState(false);
   const [options, setOptions] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const pageRef = useRef(1);
   const totalRef = useRef(0);
   const keywordRef = useRef('');
@@ -43,7 +46,12 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
     requestRef.current = requestId;
     loadingRef.current = true;
     setLoading(true);
-    void api.searchUsers(keyword, page).then((data) => {
+    setFailed(false);
+    if (transfer && !append) setOptions([]);
+    const request = transfer
+      ? api.searchTransferCandidates(transfer.ticketId, transfer.taskId, keyword, page)
+      : api.searchUsers(keyword, page);
+    void request.then((data) => {
       if (requestId !== requestRef.current) {
         return;
       }
@@ -62,7 +70,9 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
           .map((item) => ({ label: item, value: item }));
         return [...selected, ...merged];
       });
-    }).catch(() => undefined).finally(() => {
+    }).catch(() => {
+      if (requestId === requestRef.current) setFailed(true);
+    }).finally(() => {
       if (requestId === requestRef.current) {
         loadingRef.current = false;
         setLoading(false);
@@ -75,10 +85,15 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
       return;
     }
     load(1, '', false);
-  }, [api.ready, api.searchUsers, opened, disabled]);
+  }, [api.ready, api.searchUsers, api.searchTransferCandidates, opened, disabled]);
+
+  const emptyText = transfer
+    ? (failed ? '接收人加载失败，请重新搜索' : '没有可转交的人员')
+    : t('itsm.admin.noUsers');
 
   return (
     <Select
+      id={id}
       aria-label={ariaLabel}
       allowClear={allowClear}
       mode={multiple ? 'multiple' : undefined}
@@ -90,14 +105,14 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
       options={options}
       loading={loading}
       filterOption={false}
-      onOpenChange={open => { if (open) setOpened(true); }}
+      onOpenChange={open => { if (transfer || open) setOpened(open); }}
       onSearch={(text) => {
         loadingRef.current = false;
         load(1, text.trim(), false);
       }}
       onPopupScroll={(event) => {
         const target = event.target as HTMLElement;
-        if (loadingRef.current || options.length >= totalRef.current) {
+        if (loadingRef.current || pageRef.current * PAGE_SIZE >= totalRef.current) {
           return;
         }
         if (target.scrollTop + target.clientHeight < target.scrollHeight - 8) {
@@ -115,7 +130,7 @@ export function UserSelector({ value = [], onChange, multiple = true, placeholde
           {option.label}
         </span>
       )}
-      notFoundContent={loading ? t('itsm.admin.loadingUsers') : t('itsm.admin.noUsers')}
+      notFoundContent={loading ? t('itsm.admin.loadingUsers') : emptyText}
     />
   );
 }

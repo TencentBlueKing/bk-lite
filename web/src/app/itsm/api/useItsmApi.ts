@@ -137,6 +137,12 @@ export function useItsmApi() {
     (q: string, page = 1) => get('/itsm/api/users/search/', { params: { q, page, page_size: 10 } }),
     [get],
   );
+  const searchTransferCandidates = useCallback(
+    (ticketId: number, taskId: number, q: string, page = 1) => get(
+      `/itsm/api/tickets/${ticketId}/tasks/${taskId}/transfer-candidates/`, { params: { q, page } },
+    ),
+    [get],
+  );
   const listStatuses = useCallback(() => get('/itsm/api/statuses/'), [get]);
   const listStatusAdmin = useCallback(() => get('/itsm/api/statuses/admin/'), [get]);
   const postStatus = useCallback((body: { id?: number; key?: string; name: string; color?: string; description?: string }) => post('/itsm/api/statuses/admin/', body), [post]);
@@ -206,6 +212,12 @@ export function useItsmApi() {
   );
   const deleteTransition = useCallback((id: number) => del(`/itsm/api/statuses/transitions/?id=${id}`), [del]);
   const listHandlerGroups = useCallback(() => get('/itsm/api/handler_groups/'), [get]);
+  const listWorkflowHandlerGroupOptions = useCallback(
+    async () => await readListPages(page => get('/itsm/api/workflows/handler-group-options/', {
+      params: { page, page_size: 100 },
+    })) as { items: { id: number; name: string }[] },
+    [get],
+  );
   const createHandlerGroup = useCallback(
     (body: { id?: number; name: string; members: string[]; leaders: string[] }) => post('/itsm/api/handler_groups/', body),
     [post],
@@ -267,6 +279,7 @@ export function useItsmApi() {
     toggleFavorite,
     useService,
     searchUsers,
+    searchTransferCandidates,
     listStatuses,
     listStatusAdmin,
     postStatus,
@@ -315,6 +328,7 @@ export function useItsmApi() {
     createTransition,
     deleteTransition,
     listHandlerGroups,
+    listWorkflowHandlerGroupOptions,
     createHandlerGroup,
     deleteHandlerGroup,
     listNotifyTemplates,

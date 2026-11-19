@@ -253,6 +253,12 @@ def resources(request, kind):
         return WebUtils.response_error("请选择用户")
     if kind == "proxies" and (not str(values.get("principal") or "").strip() or not str(values.get("agent") or "").strip()):
         return WebUtils.response_error("请选择被代理人和代理人")
+    if kind == "handovers":
+        if request.method != "POST":
+            return WebUtils.response_error("不支持的请求方法", status_code=405)
+        item = Handover(**values, created_by=_user(request), updated_by=_user(request))
+        _apply_handover(item)
+        return WebUtils.response_success(_public(item, fields))
     try:
         item = model.objects.create(**values, created_by=_user(request), updated_by=_user(request))
     except Exception as exc:
@@ -261,8 +267,6 @@ def resources(request, kind):
         if isinstance(exc, IntegrityError):
             return WebUtils.response_error("记录已存在")
         raise
-    if kind == "handovers":
-        _apply_handover(item)
     if kind == "decisions":
         from apps.itsm.services.dmn import deploy_table
 
@@ -305,11 +309,18 @@ def resource_item(request, kind, item_id):
 def _apply_handover(item: Handover) -> None:
     ticket_ids = item.ticket_ids or []
     service = _service()
-    tasks = TicketTask.objects.filter(
-        ticket__domain=item.domain, ticket_id__in=ticket_ids, assignee=item.from_user, status__in=["pending", "claimed"]
-    ).select_related("ticket")
+    tasks = list(
+        TicketTask.objects.filter(ticket__domain=item.domain, ticket_id__in=ticket_ids, assignee=item.from_user, status__in=["pending", "claimed"])
+        .select_related("ticket", "ticket__status", "ticket__workflow_version")
+        .order_by("pk")
+    )
+    actor = item.created_by or item.from_user
     for task in tasks:
-        service.operate(task.ticket, task, "transfer", {"target": item.to_user}, item.created_by or item.from_user, privileged=True)
+        service.check_transfer_target(task.ticket, task, item.to_user, actor, privileged=True)
+    if item.pk is None:
+        item.save()
+    for task in tasks:
+        service.operate(task.ticket, task, "transfer", {"target": item.to_user}, actor, privileged=True)
 
 
 @csrf_exempt

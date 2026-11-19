@@ -4,7 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TicketActions } from './ticket-actions';
 import type { TicketDetail } from '../types';
 
-vi.mock('./user-selector', () => ({ UserSelector: () => null }));
+vi.mock('./user-selector', () => ({
+  UserSelector: ({ onChange, transfer }: {
+    onChange: (users: string[]) => void;
+    transfer?: { ticketId: number; taskId: number };
+  }) => (
+    <button onClick={() => onChange(['bob'])}>{`选择接收人 ${transfer?.ticketId}/${transfer?.taskId}`}</button>
+  ),
+}));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
 afterEach(cleanup);
 const ticket = { id: 1, tasks: [{ id: 2, node_id: 'approval', node_name: '主管审批', assignee: 'tester', status: 'pending', can_operate: true, allowed_actions: ['approve'] }], allowed_actions: [] } as unknown as TicketDetail;
@@ -29,5 +36,28 @@ describe('工单操作权限与确认', () => {
     fireEvent.change(screen.getByLabelText('处理意见'), { target: { value: '核验通过' } });
     fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
     await waitFor(() => expect(operate).toHaveBeenCalledWith('approve', ticket.tasks[0], expect.objectContaining({ opinion: '核验通过' })));
+  });
+  it('按打开时的任务选择接收人，权限刷新后禁止确认', async () => {
+    const operate = vi.fn().mockResolvedValue(true);
+    const record = {
+      ...ticket,
+      tasks: [
+        { ...ticket.tasks[0], allowed_actions: ['transfer'] },
+        { ...ticket.tasks[0], id: 3, node_id: 'handle', node_name: '服务处理', allowed_actions: ['transfer'] },
+      ],
+    };
+    const { rerender } = render(<TicketActions ticket={record} busy={false} operate={operate} />);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '处理任务' }));
+    fireEvent.click(screen.getByText('服务处理'));
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '转交' }));
+    const confirm = await screen.findByRole('button', { name: '确认转交' });
+    expect(confirm).toHaveProperty('disabled', true);
+    fireEvent.click(await screen.findByRole('button', { name: '选择接收人 1/3' }));
+    expect(confirm).toHaveProperty('disabled', false);
+    rerender(<TicketActions ticket={{ ...record, tasks: record.tasks.slice(0, 1) }} busy={false} operate={operate} />);
+    expect(confirm).toHaveProperty('disabled', true);
+    fireEvent.click(confirm);
+    expect(operate).not.toHaveBeenCalled();
   });
 });

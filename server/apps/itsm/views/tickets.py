@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -18,6 +18,7 @@ from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
+from apps.itsm.views.users import search_users
 
 
 def _body(request):
@@ -101,6 +102,18 @@ def operate_ticket(request, ticket_id):
         ticket, task, payload["action"], payload, _user(request), privileged=bool(getattr(request.user, "is_superuser", False))
     )
     return WebUtils.response_success({"id": updated.id, "status": updated.status.key if updated.status_id else ""})
+
+
+@require_GET
+@api_errors
+@HasPermission("ticket-Operate")
+def transfer_candidates(request, ticket_id, task_id):
+    if not has_permission(request, "ticket-View"):
+        raise PermissionError()
+    ticket = get_ticket(request, ticket_id)
+    task = ticket.tasks.get(pk=task_id)
+    users = TicketService().transfer_candidates(ticket, task, _user(request), privileged=bool(getattr(request.user, "is_superuser", False)))
+    return WebUtils.response_success(search_users(request, users))
 
 
 @csrf_exempt

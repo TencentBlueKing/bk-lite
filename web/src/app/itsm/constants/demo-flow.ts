@@ -1,5 +1,9 @@
 import type { ConditionGroup } from '../types';
 
+export type TransferScope =
+  | { type: 'users'; users: string[] }
+  | { type: 'handler_groups'; group_ids: number[] };
+
 export interface DesignNode {
   id: string;
   type: string;
@@ -8,6 +12,7 @@ export interface DesignNode {
   multi?: { mode: string };
   fallback?: string;
   actions?: string[];
+  transfer_scope?: TransferScope | null;
   field_perm?: Record<string, string>;
   auto?: Record<string, unknown>;
 }
@@ -34,6 +39,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   orSign: boolean;
   multiMode?: string;
   actions?: string[];
+  transferScope?: TransferScope | null;
   notify?: boolean;
   fieldPerm?: Record<string, string>;
   auto?: Record<string, unknown>;
@@ -102,6 +108,7 @@ export const canvasFromDesign = (design: FlowDesign): { nodes: CanvasNode[]; edg
       multiMode: node.multi?.mode,
       fieldPerm: node.field_perm,
       actions: node.actions,
+      transferScope: node.transfer_scope,
       auto: node.auto,
       original: node,
     },
@@ -136,6 +143,11 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
     }
     if (node.data.actions !== undefined) {
       designNode.actions = node.data.actions;
+    }
+    if (node.data.transferScope === null) {
+      delete designNode.transfer_scope;
+    } else if (node.data.transferScope) {
+      designNode.transfer_scope = node.data.transferScope;
     }
     if (node.data.fieldPerm) {
       designNode.field_perm = node.data.fieldPerm;

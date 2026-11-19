@@ -10,29 +10,25 @@ from apps.system_mgmt.models import User
 PAGE_SIZE = 10
 
 
+def search_users(request, queryset):
+    keyword = (request.GET.get("q") or "").strip()
+    try:
+        page = max(int(request.GET.get("page") or 1), 1)
+    except (TypeError, ValueError):
+        page = 1
+    if keyword:
+        queryset = queryset.filter(Q(username__icontains=keyword) | Q(display_name__icontains=keyword))
+    total = queryset.count()
+    start = (page - 1) * PAGE_SIZE
+    items = queryset.order_by("username")[start : start + PAGE_SIZE] if start < total else []
+    return {"items": UserSearchSerializer(items, many=True).data, "count": total, "page": page, "page_size": PAGE_SIZE}
+
+
 class UserSearchView(ItsmAPIView):
     @HasPermission("portal-View,ticket-View,workflow-Edit")
     def get(self, request):
-        keyword = (request.GET.get("q") or "").strip()
-        try:
-            page = max(int(request.GET.get("page") or 1), 1)
-        except (TypeError, ValueError):
-            page = 1
         queryset = User.objects.filter(domain=request.user.domain, disabled=False)
-        if keyword:
-            queryset = queryset.filter(Q(username__icontains=keyword) | Q(display_name__icontains=keyword))
-        queryset = queryset.order_by("username")
-        total = queryset.count()
-        start = (page - 1) * PAGE_SIZE
-        items = queryset[start : start + PAGE_SIZE]
-        return Response(
-            {
-                "items": UserSearchSerializer(items, many=True).data,
-                "count": total,
-                "page": page,
-                "page_size": PAGE_SIZE,
-            }
-        )
+        return Response(search_users(request, queryset))
 
 
 class PublicStatusView(ItsmAPIView):
