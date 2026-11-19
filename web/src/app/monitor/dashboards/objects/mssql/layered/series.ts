@@ -1,6 +1,7 @@
 import type { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { asRangeQueryResult } from '../../../shared/utils/metric-series';
 import type { MetricUnit } from '../../../shared/types';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { deriveRatioPercent, numericValue } from '../../host/layered/readings';
@@ -151,9 +152,11 @@ export const mssqlCountAxisBounds = (
   return null;
 };
 
-export const formatCount = (value: number, unit: '个' | '次') => (
-  `${Math.round(Math.max(0, value)).toLocaleString()} ${unit}`
-);
+/** 个数只留数字。死锁这类「次」仍带单位。标题已经说出数量时不要再叠「个」。 */
+export const formatCount = (value: number, unit: '个' | '次') => {
+  const text = Math.round(Math.max(0, value)).toLocaleString();
+  return unit === '次' ? `${text} 次` : text;
+};
 
 /** 源端已是 0–100 的百分数。不再乘 100。正好为 0 时写成 0%，不写成 —。 */
 export const formatPercentPoint = (value: number) => (
@@ -316,5 +319,93 @@ export const clerkChart = (metricMap: MssqlMetricMap) => {
       reading: formatReading && Number.isFinite(item.latest) ? formatReading(item.latest) : undefined
     })),
     formatReading
+  };
+};
+
+/** 等待类别展示名。只改卡面上的字，不改源端标签。 */
+const WAIT_CATEGORY_LABELS: Record<string, string> = {
+  memory: '内存',
+  preemptive: '抢占',
+  'buffer io': '缓冲读写',
+  cpu: '处理器',
+  'network io': '网络读写',
+  lock: '锁',
+  latch: '闩锁',
+  'buffer latch': '缓冲闩锁',
+  parallelism: '并行',
+  transaction: '事务',
+  compilation: '编译',
+  idle: '空闲',
+  'worker thread': '工作线程',
+  'tran log io': '日志读写',
+  logging: '日志读写',
+  'other disk io': '其他磁盘读写',
+  'sql clr': '公共语言运行时',
+  mirroring: '镜像',
+  replication: '复制',
+  'service broker': '服务代理',
+  'full text search': '全文检索',
+  tracing: '跟踪',
+  'user wait': '用户等待',
+  'log rate governor': '日志速率限制'
+};
+
+const waitCategoryKey = (raw: string) => raw.trim().replace(/\s+/g, ' ').replace(/I\/O/gi, 'IO').toLowerCase();
+
+export function mssqlWaitCategoryLabel(raw: string): string {
+  const key = waitCategoryKey(raw);
+  if (!key) return '其他等待';
+  const exact = WAIT_CATEGORY_LABELS[key];
+  if (exact) return exact;
+  if (/[\u4e00-\u9fff]/.test(raw)) return raw.trim();
+  const phrases = Object.keys(WAIT_CATEGORY_LABELS).sort((left, right) => right.length - left.length);
+  let rest = ` ${key} `;
+  const parts: string[] = [];
+  phrases.forEach((phrase) => {
+    const token = ` ${phrase} `;
+    if (!rest.includes(token)) return;
+    parts.push(WAIT_CATEGORY_LABELS[phrase]);
+    rest = rest.split(token).join(' ');
+  });
+  const chinese = parts.join('');
+  return chinese && !/[a-z]/i.test(rest) ? chinese : (chinese || '其他等待');
+}
+
+export const waitCategoryChart = (raw: unknown) => {
+  const normalized = asRangeQueryResult(raw) as {
+    data?: { result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string | number | null]> }> }
+  };
+  const series = normalized?.data?.result || [];
+  const ranked = series
+    .map((item) => {
+      const source = String(item.metric?.wait_category || '').trim();
+      const data = (item.values || []).flatMap(([time, value]) => {
+        const numeric = asFinite(value);
+        const stamp = timeSeconds(Number(time));
+        if (numeric == null || !Number.isFinite(stamp)) return [];
+        return [{ time: stamp, value1: numeric }];
+      });
+      return {
+        source,
+        label: source ? mssqlWaitCategoryLabel(source) : '',
+        data,
+        latest: lineLatest(data)
+      };
+    })
+    .filter((item) => item.label && item.data.length > 0)
+    .sort((left, right) => right.latest - left.latest)
+    .slice(0, 8);
+  return {
+    data: mergeChartSeries(ranked.map((item) => ({
+      key: item.source || item.label,
+      label: item.label,
+      displayName: item.label,
+      data: item.data
+    }))),
+    legends: ranked.map((item, index) => ({
+      label: item.label,
+      color: CLERK_COLORS[index % CLERK_COLORS.length],
+      reading: Number.isFinite(item.latest) ? joinMetric(item.latest, 'msps') : undefined
+    }))
   };
 };

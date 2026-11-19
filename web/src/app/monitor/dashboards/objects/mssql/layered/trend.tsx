@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import type { MetricUnit } from '../../../shared/types';
 import { ThinTimeSeries } from '../../host/layered/pro-chrome';
@@ -27,21 +27,24 @@ export interface MssqlSeriesSpec {
 }
 
 export function MssqlSeriesReadout({
-  items
+  items,
+  fill = false
 }: {
   items: ReadonlyArray<{ label: string; color: string; reading?: string; dashed?: boolean }>;
+  /** 跟左侧折线卡齐高，多出来的行在栏内滚动。 */
+  fill?: boolean;
 }) {
   if (!items.length) return null;
   return (
     <ul
-      className="m-0 flex w-full list-none flex-col overflow-y-auto bg-[var(--color-bg)] p-0"
-      style={{ maxHeight: MSSQL_CLERK_LIST_MAX_PX }}
+      className={`m-0 flex w-full list-none flex-col overflow-y-auto bg-[var(--color-bg)] p-0 ${fill ? 'h-full' : ''}`}
+      style={fill ? undefined : { maxHeight: MSSQL_CLERK_LIST_MAX_PX }}
       data-mssql-series-readout="rows"
     >
       {items.map((item) => (
         <li
           key={item.label}
-          className="flex w-full min-w-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[13px] last:border-b-0"
+          className="flex w-full min-w-0 items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-[13px] last:border-b-0"
           style={{ height: MSSQL_LIST_ROW_PX }}
         >
           <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -51,7 +54,7 @@ export function MssqlSeriesReadout({
               className="inline-block h-2 w-2 shrink-0 rounded-full"
               style={{ background: item.color }}
             />
-            <span className="min-w-0 truncate text-[var(--color-text-1)]">{item.label}</span>
+            <span className="min-w-0 truncate text-[var(--color-text-1)]" title={item.label}>{item.label}</span>
           </span>
           <span
             data-mssql-readout-value=""
@@ -63,6 +66,33 @@ export function MssqlSeriesReadout({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** 方案 A：左折线，右各维当前值。读数栏是独立白底方框，不嵌进图里。 */
+export function MssqlSideReadout({
+  chart,
+  items
+}: {
+  chart: ReactNode;
+  items: ReadonlyArray<{ label: string; color: string; reading?: string; dashed?: boolean }>;
+}) {
+  if (!items.length) return <>{chart}</>;
+  return (
+    <div
+      className="grid grid-cols-1 items-stretch gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_220px]"
+      data-mssql-side-readout=""
+    >
+      <div className="min-w-0">{chart}</div>
+      <div className="relative min-h-0">
+        <div
+          className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] max-[899px]:max-h-[216px] min-[900px]:absolute min-[900px]:inset-0"
+          data-mssql-series-frame=""
+        >
+          <MssqlSeriesReadout items={items} fill />
+        </div>
+      </div>
+    </div>
   );
 }
 

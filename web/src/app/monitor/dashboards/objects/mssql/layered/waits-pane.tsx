@@ -3,18 +3,16 @@
 import { useEffect, useState, type Key } from 'react';
 import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
-import { ProDashLoading, ProSection } from '../../host/layered/pro-chrome';
+import { ProDashLoading, ProSection, ThinTimeSeries } from '../../host/layered/pro-chrome';
 import host from '../../host/layered/layered.module.scss';
 import classic from '../../host/index.module.scss';
-import type { BarItem } from '../../../shared/widgets';
-import { MSSQL_LIST_ROW_PX, MSSQL_WAIT_TOP_VIEWPORT, MSSQL_WAIT_TOP_VISIBLE_ROWS } from './display-units';
-import { buildSearchParams, topLabelBars } from '../../../shared/utils';
-import { asRangeQueryResult } from '../../../shared/utils/metric-series';
+import { MSSQL_SIDE_PLOT_PX } from './display-units';
+import { buildSearchParams } from '../../../shared/utils';
 import { mssqlCardFace, mssqlDeferEmpty } from './card-face';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE, MSSQL_PRO_WAIT_CATEGORY_QUERY } from './queries';
-import type { MssqlMetricMap } from './series';
-import { MssqlTrend } from './trend';
+import { joinMetric, waitCategoryChart, type MssqlMetricMap } from './series';
+import { MssqlSideReadout, MssqlTrend } from './trend';
 
 const WAIT_BODY = '各类等待消耗的时间，区分为总等待、信号等待和资源等待。信号等待偏高通常与 CPU 调度有关，资源等待偏高通常与锁、I/O 等外部资源有关。';
 
@@ -42,17 +40,17 @@ export default function WaitsPane({
   reloadKey: number;
 }) {
   const { getInstanceQuery } = useViewApi();
-  const [categories, setCategories] = useState<BarItem[]>([]);
+  const [categories, setCategories] = useState<ReturnType<typeof waitCategoryChart>>({ data: [], legends: [] });
   const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
   const categoryFace = mssqlCardFace(
-    mssqlDeferEmpty(categories.length > 0, phase === 'loading', batchLoading),
-    categories.length > 0
+    mssqlDeferEmpty(categories.data.length > 0, phase === 'loading', batchLoading),
+    categories.data.length > 0
   );
   const identity = `${idValues.join('\u0001')}|${instanceIdKeys.join('\u0001')}|${reloadKey}`;
 
   useEffect(() => {
     if (!idValues.length || !instanceId) {
-      setCategories([]);
+      setCategories({ data: [], legends: [] });
       setPhase('ready');
       return undefined;
     }
@@ -70,11 +68,11 @@ export default function WaitsPane({
       { monitorObjectId: String(monitorObjectId || ''), instanceId: String(instanceId) }
     )).then((result) => {
       if (!active) return;
-      setCategories(topLabelBars(asRangeQueryResult(result), 'msps', MSSQL_PRO_PALETTE.indigo, ['wait_category']));
+      setCategories(waitCategoryChart(result));
       setPhase('ready');
     }).catch(() => {
       if (!active) return;
-      setCategories([]);
+      setCategories({ data: [], legends: [] });
       setPhase('ready');
     });
     return () => {
@@ -94,87 +92,72 @@ export default function WaitsPane({
   return (
     <div data-mssql-pane="waits" className="contents">
       <ProSection title="等待构成">
-        <div className={host.chartGrid2}>
-          <MssqlTrend
-            anchor="wait-mix"
-            title="等待时间构成"
-            body={WAIT_BODY}
-            series={[
-              {
-                name: MSSQL_PRO_NAMES.waitTime,
-                label: '总等待',
-                color: MSSQL_PRO_PALETTE.indigo,
-                unit: 'msps'
-              },
-              {
-                name: MSSQL_PRO_NAMES.signalWait,
-                label: '信号等待',
-                color: MSSQL_PRO_PALETTE.orange,
-                unit: 'msps'
-              },
-              {
-                name: MSSQL_PRO_NAMES.resourceWait,
-                label: '资源等待',
-                color: MSSQL_PRO_PALETTE.cyan,
-                unit: 'msps'
-              }
-            ]}
-            metricMap={metricMap}
-            pending={pendingMetricNames}
-            batchLoading={batchLoading}
-            plotHeight={MSSQL_WAIT_TOP_VIEWPORT}
+        <MssqlTrend
+          anchor="wait-mix"
+          title="等待时间构成"
+          body={WAIT_BODY}
+          series={[
+            {
+              name: MSSQL_PRO_NAMES.waitTime,
+              label: '总等待',
+              color: MSSQL_PRO_PALETTE.indigo,
+              unit: 'msps'
+            },
+            {
+              name: MSSQL_PRO_NAMES.signalWait,
+              label: '信号等待',
+              color: MSSQL_PRO_PALETTE.orange,
+              unit: 'msps'
+            },
+            {
+              name: MSSQL_PRO_NAMES.resourceWait,
+              label: '资源等待',
+              color: MSSQL_PRO_PALETTE.cyan,
+              unit: 'msps'
+            }
+          ]}
+          metricMap={metricMap}
+          pending={pendingMetricNames}
+          batchLoading={batchLoading}
+        />
+      </ProSection>
+      <ProSection
+        title="等待类别 Top"
+        hint={(
+          <MssqlHint
+            kind="mssql-wait-top"
+            title="等待类别 Top"
+            body="按等待类别汇总，查看哪一类等待占用时间最多。类别名用中文。"
           />
-          <section
-            id="mssql-wait-top"
-            className={`${classic.panel} ${host.chartPanel} flex h-full min-w-0 scroll-mt-3 flex-col`}
-            data-mssql-chart="wait-top"
-            data-mssql-face={categoryFace}
-            data-mssql-wait-rows={MSSQL_WAIT_TOP_VISIBLE_ROWS}
-          >
-            <div className={host.chartHead}>
-              <div className={host.chartTitle}>
-                <span className="inline-flex items-center gap-1">
-                  等待类别 Top
-                  <MssqlHint
-                    kind="mssql-wait-top"
-                    title="等待类别 Top"
-                    body="按等待类别汇总，查看哪一类等待占用时间最多。"
-                  />
-                </span>
-              </div>
-            </div>
-            <div
-              className="overflow-y-auto"
-              style={{ height: MSSQL_WAIT_TOP_VIEWPORT }}
-              data-mssql-wait-viewport=""
-            >
-              {categoryFace === 'loading' ? (
-                <div className="flex h-full items-center justify-center">
-                  <ProDashLoading />
-                </div>
-              ) : categoryFace === 'empty' ? (
-                <div className="flex h-full items-center justify-center text-[13px] font-semibold text-[var(--color-text-2)]">
-                  本窗口暂无数据
-                </div>
-              ) : (
-                <ul className="m-0 list-none p-0">
-                  {categories.map((item) => (
-                    <li
-                      key={item.label}
-                      className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-1 text-[13px]"
-                      style={{ height: MSSQL_LIST_ROW_PX }}
-                      data-mssql-wait-row=""
-                    >
-                      <span className="min-w-0 flex-1 truncate text-[var(--color-text-1)]">{item.label}</span>
-                      <span className="shrink-0 text-right font-semibold tabular-nums text-[var(--color-text-1)]">
-                        {item.display}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+        )}
+      >
+        <div id="mssql-wait-top" className="min-w-0 scroll-mt-3" data-mssql-chart="wait-top" data-mssql-face={categoryFace}>
+          {categoryFace === 'ready' ? (
+            <MssqlSideReadout
+              items={categories.legends}
+              chart={(
+                <ThinTimeSeries
+                  title=""
+                  unit="msps"
+                  pinAxisZero
+                  keepLegend
+                  hideLegend
+                  data={categories.data}
+                  legends={categories.legends}
+                  formatReading={(value) => joinMetric(value, 'msps')}
+                  plotHeight={MSSQL_SIDE_PLOT_PX}
+                />
               )}
-            </div>
-          </section>
+            />
+          ) : (
+            <section className={`${classic.panel} ${host.chartPanel}`}>
+              <div className="flex min-h-16 items-center justify-center">
+                {categoryFace === 'loading' ? <ProDashLoading /> : (
+                  <span className="text-[13px] font-semibold text-[var(--color-text-2)]">本窗口暂无数据</span>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </ProSection>
       <ProSection title="锁与死锁">

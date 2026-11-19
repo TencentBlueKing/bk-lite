@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MSSQL_SIDE_PLOT_PX,
   MSSQL_WAIT_TOP_VIEWPORT,
   MSSQL_WAIT_TOP_VISIBLE_ROWS,
   formatMssqlDuration,
   mssqlLockedReading
 } from '../display-units';
-import { clerkChart } from '../series';
+import { clerkChart, formatCount, mssqlWaitCategoryLabel } from '../series';
 import type { MetricSeries } from '../../../common/simple-dashboard-core';
 
 const series = (name: string, points: MetricSeries['viewData']): MetricSeries => ({
@@ -66,5 +67,25 @@ describe('mssql card units', () => {
   it('等待 Top 可视高度按 5 行固定', () => {
     expect(MSSQL_WAIT_TOP_VISIBLE_ROWS).toBe(5);
     expect(MSSQL_WAIT_TOP_VIEWPORT).toBe(180);
+    expect(MSSQL_SIDE_PLOT_PX).toBe(132);
+  });
+
+  it('个数不叠「个」，死锁仍用次，等待类别用中文名', () => {
+    expect(formatCount(41, '个')).toBe('41');
+    expect(formatCount(0, '个')).toBe('0');
+    expect(formatCount(3, '次')).toBe('3 次');
+    expect(mssqlWaitCategoryLabel('Memory')).toBe('内存');
+    expect(mssqlWaitCategoryLabel('Preemptive')).toBe('抢占');
+    expect(mssqlWaitCategoryLabel('Buffer IO')).toBe('缓冲读写');
+    expect(mssqlWaitCategoryLabel('Buffer I/O')).toBe('缓冲读写');
+    expect(mssqlWaitCategoryLabel('CPU')).toBe('处理器');
+    expect(mssqlWaitCategoryLabel('Network IO')).toBe('网络读写');
+    expect(mssqlWaitCategoryLabel('Network I/O')).toBe('网络读写');
+    expect(mssqlWaitCategoryLabel('Lock')).toBe('锁');
+    expect(mssqlWaitCategoryLabel('Latch')).toBe('闩锁');
+    expect(mssqlWaitCategoryLabel('Tran Log IO')).toBe('日志读写');
+    expect(mssqlWaitCategoryLabel('SQL CLR')).toBe('公共语言运行时');
+    expect(mssqlWaitCategoryLabel('类别1')).toBe('类别1');
+    expect(mssqlWaitCategoryLabel('Something New')).toBe('其他等待');
   });
 });

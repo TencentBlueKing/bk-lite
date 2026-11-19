@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { IntlProvider } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MSSQL_WAIT_TOP_VIEWPORT } from '../display-units';
 import WaitsPane from '../waits-pane';
 
 const query = vi.hoisted(() => vi.fn());
@@ -15,9 +14,10 @@ vi.mock('../../../../shared/widgets/useECharts', () => ({
   useECharts: () => ({ containerRef: () => undefined, getInstance: () => null })
 }));
 
-const categories = Array.from({ length: 8 }, (_, index) => ({
-  metric: { wait_category: `类别${index + 1}` },
-  values: [[1_700_000_000, String((index + 1) * 1000)]]
+const named = ['Memory', 'Preemptive', 'Buffer IO', 'CPU', 'Network IO', 'Lock', 'Latch', '类别8'];
+const categories = named.map((waitCategory, index) => ({
+  metric: { wait_category: waitCategory },
+  values: [[1_700_000_000, String((index + 1) * 10)], [1_700_000_060, String((index + 1) * 10)]]
 }));
 
 function mount(node: ReactNode) {
@@ -30,7 +30,7 @@ describe('mssql waits layout', () => {
     query.mockResolvedValue({ data: { result: categories } });
   });
 
-  it('锁等待、阻塞进程数、死锁次数分成三张卡，Top 按 5 行高度滚动', async () => {
+  it('锁等待、阻塞进程数、死锁次数分成三张卡，等待类别 Top 是左图右读数栏', async () => {
     const view = mount(
       <WaitsPane
         metricMap={{}}
@@ -50,12 +50,27 @@ describe('mssql waits layout', () => {
     expect(view.container.textContent).toContain('阻塞进程数');
     expect(view.container.textContent).toContain('死锁次数');
     expect(view.container.textContent).not.toContain('锁等待与阻塞');
-    const viewport = view.container.querySelector('[data-mssql-wait-viewport]');
-    expect(viewport?.getAttribute('style')).toContain(`height: ${MSSQL_WAIT_TOP_VIEWPORT}px`);
-    expect(view.container.querySelector('[data-mssql-wait-rows]')?.getAttribute('data-mssql-wait-rows')).toBe('5');
+    const mix = view.container.querySelector('[data-mssql-chart="wait-mix"]');
+    const top = view.container.querySelector('[data-mssql-chart="wait-top"]');
+    expect(mix?.parentElement).not.toBe(top?.parentElement);
     await waitFor(() => {
-      expect(view.container.querySelectorAll('[data-mssql-wait-row]')).toHaveLength(8);
+      expect(top?.querySelector('[data-mssql-side-readout]')).toBeTruthy();
     });
-    expect(viewport?.getAttribute('style')).toContain('height: 180px');
+    const frame = top?.querySelector('[data-mssql-series-frame]');
+    const plot = top?.querySelector('section');
+    expect(plot?.contains(frame || null)).toBe(false);
+    expect(top?.querySelectorAll('[data-mssql-series-readout] li')).toHaveLength(8);
+    expect(top?.textContent).toContain('内存');
+    expect(top?.textContent).toContain('抢占');
+    expect(top?.textContent).toContain('缓冲读写');
+    expect(top?.textContent).toContain('处理器');
+    expect(top?.textContent).toContain('网络读写');
+    expect(top?.textContent).toContain('ms/s');
+    expect(top?.textContent).not.toContain('Memory');
+    expect(top?.textContent).not.toContain('Preemptive');
+    expect(top?.textContent).not.toContain('Buffer IO');
+    expect(top?.textContent).not.toContain('CPU');
+    expect(top?.textContent).not.toContain('Network IO');
+    expect(top?.textContent).not.toContain(' min');
   });
 });

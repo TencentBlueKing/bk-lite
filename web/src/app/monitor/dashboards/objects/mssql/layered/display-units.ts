@@ -3,14 +3,16 @@ import type { MetricUnit } from '../../../shared/types';
 const BYTE_UNITS = ['bytes', 'kibibytes', 'mebibytes', 'gibibytes', 'tebibytes', 'pebibytes'] as const;
 const BYTE_LABELS = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 
-/** 列表一行的固定高度。Clerk 和等待 Top 共用，保证行高对齐。 */
+/** 列表一行的固定高度。Clerk 和等待类别读数栏共用。 */
 export const MSSQL_LIST_ROW_PX = 36;
-/** Clerk 图下列表最多露出的行数，再多就在列表内滚动。 */
+/** 读数栏最多露出的行数，再多就在栏内滚动。 */
 export const MSSQL_CLERK_VISIBLE_ROWS = 6;
-/** 等待类别 Top 的可视行数。左右卡按这个高度对齐。 */
+/** 一行高度的 5 倍。方案 A 不再拿它把等待构成和 Top 拉成左右同高。 */
 export const MSSQL_WAIT_TOP_VISIBLE_ROWS = 5;
 export const MSSQL_CLERK_LIST_MAX_PX = MSSQL_LIST_ROW_PX * MSSQL_CLERK_VISIBLE_ROWS;
 export const MSSQL_WAIT_TOP_VIEWPORT = MSSQL_LIST_ROW_PX * MSSQL_WAIT_TOP_VISIBLE_ROWS;
+/** 方案 A 左图高度。右侧读数栏跟这张卡齐高，多出来的行在栏内滚动。 */
+export const MSSQL_SIDE_PLOT_PX = 132;
 
 /** 最多两位。整数不补 .00。非整数固定两位，53.599 → 53.60。 */
 export function formatMssqlFixed(value: number): string {

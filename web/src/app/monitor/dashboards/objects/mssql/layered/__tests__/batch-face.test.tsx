@@ -108,7 +108,8 @@ describe('mssql batch face', () => {
     expect(open.container.querySelector('[data-kpi="cpu"]')?.textContent).toContain('0%');
     const blockedCard = open.container.querySelector('[data-mssql-focus="blocked"]');
     expect(blockedCard?.getAttribute('data-mssql-face')).toBe('ready');
-    expect(blockedCard?.textContent).toContain('0 个');
+    expect(blockedCard?.textContent).not.toContain('0 个');
+    expect(blockedCard?.textContent).not.toContain('(个)');
     const latency = open.container.querySelector('[data-mssql-focus="read-latency"]');
     const deadlocks = open.container.querySelector('[data-mssql-focus="deadlocks"]');
     expect(latency?.getAttribute('data-mssql-face')).toBe('loading');

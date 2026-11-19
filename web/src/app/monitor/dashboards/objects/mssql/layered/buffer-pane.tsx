@@ -6,8 +6,9 @@ import host from '../../host/layered/layered.module.scss';
 import { MssqlHint } from './hint';
 import { MSSQL_PRO_NAMES, MSSQL_PRO_PALETTE } from './queries';
 import { mssqlDeferEmpty } from './card-face';
+import { MSSQL_SIDE_PLOT_PX } from './display-units';
 import { clerkChart, type MssqlMetricMap } from './series';
-import { MssqlSeriesReadout, MssqlTrend } from './trend';
+import { MssqlSideReadout, MssqlTrend } from './trend';
 
 const HIT_BODY = '缓冲池满足的数据页读取占比。偏低说明热点数据未充分驻留内存、读盘偏多。\n命中 ÷（命中 + 未命中）× 100%\n分母为 0 时显示 —，不用 0% 顶替。';
 
@@ -165,33 +166,31 @@ export default function BufferPane({
       </ProSection>
       <ProSection title="构成">
         <div id="mssql-clerks" className="min-w-0 scroll-mt-3" data-mssql-chart="clerks">
-          <ThinTimeSeries
-            title="内存用途构成"
-            hintNode={(
-              <MssqlHint
-                kind="mssql-clerks"
+          <MssqlSideReadout
+            items={clerks.data.length > 0 ? clerks.legends : []}
+            chart={(
+              <ThinTimeSeries
                 title="内存用途构成"
-                body="按用途查看各类内存占用的大小，便于判断内存主要花在哪里。"
+                hintNode={(
+                  <MssqlHint
+                    kind="mssql-clerks"
+                    title="内存用途构成"
+                    body="按用途查看各类内存占用的大小，便于判断内存主要花在哪里。"
+                  />
+                )}
+                unit="kibibytes"
+                pinAxisZero
+                keepLegend
+                hideLegend
+                loading={clerkPending}
+                emptyText="本窗口暂无数据"
+                data={clerks.data}
+                legends={clerks.legends}
+                formatReading={clerks.formatReading}
+                plotHeight={MSSQL_SIDE_PLOT_PX}
               />
             )}
-            unit="kibibytes"
-            pinAxisZero
-            keepLegend
-            hideLegend
-            loading={clerkPending}
-            emptyText="本窗口暂无数据"
-            data={clerks.data}
-            legends={clerks.legends}
-            formatReading={clerks.formatReading}
           />
-          {clerks.data.length > 0 ? (
-            <div
-              className="mt-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]"
-              data-mssql-series-frame=""
-            >
-              <MssqlSeriesReadout items={clerks.legends} />
-            </div>
-          ) : null}
         </div>
       </ProSection>
     </div>

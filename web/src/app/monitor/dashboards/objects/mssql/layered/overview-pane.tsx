@@ -414,7 +414,7 @@ function CountFocusCard({
       >
         <FocusShortcutTitle
           label={label}
-          unit={unitWord}
+          unit={unitWord === '次' ? '次' : undefined}
           hint={<MssqlHint kind={`mssql-focus-${cardKey}`} title={label} body={body} />}
         />
         {loading ? <ProDashLoading size="small" /> : (

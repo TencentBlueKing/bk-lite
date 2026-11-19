@@ -159,6 +159,11 @@ describe('mssql display face', () => {
       (section) => section.querySelector(':scope > div')?.textContent || ''
     );
     expect(headings[1]).toContain('重点关注');
+    const alerts = view.container.querySelector('[data-kpi="alert-count"]');
+    expect(alerts?.textContent).toContain('告警数量');
+    expect(alerts?.textContent).not.toContain('告警事件');
+    expect(alerts?.textContent).not.toContain('0 个');
+    expect(alerts?.textContent).not.toContain('(个)');
   });
 
   it('内存用途构成把色点和同色读数放进白卡，并保留源端维度名', () => {
@@ -181,15 +186,19 @@ describe('mssql display face', () => {
     expect(view.container.textContent).toContain('内存用途构成');
     expect(view.container.textContent).not.toContain('内存 Clerk 构成');
     const chart = view.container.querySelector('[data-mssql-chart="clerks"]');
-    const section = chart?.querySelector('section');
-    const frame = chart?.querySelector('[data-mssql-series-frame]');
+    const side = chart?.querySelector('[data-mssql-side-readout]');
+    const section = side?.querySelector('section');
+    const frame = side?.querySelector('[data-mssql-series-frame]');
     const list = frame?.querySelector('[data-mssql-series-readout]');
+    expect(side?.className).toContain('220px');
+    expect(side?.className).toContain('gap-4');
     expect(list).toBeTruthy();
     expect(section?.contains(list || null)).toBe(false);
-    expect(frame?.className).toContain('mt-4');
+    expect(frame?.parentElement).not.toBe(section);
     expect(frame?.className).toContain('border');
     expect(frame?.className).toContain('bg-[var(--color-bg)]');
     expect(list?.className).toContain('bg-[var(--color-bg)]');
+    expect(section?.getAttribute('style') || section?.querySelector('[class*="chartBody"]')?.getAttribute('style')).toContain('132px');
     const row = view.getByText('SOS Node').closest('li');
     const swatch = row?.querySelector('[data-mssql-readout-swatch]');
     const value = row?.querySelector('[data-mssql-readout-value]');
