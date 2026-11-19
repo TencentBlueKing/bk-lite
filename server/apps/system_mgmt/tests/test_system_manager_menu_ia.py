@@ -9,11 +9,11 @@ from apps.system_mgmt.management.commands.init_realm_resource import create_reso
 from apps.system_mgmt.models import App, Menu, Role
 
 MENU_PATH = Path("support-files/system_mgmt/menus/system-manager.json")
-USER_CHILD_IDS = ["user_group", "user_fields", "login_auth", "user_sync", "security_settings", "super_admin"]
+USER_CHILD_IDS = ["user_group", "login_auth", "user_sync", "user_fields"]
+SECURITY_CHILD_IDS = ["security_settings", "super_admin", "network_white_list"]
 SETTING_CHILD_IDS = [
     "audit_log",
     "error_logs",
-    "network_white_list",
     "openapi_docs",
     "api_secret_key",
 ]
@@ -39,27 +39,43 @@ def _payload():
 def test_system_manager_menu_json_keeps_stable_ids_and_new_order():
     payload = _payload()
     names = [item["name"] for item in payload["menus"]]
-    assert names[0] == "Organization"
-    assert "Setting" in names
+    assert names == [
+        "Organization",
+        "Security",
+        "Credential",
+        "Application",
+        "Channel",
+        "Integration Center",
+        "Setting",
+    ]
 
     organization = next(item for item in payload["menus"] if item["name"] == "Organization")
+    security = next(item for item in payload["menus"] if item["name"] == "Security")
     setting = next(item for item in payload["menus"] if item["name"] == "Setting")
 
     assert [child["id"] for child in organization["children"]] == USER_CHILD_IDS
+    assert [child["id"] for child in security["children"]] == SECURITY_CHILD_IDS
     assert [child["id"] for child in setting["children"]] == SETTING_CHILD_IDS
+    assert setting["icon"] == "settings-fill"
     child_ids = {child["id"] for group in payload["menus"] for child in group["children"]}
     assert FROZEN_CHILD_IDS <= child_ids
 
-    by_id = {child["id"]: child["name"] for child in setting["children"]}
+    setting_by_id = {child["id"]: child["name"] for child in setting["children"]}
+    security_by_id = {child["id"]: child for child in security["children"]}
     token = next(child for child in setting["children"] if child["id"] == "api_secret_key")
-    assert by_id["api_secret_key"] == "API Token"
+    assert setting_by_id["api_secret_key"] == "API Token"
     assert token["operation"] == ["View", "Add", "Delete"]
-    assert by_id["openapi_docs"] == "API Documentation"
-    assert by_id["network_white_list"] == "Network Whitelist"
+    assert setting_by_id["openapi_docs"] == "API Documentation"
+    assert "network_white_list" not in setting_by_id
+    assert security_by_id["network_white_list"]["name"] == "Network Whitelist"
+    assert security_by_id["network_white_list"]["operation"] == ["View", "Add", "Edit", "Delete"]
+    assert security_by_id["security_settings"]["operation"] == ["View", "Edit", "Add", "Delete"]
+    assert security_by_id["super_admin"]["operation"] == ["View", "Add", "Delete"]
 
     roles_by_name = {item["name"]: item["menus"] for item in payload["roles"]}
     assert roles_by_name["audit"] == ["audit_log-View", "error_logs-View"]
     assert "super_admin-View" not in roles_by_name["security"]
+    assert "network_white_list-View" not in roles_by_name["security"]
     assert "api_secret_key-View" not in roles_by_name["security"]
 
 
@@ -67,6 +83,7 @@ def test_enterprise_setting_append_matches_frontend_order_and_titles():
     payload = extend_menus_by_install_apps(_payload(), {"system_mgmt", "license_mgmt"})
     setting = next(item for item in payload["menus"] if item["name"] == "Setting")
     organization = next(item for item in payload["menus"] if item["name"] == "Organization")
+    security = next(item for item in payload["menus"] if item["name"] == "Security")
 
     appended = setting["children"][-2:]
     assert [child["id"] for child in appended] == ["portal_settings", "license_mgmt"]
@@ -74,7 +91,24 @@ def test_enterprise_setting_append_matches_frontend_order_and_titles():
     assert appended[0]["operation"] == ["View", "Edit"]
     assert appended[1]["operation"] == ["View", "Add", "Edit", "Delete"]
     assert [child["id"] for child in setting["children"][:-2]] == SETTING_CHILD_IDS
-    assert organization["children"][-1]["id"] == "sensitive_info"
+    assert [child["id"] for child in organization["children"]] == USER_CHILD_IDS
+    assert [child["id"] for child in security["children"]] == [
+        "security_settings",
+        "super_admin",
+        "sensitive_info",
+        "network_white_list",
+    ]
+    assert security["children"][2] == {
+        "id": "sensitive_info",
+        "name": "Sensitive Info",
+        "operation": ["View", "Edit", "Add", "Delete"],
+    }
+
+    security_role = next(item for item in payload["roles"] if item["name"] == "security")
+    for menu_name in ("sensitive_info-View", "sensitive_info-Add", "sensitive_info-Edit", "sensitive_info-Delete"):
+        assert menu_name in security_role["menus"]
+    assert "super_admin-View" not in security_role["menus"]
+    assert "network_white_list-View" not in security_role["menus"]
 
 
 @pytest.mark.django_db
@@ -121,6 +155,13 @@ def test_create_resource_updates_display_and_order_without_replacing_ids():
     assert token_view.display_name == "API Token-View"
     assert token_view.menu_type == "Setting"
 
+    security_view = Menu.objects.get(name="security_settings-View", app="system-manager")
+    whitelist_view = Menu.objects.get(name="network_white_list-View", app="system-manager")
+    assert security_view.id == original_ids["security_settings-View"]
+    assert whitelist_view.id == original_ids["network_white_list-View"]
+    assert security_view.menu_type == "Security"
+    assert whitelist_view.menu_type == "Security"
+
     docs_view = Menu.objects.get(name="openapi_docs-View", app="system-manager")
     assert docs_view.display_name == "API Documentation-View"
 
@@ -128,7 +169,7 @@ def test_create_resource_updates_display_and_order_without_replacing_ids():
     super_admin_view = Menu.objects.get(name="super_admin-View", app="system-manager")
     audit_view = Menu.objects.get(name="audit_log-View", app="system-manager")
     error_view = Menu.objects.get(name="error_logs-View", app="system-manager")
-    assert login_view.order < super_admin_view.order
+    assert login_view.order < super_admin_view.order < whitelist_view.order
     assert audit_view.order < error_view.order < token_view.order
 
 
