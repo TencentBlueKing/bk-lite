@@ -215,6 +215,34 @@ def test_xlsx_styles_header_numbers_and_explicit_merges():
     assert "A1:B1" in {str(item) for item in sheet.merged_cells.ranges}
 
 
+def test_xlsx_writes_formula_looking_text_as_plain_text():
+    payload = build_attachment_bytes(
+        'label,value\n"=HYPERLINK(""http://example.test"")",2\n+cmd,12%\n@SUM(1),-4\n"\t=1+1",-cmd\n',
+        "xlsx",
+    )
+    sheet = load_workbook(BytesIO(payload)).active
+    formula = sheet["A2"]
+    assert formula.value == '=HYPERLINK("http://example.test")'
+    assert formula.data_type == "s"
+    plus = sheet["A3"]
+    assert plus.value == "+cmd"
+    assert plus.data_type == "s"
+    at_sign = sheet["A4"]
+    assert at_sign.value == "@SUM(1)"
+    assert at_sign.data_type == "s"
+    tabbed = sheet["A5"]
+    assert tabbed.value == "\t=1+1"
+    assert tabbed.data_type == "s"
+    minus = sheet["B5"]
+    assert minus.value == "-cmd"
+    assert minus.data_type == "s"
+    assert sheet["B2"].value == 2
+    assert isinstance(sheet["B2"].value, int)
+    assert sheet["B3"].value == "12%"
+    assert sheet["B4"].value == -4
+    assert isinstance(sheet["B4"].value, int)
+
+
 def test_xlsx_rejects_merge_outside_the_sheet():
     with pytest.raises(ValueError, match="合并范围无效"):
         build_attachment_bytes("name,count\nweb,2", "xlsx", merges=["A1:Z9"])

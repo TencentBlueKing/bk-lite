@@ -36,6 +36,26 @@ _ROW_FIELD_LIMIT = 12
 _ROW_VALUE_LIMIT = 80
 
 
+def _clip_fact_text(text: str) -> str:
+    if not text:
+        return ""
+    if len(text) > _ROW_VALUE_LIMIT:
+        return text[:_ROW_VALUE_LIMIT]
+    return text
+
+
+def _list_item_fact_text(item) -> str:
+    """列表元素里的短标量；人名对象取 name，否则 username。"""
+    if isinstance(item, dict):
+        raw = item.get("name") or item.get("username") or ""
+        if raw == "":
+            return ""
+        return " ".join(str(raw).split())
+    if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+        return ""
+    return " ".join(str(item).split())
+
+
 class DeepAgentAssemblyMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
 
@@ -386,10 +406,11 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _record_row_facts(cls, payload: dict) -> list[str]:
-        """列表里的短标量按原字段名带走。长正文和嵌套对象不进摘要。"""
+        """列表里的标量按原字段名带走。过长文本截到 80 字；人名对象取 name 或 username。"""
         rows = [row for row in cls._rows_of(payload) if isinstance(row, dict)]
+        shown_rows = rows[:_ROW_FACT_LIMIT]
         facts = []
-        for row in rows[:_ROW_FACT_LIMIT]:
+        for row in shown_rows:
             parts = []
             for key, value in row.items():
                 if not isinstance(key, str) or not key.strip():
@@ -402,9 +423,27 @@ class DeepAgentAssemblyMixin:
                     break
             if parts:
                 facts.append(" ".join(parts))
-        if len(rows) > _ROW_FACT_LIMIT:
-            facts.append(f"rows_truncated=true shown={_ROW_FACT_LIMIT} total={len(rows)}")
+        total = cls._declared_row_total(payload)
+        if total is None:
+            total = len(rows)
+        if total > len(shown_rows) or len(rows) > _ROW_FACT_LIMIT:
+            facts.append(f"rows_truncated=true shown={len(shown_rows)} total={total}")
         return facts
+
+    @staticmethod
+    def _declared_row_total(payload) -> int | None:
+        """列表接口已经给出的总数。告警是 data.count，其它列表还有 total / total_count。"""
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        containers = [data, payload] if isinstance(data, dict) else [payload]
+        for container in containers:
+            for key in ("count", "total", "total_count"):
+                value = container.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    continue
+                return value
+        return None
 
     @staticmethod
     def _scalar_fact_text(value) -> str:
@@ -413,24 +452,16 @@ class DeepAgentAssemblyMixin:
         if isinstance(value, (int, float)):
             return str(value)
         if isinstance(value, str):
-            text = " ".join(value.split())
-            if not text or len(text) > _ROW_VALUE_LIMIT:
-                return ""
-            return text
+            return _clip_fact_text(" ".join(value.split()))
         if isinstance(value, list):
             parts = []
             for item in value:
-                if isinstance(item, bool) or not isinstance(item, (str, int, float)):
-                    continue
-                text = " ".join(str(item).split())
+                text = _list_item_fact_text(item)
                 if text:
                     parts.append(text)
                 if len(parts) == 3:
                     break
-            joined = ",".join(parts)
-            if not joined or len(joined) > _ROW_VALUE_LIMIT:
-                return ""
-            return joined
+            return _clip_fact_text(",".join(parts))
         return ""
 
     @staticmethod
