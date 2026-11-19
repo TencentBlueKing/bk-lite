@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { TicketCenterFilters, TicketExportRecord } from '../types';
+import type { TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -80,10 +80,12 @@ export function useItsmApi() {
   const ticketFilterWorkflows = useCallback((q: string) => get('/itsm/api/tickets/filter_fields/', { params: { q } }), [get]);
   const ticketFilterFields = useCallback((workflowId: string) => get('/itsm/api/tickets/filter_fields/', { params: { workflow_id: workflowId } }), [get]);
   const exportTickets = useCallback(
-    (filters: TicketCenterFilters, formColumns: string[], ids?: number[]) =>
-      post<TicketExportRecord>('/itsm/api/tickets/export/tasks/', { filters, form_columns: formColumns, ids }),
+    (filters: TicketCenterFilters, formColumns: string[], ids?: number[], fields?: { columns: string[]; form_workflow_id?: string }) =>
+      post<TicketExportRecord>('/itsm/api/tickets/export/tasks/', { filters, form_columns: formColumns, ids, ...fields }),
     [post],
   );
+  const ticketExportFields = useCallback((params: { workflow_id?: string; q?: string }) =>
+    get<TicketExportCatalog>('/itsm/api/tickets/export/fields/', { params }), [get]);
   const listTicketExports = useCallback((page: number, pageSize: number) => get<{ count: number; items: TicketExportRecord[] }>(
     '/itsm/api/tickets/export/tasks/', { params: { page, page_size: pageSize } },
   ), [get]);
@@ -236,7 +238,7 @@ export function useItsmApi() {
     getDesign,
     saveDesign,
     publishWorkflow,
-    listTickets, ticketFilterWorkflows, ticketFilterFields, exportTickets, listTicketExports, downloadTicketExport, retryTicketExport,
+    listTickets, ticketFilterWorkflows, ticketFilterFields, exportTickets, ticketExportFields, listTicketExports, downloadTicketExport, retryTicketExport,
     listResources,
     createResource,
     updateResource,

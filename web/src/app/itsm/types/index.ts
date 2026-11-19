@@ -268,3 +268,16 @@ export interface TicketExportRecord {
   downloadable: boolean;
   error: string;
 }
+
+export interface TicketExportColumn {
+  key: string;
+  label: string;
+}
+
+export interface TicketExportCatalog {
+  groups: { key: string; label: string; columns: TicketExportColumn[] }[];
+  default_columns: string[];
+  workflows?: TicketFilterWorkflow[];
+  workflow?: TicketFilterWorkflow;
+  fields?: (TicketExportColumn & { type: string })[];
+}

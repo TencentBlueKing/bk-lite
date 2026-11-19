@@ -16,6 +16,7 @@ from apps.itsm.views.access import domain_of
 MAX_FORM_FILTERS = 8
 MAX_VALUE_LENGTH = 200
 CHOICE_TYPES = {"radio", "select"}
+TABLE_FIELDS = {"table", "nestedTable", "cab", "task"}
 OPERATORS = {
     "input": ("contains", "eq"),
     "textarea": ("contains", "eq"),
@@ -62,7 +63,7 @@ def is_number(value):
     return type(value) in {float, int} and abs(value) <= 10**100 and math.isfinite(value)
 
 
-def version_fields(design):
+def version_fields(design, *, export=False):
     snapshot = design.get("form_schema")
     if not isinstance(snapshot, dict):
         return
@@ -78,12 +79,26 @@ def version_fields(design):
             or any(perm.get(key, perm.get("*")) == "hidden" for perm in permissions)
         )
 
+    def columns(field):
+        children = field.get("children") or field.get("columns")
+        if not children:
+            configured = (field.get("props") or {}).get("columns") or "名称:name\n数量:quantity:number"
+            children = []
+            for line in str(configured).splitlines():
+                label, *rest = line.split(":")
+                key = (rest[0] if rest else label).strip()
+                children.append({"key": key, "label": label.strip(), "type": rest[1] if len(rest) > 1 else "input"})
+        return [child for child in children if visible(child)]
+
     def walk(fields):
         for field in fields:
             if not visible(field):
                 continue
-            yield field
-            yield from walk(field.get("children") or [])
+            if export and field.get("type") in TABLE_FIELDS:
+                yield {**field, "export_columns": columns(field)}
+            else:
+                yield field
+                yield from walk(field.get("children") or [])
 
     yield from walk(snapshot.get("fields") or [])
 

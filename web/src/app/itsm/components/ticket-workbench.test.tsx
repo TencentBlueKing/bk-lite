@@ -3,7 +3,7 @@ import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
-const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
@@ -18,6 +18,12 @@ beforeEach(() => {
   api.searchUsers.mockResolvedValue({ items: [{ username: 'owner', display_name: '测试提单人' }], count: 1 });
   api.ticketFilterWorkflows.mockResolvedValue({ workflows: [{ id: 4, name: "金额申请" }] });
   api.ticketFilterFields.mockResolvedValue({ workflow: { id: 4, name: "金额申请" }, fields: [{ key: "amount", label: "申请金额", type: "number", options: [] }] });
+  api.ticketExportFields.mockImplementation(async ({ workflow_id }) => ({
+    groups: [{ key: 'basic', label: '工单信息', columns: [{ key: 'sn', label: '单号' }, { key: 'service', label: '服务' }] }],
+    default_columns: ['sn'],
+    ...(workflow_id ? { workflow: { id: 4, name: '金额申请' }, fields: [{ key: 'people', type: 'multiUser', label: '联系人' }] }
+    : { workflows: [{ id: 4, name: '金额申请' }] }),
+  }));
   api.searchTicketTags.mockResolvedValue({ items: [{ name: '数据库' }] });
   api.centerSettings.mockResolvedValue({ columns: ['sn', 'title'], views: [] });
   api.listTickets.mockResolvedValue({ count: 1, items: [{ id: 1, sn: 'REQ1', title: '测试工单' }], can_operate: true });
@@ -197,7 +203,23 @@ it('提交后台导出后打开导出记录并保留当前分组范围', async (
   render(<TicketWorkbench initialTab="following" />);
   fireEvent.click(await screen.findByRole('button', { name: '导出' }));
   fireEvent.click(await screen.findByRole('button', { name: '提交导出' }));
-  await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ tab: 'following' }), [], undefined));
+  await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ tab: 'following' }), [], undefined, { columns: ['sn'] }));
   await screen.findByText('导出记录', { selector: '.ant-drawer-title span' });
   await waitFor(() => expect(api.listTicketExports).toHaveBeenCalledWith(1, 20));
+});
+
+it('在导出时选择系统字段和表单字段，保留原列表筛选', async () => {
+  api.exportTickets.mockResolvedValue({ id: 7, status: 'pending' });
+  api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_export: true });
+  render(<TicketWorkbench />);
+  fireEvent.click(await screen.findByRole('button', { name: '导出' }));
+  expect((await screen.findByRole('checkbox', { name: '单号' }) as HTMLInputElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('checkbox', { name: '服务' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '导出表单流程' }));
+  fireEvent.click(await screen.findByText('金额申请', { selector: '.ant-select-item-option-content' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '导出表单字段' }));
+  fireEvent.click(await screen.findByText('联系人', { selector: '.ant-select-item-option-content' }));
+  fireEvent.click(screen.getByRole('button', { name: '提交导出' }));
+  await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ workflow_id: '' }), ['people'], undefined,
+    { columns: ['sn', 'service'], form_workflow_id: '4' }));
 });

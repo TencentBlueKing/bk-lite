@@ -160,3 +160,106 @@ def test_queue_failure_is_visible_and_concurrent_submissions_are_bounded(export_
     for _ in range(3):
         assert export_jobs.submit(req, selection).status == "pending"
     assert export_tasks(req).status_code == 400
+
+
+def test_export_has_grouped_system_columns_and_rich_form_fields(export_sample):
+    from apps.itsm.models import Service, TicketTag, TicketTask
+    from apps.itsm.services.ticket.export_jobs import generate, submit
+    from apps.itsm.views.ticket_export import download_export, export_fields
+
+    ticket, _ = export_sample
+    ticket.service = Service.objects.create(name="账号申请", workflow=ticket.workflow, domain=ticket.domain)
+    TicketTask.objects.create(ticket=ticket, node_id="handle", node_name="服务处理", assignee="handler")
+    ticket.tags.add(TicketTag.objects.create(name="紧急", domain=ticket.domain))
+    version = ticket.workflow_version
+    version.design["form_schema"]["fields"] += [
+        {"key": "choices", "type": "multiselect", "label": "影响范围", "source": {"options": [{"label": "桌面端", "value": "web"}]}},
+        {"key": "people", "type": "multiUser", "label": "联系人"},
+        {"key": "uploads", "type": "attachment", "label": "申请材料"},
+        {
+            "key": "lines",
+            "type": "table",
+            "label": "申请明细",
+            "children": [
+                {"key": "product", "type": "input", "label": "产品"},
+                {"key": "internal", "type": "input", "label": "内部备注", "state": "hidden"},
+            ],
+        },
+    ]
+    version.save(update_fields=["design"])
+    ticket.form_data.update(
+        {
+            "choices": ["web", "other"],
+            "people": ["owner", "handler"],
+            "uploads": ["attachments/abcd1234/验收.pdf"],
+            "lines": [{"product": "笔记本", "internal": "保密"}],
+        }
+    )
+    ticket.save(update_fields=["form_data", "service"])
+    params = {"workflow_id": str(ticket.workflow_id)}
+    assert export_fields(request(payload=params, username="owner")).status_code == 403
+    assert export_fields(request(payload=params, username="outsider", permissions=EXPORT)).status_code == 404
+    catalog = data(export_fields(request(payload=params, username="owner", permissions=EXPORT)))
+    assert {group["key"] for group in catalog["groups"]} >= {"basic", "flow", "time", "sla"}
+    assert {field["key"] for field in catalog["fields"]} >= {"choices", "people", "uploads", "lines"}
+    assert {"secret", "internal", "product"}.isdisjoint(field["key"] for field in catalog["fields"])
+    req = request(username="owner", permissions=EXPORT)
+    task = submit(
+        req,
+        {
+            "ids": [ticket.pk],
+            "columns": ["service", "assignees", "tags", "node", "created_at"],
+            "form_workflow_id": str(ticket.workflow_id),
+            "form_columns": ["choices", "people", "uploads", "lines"],
+        },
+    )
+    generate(task.pk)
+    response = download_export(req, task.pk)
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(b"".join(response.streaming_content))).active
+    rows = list(sheet.values)
+    assert rows[0] == ("单号", "服务", "当前处理人", "标签", "当前节点", "创建时间", "影响范围", "联系人", "申请材料", "申请明细")
+    assert rows[1][:5] == (ticket.sn, "账号申请", "handler", "紧急", "服务处理")
+    assert rows[1][5].date() == timezone.localtime(ticket.created_at).date()
+    assert rows[1][6:] == ("桌面端、other", "owner、handler", "验收.pdf", "产品：笔记本")
+    version.design["form_schema"]["fields"][-1]["children"][0]["state"] = "hidden"
+    version.save(update_fields=["design"])
+    assert download_export(req, task.pk).status_code == 403
+
+
+def test_all_system_columns_and_foreign_workflow_only_gets_system_values(export_sample):
+    from apps.itsm.models import Ticket, TicketLog, TicketSurvey, Workflow
+    from apps.itsm.services.ticket.export_fields import COLUMNS
+    from apps.itsm.services.ticket.export_jobs import generate, submit
+    from apps.itsm.views.ticket_export import download_export
+
+    ticket, _ = export_sample
+    TicketLog.objects.create(ticket=ticket, action="submit", operator="owner")
+    TicketSurvey.objects.create(ticket=ticket, score=5)
+    other = Ticket.objects.create(
+        sn="OTHER-FLOW",
+        title="其他流程",
+        workflow=Workflow.objects.create(name="其他流程", key="rich-other"),
+        creator="owner",
+        form_data={"amount": 999},
+    )
+    req = request(username="owner", permissions=EXPORT)
+    task = submit(
+        req,
+        {
+            "ids": [ticket.pk, other.pk],
+            "columns": list(COLUMNS),
+            "form_workflow_id": str(ticket.workflow_id),
+            "form_columns": ["amount"],
+        },
+    )
+    generate(task.pk)
+    response = download_export(req, task.pk)
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(b"".join(response.streaming_content))).active
+    header, *rows = sheet.values
+    records = {row[0]: dict(zip(header, row)) for row in rows}
+    assert records[other.sn]["申请金额"] is None
+    assert records[ticket.sn]["申请金额"] == 200 and records[ticket.sn]["满意度"] == 5
+    assert records[ticket.sn]["流程版本"] == ticket.workflow_version.version_no
+    assert records[ticket.sn]["首次提交时间"] is not None

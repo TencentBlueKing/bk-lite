@@ -15,7 +15,8 @@ from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from apps.core.logger import itsm_logger as logger
 from apps.itsm.models import TicketExportTask, UserPreference
 from apps.itsm.services.integrations import live_identity
-from apps.itsm.services.ticket.form_filters import InvalidFormFilter, field_catalog, form_field, is_number
+from apps.itsm.services.ticket import export_fields
+from apps.itsm.services.ticket.form_filters import InvalidFormFilter, form_field
 from apps.itsm.services.ticket.listing import filtered_tickets, validate_filters
 from apps.itsm.views.access import domain_of, has_permission, ticket_scope
 
@@ -34,21 +35,29 @@ def prepare_export(request, payload, row_limit):
     if not isinstance(keys, list) or len(keys) > MAX_FORM_COLUMNS or any(not isinstance(key, str) for key in keys):
         raise InvalidFormFilter(f"最多导出 {MAX_FORM_COLUMNS} 个表单字段")
     selection = {"filters": filters, "form_columns": list(dict.fromkeys(keys))}
-    scoped = ticket_scope(request)
+    columns = export_fields.selected_columns(payload.get("columns", export_fields.LEGACY_COLUMNS))
+    if "columns" in payload:
+        selection["columns"] = columns
     workflow_id = filters.get("workflow_id")
-    catalog = field_catalog(request, scoped, workflow_id) if workflow_id and (keys or filters.get("form_filters")) else {}
+    if payload.get("form_workflow_id"):
+        chosen_workflow = validate_filters({"workflow_id": payload["form_workflow_id"]}).get("workflow_id")
+        if workflow_id and chosen_workflow != workflow_id:
+            raise InvalidFormFilter("请选择当前筛选流程的表单字段")
+        workflow_id = chosen_workflow
+        selection["form_workflow_id"] = workflow_id
+    scoped = ticket_scope(request)
+    queryset = filtered_tickets(request, scoped, filters)
+    catalog = export_fields.form_export_catalog(request, scoped, workflow_id) if workflow_id and keys else {}
     fields = [form_field(catalog, key) for key in selection["form_columns"]]
-    queryset = filtered_tickets(request, scoped, filters, catalog)
+    if "columns" in payload:
+        export_fields.set_option_labels(fields)
     if "ids" in payload:
         ids = payload["ids"]
         if not isinstance(ids, list) or not 1 <= len(ids) <= row_limit or any(type(pk) is not int or not 0 < pk < 2**63 for pk in ids):
             raise InvalidFormFilter("请选择有效的工单后再导出")
         selection["ids"] = list(dict.fromkeys(ids))
         queryset = queryset.filter(pk__in=selection["ids"])
-    needed = ["sn", "title", "creator", "status__name", "workflow_version_id"]
-    if fields:
-        needed.append("form_data")
-    return selection, queryset.select_related("status").only(*needed), fields
+    return selection, export_fields.project_export(queryset, columns, fields), fields
 
 
 def _write_row(sheet, values):
@@ -62,30 +71,24 @@ def _write_row(sheet, values):
     sheet.append(cells)
 
 
-def _field_value(ticket, field):
-    if ticket.workflow_version_id not in field["version_ids"]:
-        return None
-    value = ticket.form_data.get(field["key"])
-    return value if isinstance(value, str) or is_number(value) else None
-
-
-def workbook(queryset, fields, row_limit):
+def workbook(queryset, fields, row_limit, columns=None):
+    system_columns = [export_fields.COLUMNS[key] for key in columns or export_fields.LEGACY_COLUMNS]
     book = Workbook(write_only=True)
     sheet = book.create_sheet("工单")
     buffer = BytesIO()
     rows = {}
-    field_versions = {field["key"]: {"type": field["type"], "versions": set()} for field in fields}
+    field_versions = {field["key"]: set() for field in fields}
     total_text = 0
-    _write_row(sheet, ["单号", "标题", "提单人", "状态", *(field["label"] for field in fields)])
+    _write_row(sheet, [*(column.label for column in system_columns), *(field["label"] for field in fields)])
     try:
         for ticket in queryset[: row_limit + 1].iterator(chunk_size=50):
             if len(rows) >= row_limit:
                 raise InvalidFormFilter(f"一次最多导出 {row_limit} 张工单，请缩小筛选范围")
-            values = [ticket.sn, ticket.title, ticket.creator, ticket.status.name if ticket.status_id else ""]
+            values = [column.read(ticket) for column in system_columns]
             for field in fields:
-                value = _field_value(ticket, field)
+                value = export_fields.read_form_value(ticket, field)
                 if value is not None:
-                    field_versions[field["key"]]["versions"].add(ticket.workflow_version_id)
+                    field_versions[field["key"]].add(ticket.workflow_version_id)
                 values.append(value)
             total_text += sum(min(len(value), 32767) for value in values if isinstance(value, str))
             if total_text > MAX_TEXT_CHARS:
@@ -97,9 +100,8 @@ def workbook(queryset, fields, row_limit):
         book.save(buffer)
     if buffer.tell() > MAX_FILE_BYTES:
         raise InvalidFormFilter("导出文件超过 8 MB，请缩小筛选范围")
-    for field in field_versions.values():
-        field["versions"] = sorted(field["versions"])
-    return base64.b64encode(buffer.getvalue()).decode("ascii"), {"rows": rows, "fields": field_versions}
+    manifest = {field["key"]: export_fields.field_manifest(field, field_versions[field["key"]]) for field in fields}
+    return base64.b64encode(buffer.getvalue()).decode("ascii"), {"rows": rows, "fields": manifest}
 
 
 def owned_exports(request):
@@ -168,8 +170,8 @@ def generate(task_id):
         if not has_permission(request, "ticket-View"):
             raise PermissionError
         user.is_superuser = user.is_superuser and task.request_payload["see_all"]
-        _, queryset, fields = prepare_export(request, task.request_payload, MAX_ASYNC_ROWS)
-        encoded, manifest = workbook(queryset, fields, MAX_ASYNC_ROWS)
+        selection, queryset, fields = prepare_export(request, task.request_payload, MAX_ASYNC_ROWS)
+        encoded, manifest = workbook(queryset, fields, MAX_ASYNC_ROWS, selection.get("columns"))
         count = len(manifest["rows"])
         if not count:
             raise InvalidFormFilter("当前条件没有可导出的工单")
@@ -207,10 +209,15 @@ def check_file_permissions(request, task):
         if {str(pk): version for pk, version in current} != {str(pk): rows[str(pk)] for pk in batch}:
             raise PermissionError
     if manifest["fields"]:
-        workflow_id = task.request_payload["filters"]["workflow_id"]
-        catalog = field_catalog(request, scoped, workflow_id)
+        workflow_id = task.request_payload.get("form_workflow_id") or task.request_payload["filters"]["workflow_id"]
+        catalog = export_fields.form_export_catalog(request, scoped, workflow_id)
         for key, previous in manifest["fields"].items():
-            if previous["versions"]:
-                current = catalog.get(key)
-                if not current or current["type"] != previous["type"] or set(previous["versions"]) - current["version_ids"]:
+            if not previous["versions"]:
+                continue
+            current = catalog.get(key)
+            if not current or current["type"] != previous["type"] or set(previous["versions"]) - current["schemas"].keys():
+                raise PermissionError
+            for version, columns in previous.get("table_columns", {}).items():
+                available = current["schemas"][int(version)].get("export_columns", [])
+                if set(columns) - {column["key"] for column in available}:
                     raise PermissionError
