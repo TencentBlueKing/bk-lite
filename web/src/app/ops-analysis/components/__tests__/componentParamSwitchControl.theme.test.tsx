@@ -5,6 +5,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ComponentParamSwitchControl, {
   resolveComponentSwitchPopup,
+  resolveComponentSwitchPopupFont,
+  resolveComponentSwitchTriggerFont,
 } from '../componentParamSwitchControl';
 
 vi.mock('antd', async (importOriginal) => {
@@ -27,20 +29,63 @@ vi.mock('antd', async (importOriginal) => {
     Select: ({
       value,
       styles,
+      mode,
+      style,
+      popupMatchSelectWidth,
     }: {
-      value?: string | number;
-      styles?: { popup?: { root?: { zIndex?: number } } };
+      value?: string | number | Array<string | number>;
+      styles?: { popup?: { root?: { zIndex?: number; fontSize?: number } } };
+      mode?: string;
+      style?: { width?: string | number; fontSize?: number };
+      popupMatchSelectWidth?: boolean | number;
     }) => (
       <div
         data-testid="select"
-        data-value={String(value)}
+        data-mode={mode ?? ''}
+        data-value={Array.isArray(value) ? value.join(',') : String(value)}
         data-popup-z={styles?.popup?.root?.zIndex ?? ''}
+        data-popup-font={styles?.popup?.root?.fontSize ?? ''}
+        data-font={style?.fontSize ?? ''}
+        data-width={style?.width ?? ''}
+        data-popup-width={String(popupMatchSelectWidth ?? '')}
       />
     ),
   };
 });
 
 afterEach(cleanup);
+
+describe('resolveComponentSwitchPopupFont', () => {
+  it('keeps the design size on a reference screen and grows with a larger screen', () => {
+    expect(resolveComponentSwitchPopupFont(1)).toBe(13);
+    expect(resolveComponentSwitchPopupFont(1.16)).toBe(15);
+  });
+
+  it('does not go below the minimum font on a small screen', () => {
+    expect(resolveComponentSwitchPopupFont(0.72)).toBe(12);
+  });
+
+  it('leaves the menu font alone outside a screen', () => {
+    expect(resolveComponentSwitchPopupFont(undefined)).toBeUndefined();
+  });
+});
+
+describe('resolveComponentSwitchTriggerFont', () => {
+  it('uses the menu font directly when the canvas has no transform', () => {
+    expect(resolveComponentSwitchTriggerFont(1.16, 'viewportPixels', 2)).toBe(15);
+    expect(resolveComponentSwitchTriggerFont(0.72, 'viewportPixels', 0.5)).toBe(12);
+  });
+
+  it('divides the menu font by the canvas scale on a design canvas', () => {
+    expect(resolveComponentSwitchTriggerFont(1.16, 'designTransform', 2)).toBe(7.5);
+    expect(resolveComponentSwitchTriggerFont(0.72, 'designTransform', 0.5)).toBe(24);
+  });
+
+  it('keeps the menu font when there is no canvas scale to undo', () => {
+    expect(resolveComponentSwitchTriggerFont(1)).toBe(13);
+    expect(resolveComponentSwitchTriggerFont(undefined, 'designTransform', 2)).toBeUndefined();
+  });
+});
 
 describe('ComponentParamSwitchControl screen theme', () => {
   const options = [
@@ -77,6 +122,71 @@ describe('ComponentParamSwitchControl screen theme', () => {
     expect(container.querySelector('[data-screen-widget-theme]')).toBeNull();
     expect(screen.getByTestId('select')).toBeTruthy();
     expect(screen.getByTestId('select').getAttribute('data-popup-z')).toBe('');
+  });
+
+  it('scales the portaled menu font with the screen, not the widget', () => {
+    render(
+      <ComponentParamSwitchControl
+        inputConfig={{ control: 'select', multiple: true }}
+        options={options}
+        value={['a']}
+        scale={2}
+        screenDensity={1.16}
+      />,
+    );
+
+    const select = screen.getByTestId('select');
+    expect(select.getAttribute('data-popup-font')).toBe('15');
+    expect(select.getAttribute('data-font')).toBe('15');
+  });
+
+  it('undoes the canvas scale on the trigger so it matches the menu', () => {
+    render(
+      <ComponentParamSwitchControl
+        inputConfig={{ control: 'select', componentSwitch: true }}
+        options={options}
+        value="a"
+        scale={2}
+        screenDensity={1.16}
+        layoutMode="designTransform"
+        fitScale={2}
+      />,
+    );
+
+    const select = screen.getByTestId('select');
+    expect(select.getAttribute('data-popup-font')).toBe('15');
+    expect(select.getAttribute('data-font')).toBe('7.5');
+  });
+
+  it('leaves both fonts to the component library outside a screen', () => {
+    render(
+      <ComponentParamSwitchControl
+        inputConfig={{ control: 'select', componentSwitch: true }}
+        options={options}
+        value="a"
+      />,
+    );
+
+    const select = screen.getByTestId('select');
+    expect(select.getAttribute('data-popup-font')).toBe('');
+    expect(select.getAttribute('data-font')).toBe('');
+  });
+
+  it('keeps a multiple select trigger at a fixed width and lets the menu follow it', () => {
+    const { container } = render(
+      <ComponentParamSwitchControl
+        inputConfig={{ control: 'select', multiple: true, componentSwitch: true }}
+        options={options}
+        value={['a', 'b']}
+      />,
+    );
+
+    const select = screen.getByTestId('select');
+    expect(select.getAttribute('data-mode')).toBe('multiple');
+    expect(select.getAttribute('data-value')).toBe('a,b');
+    expect(select.getAttribute('data-width')).toBe('');
+    expect(select.getAttribute('data-popup-width')).toBe('');
+    expect(container.querySelector('[style*="--ops-switch-select-multiple: 200px"]')).toBeTruthy();
   });
 
   it('keeps the full radio label on the title when the visible text is capped', () => {
