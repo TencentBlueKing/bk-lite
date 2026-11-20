@@ -1,6 +1,7 @@
 """对话把明确要求记下的知识落成文本资料。"""
 
 import importlib
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,33 +9,43 @@ import pytest
 from django.apps import apps
 from django.core.files.storage import InMemoryStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIRequestFactory
 
+from apps.base.models import User as AuthUser
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMSkill, Material, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMSkill, Material, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.wiki.chat_material_service import (
     REPLY_DENIED,
     REPLY_FAILED,
+    REPLY_KB_DENIED,
     REPLY_NAME_KB,
     REPLY_NO_KB,
     REPLY_NOT_WRITTEN,
     REPLY_SUCCESS,
     REPLY_SWITCH_OFF,
     SAVE_WIKI_MATERIAL_TOOL_NAME,
+    SUMMARY_CONFIRMED,
+    SUMMARY_CONFLICT,
+    SUMMARY_GENERATED_PREFIX,
+    SUMMARY_QUIET,
     WIKI_MATERIAL_ACTOR_KEY,
     WIKI_MATERIAL_TOOL_NAME,
     actor_for_chat_flow_input,
     apply_wiki_material_runtime,
     external_actor,
     is_chat_sourced_material,
+    read_chat_wiki_outcome,
     system_actor,
     wiki_grounded_uses_single_model_call,
     write_chat_wiki_material,
 )
+from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER
 from apps.opspilot.services.wiki.material_source_service import source_metadata
 from apps.opspilot.tests.wiki.factories import WikiFactory
+from apps.opspilot.views.chat_wiki_material import chat_wiki_material_decide, chat_wiki_material_outcome
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.models.operation_log import OperationLog
 
@@ -44,7 +55,7 @@ _BODY_TAIL = "BODY_TAIL_SENTINEL"
 _BROKER_SECRET = "redis://:hunter2-secret@broker:6379/0"
 
 
-def _user(username="alice", domain="corp.example", user_id="user-alice", disabled=False):
+def _user(username="alice", domain="corp.example", user_id="user-alice", disabled=False, group_list=None):
     return SystemUser.objects.create(
         username=username,
         domain=domain,
@@ -53,6 +64,7 @@ def _user(username="alice", domain="corp.example", user_id="user-alice", disable
         password="x",
         user_id=user_id,
         disabled=disabled,
+        group_list=[{"id": 1, "name": "运维"}] if group_list is None else group_list,
     )
 
 
@@ -103,7 +115,16 @@ def test_success_enqueues_text_material_and_records_the_person(caplog):
         reply = _write(skill, user, title="  " + ("标题" * 200), body=body, knowledge_base_name="别的库")
 
     assert reply == REPLY_SUCCESS
+    assert reply == "正在写入，请在此等待结果"
+    assert "稍候可以在知识库看到新知识" not in reply
     material = Material.objects.get()
+    outcome = read_chat_wiki_outcome(material)
+    assert set(outcome) == {"material_id", "phase", "summary", "pages", "checks"}
+    assert outcome["material_id"] == material.id
+    assert outcome["phase"] == "writing"
+    assert outcome["summary"] == reply
+    assert outcome["pages"] == []
+    assert outcome["checks"] == []
     assert material.knowledge_base_id == kb.id
     assert material.material_type == "text"
     assert material.status == "queued"
@@ -194,12 +215,15 @@ def test_audit_failure_after_enqueue_keeps_queued_material(caplog):
     assert OperationLog.objects.count() == 0
     assert BuildRecord.objects.filter(trigger=QUEUE_ITEM_TRIGGER, inputs__material_id=material.id).exists()
     records = [record for record in caplog.records if record.name == "opspilot" and record.levelname == "WARNING"]
-    assert len(records) == 1
-    assert records[0].msg == "chat wiki material audit failed kb_id=%s material_id=%s error_type=%s"
-    assert records[0].args == (kb.id, material.id, "RuntimeError")
-    rendered = records[0].getMessage()
+    audit = [record for record in records if record.msg == "chat wiki material audit failed kb_id=%s material_id=%s error_type=%s"]
+    event = [record for record in records if record.msg == "chat wiki material event failed material_id=%s error_type=%s"]
+    assert len(audit) == 1
+    assert len(event) == 1
+    assert audit[0].args == (kb.id, material.id, "RuntimeError")
+    rendered = audit[0].getMessage()
     assert rendered == f"chat wiki material audit failed kb_id={kb.id} material_id={material.id} error_type=RuntimeError"
     assert body not in rendered
+    assert body not in event[0].getMessage()
     assert "audit down" not in rendered
     assert "Traceback" not in caplog.text
 
@@ -467,8 +491,13 @@ def test_tool_reads_server_actor_and_has_no_user_argument():
     skill = _skill(kb)
     assert "username" not in save_wiki_material.args
     assert WIKI_MATERIAL_ACTOR_KEY not in save_wiki_material.args
+    assert "不要声称知识页已经存在" in (save_wiki_material.description or "")
+    captured = []
 
-    with _patch_runner():
+    def _capture(name, payload):
+        captured.append((name, payload))
+
+    with _patch_runner(), patch("langchain_core.callbacks.dispatch_custom_event", side_effect=_capture):
         reply = save_wiki_material.func(
             explicit_request=True,
             title="磁盘将满",
@@ -477,13 +506,22 @@ def test_tool_reads_server_actor_and_has_no_user_argument():
             config={
                 "configurable": {
                     "skill_id": skill.id,
+                    "skill_session_id": "sess-wiki-1",
                     WIKI_MATERIAL_ACTOR_KEY: system_actor(user.username, user.domain),
                 }
             },
         )
 
     assert reply == REPLY_SUCCESS
-    assert Material.objects.get().knowledge_base_id == kb.id
+    material = Material.objects.get()
+    assert material.knowledge_base_id == kb.id
+    assert captured == [
+        (
+            "wiki_material_write",
+            {"material_id": material.id, "phase": "writing", "summary": reply},
+        )
+    ]
+    assert material.text_content not in str(captured)
     assert OperationLog.objects.get().username == user.username
 
 
@@ -771,3 +809,419 @@ def test_openai_enrich_uses_the_authenticated_user():
 
     assert params[WIKI_MATERIAL_ACTOR_KEY] == system_actor("alice", "corp.example")
     assert params[CALLER_IDENTITY_CONFIG_KEY]["username"] == "alice"
+
+
+def test_outsider_is_told_to_contact_an_admin_and_leaves_nothing():
+    user = _user(group_list=[{"id": 9, "name": "别的组"}])
+    skill = _skill(_kb("运维知识"))
+
+    reply = _write(skill, user)
+
+    assert reply == REPLY_KB_DENIED
+    assert Material.objects.count() == 0
+    assert OperationLog.objects.count() == 0
+
+
+def test_superuser_can_write_without_team_membership():
+    user = _user(username="rooty", user_id="user-rooty", group_list=[])
+    auth = AuthUser.objects.create_user(username="rooty", password="x", domain=user.domain, locale="zh-CN")
+    auth.is_superuser = True
+    auth.save(update_fields=["is_superuser"])
+    skill = _skill(_kb("运维知识"))
+
+    with _patch_runner():
+        reply = _write(skill, user)
+
+    assert reply == REPLY_SUCCESS
+    assert read_chat_wiki_outcome(Material.objects.get())["phase"] == "writing"
+    assert Material.objects.count() == 1
+
+
+def test_event_dispatch_failure_still_reports_writing(caplog):
+    user = _user()
+    skill = _skill(_kb("运维知识"))
+    caplog.set_level("WARNING", logger="opspilot")
+
+    with _patch_runner(), patch(
+        "langchain_core.callbacks.dispatch_custom_event",
+        side_effect=RuntimeError("event down"),
+    ):
+        reply = _write(skill, user, body="正文不应出现在事件失败日志")
+
+    assert reply == REPLY_SUCCESS
+    material = Material.objects.get()
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "writing"
+    assert outcome["summary"] == reply
+    assert material.status == "queued"
+    assert "event down" not in caplog.text
+    assert "正文不应出现在事件失败日志" not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+
+
+def _chat_material(kb, body="事实"):
+    return Material.objects.create(
+        knowledge_base=kb,
+        name="对话资料",
+        material_type="text",
+        text_content=body,
+        chat_sourced=True,
+        status="building",
+    )
+
+
+def _record_build(material, **overrides):
+    status = overrides.pop("status", "success")
+    counts = overrides.pop("counts", {"new": 0})
+    page_actions = overrides.pop("page_actions", [])
+    inputs = {"material_id": material.pk}
+    extra_inputs = overrides.pop("inputs", None)
+    if isinstance(extra_inputs, dict):
+        inputs.update(extra_inputs)
+    inputs["material_id"] = material.pk
+    return BuildRecord.objects.create(
+        knowledge_base=material.knowledge_base,
+        trigger=QUEUE_ITEM_TRIGGER,
+        status=status,
+        stage="done",
+        counts=counts,
+        page_actions=page_actions,
+        inputs=inputs,
+    )
+
+
+@pytest.mark.parametrize("status", ["success", "partial"])
+def test_published_build_with_a_new_page_names_that_page(status):
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _record_build(
+        material,
+        status=status,
+        counts={"new": 1},
+        page_actions=[{"action": "create", "page_id": 41, "title": "磁盘清理"}],
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "published"
+    assert outcome["summary"] == f"{SUMMARY_GENERATED_PREFIX}磁盘清理"
+    assert outcome["pages"] == [{"id": 41, "title": "磁盘清理"}]
+    assert outcome["checks"] == []
+
+
+def test_published_title_comes_from_the_build_trace_when_the_record_list_is_empty():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _record_build(
+        material,
+        counts={"new": 1},
+        page_actions=[],
+        inputs={"source_trace": {"page_actions": [{"action": "create", "page_id": 41, "title": "磁盘清理"}]}},
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["summary"] == f"{SUMMARY_GENERATED_PREFIX}磁盘清理"
+    assert outcome["pages"] == [{"id": 41, "title": "磁盘清理"}]
+
+
+def test_outcome_uses_the_latest_build_for_the_material():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _record_build(
+        material,
+        status="failed",
+        counts={"new": 1},
+        page_actions=[{"action": "create", "page_id": 1, "title": "旧页"}],
+    )
+    _record_build(
+        material,
+        status="success",
+        counts={"new": 1},
+        page_actions=[{"action": "create", "page_id": 41, "title": "磁盘清理"}],
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "published"
+    assert outcome["summary"] == f"{SUMMARY_GENERATED_PREFIX}磁盘清理"
+    assert outcome["pages"] == [{"id": 41, "title": "磁盘清理"}]
+
+
+def test_conflict_card_uses_the_frozen_current_body():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    page = KnowledgePage.objects.create(knowledge_base=kb, title="告警规则", page_type="concept")
+    frozen = PageVersion.objects.create(page=page, no=1, body="冻结时的规则", is_current=False, change_type="ai_create")
+    live = PageVersion.objects.create(page=page, no=2, body="后来改过的规则", is_current=True, change_type="human_edit")
+    page.current_version = live
+    page.save(update_fields=["current_version"])
+    candidate = PageVersion.objects.create(page=page, no=3, body="新规则", is_current=False, change_type="candidate")
+    CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="cannot_merge",
+        status="open",
+        related={"pages": [page.id], "materials": [material.id]},
+        candidate_version=candidate,
+        suggested_actions=["keep_current"],
+        decision_context={"locked_current_version_id": frozen.id},
+    )
+    _record_build(material)
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "needs_decision"
+    assert outcome["checks"][0]["current_body"] == "冻结时的规则"
+    assert outcome["checks"][0]["incoming_body"] == "新规则"
+
+
+@pytest.mark.parametrize("status", ["success", "partial"])
+def test_published_build_without_a_new_page_says_there_is_no_new_conflict(status):
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _record_build(material, status=status)
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "published"
+    assert outcome["summary"] == SUMMARY_QUIET
+    assert outcome["pages"] == []
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled"])
+def test_failed_or_cancelled_build_keeps_the_material(status):
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _record_build(material, status=status, counts={"new": 1})
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "failed"
+    assert outcome["summary"] == REPLY_FAILED
+    assert Material.objects.filter(pk=material.pk, text_content="事实").exists()
+
+
+@pytest.mark.parametrize("status", ["build_failed", "parse_failed", "invalid"])
+def test_failed_material_status_is_a_failed_card(status):
+    material = _chat_material(_kb("运维知识"))
+    material.status = status
+    material.save(update_fields=["status"])
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "failed"
+    assert outcome["summary"] == REPLY_FAILED
+    assert outcome["pages"] == []
+    assert outcome["checks"] == []
+
+
+def test_open_check_for_this_material_asks_for_a_decision_in_the_chat():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    other = _chat_material(kb, body="另一份")
+    page = WikiFactory().page(knowledge_base=kb, title="告警规则", body="现" * 4001)
+    candidate = PageVersion.objects.create(page=page, no=2, body="新" * 4001, change_type="candidate", is_current=False)
+    CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="conflict",
+        status="open",
+        related={"pages": [page.id], "materials": [material.id]},
+        candidate_version=candidate,
+        suggested_actions=["keep_current", "edit_accept"],
+    )
+    CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="conflict",
+        status="open",
+        related={"pages": [page.id], "materials": [other.id]},
+        suggested_actions=["keep_current"],
+    )
+
+    _record_build(
+        material,
+        counts={"new": 1},
+        page_actions=[{"action": "create", "page_id": page.id, "title": page.title}],
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "needs_decision"
+    assert outcome["summary"] == SUMMARY_CONFLICT
+    assert outcome["pages"] == []
+    assert len(outcome["checks"]) == 1
+    check = outcome["checks"][0]
+    assert check["page_id"] == page.id
+    assert check["page_title"] == "告警规则"
+    assert check["current_body"] == "现" * 4000
+    assert check["incoming_body"] == "新" * 4000
+    assert check["actions"] == ["keep_current", "edit_accept"]
+    assert check["status"] == "open"
+    assert "现" * 4001 not in check["current_body"]
+
+
+def test_non_chat_material_has_no_write_result():
+    kb = _kb("运维知识")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="上传资料",
+        material_type="text",
+        text_content="上传正文",
+        chat_sourced=False,
+        status="built",
+    )
+    _record_build(
+        material,
+        counts={"new": 1},
+        page_actions=[{"action": "new", "page_id": 7, "title": "新页"}],
+    )
+
+    viewer = _auth_user("member")
+    response = _outcome_request(viewer, material.id)
+    assert response.status_code == 404
+    assert _body(response)["message"] == "没有这条写入结果"
+    missing = _outcome_request(viewer, 0)
+    assert missing.status_code == 404
+    assert _body(missing)["message"] == "没有这条写入结果"
+    assert Material.objects.filter(pk=material.pk).exists()
+
+
+def _auth_user(username, *, superuser=False, groups=None):
+    user = AuthUser.objects.create_user(
+        username=username,
+        password="x",
+        domain="corp.example",
+        locale="zh-CN",
+        group_list=[{"id": 1, "name": "运维"}] if groups is None else groups,
+    )
+    if superuser:
+        user.is_superuser = True
+        user.group_list = []
+        user.save(update_fields=["is_superuser", "group_list"])
+    return user
+
+
+def _body(response):
+    return json.loads(response.content)
+
+
+def _outcome_request(user, material_id):
+    request = APIRequestFactory().get(f"/opspilot/chat_wiki_material/{material_id}/outcome/")
+    request.user = user
+    return chat_wiki_material_outcome(request, material_id=material_id)
+
+
+def _decide_request(user, material_id, payload):
+    request = APIRequestFactory().post(
+        f"/opspilot/chat_wiki_material/{material_id}/decide/",
+        payload,
+        format="json",
+    )
+    request.user = user
+    return chat_wiki_material_decide(request, material_id=material_id)
+
+
+def _decision_fixture():
+    kb = _kb("运维知识")
+    material = _chat_material(kb, body="待确认正文")
+    page = KnowledgePage.objects.create(knowledge_base=kb, title="告警规则", page_type="concept")
+    current = PageVersion.objects.create(page=page, no=1, body="当前规则", is_current=True, change_type="ai_create")
+    page.current_version = current
+    page.save(update_fields=["current_version"])
+    check = create_candidate(
+        page,
+        body="新规则",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=material,
+        related={"pages": [page.id], "materials": [material.id]},
+        suggested_actions=["keep_current", "edit_accept"],
+    )
+    _record_build(material)
+    return kb, material, check
+
+
+def test_outcome_and_decision_follow_the_current_operator():
+    _kb_row, material, check = _decision_fixture()
+    member = _auth_user("member")
+    outsider = _auth_user("outsider", groups=[{"id": 9, "name": "别的组"}])
+    superuser = _auth_user("boss", superuser=True)
+    secret = "SECRET_BODY_SENTINEL"
+
+    denied = _outcome_request(outsider, material.id)
+    assert denied.status_code == 403
+    assert _body(denied)["message"] == REPLY_KB_DENIED
+
+    allowed = _outcome_request(member, material.id)
+    assert allowed.status_code == 200
+    payload = _body(allowed)["data"]
+    assert set(payload) == {"material_id", "phase", "summary", "pages", "checks"}
+    assert payload["phase"] == "needs_decision"
+    assert payload["summary"] == SUMMARY_CONFLICT
+    assert payload["checks"][0]["current_body"] == "当前规则"
+    assert payload["checks"][0]["incoming_body"] == "新规则"
+    assert payload["checks"][0]["actions"] == ["keep_current", "edit_accept"]
+
+    boss = _outcome_request(superuser, material.id)
+    assert boss.status_code == 200
+    assert _body(boss)["data"]["material_id"] == material.id
+
+    rejected = _decide_request(outsider, material.id, {"check_id": check.id, "action": "keep_current"})
+    assert rejected.status_code == 403
+    check.refresh_from_db()
+    assert check.status == "open"
+    assert OperationLog.objects.filter(action_type=OperationLog.ACTION_EXECUTE).count() == 0
+
+    unknown = _decide_request(member, material.id, {"check_id": check.id, "action": "drop", "body": secret})
+    assert unknown.status_code == 400
+    check.refresh_from_db()
+    assert check.status == "open"
+
+    decided = _decide_request(
+        member,
+        material.id,
+        {"check_id": check.id, "action": "keep_current", "body": secret},
+    )
+    assert decided.status_code == 200
+    body = decided.content.decode()
+    assert secret not in body
+    result = _body(decided)["data"]
+    assert result["phase"] == "published"
+    assert result["summary"] == SUMMARY_CONFIRMED
+    assert result["checks"][0]["status"] != "open"
+    check.refresh_from_db()
+    assert check.status != "open"
+    log = OperationLog.objects.get(action_type=OperationLog.ACTION_EXECUTE)
+    assert log.app == "opspilot"
+    assert log.target_id == str(check.id)
+    assert log.username == member.username
+    rendered = str(log.detail) + log.summary
+    assert secret not in rendered
+    assert "body" not in log.detail
+
+    again = _decide_request(member, material.id, {"check_id": check.id, "action": "keep_current", "body": secret})
+    assert again.status_code == 200
+    assert _body(again)["data"]["phase"] == "published"
+    assert _body(again)["data"]["summary"] == SUMMARY_CONFIRMED
+    assert OperationLog.objects.filter(action_type=OperationLog.ACTION_EXECUTE).count() == 1
+
+
+@pytest.mark.parametrize("action", ["use_new", "edit_accept"])
+def test_accepting_actions_pass_the_chat_material(action):
+    kb = _kb("运维知识")
+    material = _chat_material(kb, body="待确认正文")
+    page = KnowledgePage.objects.create(knowledge_base=kb, title="告警规则", page_type="concept")
+    current = PageVersion.objects.create(page=page, no=1, body="当前规则", is_current=True, change_type="ai_create")
+    page.current_version = current
+    page.save(update_fields=["current_version"])
+    candidate = PageVersion.objects.create(page=page, no=2, body="新规则", is_current=False, change_type="candidate")
+    check = CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="conflict",
+        status="open",
+        related={"pages": [page.id], "materials": [material.id]},
+        candidate_version=candidate,
+        suggested_actions=["keep_current", "use_new", "edit_accept"],
+    )
+    member = _auth_user(f"member-{action}")
+
+    with patch("apps.opspilot.services.wiki.check_service.decide_check") as decide:
+        kept = _decide_request(member, material.id, {"check_id": check.id, "action": "keep_current"})
+        accepted = _decide_request(member, material.id, {"check_id": check.id, "action": action, "body": "改后正文"})
+
+    assert kept.status_code == 200
+    assert accepted.status_code == 200
+    assert [call.args[1] for call in decide.call_args_list] == ["keep_current", action]
+    assert decide.call_args_list[0].kwargs["material"] is None
+    assert decide.call_args_list[1].kwargs["material"].pk == material.pk

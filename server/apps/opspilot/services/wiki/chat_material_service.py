@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from django.db import transaction
 from django.db.models import Q
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMSkill, Material, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
-from apps.opspilot.models import BuildRecord, LLMSkill, Material, WikiKnowledgeBase
 from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER, enqueue_material_builds
 from apps.opspilot.services.wiki.material_source_service import source_metadata
 from apps.system_mgmt.models import User as SystemUser
@@ -19,16 +20,27 @@ WIKI_MATERIAL_ACTOR_KEY = "wiki_material_actor"
 WIKI_MATERIAL_TOOL_NAME = "wiki_material"
 SAVE_WIKI_MATERIAL_TOOL_NAME = "save_wiki_material"
 
-REPLY_SUCCESS = "正在写入，稍候可以在知识库看到新知识"
+REPLY_SUCCESS = "正在写入，请在此等待结果"
 REPLY_FAILED = "写入失败，请稍后再试"
 REPLY_DENIED = "当前无权限"
+REPLY_KB_DENIED = "没有权限操作该知识库，请联系管理员"
+SUMMARY_CONFLICT = "这条知识与已有内容冲突，请在对话里确认"
+SUMMARY_GENERATED_PREFIX = "知识已经生成："
+SUMMARY_QUIET = "知识已写入，没有新的冲突"
+SUMMARY_CONFIRMED = "已确认"
 REPLY_SWITCH_OFF = "该智能体不能修改知识库"
 REPLY_NO_KB = "没有选择知识库"
 REPLY_NAME_KB = "请指定要写入的知识库"
 REPLY_NOT_WRITTEN = "未写入知识库"
 
 _BODY_EXCERPT_LEN = 50
+_BODY_CAP = 4000
 _CREATED_BY_MAX = 32
+_SUCCEEDED_BUILD_STATUSES = frozenset({"success", "partial"})
+_FAILED_BUILD_STATUSES = frozenset({"failed", "cancelled"})
+_FAILED_MATERIAL_STATUSES = frozenset({"build_failed", "parse_failed", "invalid"})
+_NEW_PAGE_ACTIONS = frozenset({"create", "new"})
+_ACTIONS_WITH_MATERIAL = frozenset({"use_new", "edit_accept"})
 _DISCARDABLE_STATUSES = frozenset({"pending", "queued"})
 _ACTOR_MODES = frozenset({"system", "external", "anonymous"})
 _WIKI_MATERIAL_TOOL_MARKER = f"langchain:{WIKI_MATERIAL_TOOL_NAME}"
@@ -52,7 +64,7 @@ _PROMPT_WHEN_ON = (
     f"调用 {SAVE_WIKI_MATERIAL_TOOL_NAME}。分析或排障结束、或你认为结论有价值，都不要调用。"
     "title 写知识说明的短标题，body 写整理后的知识本身，不要写用户的指令句。"
     "绑定多个知识库时，knowledge_base_name 必须是用户点名的名称；只绑定一个时可以留空。"
-    "调用时 explicit_request 必须为 true。把工具返回的原文原样回复给用户，不要补充队列、审核或旧页是否已改。"
+    "调用时 explicit_request 必须为 true。把工具返回的原文原样回复给用户，不要改写，不要声称知识页已经存在，也不要补充队列、审核或旧页是否已改。"
 )
 
 
@@ -322,6 +334,8 @@ def write_chat_wiki_material(
     knowledge_base, refusal = _select_knowledge_base(skill, knowledge_base_name)
     if knowledge_base is None:
         return refusal or REPLY_NO_KB
+    if not _user_can_operate_knowledge_base(user, knowledge_base):
+        return REPLY_KB_DENIED
 
     maintainer = maintainer_kwargs(operator=user.username, domain=user.domain or "domain.com")
     maintainer["created_by"] = (maintainer.get("created_by") or "")[:_CREATED_BY_MAX]
@@ -354,6 +368,7 @@ def write_chat_wiki_material(
     if not _enqueue_succeeded(material.id, result):
         _discard_unbuilt_material(material.id)
         return REPLY_FAILED
+    _dispatch_wiki_material_write(material)
     try:
         _record_success_log(user=user, knowledge_base=knowledge_base, material=material, body=cleaned_body)
     except Exception as exc:
@@ -364,3 +379,246 @@ def write_chat_wiki_material(
             type(exc).__name__,
         )
     return REPLY_SUCCESS
+
+
+def _user_can_operate_knowledge_base(user, knowledge_base) -> bool:
+    # viewsets 包的初始化会回到本模块，顶层导入形成环。
+    from apps.opspilot.viewsets.wiki_team_scope import user_can_operate_knowledge_base
+
+    return user_can_operate_knowledge_base(user, knowledge_base)
+
+
+def _dispatch_wiki_material_write(material) -> None:
+    # langchain 只在对话写入成功时需要。顶层导入会让资料构建在导入本模块时带上它。
+    outcome = read_chat_wiki_outcome(material)
+    try:
+        from langchain_core.callbacks import dispatch_custom_event
+
+        dispatch_custom_event(
+            "wiki_material_write",
+            {"material_id": outcome["material_id"], "phase": outcome["phase"], "summary": outcome["summary"]},
+        )
+    except Exception as exc:
+        logger.warning(
+            "chat wiki material event failed material_id=%s error_type=%s",
+            material.pk,
+            type(exc).__name__,
+        )
+
+
+def _clip_body(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value[:_BODY_CAP]
+
+
+def _positive_id(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
+
+
+def _related_material_ids(related) -> set[int]:
+    if not isinstance(related, dict):
+        return set()
+    materials = related.get("materials")
+    if not isinstance(materials, list):
+        return set()
+    found = set()
+    for item in materials:
+        raw = item.get("material_id") if isinstance(item, dict) else item
+        if isinstance(item, dict) and raw in (None, ""):
+            raw = item.get("id")
+        parsed = _positive_id(raw)
+        if parsed is not None:
+            found.add(parsed)
+    return found
+
+
+def _related_page_id(related):
+    if not isinstance(related, dict):
+        return None
+    pages = related.get("pages")
+    if not isinstance(pages, list):
+        return None
+    for item in pages:
+        raw = item.get("id") if isinstance(item, dict) else item
+        parsed = _positive_id(raw)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _new_count(build) -> int:
+    counts = getattr(build, "counts", None)
+    if not isinstance(counts, dict):
+        return 0
+    return _positive_id(counts.get("new")) or 0
+
+
+def _page_actions(build):
+    actions = getattr(build, "page_actions", None)
+    if isinstance(actions, list) and actions:
+        return actions
+    inputs = getattr(build, "inputs", None)
+    trace = inputs.get("source_trace") if isinstance(inputs, dict) else None
+    nested = trace.get("page_actions") if isinstance(trace, dict) else None
+    return nested if isinstance(nested, list) else []
+
+
+def _new_pages(build) -> list[dict]:
+    actions = _page_actions(build)
+    if not isinstance(actions, list):
+        return []
+    pages = []
+    seen = set()
+    for item in actions:
+        if not isinstance(item, dict) or item.get("action") not in _NEW_PAGE_ACTIONS:
+            continue
+        page_id = _positive_id(item.get("page_id"))
+        if page_id is None or page_id in seen:
+            continue
+        seen.add(page_id)
+        title = item.get("title") if isinstance(item.get("title"), str) else ""
+        pages.append({"id": page_id, "title": title})
+    return pages
+
+
+def _related_checks(material):
+    matched = []
+    queryset = CheckItem.objects.filter(knowledge_base_id=material.knowledge_base_id).select_related("candidate_version").order_by("id")
+    for check in queryset:
+        if material.pk in _related_material_ids(check.related):
+            matched.append(check)
+    return matched
+
+
+def _latest_build(material):
+    return (
+        BuildRecord.objects.filter(
+            knowledge_base_id=material.knowledge_base_id,
+            inputs__material_id=material.pk,
+        )
+        .order_by("-id")
+        .first()
+    )
+
+
+def _locked_current_version(check):
+    context = check.decision_context if isinstance(check.decision_context, dict) else {}
+    locked_id = _positive_id(context.get("locked_current_version_id"))
+    if locked_id is None:
+        return None
+    return PageVersion.objects.filter(pk=locked_id).first()
+
+
+def _check_payload(check) -> dict:
+    page_id = _related_page_id(check.related)
+    page = None
+    if page_id is not None:
+        page = KnowledgePage.objects.select_related("current_version").filter(pk=page_id, knowledge_base_id=check.knowledge_base_id).first()
+    current = _locked_current_version(check)
+    if current is None and page is not None:
+        current = page.current_version
+    candidate = check.candidate_version
+    actions = check.suggested_actions if isinstance(check.suggested_actions, list) else []
+    return {
+        "id": check.id,
+        "page_id": page.id if page is not None else page_id,
+        "page_title": page.title if page is not None else "",
+        "current_body": _clip_body(getattr(current, "body", "")),
+        "incoming_body": _clip_body(getattr(candidate, "body", "")),
+        "actions": list(actions),
+        "status": check.status,
+    }
+
+
+def _outcome(material, phase: str, summary: str, pages: list, checks: list) -> dict:
+    return {
+        "material_id": material.pk,
+        "phase": phase,
+        "summary": summary,
+        "pages": pages,
+        "checks": checks,
+    }
+
+
+def read_chat_wiki_outcome(material) -> dict:
+    """从资料、该资料最新构建记录和相关检查项读出卡片结果。"""
+    checks = _related_checks(material)
+    payloads = [_check_payload(check) for check in checks]
+    if any(check.status == "open" for check in checks):
+        return _outcome(material, "needs_decision", SUMMARY_CONFLICT, [], payloads)
+    if checks:
+        return _outcome(material, "published", SUMMARY_CONFIRMED, [], payloads)
+    build = _latest_build(material)
+    build_status = getattr(build, "status", None)
+    if material.status in _FAILED_MATERIAL_STATUSES or build_status in _FAILED_BUILD_STATUSES:
+        return _outcome(material, "failed", REPLY_FAILED, [], [])
+    if build_status in _SUCCEEDED_BUILD_STATUSES and _new_count(build) > 0:
+        pages = _new_pages(build)
+        titles = [page["title"] for page in pages if page["title"]]
+        return _outcome(material, "published", SUMMARY_GENERATED_PREFIX + "、".join(titles), pages, [])
+    if build_status in _SUCCEEDED_BUILD_STATUSES:
+        return _outcome(material, "published", SUMMARY_QUIET, [], [])
+    return _outcome(material, "writing", REPLY_SUCCESS, [], [])
+
+
+def _record_decision_log(*, operator: str, domain: str, source_ip: str, material, check_id: int, action: str) -> None:
+    OperationLog.objects.create(
+        username=operator,
+        domain=domain or "domain.com",
+        source_ip=source_ip or "0.0.0.0",
+        app="opspilot",
+        action_type=OperationLog.ACTION_EXECUTE,
+        summary=f"对话确认知识检查 {check_id}",
+        target_type="wiki_check",
+        target_id=str(check_id),
+        detail={
+            "knowledge_base_id": material.knowledge_base_id,
+            "material_id": material.pk,
+            "check_id": check_id,
+            "action": action,
+        },
+    )
+
+
+def decide_chat_wiki_write(*, material_id: int, check_id: int, action: str, body: str, operator: str, domain: str, source_ip: str):
+    """确认这条资料相关的检查项。已经关闭的检查项再点一次，不再调用 decide_check。"""
+    # 审核决策只在对话里确认时需要，避免资料构建导入本模块时带上整套检查服务。
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    with transaction.atomic():
+        material = Material.objects.select_for_update().filter(pk=material_id, chat_sourced=True).first()
+        if material is None:
+            raise ValueError("missing write")
+        check = CheckItem.objects.select_for_update().filter(pk=check_id, knowledge_base_id=material.knowledge_base_id).first()
+        if check is None or material.pk not in _related_material_ids(check.related):
+            raise ValueError("unknown check")
+        actions = check.suggested_actions if isinstance(check.suggested_actions, list) else []
+        if check.status != "open":
+            if actions and action not in actions:
+                raise ValueError("unknown action")
+            return read_chat_wiki_outcome(material)
+        if action not in actions:
+            raise ValueError("unknown action")
+        decide_check(
+            check,
+            action,
+            operator=operator or "",
+            body=body or "",
+            material=material if action in _ACTIONS_WITH_MATERIAL else None,
+        )
+        _record_decision_log(
+            operator=operator,
+            domain=domain,
+            source_ip=source_ip,
+            material=material,
+            check_id=check_id,
+            action=action,
+        )
+        return read_chat_wiki_outcome(material)

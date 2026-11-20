@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 
+from apps.base.models import User as AuthUser
 from apps.opspilot.models import WikiKnowledgeBase
 
 
@@ -18,6 +19,28 @@ def _normalized_team_ids(values):
         except (TypeError, ValueError):
             continue
     return normalized
+
+
+def user_can_operate_knowledge_base(user, knowledge_base) -> bool:
+    """超级管理员，或 group_list 与这个库的管理组织有交集。只看这一个库。"""
+    if _is_superuser(user):
+        return True
+    return bool(_normalized_team_ids(getattr(user, "group_list", None)) & _normalized_team_ids(getattr(knowledge_base, "team", None)))
+
+
+def _is_superuser(user) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    # 系统用户表没有 is_superuser。同一个用户名和域的登录账号才有。
+    meta = getattr(user, "_meta", None)
+    fields = getattr(meta, "concrete_fields", None)
+    if fields is None or any(field.name == "is_superuser" for field in fields):
+        return False
+    username = str(getattr(user, "username", "") or "").strip()
+    domain = str(getattr(user, "domain", "") or "").strip()
+    if not username or not domain:
+        return False
+    return AuthUser.objects.filter(username=username, domain=domain, is_superuser=True).exists()
 
 
 def accessible_wiki_knowledge_base_ids(user):
