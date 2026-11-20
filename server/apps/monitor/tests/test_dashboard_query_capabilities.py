@@ -134,6 +134,68 @@ def test_capabilities_bind_canonical_plugin_object_names():
         assert "__$" not in query
 
 
+def _capability_with_template(fragment: str, object_name: str):
+    matches = [item for item in load_dashboard_query_capabilities().values() if object_name in item.object_names and fragment in item.template]
+    assert len(matches) == 1, fragment
+    return matches[0]
+
+
+def test_mssql_deadlock_increase_uses_chart_bucket_not_full_range():
+    """稀疏死锁次数按图表步长分桶。整窗 increase 会把相邻点涂成滚动合计。"""
+    mssql_deadlocks = _capability_with_template(
+        'increase(sqlserver_performance_value{counter="Number of Deadlocks/sec"',
+        "MSSQL",
+    )
+    postgres_deadlocks = _capability_with_template("increase(postgresql_deadlocks{", "Postgres")
+    mssql_deadlock_rate = _capability_with_template(
+        'rate(sqlserver_performance_value{counter="Number of Deadlocks/sec"',
+        "MSSQL",
+    )
+    start, end, step_seconds = 0, 3_600_000, 60
+
+    bucketed = build_dashboard_query(
+        capability_id=mssql_deadlocks.id,
+        monitor_object=_object("MSSQL"),
+        instance_ids=("('mssql-a',)",),
+        start=start,
+        end=end,
+        step_seconds=step_seconds,
+    )
+    assert "[1m]" in bucketed
+    assert "[1h]" not in bucketed
+
+    instant = build_dashboard_query(
+        capability_id=mssql_deadlocks.id,
+        monitor_object=_object("MSSQL"),
+        instance_ids=("('mssql-a',)",),
+        start=start,
+        end=end,
+    )
+    assert "[1h]" in instant
+
+    postgres = build_dashboard_query(
+        capability_id=postgres_deadlocks.id,
+        monitor_object=_object("Postgres"),
+        instance_ids=("('pg-a',)",),
+        start=start,
+        end=end,
+        step_seconds=step_seconds,
+    )
+    assert "[1m]" in postgres
+    assert "[1h]" not in postgres
+
+    rate = build_dashboard_query(
+        capability_id=mssql_deadlock_rate.id,
+        monitor_object=_object("MSSQL"),
+        instance_ids=("('mssql-a',)",),
+        start=start,
+        end=end,
+        step_seconds=step_seconds,
+    )
+    assert "[1h]" in rate
+    assert "[1m]" not in rate
+
+
 def test_static_capability_injects_authorized_instance_and_server_window():
     capability = next(
         item for item in load_dashboard_query_capabilities().values() if "Website" in item.object_names and "__$window__" in item.template

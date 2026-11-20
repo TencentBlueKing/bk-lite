@@ -1,11 +1,12 @@
 import uuid
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from django.test import RequestFactory
 from rest_framework.test import APIClient
 
+from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import (
     Channel,
     ChannelChoices,
@@ -167,6 +168,61 @@ def test_wecom_group_mentions_receive_id_and_skips_unusable_users():
     assert send.call_args.args[1] == "hello\n<@zhangsan>"
     assert "已关联" not in send.call_args.args[1]
     assert send.call_args.args[2] == []
+
+
+def test_workflow_wecom_notification_keeps_formatting_and_only_mentions_mapped_receivers(monkeypatch):
+    association = _association("wecom-task", _instance("wecom-inst", "wecom"))
+    channel = _channel(ChannelChoices.ENTERPRISE_WECHAT_BOT, association)
+    matched = _user()
+    _mapping(association, matched, "on_call")
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.is_valid_webhook_url", lambda url: True)
+    post = Mock()
+    post.return_value.json.return_value = {"errcode": 0}
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.requests.post", post)
+    bulletin = "> **【活动告警简报】**\n- order-db: postgresql_numbackends > 20，空闲连接 < 5"
+    body = bulletin + "\n<@all> <font color='warning'>高</font> [工单](javascript:alert)\n报告：https://example.com/a_b?x=1&y=2"
+
+    result = SystemMgmt().dispatch_notification(
+        delivery_key="workflow:debug",
+        channel_id=channel.id,
+        organization_ids=[1],
+        recipients=[str(matched.id)],
+        title="",
+        body=body,
+        event_payload={"notification_type": "WECOM_BOT"},
+        producer="workflow",
+        internal_caller="workflow",
+    )
+
+    assert result["code"] == "delivered"
+    post.assert_called_once()
+    payload = post.call_args.kwargs["json"]
+    assert payload["msgtype"] == "markdown"
+    delivered = payload["markdown"]["content"]
+    assert delivered.startswith(bulletin + "\n")
+    assert delivered.endswith("报告：https://example.com/a_b?x=1&y=2\n<@on_call>")
+    assert delivered.count("<@") == 1
+    assert "<font" not in delivered
+    assert "[工单](javascript:alert)" not in delivered
+
+
+@pytest.mark.parametrize(("producer", "caller"), [("workflow", ""), ("lite-apm", "lite-apm")])
+def test_wecom_notification_escapes_other_or_unverified_producer(producer, caller):
+    channel = _channel(ChannelChoices.ENTERPRISE_WECHAT_BOT)
+    with patch("apps.system_mgmt.nats.channels.send_by_wecom_bot", return_value={"result": True}) as send:
+        result = SystemMgmt().dispatch_notification(
+            delivery_key="event:test",
+            channel_id=channel.id,
+            organization_ids=[1],
+            recipients=[],
+            title="",
+            body="> **正文**",
+            event_payload={"notification_type": "WECOM_BOT"},
+            producer=producer,
+            internal_caller=caller,
+        )
+    assert result["code"] == "delivered"
+    assert send.call_args.args[1] == r"&gt; \*\*正文\*\*"
 
 
 def test_group_message_still_sends_when_association_is_not_ready():

@@ -654,12 +654,21 @@ def test_result_rows_report_component_health_and_executor_rpc(environment_reques
         collector_configuration_directory="/opt/fusion-collectors/generated",
         status={"collectors": [{"collector_id": "natsexecutor_linux", "status": 0}]},
     )
-    EnvironmentInstallAttempt.objects.filter(pk=registered["install_id"]).update(registered_at=timezone.now())
+    EnvironmentInstallAttempt.objects.filter(pk=registered["install_id"]).update(
+        registered_at=timezone.now(),
+        last_heartbeat_at=timezone.now(),
+    )
     monkeypatch.setattr(Executor, "health_check", lambda self, timeout: {"success": True, "instance_id": self.instance_id})
-    rows = list(grant.attempts.order_by("node_name").values("id", "node_id", "node_name", "registered_at", "failure_stage", "error_code"))
+    row_fields = ("id", "node_id", "node_name", "registered_at", "created_at", "last_heartbeat_at", "failure_stage", "error_code")
+    rows = list(grant.attempts.order_by("node_name").values(*row_fields))
     described = {item["node_name"]: item for item in EnvironmentInstallService.describe_attempts(grant, rows)}
     assert described["host-b"]["components_healthy"] is False
     assert described["host-b"]["executor_rpc_ready"] is False
     assert described["host-c"]["components_healthy"] is True
     assert described["host-c"]["executor_rpc_ready"] is True
+    EnvironmentInstallAttempt.objects.filter(pk=registered["install_id"]).update(last_heartbeat_at=timezone.now() - timedelta(minutes=5))
+    stale_rows = list(grant.attempts.order_by("node_name").values(*row_fields))
+    stale = {item["node_name"]: item for item in EnvironmentInstallService.describe_attempts(grant, stale_rows)}
+    assert stale["host-c"]["components_healthy"] is False
+    assert stale["host-c"]["executor_rpc_ready"] is False
     assert pending["install_id"]

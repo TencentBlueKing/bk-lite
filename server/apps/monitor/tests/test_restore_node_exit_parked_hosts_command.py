@@ -86,6 +86,45 @@ def test_apply_restores_without_conflict():
 
 
 @pytest.mark.django_db
+def test_apply_copies_instance_node_id_onto_configs_without_one():
+    obj = _object()
+    instance = _instance(obj, instance_id="parked-1", name="old-host")
+    instance.node_id = "node-9"
+    instance.save(update_fields=["node_id"])
+    empty = _config(instance, config_id="cfg-empty")
+    kept = _config(instance, config_id="cfg-kept", config_type="mem", executor_node_id="node-kept", executor_node_name="kept")
+
+    text = _run("--apply")
+
+    assert "parked-1\told-host\t2\trestored\tnode=node-9" in text
+    instance.refresh_from_db()
+    empty.refresh_from_db()
+    kept.refresh_from_db()
+    assert instance.is_deleted is False
+    assert instance.is_active is True
+    assert instance.node_id in (None, "")
+    assert empty.executor_node_removed is True
+    assert empty.executor_node_id == "node-9"
+    assert empty.executor_node_name == "node-9"
+    assert kept.executor_node_id == "node-kept"
+    assert kept.executor_node_name == "kept"
+
+
+@pytest.mark.django_db
+def test_dry_run_reports_missing_node_identity_without_writing():
+    obj = _object()
+    instance = _instance(obj, instance_id="parked-1", name="old-host")
+    config = _config(instance, config_id="cfg-1")
+
+    text = _run()
+
+    assert "parked-1\told-host\t1\trestorable\tnode=none" in text
+    config.refresh_from_db()
+    assert config.executor_node_removed is False
+    assert config.executor_node_id == ""
+
+
+@pytest.mark.django_db
 def test_conflict_is_left_untouched():
     obj = _object()
     live = _instance(obj, instance_id="live-1", name="live-host", is_deleted=False, is_active=True)

@@ -2,9 +2,8 @@ import argparse
 import asyncio
 import os
 
-from dotenv import load_dotenv
-
 from core.config import load_config
+from dotenv import load_dotenv
 from service.nats_service import AnsibleNATSService
 from service.runtime import configure_ansible_environment, find_config_path, find_dotenv_path, repair_ansible_windows_collection_layout
 from version_info import current_version_line
@@ -29,11 +28,21 @@ def main() -> None:
         help="internal helper mode for embedded ansible execution",
     )
     parser.add_argument(
+        "--internal-windows-put-file",
+        metavar="JOB_FILE",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "ansible_args",
         nargs=argparse.REMAINDER,
         help="arguments forwarded to embedded ansible helper",
     )
     args = parser.parse_args()
+    if args.internal_windows_put_file is not None:
+        from service.windows_script_delivery import run_delivery_job
+
+        raise SystemExit(run_delivery_job(args.internal_windows_put_file))
+
     configure_ansible_environment()
     collections_path = os.environ.get("ANSIBLE_COLLECTIONS_PATH")
     if collections_path:

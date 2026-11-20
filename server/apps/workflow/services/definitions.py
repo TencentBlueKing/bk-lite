@@ -162,6 +162,39 @@ def _walk_tasks(tasks: list[dict[str, Any]]):
                 yield from _walk_tasks(branch)
 
 
+def agent_reply_is_wecom_body(definition: dict[str, Any], reference: str) -> bool:
+    """仅当该节点的回答专用于企微通知正文时，为模型指定群聊读者。"""
+    output = f"{reference}.output"
+    body_binding = "${" + output + ".message}"
+
+    def uses_output(value: Any) -> bool:
+        if isinstance(value, dict):
+            return any(uses_output(item) for item in value.values())
+        if isinstance(value, list):
+            return any(uses_output(item) for item in value)
+        if isinstance(value, str):
+            return any(
+                (match.start() == 0 or value[match.start() - 1] != "$") and (match[1] == output or match[1].startswith(output + "."))
+                for match in ANY_CONDUCTOR_REFERENCE.finditer(value)
+            )
+        return False
+
+    if uses_output(definition.get("outputParameters")):
+        return False
+    found_body = False
+    for task in _walk_tasks(definition.get("tasks") or []):
+        if reference in (task.get("joinOn") or []):
+            return False
+        inputs = task.get("inputParameters") or {}
+        wecom = task.get("name") == "bklite_notification" and inputs.get("notification_type") == "WECOM_BOT"
+        for key, value in inputs.items():
+            if wecom and key == "body" and value == body_binding:
+                found_body = True
+            elif uses_output(value):
+                return False
+    return found_body
+
+
 def _task_requires_user_node_title(task: dict[str, Any]) -> bool:
     """画布上由用户命名的节点：SIMPLE / 条件 SWITCH / 人工审批。隐藏的审批决策 SWITCH 除外。"""
     reference = task.get("taskReferenceName")

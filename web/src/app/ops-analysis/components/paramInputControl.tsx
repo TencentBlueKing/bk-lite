@@ -30,6 +30,8 @@ interface ParamInputControlProps {
   optionsBlocked?: boolean;
   optionsBlockReason?: 'empty' | 'invalid';
   optionsQuerySignature?: string;
+  /** 配置表只选择要保存的初始值，不渲染运行时的单选按钮。 */
+  valuePicker?: boolean;
 }
 
 const emptyUpstreamHint = (
@@ -70,6 +72,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   optionsBlocked = false,
   optionsBlockReason,
   optionsQuerySignature = '',
+  valuePicker = false,
 }) => {
   const { t } = useTranslation();
   const state = useParamInputOptions(inputConfig, undefined, {
@@ -151,8 +154,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
     );
   }
 
-  // 单选没有下拉壳。下拉加载必须继续渲染 Select，裸 Spin 会丢掉宽度并把后面的筛项挤开。
-  if (state.status === 'loading' && inputConfig.control === 'radio') {
+  // 筛选栏上的单选没有下拉壳。加载时继续留出宽度，避免把后面的筛项挤开。
+  if (state.status === 'loading' && inputConfig.control === 'radio' && !valuePicker) {
     return <Spin size="small" />;
   }
 
@@ -172,7 +175,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   const options = state.status === 'success' ? state.options : [];
   const optionsLoading = state.status === 'loading';
 
-  if (inputConfig.control === 'radio') {
+  // 配置表里的单选只挑选要保存的初始值，落到下面的可搜索下拉。
+  if (inputConfig.control === 'radio' && !valuePicker) {
     return (
       <Radio.Group
         value={value}

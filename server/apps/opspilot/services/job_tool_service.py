@@ -29,6 +29,7 @@ from apps.rpc.job_opspilot import (
     ACTION_DESCRIBE_SCRIPT,
     ACTION_DISTRIBUTE,
     ACTION_EXECUTE,
+    ACTION_LIST_EXECUTIONS,
     ACTION_LIST_PLAYBOOK_SCRIPTS,
     ACTION_LIST_SCRIPTS,
     ACTION_LIST_TARGETS,
@@ -74,19 +75,23 @@ def _owner_key(user_info) -> str:
     return distribute_owner_key(user_info["user"], user_info["domain"])
 
 
-def session_context(config):
+def _job_user_info(config):
     """没有调用身份时拒绝。组织固定为当前组织，不展开子组织。"""
 
     try:
         identity = resolve_rpc_user_info(config, "作业管理")
     except ValueError as exc:
         raise JobToolError(str(exc)) from exc
-    user_info = {
+    return {
         "user": identity["user"],
         "domain": identity["domain"],
         "team": identity["team"],
         "include_children": False,
     }
+
+
+def session_context(config):
+    user_info = _job_user_info(config)
     configurable = configurable_from_config(config)
     session_key = str(configurable.get("skill_session_id") or configurable.get("session_id") or configurable.get("conversation_key") or "").strip()
     if not session_key:
@@ -1150,6 +1155,10 @@ def distribute_staged_files(
     if not result.get("result"):
         return _file_result_when_query_fails(anchor, elapsed)
     return _file_tool_result(anchor, result["data"], elapsed)
+
+
+def list_job_executions(config, **filters):
+    return _call(ACTION_LIST_EXECUTIONS, _job_user_info(config), {key: value for key, value in filters.items() if value is not None})
 
 
 def query_job(config, task_id=None):

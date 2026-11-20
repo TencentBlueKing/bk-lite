@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.config import EXECUTION_MAX_WORKERS
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
@@ -17,8 +18,17 @@ from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
-from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
+
+
+def call_target_executor(method, *args, protect_errors, **kwargs):
+    """仓库凭据调用只向 Job 历史报告错误类型，执行器异常正文可能含请求或响应。"""
+    if not protect_errors:
+        return method(*args, **kwargs)
+    try:
+        return method(*args, **kwargs)
+    except Exception as exc:
+        raise RuntimeError(f"凭据执行请求失败（{type(exc).__name__}）").with_traceback(exc.__traceback__) from None
 
 
 def _enqueue_async_callback_safely(execution) -> None:
@@ -46,6 +56,15 @@ class ExecutionTaskBaseService(object):
     def __init__(self, execution_id: int, task_name: str):
         self.execution_id = execution_id
         self.task_name = task_name
+
+    def _log_execution_failure(self, stage: str, exc: Exception):
+        logger.error(
+            "event=job_execution_failed execution_id=%s failed_stage=%s error_type=%s",
+            self.execution_id,
+            stage,
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
 
     @staticmethod
     def normalize_script_line_endings(script_content: str, script_type: str) -> str:
@@ -253,16 +272,14 @@ class ExecutionTaskBaseService(object):
         if target_source != TargetSource.MANUAL:
             return False
 
-        # 检查第一个目标的驱动类型
-        target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
+        target_ids = [t["target_id"] for t in target_list if t.get("target_id")]
         if not target_ids:
             return False
-
-        target = Target.objects.filter(id=target_ids[0]).first()
-        if not target:
-            return False
-
-        return target.driver == ExecutorDriver.ANSIBLE
+        targets = Target.objects.filter(id__in=target_ids).only("driver", "credential_source").in_bulk()
+        first = targets.get(int(target_ids[0]))
+        if len({t.driver for t in targets.values()}) > 1 and any(t.credential_source == CredentialSource.CREDENTIAL for t in targets.values()):
+            raise ValueError("使用系统凭据的目标请按执行驱动分别提交")
+        return first is not None and first.driver == ExecutorDriver.ANSIBLE
 
     @classmethod
     def _get_manual_targets(cls, target_list: list) -> list:
@@ -311,6 +328,16 @@ class ExecutionTaskBaseService(object):
     def _resolve_script_interpreter(script_content: str, script_type: str) -> str:
         return parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
 
+    @staticmethod
+    def _ansible_region_targets(targets):
+        region = targets[0].cloud_region_id
+        selected = [target for target in targets if target.cloud_region_id == region]
+        if len(selected) != len(targets):
+            if any(target.credential_source == CredentialSource.CREDENTIAL for target in targets):
+                raise ValueError("使用系统凭据的 Ansible 目标请按云区域分别提交")
+            logger.warning("Ansible 多区域目标沿用首个区域：cloud_region_id=%s", region)
+        return region, selected
+
     @classmethod
     def _execute_script_via_ansible(cls, execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
         """
@@ -325,8 +352,6 @@ class ExecutionTaskBaseService(object):
             script_content: 脚本内容
             script_type: 脚本类型
         """
-        task_name = "execute_script_via_ansible"
-
         # 规范化换行符：与 sidecar 路径一致，类 Unix 脚本转 LF（#3404）
         script_content = cls.normalize_script_line_endings(script_content, script_type)
 
@@ -339,20 +364,8 @@ class ExecutionTaskBaseService(object):
         if not targets:
             raise ValueError("未找到有效的目标记录")
 
-        # 按云区域分组目标
-        region_targets = {}
-        for target in targets:
-            region_id = target.cloud_region_id
-            if region_id not in region_targets:
-                region_targets[region_id] = []
-            region_targets[region_id].append(target)
-
-        # 目前只支持单云区域执行，取第一个云区域
-        if len(region_targets) > 1:
-            logger.warning(f"[{task_name}] 检测到多个云区域，当前仅使用第一个云区域执行")
-
-        cloud_region_id = list(region_targets.keys())[0]
-        region_target_list = region_targets[cloud_region_id]
+        cloud_region_id, region_target_list = cls._ansible_region_targets(targets)
+        host_credentials = cls._build_host_credentials(region_target_list, execution=execution)
         linux_targets, windows_targets = cls._partition_targets_by_os(region_target_list)
 
         # 获取 Ansible 执行节点
@@ -374,12 +387,13 @@ class ExecutionTaskBaseService(object):
             "timeout": execution.timeout,
             "stream_log_topic": stream_log_topic,
             "execution_id": str(execution.id),
+            "protect_errors": any(t.credential_source == CredentialSource.CREDENTIAL for t in region_target_list),
         }
 
         # 同一份 Python：Linux + Windows 混选时一次临时 playbook，按系统分支执行
         if script_type == ScriptType.PYTHON and linux_targets and windows_targets:
-            host_credentials = cls._build_host_credentials(region_target_list)
-            result = executor.adhoc(
+            call_target_executor(
+                executor.adhoc,
                 host_credentials=host_credentials,
                 module="bklite_mixed_python",
                 module_args=script_content,
@@ -388,13 +402,12 @@ class ExecutionTaskBaseService(object):
                 stream_remote_type=ScriptType.PYTHON,
                 **common_kwargs,
             )
-            logger.info(f"[{task_name}] Ansible 混选 Python 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
             return
 
         # 纯 Windows Python：走与 Bat/PowerShell 相同的文件执行路径
         if script_type == ScriptType.PYTHON and windows_targets and not linux_targets:
-            host_credentials = cls._build_host_credentials(windows_targets)
-            result = executor.adhoc(
+            call_target_executor(
+                executor.adhoc,
                 host_credentials=host_credentials,
                 module="win_shell",
                 module_args=script_content,
@@ -403,10 +416,7 @@ class ExecutionTaskBaseService(object):
                 stream_remote_type=ScriptType.PYTHON,
                 **common_kwargs,
             )
-            logger.info(f"[{task_name}] Ansible Windows Python 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
             return
-
-        host_credentials = cls._build_host_credentials(region_target_list)
 
         # 根据脚本类型选择模块（纯 Linux Python / Shell 走 raw；Bat/PowerShell 走 win_shell）
         shell_mapping = {
@@ -427,7 +437,8 @@ class ExecutionTaskBaseService(object):
                 command_interpreter = f"{shell_interpreter} -u" if script_type == ScriptType.PYTHON else shell_interpreter
                 module_args = build_heredoc_command(command_interpreter, script_content)
 
-        result = executor.adhoc(
+        call_target_executor(
+            executor.adhoc,
             host_credentials=host_credentials,
             module=module,
             module_args=module_args,
@@ -436,8 +447,6 @@ class ExecutionTaskBaseService(object):
             stream_remote_type=script_type if module == "win_shell" else None,
             **common_kwargs,
         )
-
-        logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
 
     @staticmethod
     def _get_ansible_node(cloud_region_id: int) -> str:
@@ -471,8 +480,33 @@ class ExecutionTaskBaseService(object):
             raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
         return nodes[0]["id"]
 
+    @staticmethod
+    def _vault_host_credential(target, *, execution, actor):
+        from apps.job_mgmt.services.target_vault import resolve_target_fields
+
+        fields = resolve_target_fields(target, execution=execution, actor=actor)
+        if target.os_type == OSType.WINDOWS:
+            return {
+                "host": target.ip,
+                "connection": "winrm",
+                "user": fields["username"],
+                "password": fields["password"],
+                "port": target.winrm_port,
+                "winrm_scheme": target.winrm_scheme,
+                "winrm_transport": target.winrm_transport,
+                "winrm_cert_validation": target.winrm_cert_validation,
+            }
+        credential = {"host": target.ip, "connection": "ssh", "user": fields["username"], "port": target.ssh_port}
+        if fields["auth_method"] == SSHCredentialType.KEY:
+            credential["private_key_content"] = fields["private_key"]
+            if fields.get("passphrase"):
+                credential["private_key_passphrase"] = fields["passphrase"]
+        else:
+            credential["password"] = fields["password"]
+        return credential
+
     @classmethod
-    def _build_host_credentials(cls, targets: list) -> list:
+    def _build_host_credentials(cls, targets: list, *, execution=None, actor=None) -> list:
         """
         构建多主机凭据列表
 
@@ -484,9 +518,8 @@ class ExecutionTaskBaseService(object):
         """
         credentials = []
         for target in targets:
-            # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
             if target.credential_source == CredentialSource.CREDENTIAL:
-                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标")
+                credentials.append(cls._vault_host_credential(target, execution=execution, actor=actor))
                 continue
 
             cred = {
@@ -537,12 +570,27 @@ class ExecutionTaskBaseService(object):
         return content.decode("utf-8") if isinstance(content, bytes) else content
 
     @classmethod
-    def _build_ssh_credentials(cls, target: Target) -> dict:
+    def _build_ssh_credentials(cls, target: Target, *, execution=None, actor=None) -> dict:
+        if target.credential_source == CredentialSource.CREDENTIAL:
+            if target.os_type != OSType.LINUX:
+                raise ValueError("Windows 系统凭据只支持 Ansible/WinRM 连接")
+            credential = cls._vault_host_credential(target, execution=execution, actor=actor)
+            return {
+                "host": target.ip,
+                "username": credential["user"],
+                "password": credential.get("password"),
+                "private_key": credential.get("private_key_content"),
+                "passphrase": credential.get("private_key_passphrase"),
+                "vault": True,
+                "port": target.ssh_port,
+                "node_id": target.node_id,
+            }
         return {
             "host": target.ip,
             "username": target.ssh_user,
             "password": cls.decrypt_password(target.ssh_password),
             "private_key": cls._read_ssh_key_file(target),
+            "passphrase": cls.decrypt_password(target.ssh_key_passphrase),
             "port": target.ssh_port,
             "node_id": target.node_id,
         }
@@ -552,7 +600,7 @@ class ExecutionTaskBaseService(object):
         """从 Target 获取 SSH 凭据信息"""
         if execution is not None:
             targets = cls._load_manual_targets_for_execution(execution, [target_id])
-            return cls._build_ssh_credentials(targets[0])
+            return cls._build_ssh_credentials(targets[0], execution=execution)
         try:
             target = Target.objects.get(id=target_id)
         except Target.DoesNotExist:

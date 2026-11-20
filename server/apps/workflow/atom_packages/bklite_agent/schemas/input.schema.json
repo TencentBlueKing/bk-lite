@@ -10,15 +10,9 @@
     },
     "message": {
       "type": "string",
-      "title": "输入内容",
+      "title": "任务内容",
       "minLength": 1,
       "maxLength": 50000,
-      "x-widget": "textarea"
-    },
-    "prompt": {
-      "type": "string",
-      "title": "补充提示词",
-      "maxLength": 10000,
       "x-widget": "textarea"
     },
     "knowledge_files": {

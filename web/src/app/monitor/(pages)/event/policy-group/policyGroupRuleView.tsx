@@ -21,11 +21,6 @@ export interface PolicyGroupRule {
   source_template_id?: number | null;
 }
 
-export const VIEW_MODE_OPTIONS = [
-  { label: '工作台', value: 'workbench' },
-  { label: '策略组列表', value: 'groupList' },
-] as const;
-
 const METHOD_OPERATOR_MAP: Record<string, string> = {
   gt: '>',
   gte: '>=',
@@ -153,6 +148,31 @@ export const pluginCounts = (rules: Array<{ plugin_name?: string }>) => {
   return Object.entries(counts).map(([name, count]) => ({ name, count }));
 };
 
+export const pluginColumnFilters = (plugins: Array<{ name: string; count: number }>) =>
+  [...plugins]
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+    .map((item) => ({
+      text: `${item.name} (${item.count})`,
+      value: item.name,
+    }));
+
+export const columnFilterValue = (selected: unknown) => {
+  if (!Array.isArray(selected) || selected.length === 0) return '';
+  return String(selected[0]);
+};
+
+export const readRuleTableFilters = (filters?: {
+  no_data_enabled?: unknown;
+  plugin_name?: unknown;
+} | null) => {
+  const noData = columnFilterValue(filters?.no_data_enabled);
+  const plugin = columnFilterValue(filters?.plugin_name);
+  return {
+    noData: noData === 'on' || noData === 'off' ? noData : null,
+    plugin: plugin || 'all',
+  } as const;
+};
+
 export const filterAndSortRules = (
   rules: PolicyGroupRule[],
   opts: { pluginFilter: string; noData: string | null; keyword: string }
@@ -228,12 +248,16 @@ export const buildPolicyGroupRuleColumns = ({
   t,
   unitLabel,
   noDataFilter,
+  plugins,
+  pluginFilter,
   onEdit,
   nameClassName,
 }: {
   t: (key: string) => string;
   unitLabel: (unitId: string) => string;
   noDataFilter: string | null;
+  plugins: Array<{ name: string; count: number }>;
+  pluginFilter: string;
   onEdit: (record: PolicyGroupRule) => void;
   nameClassName?: string;
 }): ColumnItem[] => [
@@ -250,6 +274,15 @@ export const buildPolicyGroupRuleColumns = ({
     dataIndex: 'plugin_name',
     key: 'plugin_name',
     width: 180,
+    ...(plugins.length > 1
+      ? {
+        filters: pluginColumnFilters(plugins),
+        filterMultiple: false,
+        filterSearch: (input: string, record: { value?: string | number }) =>
+          String(record.value ?? '').toLowerCase().includes(input.trim().toLowerCase()),
+        filteredValue: pluginFilter && pluginFilter !== 'all' ? [pluginFilter] : null,
+      }
+      : {}),
     render: (_, record) => renderPluginTag(record.plugin_name),
   },
   {

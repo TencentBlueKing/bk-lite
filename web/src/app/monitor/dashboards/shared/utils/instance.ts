@@ -121,7 +121,20 @@ export interface DashboardInstanceOption {
   nodeId?: string;
   /** 实例 IP。节点对不上时用它关联所属主机。 */
   ip?: string;
+  /** 实例列表上已有的版本。没有就不展示。 */
+  version?: string;
+  /** 实例列表上已有的端口。没有就不展示。 */
+  port?: string;
 }
+
+const OPTIONAL_FACT_PLACEHOLDERS = new Set(['', '-', '--', '—', 'null', 'undefined', 'none', 'n/a']);
+
+/** 列表事实里的空值和占位符不当成版本、端口或 IP。 */
+export const readOptionalInstanceText = (value: unknown) => {
+  const raw = String(value ?? '').trim();
+  if (!raw || OPTIONAL_FACT_PLACEHOLDERS.has(raw.toLowerCase())) return '';
+  return raw;
+};
 
 export const buildClusterFilterOptions = (
   options: readonly DashboardInstanceOption[],

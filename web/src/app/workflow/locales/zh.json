@@ -86,6 +86,7 @@
       "importedElsewhere": "已导入到 {organizations}，切换组织后可见"
     },
     "execution": {
+      "organization": "执行组织",
       "records": "执行记录",
       "all": "全部执行",
       "details": "执行详情",
@@ -199,8 +200,7 @@
           "description": "调用当前组织可用的 OpsPilot 智能体处理输入",
           "input": {
             "agent_id": "智能体",
-            "message": "输入内容",
-            "prompt": "补充提示词",
+            "message": "任务内容",
             "knowledge_files": "上传知识",
             "memory_context": "记忆上下文"
           },
@@ -652,6 +652,7 @@
       "publishUnavailableHint": "发布服务暂时不可用。请稍后重试；不要假定本地已发布成功。",
       "pathExists": "这条路径已经存在",
       "unsupportedConnection": "仅支持连接触发器、顶层节点和响应节点；嵌套路径由控制节点配置",
+      "debugIdentity": "调试账号 {account} · 组织 {organization}",
       "debugWorkflow": "调试流程",
       "debugDetails": "调试详情",
       "debugAgain": "重新调试",
@@ -904,8 +905,6 @@
       "selectAgent": "选择智能体",
       "pleaseSelectAgent": "请选择智能体",
       "addAgent": "新增智能体",
-      "prompt": "Prompt",
-      "promptAppendTooltip": "这段提示词会附加到本次输入之前。",
       "llmModel": "LLM 模型",
       "pleaseSelectLlmModel": "请选择 LLM 模型",
       "classificationRules": "分类规则",
@@ -1007,6 +1006,7 @@
       "jobTargetFallback": "作业目标 #{id}",
       "nodeTargetFallback": "节点 #{id}",
       "literalFieldDropRejected": "该字段只支持从选项中选择或手动填写，不支持拖入上游字段",
+      "executionAccount": "执行账号",
       "scheduleSystemTimezoneHint": "按当前用户的系统时区计算，发布时固化到流程版本。",
       "triggerFrequency": "触发频率",
       "everyDay": "每天",

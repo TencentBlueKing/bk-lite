@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -12,6 +12,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 MONITOR_EXIT_FINISHED_LOG = "monitor collector node exit finished node_id=%s linked_count=%s config_count=%s"
 MONITOR_RETURN_FINISHED_LOG = "monitor collector node returned node_id=%s config_count=%s host_instance_id=%s"
+MONITOR_RETURN_NODE_LINK_SKIPPED_LOG = "monitor collector node return skipped node link node_id=%s instance_id=%s error_type=IntegrityError"
 HOST_AGENT_COLLECTOR = "Telegraf"
 HOST_AGENT_COLLECT_TYPE = "host"
 
@@ -74,15 +75,24 @@ class MonitorCollectorNodeExit:
             config_ids = [config.id for config in instance_configs]
             owner_ids = list(CollectConfig.objects.filter(monitor_instance_id=instance_id).values_list("id", flat=True))
             node_mgmt.move_child_configs_to_node(config_ids, node.id, owner_ids, org_ids)
+            if instance_id in host_ids:
+                try:
+                    with transaction.atomic():
+                        MonitorInstance.objects.filter(id=instance_id).update(node_id=node.id)
+                except IntegrityError:
+                    logger.warning(
+                        MONITOR_RETURN_NODE_LINK_SKIPPED_LOG,
+                        safe_log_value(node.id),
+                        safe_log_value(instance_id),
+                    )
+                else:
+                    if returned_host_id is None or str(instance_id) < str(returned_host_id):
+                        returned_host_id = instance_id
             CollectConfig.objects.filter(id__in=config_ids).update(
                 executor_node_removed=False,
                 executor_node_id="",
                 executor_node_name="",
             )
-            if instance_id in host_ids:
-                MonitorInstance.objects.filter(id=instance_id).update(node_id=node.id)
-                if returned_host_id is None or str(instance_id) < str(returned_host_id):
-                    returned_host_id = instance_id
         logger.debug(
             MONITOR_RETURN_FINISHED_LOG,
             safe_log_value(node.id),

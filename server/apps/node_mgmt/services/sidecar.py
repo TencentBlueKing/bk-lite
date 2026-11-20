@@ -808,7 +808,6 @@ class Sidecar:
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
-                Sidecar._notify_collectors_node_returned(node)
                 Sidecar._consume_deferred_module_push(node)
 
         if not created:
@@ -816,6 +815,8 @@ class Sidecar:
             from apps.node_mgmt.services.environment_install import EnvironmentInstallService
 
             EnvironmentInstallService.record_heartbeat(node_id, request_data)
+
+        Sidecar._notify_collectors_node_returned(node)
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)

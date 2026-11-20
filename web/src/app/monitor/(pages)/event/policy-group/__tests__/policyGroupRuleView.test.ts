@@ -4,7 +4,9 @@ import {
   filterAndSortRules,
   filterPolicyGroupMembers,
   memberTemplateFilterOptions,
+  pluginColumnFilters,
   pluginCounts,
+  readRuleTableFilters,
   rulesForTemplateIds,
   templateIdsFromRules,
   type PolicyGroupRule,
@@ -102,5 +104,26 @@ describe('策略组规则展示', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('规则表筛选', () => {
+  it('模板筛选项带规则数，并按名称排序', () => {
+    expect(pluginColumnFilters([
+      { name: 'Windows WMI', count: 2 },
+      { name: 'Host', count: 4 },
+    ])).toEqual([
+      { text: 'Host (4)', value: 'Host' },
+      { text: 'Windows WMI (2)', value: 'Windows WMI' },
+    ]);
+  });
+
+  it('列头未选时视为全部，无数据只接受开关两个值', () => {
+    expect(readRuleTableFilters(undefined)).toEqual({ noData: null, plugin: 'all' });
+    expect(readRuleTableFilters({ plugin_name: ['Host'], no_data_enabled: ['on'] })).toEqual({
+      noData: 'on',
+      plugin: 'Host',
+    });
+    expect(readRuleTableFilters({ no_data_enabled: ['maybe'] })).toEqual({ noData: null, plugin: 'all' });
   });
 });

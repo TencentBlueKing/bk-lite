@@ -163,6 +163,7 @@ error:
   initial_password_email_channel_absent: Email channel does not exist or is not an email channel
   no_permission_access_team: You do not have permission to access this organization's data
   builtin_entry_immutable: 'Built-in entries cannot be modified or deleted: {label}'
+  workflow_channel_readonly: Workflow NATS channels are managed by the orchestration center.
   opspilot_channel_readonly: Channels created by an OpsPilot workflow cannot be edited or deleted
   email_channel_id_required: email_channel_id is required
   user_email_empty: The user has no email address, so the message cannot be sent

@@ -5,10 +5,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService, call_target_executor
 from apps.job_mgmt.services.execution_timeout_service import ExecutionTimeoutService
 from apps.job_mgmt.utils.i18n import job_message
 from apps.node_mgmt.models import CloudRegion
@@ -80,7 +80,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                         results.append(result)
                         logger.info(f"[{task_name}] 目标 {target_info.get('name')} 分发完成: status={result['status']}")
                     except Exception as e:
-                        logger.exception(f"[{task_name}] 目标 {target_info.get('name')} 分发异常: {e}")
+                        self._log_execution_failure("collect_distribution_result", e)
                         results.append(self.build_target_failed_result(target_info, str(e)))
 
             # 本批完成后检查是否已取消，取消则不再提交后续批次（不依赖 future.cancel 竞速）
@@ -119,8 +119,6 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         execution: JobExecution | None = None,
     ) -> dict:
         result = self._build_distribution_target_result(target_info)
-        target_name = result["name"]
-        target_ip = result["ip"]
 
         # 执行前检查是否已取消
         if execution_id and self.is_cancelled(execution_id):
@@ -182,14 +180,14 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 except Exception as e:
                     file_result["error"] = self.normalize_executor_error(str(e), "文件分发失败")
                     success = False
-                    logger.exception(f"文件 {file_item.get('name')} 分发到 {target_name} 失败")
+                    self._log_execution_failure("distribute_file", e)
 
                 result["file_results"].append(file_result)
 
         except Exception as e:
             success = False
             result["error_message"] = f"分发异常: {self.normalize_executor_error(str(e), '文件分发失败')}"
-            logger.exception(f"目标 {target_name}({target_ip}) 文件分发失败")
+            self._log_execution_failure("load_distribution_target", e)
 
         self.summarize_distribution_result(result, success, files, target_path)
         return result
@@ -246,9 +244,9 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 target_obj = Target.objects.filter(id=target_id).first()
         if target_obj and target_obj.os_type == OSType.WINDOWS and target_obj.driver == ExecutorDriver.ANSIBLE:
             normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type)
-            return self._download_to_windows_via_ansible(target_obj, [file_item], normalized_target_path, timeout, overwrite)
+            return self._download_to_windows_via_ansible(target_obj, [file_item], normalized_target_path, timeout, overwrite, execution=execution)
 
-        if target_obj and target_obj.os_type == OSType.WINDOWS:
+        if target_obj and target_obj.os_type == OSType.WINDOWS and target_obj.credential_source == CredentialSource.MANUAL:
             ssh_creds = {
                 "host": target_obj.ip,
                 "username": target_obj.winrm_user,
@@ -258,7 +256,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 "node_id": target_obj.node_id,
             }
         else:
-            ssh_creds = self._build_ssh_credentials(target_obj) if target_obj else {}
+            ssh_creds = self._build_ssh_credentials(target_obj, execution=execution) if target_obj else {}
         if not ssh_creds:
             raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 
@@ -273,16 +271,21 @@ class FileDistributionRunner(ExecutionTaskBaseService):
 
         return self.download_to_remote(instance_id, file_item, normalized_target_path, ssh_creds, timeout, overwrite)
 
-    def _download_to_windows_via_ansible(self, target_obj, files: list[dict], target_path: str, timeout: int, overwrite: bool) -> dict:
+    def _download_to_windows_via_ansible(
+        self, target_obj, files: list[dict], target_path: str, timeout: int, overwrite: bool, *, execution=None
+    ) -> dict:
         if not target_obj.cloud_region_id:
             raise ValueError(f"目标缺少云区域配置: target_id={target_obj.id}")
 
         ansible_node_id = self._get_ansible_node(target_obj.cloud_region_id)
         executor = AnsibleExecutor(ansible_node_id)
-        host_credentials = self._build_host_credentials([target_obj])
+        host_credentials = self._build_host_credentials([target_obj], execution=execution)
         task_id = f"file-dist-{target_obj.id}-{os.urandom(4).hex()}"
 
-        accepted = executor.playbook(
+        protected = target_obj.credential_source == CredentialSource.CREDENTIAL
+        accepted = call_target_executor(
+            executor.playbook,
+            protect_errors=protected,
             host_credentials=host_credentials,
             files=files,
             file_distribution={
@@ -302,7 +305,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         while True:
             poll_attempt += 1
             elapsed = time.monotonic() - start_time
-            query_result = executor.task_query(accepted_task_id, timeout=query_timeout)
+            query_result = call_target_executor(executor.task_query, accepted_task_id, timeout=query_timeout, protect_errors=protected)
             if not isinstance(query_result, dict):
                 raise ValueError("Ansible 文件分发返回结果格式非法")
 
@@ -312,7 +315,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
 
             elapsed = time.monotonic() - start_time
             if elapsed >= timeout:
-                raise ValueError(f"Ansible 文件分发任务未完成: status={task_status}")
+                raise ValueError("Ansible 文件分发任务未完成" if protected else f"Ansible 文件分发任务未完成: status={task_status}")
 
             # 轮询间隙检查是否已取消
             if hasattr(self, "execution_id") and self.is_cancelled(self.execution_id):
@@ -332,13 +335,18 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             raise ValueError("Ansible 文件分发返回结果格式非法")
 
         host_results = task_result.get("result")
+        failed_hosts = (
+            [item for item in host_results if isinstance(item, dict) and item.get("status") != "success"] if isinstance(host_results, list) else []
+        )
+        succeeded = not failed_hosts and task_result.get("success") is True
+        if protected:
+            return {"success": succeeded, "error": "" if succeeded else "执行器文件分发失败"}
         task_error = str(task_result.get("error") or "")
 
         if isinstance(host_results, list):
-            failed_hosts = [item for item in host_results if isinstance(item, dict) and item.get("status") != "success"]
             error_messages = [str(item.get("error_message") or item.get("stderr") or "") for item in failed_hosts]
             return {
-                "success": len(failed_hosts) == 0 and task_result.get("success") is True,
+                "success": succeeded,
                 "result": host_results,
                 "error": "\n".join([msg for msg in error_messages if msg]) or task_error,
             }
@@ -371,7 +379,9 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             raise ValueError("目标缺少认证信息，需要密码或私钥")
 
         executor = Executor(instance_id)
-        return executor.download_to_remote(
+        result = call_target_executor(
+            executor.download_to_remote,
+            protect_errors=bool(ssh_creds.get("vault")),
             bucket_name=NATS_NAMESPACE,
             file_key=file_item.get("file_key", ""),
             file_name=file_item.get("name", ""),
@@ -380,11 +390,19 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             username=ssh_creds["username"],
             password=ssh_creds["password"],
             private_key=ssh_creds["private_key"],
+            passphrase=ssh_creds.get("passphrase"),
             timeout=timeout,
             port=ssh_creds["port"],
             overwrite=overwrite,
             fast_fail=True,
+            with_status=True,
         )
+
+        if ssh_creds.get("vault"):
+            if isinstance(result, dict) and result.get("success") is True:
+                return {"success": True}
+            return {"success": False, "error": "执行器文件分发失败"}
+        return result
 
     @staticmethod
     def summarize_distribution_result(result: dict, success: bool, files: list, target_path: str) -> None:
@@ -412,13 +430,12 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if isinstance(exec_result, dict):
             success_flag = exec_result.get("success")
             code = exec_result.get("code")
-            error_info = exec_result.get("error") or exec_result.get("stderr") or exec_result.get("message")
             result_text = str(exec_result.get("result", "")).lower()
             if success_flag is True:
                 return True, ""
             if code is not None and code != 0:
                 return False, FileDistributionRunner.normalize_executor_error(exec_result, f"文件分发失败，code={code}")
-            if success_flag is False and error_info:
+            if success_flag is False:
                 return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
             if "failed" in result_text or "error" in result_text:
                 return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")

@@ -8,7 +8,6 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.system_mgmt.models import User
 from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs, _run_atom_with_heartbeat
 from apps.workflow.models import AtomExecution, Workflow, WorkflowExecution
 from apps.workflow.services.conductor import ConductorUnavailable
@@ -405,124 +404,69 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
         "actor": {"username": "alice", "domain": "example.com"},
         "trigger_type": "FORM",
         "task_reference": "agent",
-        "caller_identity": {
-            "username": "alice",
-            "domain": "example.com",
-            "team_id": 7,
-            "include_children": False,
-        },
+        "locale": "zh-Hans",
     }
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
 
 
-@pytest.mark.django_db
-def test_agent_caller_identity_follows_schedule_creator_or_webhook_caller(mocker):
-    workflow = Workflow.objects.create(
-        name="身份流程",
+@pytest.mark.parametrize("caller_identity", [None, {"username": "alice", "domain": "example.com", "team_id": 8, "include_children": False}])
+def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_identity):
+    execution = WorkflowExecution(
+        workflow_id=1,
+        workflow_version=1,
         team=[7],
-        definition={},
-        created_by="carol",
-        domain="ops.example",
-    )
-    User.objects.bulk_create(
-        [
-            User(username="carol", domain="ops.example", display_name="carol", email="carol@ops.example", password="x", locale="en"),
-            User(username="dave", domain="hook.example", display_name="dave", email="dave@hook.example", password="x", locale="zh-Hans"),
-            User(username="erin", domain="domain.com", display_name="erin", email="erin@domain.com", password="x", locale="zh-Hant"),
-        ]
-    )
-    client = mocker.Mock()
-    handler = mocker.Mock(return_value={"message": "done"})
-    sequence = {"n": 0}
-
-    def run(trigger_type, started_by, *, mode="PRODUCTION", domain="domain.com", forged=None):
-        sequence["n"] += 1
-        execution = WorkflowExecution.objects.create(
-            workflow=workflow,
-            workflow_version=1,
-            conductor_workflow_id=f"workflow-identity-{sequence['n']}",
-            team=[7],
-            started_by=started_by,
-            domain=domain,
-            trigger_type=trigger_type,
-            mode=mode,
-        )
-        input_data = {"agent_id": 1, "message": "inspect"}
-        if forged is not None:
-            input_data["__bklite_context"] = {"caller_identity": forged}
-        Command._execute_task(
-            client,
-            "worker-1",
-            "bklite_agent",
-            {
-                "taskId": f"task-{execution.conductor_workflow_id}",
-                "workflowInstanceId": execution.conductor_workflow_id,
-                "referenceTaskName": "agent",
-                "inputData": input_data,
-            },
-            handler=handler,
-        )
-        context = handler.call_args.args[0]["__bklite_context"]
-        return context
-
-    schedule = run("SCHEDULE", "workflow-scheduler")
-    assert schedule["actor"] == {"username": "workflow-scheduler", "domain": "domain.com"}
-    assert schedule["caller_identity"] == {
-        "username": "carol",
-        "domain": "ops.example",
-        "team_id": 7,
-        "include_children": False,
-    }
-    assert schedule["locale"] == "en"
-    webhook = run("WEBHOOK", "dave", domain="hook.example")
-    assert webhook["caller_identity"] == {
-        "username": "dave",
-        "domain": "hook.example",
-        "team_id": 7,
-        "include_children": False,
-    }
-    assert webhook["locale"] == "zh-Hans"
-    nats = run("NATS", "nats-bridge")
-    assert "caller_identity" not in nats
-    assert "locale" not in nats
-    debug = run("SCHEDULE", "erin", mode="DEBUG")
-    assert debug["caller_identity"] == {
-        "username": "erin",
-        "domain": "domain.com",
-        "team_id": 7,
-        "include_children": False,
-    }
-    assert debug["locale"] == "zh-Hant"
-    forged = run(
-        "WEBHOOK",
-        "dave",
-        domain="hook.example",
-        forged={"username": "mallory", "domain": "evil.example", "team_id": 9, "include_children": True},
-    )
-    assert forged["caller_identity"] == {
-        "username": "dave",
-        "domain": "hook.example",
-        "team_id": 7,
-        "include_children": False,
-    }
-    assert forged["locale"] == "zh-Hans"
-
-    workflow.created_by = ""
-    workflow.save(update_fields=["created_by", "updated_at"])
-    missing_creator = run("SCHEDULE", "workflow-scheduler")
-    assert "caller_identity" not in missing_creator
-    assert "locale" not in missing_creator
-
-
-def test_agent_node_reference_comes_from_claimed_atom_not_input():
-    execution = SimpleNamespace(
-        id="run-1", workflow_id="flow-1", workflow_version=1, team=[7], started_by="alice", domain="example.com", trigger_type="NATS"
+        started_by="alice",
+        domain="example.com",
+        trigger_type="NATS",
+        caller_identity=caller_identity,
     )
     atom = SimpleNamespace(pk=3, output={}, task_reference="agent-real")
     payload = _build_runtime_inputs(
-        inputs={"__bklite_context": {"task_reference": "agent-forged"}}, atom_execution=atom, task_type="bklite_agent", execution=execution
+        inputs={"__bklite_context": {"task_reference": "agent-forged", "caller_identity": {"username": "forged", "team_id": 7}}},
+        atom_execution=atom,
+        task_type="bklite_agent",
+        execution=execution,
     )
     assert payload["__bklite_context"]["task_reference"] == "agent-real"
+    assert "caller_identity" not in payload["__bklite_context"]
+
+
+@pytest.mark.parametrize(
+    ("extra_inputs", "outputs", "channel", "body", "expected"),
+    [
+        ({}, {}, "WECOM_BOT", "${agent.output.message}", True),
+        ({"request": [{"message": "摘要：${agent.output.message}"}]}, {}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {"result": "${agent.output}"}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {}, "EMAIL", "${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "前缀 ${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "${other_agent.output.message}", False),
+    ],
+)
+def test_agent_reply_channel_follows_exclusive_body_consumers_in_execution_snapshot(extra_inputs, outputs, channel, body, expected):
+    notification = {"name": "bklite_notification", "type": "SIMPLE", "inputParameters": {"notification_type": channel, "body": body}}
+    execution = WorkflowExecution(
+        workflow_id=1,
+        workflow_version=1,
+        team=[7],
+        definition_snapshot={
+            "tasks": [
+                {"taskReferenceName": "agent", "type": "SIMPLE", "name": "bklite_agent"},
+                {
+                    "type": "SWITCH",
+                    "decisionCases": {"true": [notification]},
+                    "defaultCase": [{"name": "transform", "inputParameters": extra_inputs}],
+                },
+            ],
+            "outputParameters": outputs,
+        },
+    )
+    runtime = _build_runtime_inputs(
+        inputs={"__bklite_context": {"reply_channel": "WECOM_BOT"}},
+        atom_execution=SimpleNamespace(pk=1, output={}, task_reference="agent"),
+        task_type="bklite_agent",
+        execution=execution,
+    )
+    assert runtime["__bklite_context"].get("reply_channel") == ("WECOM_BOT" if expected else None)
 
 
 def test_completed_atom_returns_without_waiting_for_the_pool_thread_to_exit(monkeypatch):

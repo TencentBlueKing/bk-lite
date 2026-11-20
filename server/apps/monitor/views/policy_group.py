@@ -257,9 +257,11 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             queryset = queryset.filter(name__icontains=name)
         queryset = queryset.order_by("-id")
         default_id = None
+        default_removed = False
         if object_id not in (None, ""):
             pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=object_id).first()
             default_id = pointer.policy_group_id if pointer else None
+            default_removed = pointer is not None and pointer.policy_group_id is None
         plugin_id = _optional_positive_id(request.query_params.get("plugin_id"), "plugin_id")
         collect_type = str(request.query_params.get("collect_type") or "").strip() or None
         if request.query_params.get("page") not in (None, ""):
@@ -271,6 +273,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
                 {
                     "count": count,
                     "items": _serialize_groups(groups, default_id, plugin_id=plugin_id, collect_type=collect_type),
+                    "default_removed": default_removed,
                 }
             )
         return WebUtils.response_success(_serialize_groups(list(queryset), default_id, plugin_id=plugin_id, collect_type=collect_type))

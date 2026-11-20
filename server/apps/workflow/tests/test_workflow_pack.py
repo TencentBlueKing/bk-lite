@@ -555,3 +555,22 @@ def _form_request(user, path, data):
     request.COOKIES["current_team"] = "7"
     force_authenticate(request, user=user)
     return request
+
+
+@pytest.mark.django_db
+def test_workflow_pack_carries_schedule_but_rebinds_local_identity(superuser):
+    payload = _blank("portable schedule")
+    schedule = {"frequency": "daily", "time": ["08:00"], "execution_username": "original", "execution_team_id": 99}
+    canvas = payload["canvas_metadata"]
+    canvas["trigger_nodes"] = [{"id": "clock", "trigger_type": "SCHEDULE", "config": schedule}]
+    workflow = Workflow.objects.create(name="source", team=[7], definition=payload["definition"], canvas_metadata=canvas)
+    packaged, failed = export_workflow_pack(Workflow.objects.all(), [workflow.pk], store=MemoryStore())
+    assert failed == []
+    with zipfile.ZipFile(BytesIO(packaged)) as archive:
+        config = json.loads(archive.read("workflows/0001.json"))["canvas_metadata"]["trigger_nodes"][0]["config"]
+    assert config == {"frequency": "daily", "time": ["08:00"]}
+
+    result = _import(superuser, _zip([payload]))
+    assert result["failed"] == []
+    created = Workflow.objects.get(pk=result["created"][0]["id"])
+    assert created.canvas_metadata["trigger_nodes"][0]["config"] == config

@@ -7,7 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.workflow.models import TriggerInvocation, Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
 from apps.workflow.services.conductor import ConductorUnavailable
-from apps.workflow.services.schedules import bind_schedule_timezones
+from apps.workflow.services.schedules import bind_published_schedules
 from apps.workflow.services.triggers import invoke_trigger, run_due_cron_triggers
 from apps.workflow.views import WorkflowTriggerViewSet
 
@@ -353,7 +353,12 @@ def test_webhook_test_session_uses_saved_draft_and_returns_captured_body(trigger
     wait.assert_called_once_with(created.data["token"])
 
 
-def test_published_schedule_captures_server_resolved_timezone_without_mutating_draft():
+@pytest.mark.django_db
+def test_published_schedule_captures_server_resolved_timezone_without_mutating_draft(trigger_admin):
+    from apps.system_mgmt.models import Group
+
+    Group.objects.create(id=7, name="team")
+    trigger_admin.timezone = "Asia/Shanghai"
     draft = {
         "trigger_nodes": [
             {
@@ -364,7 +369,7 @@ def test_published_schedule_captures_server_resolved_timezone_without_mutating_d
         ]
     }
 
-    published = bind_schedule_timezones(draft, timezone_name="Asia/Shanghai")
+    published = bind_published_schedules(draft, user=trigger_admin, current_team=7)
 
     assert published["trigger_nodes"][0]["config"] == {
         "frequency": "weekly",
@@ -372,6 +377,8 @@ def test_published_schedule_captures_server_resolved_timezone_without_mutating_d
         "weekdays": [1, 5],
         "expressions": ["5 9 * * 1,5"],
         "expression": "5 9 * * 1,5",
+        "execution_username": trigger_admin.username,
+        "execution_team_id": 7,
         "timezone": "Asia/Shanghai",
     }
     assert draft["trigger_nodes"][0]["config"]["timezone"] == "UTC"
@@ -545,6 +552,9 @@ def test_due_cron_trigger_runs_once_and_moves_next_run_forward(mocker):
     assert second == {"succeeded": 0, "skipped": 0, "failed": 0}
     assert trigger.next_run_at > now
     assert conductor.start_workflow.call_count == 1
+    legacy_run = WorkflowExecution.objects.get(workflow=workflow)
+    assert legacy_run.started_by == "workflow-scheduler"
+    assert legacy_run.caller_identity is None
 
 
 @pytest.mark.django_db
@@ -581,3 +591,35 @@ def test_due_cron_trigger_starts_independent_execution_when_same_workflow_is_sti
     assert executions.count() == 2
     assert executions.last().trigger_type == WorkflowTrigger.Type.SCHEDULE
     assert executions.last().trigger_id == str(trigger.id)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(("username", "team"), [("bob", 7), ("alice", 8)])
+def test_authenticated_trigger_replay_is_bound_to_account_and_execution_team(mocker, username, team):
+    from apps.workflow.services.triggers import TriggerConflict
+
+    workflow = _workflow()
+    workflow.team = [7, 8]
+    workflow.save()
+    trigger = WorkflowTrigger.objects.create(workflow=workflow, trigger_type="WEBHOOK", enabled=True, team=[7, 8])
+    conductor = mocker.Mock()
+    conductor.start_workflow.return_value = "triggered-once"
+
+    def invoke(user, selected_team):
+        return invoke_trigger(
+            trigger,
+            inputs={"message": "event"},
+            idempotency_key="event",
+            started_by=user,
+            domain="example.com",
+            client=conductor,
+            caller_identity={"username": user, "domain": "example.com", "team_id": selected_team, "include_children": False},
+        )
+
+    original, created = invoke("alice", 7)
+    assert created
+    with pytest.raises(TriggerConflict):
+        invoke(username, team)
+    replayed, created = invoke("alice", 7)
+    assert replayed.pk == original.pk and not created
+    conductor.start_workflow.assert_called_once()

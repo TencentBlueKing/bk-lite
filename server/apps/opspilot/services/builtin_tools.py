@@ -1,4 +1,5 @@
 from apps.core.utils.loader import LanguageLoader
+from apps.opspilot.metis.llm.tools import conversation_skill_package as conversation_skill_package_tools
 
 BUILTIN_MONITOR_TOOL_ID = -6
 BUILTIN_MONITOR_TOOL_NAME = "monitor"
@@ -36,13 +37,31 @@ BUILTIN_MLOPS_TOOL_NAME = "mlops"
 BUILTIN_JOB_MGMT_TOOL_ID = -12
 BUILTIN_JOB_MGMT_TOOL_NAME = "job_mgmt"
 
+BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_ID = -13
+BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME = "conversation_skill_package"
+
 IDENTITY_ONLY_BUILTIN_TOOLS = {
     BUILTIN_MONITOR_TOOL_ID: BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_CMDB_TOOL_ID: BUILTIN_CMDB_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_ID: BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_LOG_TOOL_ID: BUILTIN_LOG_TOOL_NAME,
     BUILTIN_JOB_MGMT_TOOL_ID: BUILTIN_JOB_MGMT_TOOL_NAME,
+    BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_ID: BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME,
 }
+
+
+def selected_tools_include_conversation_skill_package(tools) -> bool:
+    """请求里的已选工具含目录名、rawName 或内置 id -13 时，才允许生成技能包。"""
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        if tool.get("id") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_ID:
+            return True
+        if tool.get("rawName") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME:
+            return True
+        if tool.get("name") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME:
+            return True
+    return False
 
 
 def _get_display_name(loader: LanguageLoader, tool_name: str, default: str) -> str:
@@ -466,6 +485,21 @@ def build_builtin_job_mgmt_runtime_tool(tool_kwargs):
     runtime = _build_identity_only_runtime_tool(BUILTIN_JOB_MGMT_TOOL_NAME)
     runtime["extra_tools_prompt"] = JOB_MGMT_PROMPT
     return runtime
+
+
+def build_builtin_conversation_skill_package_tool(loader: LanguageLoader):
+    return _build_identity_only_builtin_tool(
+        loader,
+        BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_ID,
+        BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME,
+        "生成技能包",
+        (conversation_skill_package_tools.__doc__ or "").strip(),
+        conversation_skill_package_tools.__all__,
+    )
+
+
+def build_builtin_conversation_skill_package_runtime_tool(tool_kwargs):
+    return _build_identity_only_runtime_tool(BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME)
 
 
 def build_builtin_mlops_runtime_tool(tool_kwargs):

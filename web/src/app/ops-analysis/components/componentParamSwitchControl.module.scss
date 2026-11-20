@@ -27,12 +27,18 @@
     white-space: nowrap;
   }
 
+  // 选择框字号由组件按屏幕结果单独写。这里再写会盖住它，也会把不在大屏上的框锁成 13px。
   :global(.ant-select.ant-select-single) {
     width: var(--ops-switch-select, 128px);
     max-width: 100%;
     height: var(--ops-switch-height, 28px);
     overflow: hidden;
-    font-size: var(--ops-switch-font, 13px);
+  }
+
+  // 单选的选择层自己写了字号，不继承外层。多选没有这层，所以只有单选和菜单对不齐。
+  :global(.ant-select-single .ant-select-selector),
+  :global(.ant-select-single .ant-select-selection-search-input) {
+    font-size: inherit !important;
   }
 
   :global(.ant-select-single .ant-select-selector) {
@@ -49,6 +55,37 @@
 
   :global(.ant-select-single .ant-select-selection-search-input) {
     height: calc(var(--ops-switch-height, 28px) - 2px) !important;
+  }
+
+  // 多选不能用 width:100%。父级是 max-content，百分比会把触发器收成剩余数量的宽度。
+  // 菜单跟输入框的屏幕宽度对齐，所以输入框必须先有这条固定宽度。
+  :global(.ant-select.ant-select-multiple) {
+    width: var(--ops-switch-select-multiple, 200px);
+    max-width: 100%;
+    height: var(--ops-switch-height, 28px);
+    overflow: hidden;
+  }
+
+  :global(.ant-select-multiple .ant-select-selector) {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding-block: 0 !important;
+    overflow: hidden;
+  }
+
+  :global(.ant-select-multiple .ant-select-selection-wrap),
+  :global(.ant-select-multiple .ant-select-selection-overflow) {
+    flex-wrap: nowrap;
+    align-items: center;
+    height: 100%;
+  }
+}
+
+// 选项自己写了字号，不继承下拉层。大屏把屏幕字号写在层上，这里改回继承。
+.screenPopup {
+  :global(.ant-select-item),
+  :global(.ant-select-item-option-content) {
+    font-size: inherit !important;
   }
 }
 

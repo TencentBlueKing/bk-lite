@@ -346,7 +346,8 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       session.node?.classList.remove("screen-rnd-node--interacting");
 
       dragSessionRef.current = null;
-      suppressClickRef.current = session.moved;
+      // 紧接着的 click 还会再选一次。未保存时两次都会弹出确认框。
+      suppressClickRef.current = true;
 
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);

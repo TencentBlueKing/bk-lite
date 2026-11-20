@@ -37,7 +37,8 @@ import {
   filterInstanceOptionsByCluster,
   selectFirstInstanceInCluster,
   DashboardInstanceOption,
-  fetchDashboardInstancePages
+  fetchDashboardInstancePages,
+  readOptionalInstanceText
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -508,6 +509,7 @@ export function useSimpleDashboardData(
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);
+          const facts = item.summary_facts && typeof item.summary_facts === 'object' ? item.summary_facts : {};
           uniqueOptions.set(value, {
             label,
             value,
@@ -516,7 +518,9 @@ export function useSimpleDashboardData(
             interval: Number(item.interval) || undefined,
             operatingSystem: String(item.operating_system || '').trim().toLowerCase() || undefined,
             nodeId: String(item.node_id || '').trim(),
-            ip: String(item.ip || '').trim()
+            ip: readOptionalInstanceText(item.ip || facts['asset.ip']),
+            version: readOptionalInstanceText(item.version ?? facts.version),
+            port: readOptionalInstanceText(item.port ?? facts.port)
           });
         });
         setInstanceOptions(Array.from(uniqueOptions.values()));
@@ -600,11 +604,13 @@ export function useSimpleDashboardData(
         interval: currentInstanceOption?.interval,
         operatingSystem: currentInstanceOption?.operatingSystem,
         nodeId: currentInstanceOption?.nodeId,
-        ip: currentInstanceOption?.ip
+        ip: currentInstanceOption?.ip,
+        version: currentInstanceOption?.version,
+        port: currentInstanceOption?.port
       });
     }
     return options;
-  }, [activeCluster, currentInstanceOption?.interval, currentInstanceOption?.ip, currentInstanceOption?.nodeId, currentInstanceOption?.operatingSystem, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
+  }, [activeCluster, currentInstanceOption?.interval, currentInstanceOption?.ip, currentInstanceOption?.nodeId, currentInstanceOption?.operatingSystem, currentInstanceOption?.port, currentInstanceOption?.version, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
   const instanceSelectValue = currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
   const currentInstanceInterval = currentInstanceOption?.interval;
   const currentOperatingSystem = currentInstanceOption?.operatingSystem;
@@ -1502,6 +1508,8 @@ export function useSimpleDashboardData(
     routeKey: config.routeKey,
     linkedNodeId: currentInstanceOption?.nodeId || '',
     linkedIp: currentInstanceOption?.ip || '',
+    instanceVersion: currentInstanceOption?.version || '',
+    instancePort: currentInstanceOption?.port || '',
     metricSeries: metricMap,
     pendingMetricNames,
     refetchMetricNames
