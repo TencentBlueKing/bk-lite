@@ -5,10 +5,12 @@ import datetime
 import pytest
 from django.utils import timezone
 
+from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
 from apps.alerts.common.shield_replay import replay_settled_monitor_shields
 from apps.alerts.common.source_adapter.constants import build_nats_source_config
+from apps.alerts.common.source_adapter.nats import NatsAdapter
 from apps.alerts.constants.constants import AlertStatus, EventAction, EventStatus, LevelType
-from apps.alerts.models.alert_operator import AlertShield
+from apps.alerts.models.alert_operator import AlarmStrategy, AlertShield
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Level
 
@@ -188,3 +190,87 @@ def test_active_alert_settles_without_replay(levels, source):
     assert result["settled"] == 1
     assert original.shield_settled_at is not None
     assert Event.objects.count() == 1
+
+
+def _ingest(source, external_id, action, when):
+    payload = {
+        "title": "CPU高",
+        "description": "cpu > 90",
+        "level": "1",
+        "external_id": external_id,
+        "action": action,
+        "start_time": str(int(when.timestamp())),
+        "push_source_id": MONITOR,
+        "organizations": [1],
+        "service": "svc-a",
+        "item": "cpu",
+        "resource_name": "host1",
+    }
+    if action == EventAction.RECOVERY:
+        payload["end_time"] = str(int(timezone.now().timestamp()))
+    NatsAdapter(alert_source=source, events=[payload], trusted_internal=True).main()
+
+
+def _correlation_rule():
+    for level_id in (0, 1, 2):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"A{level_id}",
+            level_display_name=f"告警{level_id}",
+            level_type=LevelType.ALERT,
+        )
+    AlarmStrategy.objects.create(
+        name="降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+
+
+def _end_shield(shield):
+    shield.suppression_time = {"type": "one", "start_time": "2000-01-01 00:00:00", "end_time": "2000-01-01 01:00:00"}
+    shield.save(update_fields=["suppression_time"])
+
+
+@pytest.mark.django_db
+def test_window_end_without_another_monitor_push_still_opens_alert(levels, source):
+    """复现：窗口内只有第一条监控事件，窗口结束后监控不再推送。"""
+    shield = _shield("open", active_now=True)
+    _correlation_rule()
+    _ingest(source, "monitor-alert-9", EventAction.CREATED, _stamp(0))
+
+    shielded = Event.objects.get(external_id="monitor-alert-9")
+    assert shielded.status == EventStatus.SHIELD
+    assert Alert.objects.exists() is False
+
+    _end_shield(shield)
+    assert Alert.objects.exists() is False
+    assert Event.objects.filter(status=EventStatus.RECEIVED).exists() is False
+
+    replay_settled_monitor_shields()
+    AggregationProcessor().process_aggregation()
+
+    shielded.refresh_from_db()
+    opened = Alert.objects.get()
+    assert shielded.status == EventStatus.SHIELD
+    assert shielded.shield_settled_at is not None
+    assert opened.status in AlertStatus.ACTIVATE_STATUS
+    assert opened.events.filter(status=EventStatus.RECEIVED, external_id="monitor-alert-9").exists()
+
+
+@pytest.mark.django_db
+def test_window_end_with_shielded_recovery_does_not_open_alert(levels, source):
+    shield = _shield("open", active_now=True)
+    _correlation_rule()
+    _ingest(source, "monitor-alert-9", EventAction.CREATED, _stamp(2))
+    _ingest(source, "monitor-alert-9", EventAction.RECOVERY, _stamp(0))
+    _end_shield(shield)
+
+    replay_settled_monitor_shields()
+    AggregationProcessor().process_aggregation()
+
+    assert Alert.objects.exists() is False
+    assert Event.objects.filter(shield_settled_at__isnull=False, action=EventAction.CREATED).exists()
