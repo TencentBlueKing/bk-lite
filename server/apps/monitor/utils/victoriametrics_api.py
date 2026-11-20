@@ -11,6 +11,18 @@ _SESSION.mount("http://", _ADAPTER)
 _SESSION.mount("https://", _ADAPTER)
 
 
+def _vm_timeout(seconds) -> str:
+    """VictoriaMetrics 用这个参数在服务端取消查询。"""
+    return f"{max(float(seconds), 0.001):.3f}s"
+
+
+def _requests_timeout(default, seconds):
+    if seconds is None:
+        return default
+    read = max(float(seconds), 0.001)
+    return (min(3.0, read), read)
+
+
 class VictoriaMetricsAPI:
     def __init__(self):
         self.host = VictoriaMetricsConstants.HOST
@@ -27,13 +39,14 @@ class VictoriaMetricsAPI:
         # 策略扫描会把实例范围编进 selector，GET 会撞 URL 长度上限；VM 支持 form POST。
         return self._do_request("post", api_path, data=data)
 
-    def _do_request(self, method, api_path, **request_kwargs):
+    def _do_request(self, method, api_path, timeout=None, **request_kwargs):
+        request_timeout = self.timeout if timeout is None else timeout
         try:
             response = getattr(_SESSION, method)(
                 f"{self.host}{api_path}",
                 auth=(self.username, self.password),
                 verify=self.ssl_verify,  # 添加SSL验证配置
-                timeout=self.timeout,
+                timeout=request_timeout,
                 **request_kwargs,
             )
             response.raise_for_status()
@@ -44,7 +57,7 @@ class VictoriaMetricsAPI:
                 extra={
                     "host": self.host,
                     "api_path": api_path,
-                    "timeout": self.timeout,
+                    "timeout": request_timeout,
                 },
                 exc_info=True,
             )
@@ -107,7 +120,7 @@ class VictoriaMetricsAPI:
             )
             raise
 
-    def query(self, query, step="5m", time=None, lookback_delta=None):
+    def query(self, query, step="5m", time=None, lookback_delta=None, timeout=None):
         params = {"query": query}
         if step:
             params["step"] = step
@@ -115,7 +128,20 @@ class VictoriaMetricsAPI:
             params["time"] = time
         if lookback_delta:
             params["lookback_delta"] = lookback_delta
-        return self._do_get("/api/v1/query", params)
+        if timeout is not None:
+            params["timeout"] = _vm_timeout(timeout)
+        return self._do_request("get", "/api/v1/query", timeout=_requests_timeout(self.timeout, timeout), params=params)
+
+    def query_form(self, query, step="5m", time=None, timeout=None):
+        """即时查询走 form POST，避免把很长的实例选择器放进 URL。"""
+        data = {"query": query}
+        if step:
+            data["step"] = step
+        if time:
+            data["time"] = time
+        if timeout is not None:
+            data["timeout"] = _vm_timeout(timeout)
+        return self._do_request("post", "/api/v1/query", timeout=_requests_timeout(self.timeout, timeout), data=data)
 
     def query_allow_error(self, query, step="5m", time=None, lookback_delta=None):
         """Instant query that surfaces PromQL/HTTP errors without raising."""
