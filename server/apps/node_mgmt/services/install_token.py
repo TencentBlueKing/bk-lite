@@ -60,7 +60,6 @@ class InstallTokenService:
         execution_id: str = "",
         execution_attempt: int | None = None,
         execution_deadline_unix: int | None = None,
-        environment_grant_id: str = "",
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -96,7 +95,6 @@ class InstallTokenService:
                 "execution_id": execution_id,
                 "execution_attempt": execution_attempt,
                 "execution_deadline_unix": execution_deadline_unix,
-                **({"environment_grant_id": environment_grant_id} if environment_grant_id else {}),
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -148,7 +146,6 @@ class InstallTokenService:
             "execution_attempt": data.get("execution_attempt"),
             "execution_deadline_unix": data.get("execution_deadline_unix"),
             "remaining_usage": remaining_usage,
-            **({"environment_grant_id": data["environment_grant_id"]} if data.get("environment_grant_id") else {}),
         }
 
     @staticmethod
