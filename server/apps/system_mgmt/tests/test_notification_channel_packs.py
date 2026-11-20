@@ -727,52 +727,6 @@ def test_integration_instance_create_rejects_notification_channel_pack(authentic
 
 @requires_enterprise_upload
 @pytest.mark.django_db
-def test_workflow_returns_output_for_non_retryable_pack_failure(authenticated_user, monkeypatch):
-    from apps.workflow.atom_packages.bklite_notification.runtime import handler
-
-    client = _client(authenticated_user)
-    assert _upload(client, "tplpack", delivery="template", parameter_mode="ordered", purpose="notification_channel").status_code == 201
-    channel = Channel.objects.create(
-        name="流程渠道",
-        channel_type="tplpack",
-        description="pack",
-        team=[1],
-        config={"endpoint": "https://a.example", "api_secret": "x"},
-    )
-
-    class FakeMgmt:
-        def dispatch_notification(self, **kwargs):
-            return {"result": False, "retryable": False, "message": "渠道拒绝发送"}
-
-    monkeypatch.setattr(handler, "SystemMgmt", lambda: FakeMgmt())
-    output = handler.execute(
-        {
-            "__bklite_context": {"organization_id": 1, "execution_id": "ex-1"},
-            "notification_type": "EMAIL",
-            "channel_id": channel.id,
-            "recipients": ["1"],
-            "title": "Hello",
-            "body": "Body",
-        }
-    )
-    assert output["delivery"]["retryable"] is False
-
-    email = Channel.objects.create(name="邮件", channel_type="email", description="mail", team=[1], config={})
-    with pytest.raises(ValueError):
-        handler.execute(
-            {
-                "__bklite_context": {"organization_id": 1, "execution_id": "ex-2"},
-                "notification_type": "EMAIL",
-                "channel_id": email.id,
-                "recipients": ["1"],
-                "title": "Hello",
-                "body": "Body",
-            }
-        )
-
-
-@requires_enterprise_upload
-@pytest.mark.django_db
 def test_template_pack_forwards_params_and_body_pack_uses_title(authenticated_user):
     from apps.system_mgmt.nats.channels import send_msg_with_channel
 

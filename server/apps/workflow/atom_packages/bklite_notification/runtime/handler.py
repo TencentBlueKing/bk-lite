@@ -64,16 +64,6 @@ def _resolve_recipients(recipients: list[Any], team: int) -> list[str]:
     return resolved
 
 
-def _loaded_notification_channel(channel_id: Any) -> bool:
-    if channel_id in (None, ""):
-        return False
-    from apps.system_mgmt.models import Channel
-    from apps.system_mgmt.services.notification_channel_pack import is_loaded_notification_channel
-
-    channel = Channel.objects.filter(id=channel_id).only("channel_type").first()
-    return channel is not None and is_loaded_notification_channel(channel.channel_type)
-
-
 def _default_email_recipients(inputs: dict[str, Any]) -> list[str]:
     """邮件未配置收件人时回落到本次执行启动人（与内置流程 actor 引用一致）。"""
     context = inputs.get("__bklite_context")
@@ -125,9 +115,6 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
         internal_caller="workflow",
     )
     if not isinstance(delivery, dict) or delivery.get("result") is not True:
-        non_retryable = isinstance(delivery, dict) and delivery.get("retryable") is False
-        if non_retryable and _loaded_notification_channel(inputs.get("channel_id")):
-            return {"delivery": delivery}
         message = delivery.get("message") if isinstance(delivery, dict) else ""
         raise ValueError(str(message or "通知渠道投递失败"))
     return {"delivery": delivery}
