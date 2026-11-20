@@ -129,7 +129,7 @@ const NotificationTagSelect: React.FC<NotificationTagSelectProps> = ({
         <button
           type="button"
           aria-label={t('common.add')}
-          className="flex h-8 w-8 items-center justify-center rounded border border-dashed border-[var(--color-border-2)] text-[var(--color-text-3)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded border border-dashed border-[var(--color-border-2)] text-[var(--color-text-3)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
           onClick={() => {
             setCustomKey('');
             setCustomValue('');
