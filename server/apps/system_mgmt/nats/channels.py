@@ -722,7 +722,7 @@ def send_msg_with_channel(
         if error:
             return error
         return send_nats_message(channel_obj, normalized)
-    return send_loaded_notification_channel(channel_obj, title, content, receivers)
+    return send_loaded_notification_channel(channel_obj, title, content, receivers, template_params=template_params)
 
 
 OPSPILOT_CHANNEL_SOURCE = "opspilot"

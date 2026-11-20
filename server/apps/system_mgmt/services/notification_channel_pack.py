@@ -15,7 +15,6 @@ from apps.system_mgmt.services.cloud_notify.config import mask_secret
 from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 NOTIFICATION_CHANNEL = "notification_channel"
-PARAMETER_SOURCES = {"title", "content", "literal"}
 MAX_TEMPLATE_PARAMETERS = 20
 _STATUSES = {"accepted", "rejected", "unknown"}
 _INTEGRATION_PURPOSE = "integration"
@@ -200,7 +199,7 @@ def runtime_pack_config_mapping(stored: dict, channel, manifest: ProviderManifes
     return config
 
 
-def send_loaded_notification_channel(channel, title, content, receivers) -> dict:
+def send_loaded_notification_channel(channel, title, content, receivers, template_params=None) -> dict:
     manifest = notification_manifest(channel.channel_type)
     if manifest is None:
         return _stopped("error.notification_channel_pack_not_loaded")
@@ -214,7 +213,7 @@ def send_loaded_notification_channel(channel, title, content, receivers) -> dict
     send_config.pop("parameters", None)
     if capability.delivery == "body":
         return _send_body(channel, manifest, send_config, title, content)
-    return _send_template(channel, manifest, send_config, title, content, receivers)
+    return _send_template(channel, manifest, send_config, receivers, template_params)
 
 
 def _send_body(channel, manifest, config, title, content):
@@ -229,12 +228,14 @@ def _send_body(channel, manifest, config, title, content):
     return _result([_from_raw(None, raw)])
 
 
-def _send_template(channel, manifest, config, title, content, receivers):
+def _send_template(channel, manifest, config, receivers, template_params):
     capability = notification_capability(manifest)
+    prepared, error_key = _prepare_template_params(template_params, capability.parameter_mode)
+    if error_key:
+        return _stopped(error_key)
     people = _receiver_users(receivers)
     if not people:
         return _stopped("error.cloud_no_recipients")
-    parameters = _rendered_parameters(channel.config or {}, title, content, capability.parameter_mode)
     recipients = []
     called = 0
     accepted = 0
@@ -250,7 +251,7 @@ def _send_template(channel, manifest, config, title, content, receivers):
             continue
         called += 1
         try:
-            raw = _invoke_send(manifest, config, phone, parameters)
+            raw = _invoke_send(manifest, config, phone, prepared)
         except Exception as error:
             provider_failed = True
             unknown += 1
@@ -282,22 +283,33 @@ def _invoke_send(manifest, *args):
     raise TypeError("send_adapter_missing")
 
 
-def _rendered_parameters(stored_config, title, content, mode):
+def declared_pack_parameter_rows(parameters, mode):
+    """保存变量声明和测试值。具名模式保留参数名，顺序模式只保留槽位。"""
     rows = []
-    for item in stored_config.get("parameters") or []:
-        source = item.get("source")
-        if source == "title":
-            text = title
-        elif source == "content":
-            text = content
-        else:
-            text = item.get("value") or ""
-        text = str(text or "").replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
-        if mode == "named":
-            rows.append({"name": str(item.get("name") or ""), "value": text})
-        else:
-            rows.append(text)
+    for item in parameters or []:
+        name = ""
+        test_value = ""
+        if isinstance(item, dict):
+            if mode == "named":
+                raw_name = item.get("name") or ""
+                if isinstance(raw_name, str):
+                    name = raw_name.strip()
+            raw_test_value = item.get("test_value") or ""
+            if isinstance(raw_test_value, str):
+                test_value = raw_test_value.strip()
+        rows.append({"name": name, "test_value": test_value})
     return rows
+
+
+def _prepare_template_params(template_params, mode):
+    """放行省略、对象和字符串数组。省略时按登记方式补空对象或空数组。"""
+    if template_params is None:
+        return ({} if mode == "named" else []), None
+    if isinstance(template_params, dict):
+        return template_params, None
+    if isinstance(template_params, list) and all(isinstance(item, str) for item in template_params):
+        return template_params, None
+    return None, "error.notification_channel_template_params_invalid"
 
 
 def _validate_parameters(parameters, mode) -> dict:
@@ -316,17 +328,18 @@ def _validate_parameters(parameters, mode) -> dict:
 def _validate_parameter(item, mode) -> str:
     if not isinstance(item, dict):
         return "error.cloud_parameter_invalid"
-    if item.get("source") not in PARAMETER_SOURCES:
-        return "error.cloud_parameter_source_invalid"
+    test_value = item.get("test_value", "")
+    if test_value is None:
+        test_value = ""
+    if not isinstance(test_value, str):
+        return "error.cloud_test_value_invalid"
+    if mode != "named":
+        return ""
     name = item.get("name", "")
     if not isinstance(name, str):
         return "error.cloud_parameter_name_invalid"
-    if mode == "named" and not name.strip():
+    if not name.strip():
         return "error.notification_channel_parameter_name_required"
-    if item.get("source") == "literal":
-        value = item.get("value", "")
-        if not isinstance(value, str) or not value.strip():
-            return "error.cloud_literal_required"
     return ""
 
 

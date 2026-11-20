@@ -132,6 +132,7 @@ error:
   notification_channel_content_invalid: 通知标题或正文无效
   notification_channel_phone_missing: 没有电话
   notification_channel_parameter_name_required: 参数名不能为空
+  notification_channel_template_params_invalid: 模板参数必须是 JSON 对象或字符串数组
   notification_channel_send_unknown: 发送结果未知
   notification_channel_send_rejected: 渠道拒绝发送
   account_association_provider_mismatch: 账号关联与当前群聊渠道的平台不一致

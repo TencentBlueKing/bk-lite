@@ -15,8 +15,10 @@ from apps.system_mgmt.services.cloud_notify.config import (
 from apps.system_mgmt.services.group_channel_mention import provider_for_group_channel
 from apps.system_mgmt.services.notification_channel_pack import (
     apply_pack_secrets,
+    declared_pack_parameter_rows,
     encrypt_pack_secrets,
     masked_pack_config,
+    notification_capability,
     notification_manifest,
     retain_pack_config,
     validate_pack_channel_config,
@@ -148,6 +150,9 @@ class ChannelSerializer(UsernameSerializer):
             pack_errors = validate_pack_channel_config(manifest, config, preserved)
             if pack_errors:
                 raise serializers.ValidationError({"config": self._localize_cloud_errors(pack_errors)})
+            capability = notification_capability(manifest)
+            if capability is not None and capability.delivery == "template":
+                config["parameters"] = declared_pack_parameter_rows(config.get("parameters") or [], capability.parameter_mode)
             attrs["config"] = config
             attrs["_pack_preserved_secrets"] = preserved
         if "account_association" in attrs:

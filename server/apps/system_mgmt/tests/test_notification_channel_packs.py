@@ -389,7 +389,8 @@ def test_send_contract_calls_the_pack_without_a_prior_test_and_does_not_retry(au
     )
     assert accepted.status_code == 200, accepted.data
     assert adapter.calls[-1][1] == "+44 7700 900123"
-    assert adapter.calls[-1][2] == ["[渠道甲] Test Message", "code"]
+    assert adapter.calls[-1][2] == ["", ""]
+    assert "Test Message" not in str(adapter.calls[-1][2])
 
     adapter.calls.clear()
     sent = send_loaded_notification_channel(channel, "Hello", "Body", [channel_user_id(), other.id])
@@ -594,11 +595,13 @@ def test_incomplete_secret_and_unloaded_pack_do_not_call_send(authenticated_user
     assert unread["retryable"] is False
     assert adapter.calls == []
 
-    channel.config["parameters"] = [{"source": "nope"}]
+    channel.config["parameters"] = {"source": "nope"}
     channel.config["api_secret"] = created.data["config"]["api_secret"]
     channel.save(update_fields=["config"])
     invalid = send_loaded_notification_channel(channel, "Hello", "Body", [1])
+    assert invalid["result"] is False
     assert invalid["retryable"] is False
+    assert "不完整" in invalid["message"]
     assert adapter.calls == []
 
     missing = Channel.objects.create(name="gone", channel_type="missingpack", description="x", team=[1], config={})
@@ -766,3 +769,103 @@ def test_workflow_returns_output_for_non_retryable_pack_failure(authenticated_us
                 "body": "Body",
             }
         )
+
+
+@requires_enterprise_upload
+@pytest.mark.django_db
+def test_template_pack_forwards_params_and_body_pack_uses_title(authenticated_user):
+    from apps.system_mgmt.nats.channels import send_msg_with_channel
+
+    client = _client(authenticated_user)
+    user = _sys_user(_PHONE)
+    assert _upload(client, "bodypack", delivery="body", purpose="notification_channel").status_code == 201
+    body = client.post(
+        CHANNEL_URL,
+        _channel_payload("bodypack", endpoint="https://hook.example", secret="body-secret"),
+        format="json",
+    )
+    body_channel = Channel.objects.get(id=body.data["id"])
+    body_adapter = _adapter("bodypack")
+    body_adapter.calls.clear()
+    sent_body = send_loaded_notification_channel(body_channel, "标题甲", "正文甲", [user.id], template_params=15)
+    assert sent_body["result"] is True
+    assert body_adapter.calls[0][1:] == ("标题甲", "正文甲")
+
+    assert _upload(client, "namedpack", delivery="template", parameter_mode="named", purpose="notification_channel").status_code == 201
+    created = client.post(
+        CHANNEL_URL,
+        _channel_payload(
+            "namedpack",
+            endpoint="https://a.example",
+            secret="secret-value",
+            parameters=[{"name": "code", "test_value": "已保存", "source": "title", "value": "不会使用"}],
+        ),
+        format="json",
+    )
+    assert created.status_code == 201, created.data
+    assert created.data["config"]["parameters"] == [{"name": "code", "test_value": "已保存"}]
+    channel = Channel.objects.get(id=created.data["id"])
+    adapter = _adapter("namedpack")
+    adapter.calls.clear()
+    live = {"code": "告警\n原文"}
+    sent = send_msg_with_channel(channel.id, "标题甲", "正文甲", [user.id], template_params=live)
+    assert sent["result"] is True
+    assert adapter.calls[-1][1] == _PHONE
+    assert adapter.calls[-1][2] is live
+
+    refused = send_loaded_notification_channel(channel, "标题甲", "正文甲", [user.id], template_params=15)
+    mixed = send_loaded_notification_channel(channel, "标题甲", "正文甲", [user.id], template_params=["甲", 2])
+    assert refused["result"] is False
+    assert mixed["result"] is False
+    assert "JSON 对象" in refused["message"]
+    assert adapter.calls == [adapter.calls[0]]
+
+    adapter.hook = lambda _config, _phone, params: (
+        {"status": "accepted", "request_id": "ok", "reason": ""}
+        if params == {"code": "告警"}
+        else {"status": "rejected", "request_id": "", "reason": "键不一致"}
+    )
+    mismatch = send_loaded_notification_channel(channel, "标题甲", "正文甲", [user.id], template_params={"other": ""})
+    assert mismatch["result"] is False
+    assert "键不一致" in mismatch["message"]
+    assert adapter.calls[-1][2] == {"other": ""}
+
+    adapter.hook = None
+    adapter.calls.clear()
+    tested = client.post(
+        f"{CHANNEL_URL}test_send/",
+        {"channel_id": channel.id, "channel_type": "namedpack", "title": "不会使用", "content": "不会使用"},
+        format="json",
+    )
+    assert tested.status_code == 200, tested.data
+    assert adapter.calls[-1][2] == {"code": "已保存"}
+    assert "Test Message" not in str(adapter.calls[-1][2])
+
+    empty = client.post(
+        CHANNEL_URL,
+        _channel_payload("namedpack", endpoint="https://b.example", secret="secret-value", parameters=[], name="空声明"),
+        format="json",
+    )
+    empty_channel = Channel.objects.get(id=empty.data["id"])
+    adapter.calls.clear()
+    seen = []
+    for params in (None, {}, []):
+        result = send_loaded_notification_channel(empty_channel, "标题甲", "正文甲", [user.id], template_params=params)
+        assert result["result"] is True
+        seen.append(adapter.calls[-1][2])
+    assert seen == [{}, {}, []]
+
+    assert _upload(client, "orderedpack", delivery="template", parameter_mode="ordered", purpose="notification_channel").status_code == 201
+    ordered = client.post(
+        CHANNEL_URL,
+        _channel_payload("orderedpack", endpoint="https://c.example", secret="secret-value", name="顺序空"),
+        format="json",
+    )
+    ordered_channel = Channel.objects.get(id=ordered.data["id"])
+    ordered_adapter = _adapter("orderedpack")
+    ordered_adapter.calls.clear()
+    omitted = send_loaded_notification_channel(ordered_channel, "标题甲", "正文甲", [user.id])
+    passed_object = send_loaded_notification_channel(ordered_channel, "标题甲", "正文甲", [user.id], template_params={})
+    assert omitted["result"] is True
+    assert passed_object["result"] is True
+    assert [call[2] for call in ordered_adapter.calls] == [[], {}]

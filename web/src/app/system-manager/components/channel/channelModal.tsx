@@ -501,6 +501,13 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       Object.keys(finalConfig).forEach((key) => {
         if (!keep.has(key)) delete finalConfig[key];
       });
+      if (packManifest.delivery === 'template' && Array.isArray(finalConfig.parameters)) {
+        const named = packManifest.parameter_mode === 'named';
+        finalConfig.parameters = finalConfig.parameters.map((item) => ({
+          name: named ? String(item?.name || '').trim() : '',
+          test_value: String(item?.test_value || '').trim(),
+        }));
+      }
     }
 
     const webhookType = (values.sub_type || subType) as ChannelType;
@@ -792,7 +799,12 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: 'parameters',
         type: 'cloudParameters',
         label: t('system.channel.settings.parameters'),
-        component: <CloudParameterList showName={packManifest.parameter_mode === 'named'} />,
+        component: (
+          <CloudParameterList
+            declareOnly
+            showName={packManifest.parameter_mode === 'named'}
+          />
+        ),
       }] : []),
     ] : [];
 

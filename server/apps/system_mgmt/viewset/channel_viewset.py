@@ -407,6 +407,29 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         return content, [], at_kwargs
 
     @staticmethod
+    def _saved_template_test_params(channel, mode):
+        stored = channel.config if isinstance(channel.config, dict) else {}
+        rows = stored.get("parameters") or []
+        if not isinstance(rows, list) or not rows:
+            return {} if mode == "named" else []
+        if mode == "named":
+            params = {}
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") if isinstance(item.get("name"), str) else ""
+                value = item.get("test_value") if isinstance(item.get("test_value"), str) else ""
+                params[name] = value
+            return params
+        values = []
+        for item in rows:
+            if isinstance(item, dict) and isinstance(item.get("test_value"), str):
+                values.append(item["test_value"])
+            else:
+                values.append("")
+        return values
+
+    @staticmethod
     def _fixed_template_test_copy(channel, user):
         channel_name = channel.name or "Test Channel"
         receiver_name = getattr(user, "display_name", None) or getattr(user, "username", None) or ""
@@ -445,6 +468,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         capability = notification_capability(manifest)
         receivers = []
         title, content = self._fixed_template_test_copy(channel, request.user)
+        template_params = None
         if capability is not None and capability.delivery == "template":
             domain = getattr(request.user, "domain", None) or "domain.com"
             user = User.objects.filter(username=request.user.username, domain=domain).first()
@@ -452,7 +476,8 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
                 return Response({"result": False, "message": loader.get("error.cloud_test_phone_missing")}, status=400)
             receivers = [user.id]
             title, content = self._fixed_template_test_copy(channel, user)
-        result = send_loaded_notification_channel(channel, title, content, receivers)
+            template_params = self._saved_template_test_params(channel, capability.parameter_mode)
+        result = send_loaded_notification_channel(channel, title, content, receivers, template_params=template_params)
         return Response(
             {"result": result.get("result"), "message": result.get("message"), "recipients": result.get("recipients")},
             status=200 if result.get("result") else 400,

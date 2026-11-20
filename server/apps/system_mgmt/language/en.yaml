@@ -136,6 +136,7 @@ error:
   notification_channel_content_invalid: The notification title or body is invalid
   notification_channel_phone_missing: No phone number
   notification_channel_parameter_name_required: Parameter name is required
+  notification_channel_template_params_invalid: Template parameters must be a JSON object or an array of strings
   notification_channel_send_unknown: The send result is unknown
   notification_channel_send_rejected: The channel rejected the send
   account_association_provider_mismatch: The account association does not belong to this group channel's platform
