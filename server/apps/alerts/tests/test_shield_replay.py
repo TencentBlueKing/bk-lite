@@ -157,6 +157,36 @@ def test_second_run_does_not_replay_again(levels, source):
 
 
 @pytest.mark.django_db
+def test_waiting_event_does_not_block_later_replay(levels, source, monkeypatch, settings):
+    from django.core.cache import cache
+
+    from apps.alerts.common import shield_replay
+
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "shield-replay-cursor",
+        }
+    }
+    cache.close()
+    cache.delete(shield_replay.CURSOR_KEY)
+    monkeypatch.setattr(shield_replay, "BATCH_SIZE", 1)
+    _shield("ended", active_now=False)
+    waiting = _event(source, "E-wait")
+    _event(source, "E-ready", external_id="alert-2")
+    monkeypatch.setattr(shield_replay, "_still_shielded", lambda event, shields: event.event_id == "E-wait")
+
+    first = replay_settled_monitor_shields()
+    second = replay_settled_monitor_shields()
+
+    waiting.refresh_from_db()
+    assert first["replayed"] == 0
+    assert second["replayed"] == 1
+    assert waiting.shield_settled_at is None
+    assert Event.objects.filter(external_id="alert-2", status=EventStatus.RECEIVED).exists()
+
+
+@pytest.mark.django_db
 def test_other_push_sources_are_ignored(levels, source):
     _shield("ended", active_now=False)
     original = _event(source, "E-k8s", push_source_id="k8s")

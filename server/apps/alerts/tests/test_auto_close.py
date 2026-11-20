@@ -215,6 +215,22 @@ def test_already_auto_closed_lite_monitor_alert_reopens():
 
 
 @pytest.mark.django_db
+def test_auto_closed_lite_monitor_alert_older_than_a_day_stays_closed():
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.AUTO_CLOSE)
+    alert.closed_at = timezone.now() - timedelta(hours=48)
+    alert.save(update_fields=["closed_at"])
+    source = AlertSource.objects.create(name="NATS", source_id="nats-old", source_type="nats", secret="x")
+    alert.events.add(_monitor_event(source, "E-old", "monitor-old", timezone.now() - timedelta(hours=50)))
+
+    AlertAutoClose().main()
+
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.AUTO_CLOSE
+    assert OperatorLog.objects.filter(target_id=alert.alert_id, operator_object=REOPEN_OBJECT).exists() is False
+
+
+@pytest.mark.django_db
 def test_auto_close_main_no_alerts_noop():
     # 无活跃告警 → 直接返回
     AlertAutoClose().main()

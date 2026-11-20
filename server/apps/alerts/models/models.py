@@ -87,6 +87,14 @@ class Event(models.Model):
         db_table = "alerts_event"
         indexes = [
             models.Index(fields=["source", "received_at"]),
+            models.Index(
+                fields=["status", "push_source_id", "action", "shield_settled_at", "id"],
+                name="event_shield_replay_idx",
+            ),
+            models.Index(
+                fields=["source", "push_source_id", "external_id", "action"],
+                name="event_recovery_match_idx",
+            ),
             # 注意: JSONField 索引在部分数据库（如达梦）上不支持，通过 migrate_patch 处理
             models.Index(fields=["labels"], name="event_labels_gin"),
         ]

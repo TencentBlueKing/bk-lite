@@ -4,6 +4,7 @@
 recovery/closed，不回查监控。原事件保持 SHIELD，补一条新的 created 走现有入库。
 """
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
@@ -18,48 +19,78 @@ from apps.core.logger import alert_logger as logger
 
 MONITOR_PUSH_SOURCE_ID = "lite-monitor"
 BATCH_SIZE = 200
+REPLAY_LIMIT = 20
+CURSOR_KEY = "alerts:shield_replay:cursor"
+CURSOR_TTL_SECONDS = 7 * 24 * 60 * 60
 _REPLAY_PREFIX = "shield-replay:"
 
 
 def replay_settled_monitor_shields():
-    """了结或重放一批仍处于屏蔽状态的监控源事件。"""
-    events = list(
-        Event.objects.filter(
-            push_source_id=MONITOR_PUSH_SOURCE_ID,
-            status=EventStatus.SHIELD,
-            action=EventAction.CREATED,
-            shield_settled_at__isnull=True,
-        )
-        .select_related("source")
-        .order_by("id")[:BATCH_SIZE]
-    )
-    shields = list(AlertShield.objects.filter(is_active=True))
+    """了结或重放一批仍处于屏蔽状态的监控源事件。
+
+    从上次停下的 id 继续往后扫。还在窗口里的事件本轮跳过，但游标照样前进，
+    避免它们一直占住队头。真正重新入库的条数每轮有上限。
+    """
+    events, cursor = _load_batch()
+    shields = list(AlertShield.objects.filter(is_active=True)) if events else []
     settled = 0
     replayed = 0
+    scanned = 0
+    processed_until = cursor
     for event in events:
         try:
-            outcome = _replay_one(event, shields)
+            outcome = _replay_one(event, shields, can_replay=replayed < REPLAY_LIMIT)
         except Exception as exc:
             logger.exception(
                 "event=monitor_shield_replay_failed event_id=%s failed_stage=replay error_type=%s",
                 event.event_id,
                 type(exc).__name__,
             )
+            processed_until = event.id
+            scanned += 1
             continue
+        if outcome == "deferred":
+            break
+        processed_until = event.id
+        scanned += 1
         if outcome == "settled":
             settled += 1
         elif outcome == "replayed":
             replayed += 1
+    cache.set(CURSOR_KEY, processed_until, CURSOR_TTL_SECONDS)
     logger.info(
-        "event=monitor_shield_replay_finished scanned=%s settled=%s replayed=%s",
-        len(events),
+        "event=monitor_shield_replay_finished scanned=%s settled=%s replayed=%s cursor=%s",
+        scanned,
         settled,
         replayed,
+        processed_until,
     )
-    return {"scanned": len(events), "settled": settled, "replayed": replayed}
+    return {"scanned": scanned, "settled": settled, "replayed": replayed}
 
 
-def _replay_one(event, shields):
+def _unsettled_queryset():
+    return Event.objects.filter(
+        push_source_id=MONITOR_PUSH_SOURCE_ID,
+        status=EventStatus.SHIELD,
+        action=EventAction.CREATED,
+        shield_settled_at__isnull=True,
+    )
+
+
+def _load_batch():
+    cursor = cache.get(CURSOR_KEY) or 0
+    try:
+        cursor = int(cursor)
+    except (TypeError, ValueError):
+        cursor = 0
+    queryset = _unsettled_queryset().select_related("source").order_by("id")
+    events = list(queryset.filter(id__gt=cursor)[:BATCH_SIZE])
+    if events or not cursor:
+        return events, cursor
+    return list(queryset[:BATCH_SIZE]), 0
+
+
+def _replay_one(event, shields, can_replay=True):
     if not str(event.external_id or "").strip():
         _settle(event)
         return "settled"
@@ -68,6 +99,8 @@ def _replay_one(event, shields):
         return "settled"
     if _still_shielded(event, shields):
         return "waiting"
+    if not can_replay:
+        return "deferred"
     if not _replay(event):
         return "failed"
     _settle(event)

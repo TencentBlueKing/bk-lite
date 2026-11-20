@@ -14,6 +14,8 @@ from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.core.logger import alert_logger as logger
 
 REOPEN_OBJECT = "告警处理-Lite Monitor未恢复重新打开"
+REOPEN_LOOKBACK = timedelta(hours=24)
+REOPEN_BATCH_SIZE = 50
 
 
 class WindowCalculator:
@@ -167,7 +169,9 @@ class AlertAutoClose:
             是否成功关闭
         """
         try:
-            # 使用数据库事务和行锁确保并发安全
+            if _hold_open_still_valid(alert):
+                return None
+            unrecovered_event_ids = monitor_unrecovered_event_ids(alert)
             with transaction.atomic():
                 # 使用select_for_update加行锁，避免并发更新冲突
                 locked_alert = Alert.objects.select_for_update().get(id=alert.id)
@@ -182,7 +186,6 @@ class AlertAutoClose:
                     logger.info("[AlertAutoClose] 告警 %s 获取行锁后不再满足自动关闭条件，跳过关闭", alert.id)
                     return False
 
-                unrecovered_event_ids = monitor_unrecovered_event_ids(locked_alert)
                 if unrecovered_event_ids:
                     self._record_monitor_hold_open(locked_alert, strategy, unrecovered_event_ids)
                     logger.info(
@@ -291,24 +294,24 @@ class AlertAutoClose:
         )
 
     def _reopen_auto_closed_monitor_alerts(self):
-        """已经自动关闭、但仍有 Lite Monitor 未恢复事件的告警重新打开。"""
-        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
-
-        candidates = (
+        """最近自动关闭、但仍有 Lite Monitor 未恢复事件的告警重新打开。"""
+        cutoff = timezone.now() - REOPEN_LOOKBACK
+        candidate_ids = list(
             Alert.objects.filter(
                 status=AlertStatus.AUTO_CLOSE,
+                closed_at__gte=cutoff,
                 events__push_source_id=MONITOR_PUSH_SOURCE_ID,
                 events__action=EventAction.CREATED,
             )
-            .distinct()
             .order_by("id")
+            .values_list("id", flat=True)
+            .distinct()[:REOPEN_BATCH_SIZE]
         )
-        for alert_list in iter_queryset_in_pk_batches(candidates, batch_size=200):
-            for alert in alert_list:
-                event_ids = monitor_unrecovered_event_ids(alert)
-                if not event_ids:
-                    continue
-                self._restore_monitor_alert(alert, event_ids)
+        for alert in Alert.objects.filter(id__in=candidate_ids):
+            event_ids = monitor_unrecovered_event_ids(alert)
+            if not event_ids:
+                continue
+            self._restore_monitor_alert(alert, event_ids)
 
     def _record_monitor_hold_open(self, alert, strategy, event_ids):
         if _reopen_already_recorded(alert, event_ids):
@@ -321,8 +324,6 @@ class AlertAutoClose:
         with transaction.atomic():
             locked = Alert.objects.select_for_update().get(pk=alert.pk)
             if locked.status != AlertStatus.AUTO_CLOSE:
-                return
-            if not monitor_unrecovered_event_ids(locked):
                 return
             locked.status = status
             locked.closed_at = None
@@ -355,6 +356,23 @@ def _event_marker(event_ids):
 
 def _reopen_overview(event_ids):
     return "告警已重新打开。仅 Lite Monitor（lite-monitor）来源会这样处理：" f"存在尚未恢复的事件[{_event_marker(event_ids)}]，监控侧告警仍未结束，因此不保持自动关闭。"
+
+
+def _hold_open_still_valid(alert):
+    """同一条最后事件已经记录过重新打开时，不再重复查事件和恢复。"""
+    if not alert.last_event_time:
+        return False
+    recorded_at = (
+        OperatorLog.objects.filter(
+            target_type=LogTargetType.ALERT,
+            target_id=alert.alert_id,
+            operator_object=REOPEN_OBJECT,
+        )
+        .order_by("-id")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+    return bool(recorded_at and recorded_at >= alert.last_event_time)
 
 
 def _reopen_already_recorded(alert, event_ids):
