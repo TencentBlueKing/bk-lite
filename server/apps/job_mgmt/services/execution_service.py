@@ -14,13 +14,14 @@ View 仅负责鉴权（解析授权 team）、序列化与响应格式化。
 import json
 from typing import List
 
-from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.services.target_vault import uses_vault_targets
 from apps.job_mgmt.services.template_revision import display_revision_label
-from apps.job_mgmt.utils.team_authz import is_team_authorized
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 
 # 快速执行 / 文件分发的默认超时（秒），与序列化器 / 历史行为保持一致
 DEFAULT_TIMEOUT = 600
@@ -60,7 +61,7 @@ class ExecutionService:
     # ---------------- 目标 / 文件 / 模板对象校验 ---------------- #
 
     @staticmethod
-    def validate_manual_targets(target_list, authorized_team_ids, *, error_label: str = "执行") -> List[Target]:
+    def validate_manual_targets(target_list, authorized_team_ids, *, error_label: str = "执行", credential_actor=None) -> List[Target]:
         """校验 manual 来源的目标存在且属于授权团队。
 
         Args:
@@ -76,6 +77,11 @@ class ExecutionService:
             raise ExecutionAuthorizationError("部分目标不存在", status_code=400)
         if any(not is_team_authorized(t.team, authorized_team_ids) for t in targets):
             raise ExecutionAuthorizationError(f"部分目标不属于当前用户的团队，无权{error_label}", status_code=403)
+        for target in targets:
+            if target.credential_source == CredentialSource.CREDENTIAL and (credential_actor or {}).get("current_team") not in normalize_team(
+                target.team
+            ):
+                raise ExecutionAuthorizationError("仓库凭据目标不属于当前执行组织或缺少可信身份", status_code=403)
         return targets
 
     @staticmethod
@@ -157,7 +163,7 @@ class ExecutionService:
     # ---------------- 创建 + 派发：三个入口 ---------------- #
 
     @classmethod
-    def create_quick_execution(cls, *, data, team, authorized_team_ids, username, timeout_explicit) -> JobExecution:
+    def create_quick_execution(cls, *, data, team, authorized_team_ids, username, timeout_explicit, credential_actor=None) -> JobExecution:
         """快速执行：校验对象 → 危险检测 → 创建执行记录 → 派发任务。
 
         Args:
@@ -170,7 +176,7 @@ class ExecutionService:
         target_source = data["target_source"]
         target_list = data["target_list"]
         if target_source == TargetSource.MANUAL:
-            cls.validate_manual_targets(target_list, authorized_team_ids, error_label="执行")
+            cls.validate_manual_targets(target_list, authorized_team_ids, error_label="执行", credential_actor=credential_actor)
 
         script = cls.fetch_authorized_script(data["script_id"], authorized_team_ids) if data.get("script_id") else None
         playbook = cls.fetch_authorized_playbook(data["playbook_id"], authorized_team_ids) if data.get("playbook_id") else None
@@ -198,6 +204,7 @@ class ExecutionService:
                 target_list=target_list,
                 team=team,
                 executor_user=username,
+                credential_actor=credential_actor or {},
                 created_by=username,
                 updated_by=username,
             )
@@ -220,6 +227,7 @@ class ExecutionService:
                 target_list=target_list,
                 team=team,
                 executor_user=username,
+                credential_actor=credential_actor or {},
                 created_by=username,
                 updated_by=username,
             )
@@ -228,14 +236,14 @@ class ExecutionService:
         return execution
 
     @classmethod
-    def create_file_distribution(cls, *, data, team, authorized_team_ids, username) -> JobExecution:
+    def create_file_distribution(cls, *, data, team, authorized_team_ids, username, credential_actor=None) -> JobExecution:
         """文件分发：校验目标 / 文件 → 危险路径检测 → 创建执行记录 → 派发任务。"""
         target_source = data["target_source"]
         target_list = data["target_list"]
         target_path = data["target_path"]
 
         if target_source == TargetSource.MANUAL:
-            cls.validate_manual_targets(target_list, authorized_team_ids, error_label="分发")
+            cls.validate_manual_targets(target_list, authorized_team_ids, error_label="分发", credential_actor=credential_actor)
         distribution_files = cls.validate_distribution_files(data["file_ids"], authorized_team_ids)
         cls.check_dangerous_path(target_path, team)
 
@@ -252,6 +260,7 @@ class ExecutionService:
             target_list=target_list,
             team=team,
             executor_user=username,
+            credential_actor=credential_actor or {},
             created_by=username,
             updated_by=username,
         )
@@ -259,7 +268,7 @@ class ExecutionService:
         return execution
 
     @classmethod
-    def create_re_execution(cls, *, original: JobExecution, username: str, authorized_team_ids) -> JobExecution:
+    def create_re_execution(cls, *, original: JobExecution, username: str, authorized_team_ids, credential_actor=None) -> JobExecution:
         """重新执行：基于原执行记录创建新执行并派发。
 
         与 quick_execute / file_distribution 一致，执行前校验调用者对原作业 team
@@ -278,6 +287,9 @@ class ExecutionService:
         if not target_list:
             raise ExecutionAuthorizationError("原执行目标已不存在", status_code=400)
 
+        if uses_vault_targets(original.target_source, target_list):
+            cls.validate_manual_targets(target_list, authorized_team_ids, credential_actor=credential_actor)
+
         if original.job_type == JobType.FILE_DISTRIBUTION:
             execution = JobExecution.objects.create(
                 name=original.name,
@@ -293,6 +305,7 @@ class ExecutionService:
                 target_list=target_list,
                 team=original.team,
                 executor_user=username,
+                credential_actor=credential_actor or {},
                 created_by=username,
                 updated_by=username,
             )
@@ -313,6 +326,7 @@ class ExecutionService:
                 target_list=target_list,
                 team=original.team,
                 executor_user=username,
+                credential_actor=credential_actor or {},
                 created_by=username,
                 updated_by=username,
             )
@@ -338,6 +352,7 @@ class ExecutionService:
                 target_list=target_list,
                 team=original.team,
                 executor_user=username,
+                credential_actor=credential_actor or {},
                 created_by=username,
                 updated_by=username,
             )

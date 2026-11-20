@@ -9,7 +9,7 @@ from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.services.builtin_script_vars import render_builtin_script_vars, resolve_builtin_script_var_values
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService, call_target_executor
 from apps.job_mgmt.services.execution_stream_service import (
     JOB_LOG_MAX_AGE_SECONDS,
     JOB_LOG_MAX_BYTES,
@@ -83,22 +83,17 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             publish_done_sentinel(execution_id, tk, status)
 
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
-        if execution.target_source == TargetSource.MANUAL and self._contains_windows_manual_target(target_list):
-            if not self._should_use_ansible(execution.target_source, target_list):
-                error_msg = job_message(
-                    None,
-                    "error.windows_manual_ansible_only",
-                    "Windows manual targets only support Ansible/WinRM execution; switch the driver to Ansible",
-                )
-                logger.warning(f"[{self.task_name}] {error_msg}")
-                self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
-                execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
-                execution.save(update_fields=["execution_results", "updated_at"])
-                self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
-                return True
-        if not self._should_use_ansible(execution.target_source, target_list):
-            return False
         try:
+            if not self._should_use_ansible(execution.target_source, target_list):
+                if execution.target_source != TargetSource.MANUAL or not self._contains_windows_manual_target(target_list):
+                    return False
+                raise ValueError(
+                    job_message(
+                        None,
+                        "error.windows_manual_ansible_only",
+                        "Windows manual targets only support Ansible/WinRM execution; switch the driver to Ansible",
+                    )
+                )
             self._execute_script_via_ansible(execution, target_list, script_content, execution.script_type)
             logger.info(f"[{self.task_name}] Ansible 任务已提交，等待回调: execution_id={self.execution_id}")
             return True
@@ -109,10 +104,8 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 "Ansible execution failed: {detail}",
                 detail=str(e),
             )
-            logger.exception(f"[{self.task_name}] {error_msg}")
-            self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
-            execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
-            execution.save(update_fields=["execution_results", "updated_at"])
+            self._log_execution_failure("submit_ansible_script", e)
+            self.finalize_execution(execution, self.task_name, [self.build_target_failed_result(t, error_msg) for t in target_list])
             self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
             return True
 
@@ -153,7 +146,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                         publish_done_sentinel(execution.id, tk, result.get("status", ExecutionStatus.FAILED))
                         sentineled.add(tk)
                     except Exception as e:
-                        logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
+                        self._log_execution_failure("collect_script_result", e)
                         failed_result = self.build_target_failed_result(target_info, str(e))
                         results.append(failed_result)
                         tk = failed_result.get("target_key", "")
@@ -284,18 +277,32 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
                 executor = Executor(ssh_creds["node_id"])
                 ssh_command = build_heredoc_command(shell, script_content)
-                exec_result = executor.execute_ssh_stream(
+                exec_result = call_target_executor(
+                    executor.execute_ssh_stream,
+                    protect_errors=bool(ssh_creds.get("vault")),
                     command=ssh_command,
                     host=ssh_creds["host"],
                     username=ssh_creds["username"],
                     password=ssh_creds["password"],
                     private_key=ssh_creds["private_key"],
+                    passphrase=ssh_creds.get("passphrase"),
                     timeout=timeout,
                     port=ssh_creds["port"],
                     execution_id=str(execution_id),
                     stream_log_topic=build_stream_topic(execution_id, target_key),
                     fast_fail=True,
                 )
+
+                if ssh_creds.get("vault") and isinstance(exec_result, dict):
+                    exit_code = exec_result.get("exit_code", exec_result.get("code", 0))
+                    if (exit_code != 0 or exec_result.get("success") is False) and exec_result.get("stage") != "command_run":
+                        # 连接失败时不保存可能回显身份材料的执行器正文。
+                        timed_out = exec_result.get("code") == "timeout" or exec_result.get("category") == "remote_timeout"
+                        exec_result = {
+                            "exit_code": exit_code if isinstance(exit_code, int) and exit_code else 1,
+                            "code": "timeout" if timed_out else 1,
+                            "stderr": "执行器连接失败",
+                        }
 
             if isinstance(exec_result, str):
                 result["stdout"] = exec_result
@@ -324,7 +331,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             result["error_message"] = self.format_error_message(e)
             result["stderr"] = result["error_message"]
             result["status"] = ExecutionStatus.FAILED
-            logger.exception(f"目标 {target_name}({target_ip}) 脚本执行失败")
+            self._log_execution_failure("execute_script", e)
 
         result["finished_at"] = timezone.now().isoformat()
         return result

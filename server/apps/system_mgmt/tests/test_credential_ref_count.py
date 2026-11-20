@@ -6,6 +6,7 @@ from apps.system_mgmt.services.credential_ref_count import (
     INQUIRY_FAILED_TEMPLATE,
     INQUIRY_FINISHED_TEMPLATE,
     INQUIRY_STARTED_TEMPLATE,
+    _live_queriers,
     assert_credential_unreferenced,
     attach_public_refs,
     list_ref_chips,
@@ -24,6 +25,10 @@ def _ok(counts):
     return lambda ids, **kwargs: {"result": True, "data": {"counts": counts}}
 
 
+def _timeout(ids, **kwargs):
+    raise TimeoutError("rpc")
+
+
 def test_parse_counts_requires_explicit_zero_and_rejects_invalid():
     assert parse_counts({"result": True, "data": {"counts": {SSH_A: 2, SSH_B: 0}}}, [SSH_A, SSH_B]) == {
         SSH_A: 2,
@@ -38,14 +43,13 @@ def test_parse_counts_requires_explicit_zero_and_rejects_invalid():
 
 
 def test_list_ref_chips_maps_failures_zeros_and_positive_counts():
-    failed = lambda ids, **kwargs: (_ for _ in ()).throw(TimeoutError("rpc"))
-    assert list_ref_chips([SSH_A], queriers=(("cmdb", failed), ("monitor", failed))) == {SSH_A: None}
+    assert list_ref_chips([SSH_A], queriers=(("cmdb", _timeout), ("monitor", _timeout))) == {SSH_A: None}
     assert list_ref_chips([SSH_A], queriers=(("cmdb", _ok({SSH_A: 0})), ("monitor", _ok({SSH_A: 0})))) == {SSH_A: []}
     chips = list_ref_chips(
         [SSH_A, SSH_B],
         queriers=(
             ("cmdb", _ok({SSH_A: 2, SSH_B: 0})),
-            ("monitor", failed),
+            ("monitor", _timeout),
         ),
     )
     assert chips[SSH_A] == [{"module": "cmdb", "count": 2}]
@@ -53,9 +57,8 @@ def test_list_ref_chips_maps_failures_zeros_and_positive_counts():
 
 
 def test_assert_unreferenced_only_blocks_confirmed_refs():
-    failed = lambda ids, **kwargs: (_ for _ in ()).throw(TimeoutError("rpc"))
-    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", failed), ("monitor", _ok({SSH_A: 0}))))
-    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", failed), ("monitor", failed)))
+    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", _timeout), ("monitor", _ok({SSH_A: 0}))))
+    assert_credential_unreferenced(SSH_A, queriers=(("cmdb", _timeout), ("monitor", _timeout)))
     with pytest.raises(CredentialServiceError) as used_exc:
         assert_credential_unreferenced(
             SSH_A,
@@ -63,7 +66,7 @@ def test_assert_unreferenced_only_blocks_confirmed_refs():
         )
     assert used_exc.value.code == "in_use"
     with pytest.raises(CredentialServiceError) as mixed_exc:
-        assert_credential_unreferenced(SSH_A, queriers=(("cmdb", _ok({SSH_A: 2})), ("monitor", failed)))
+        assert_credential_unreferenced(SSH_A, queriers=(("cmdb", _ok({SSH_A: 2})), ("monitor", _timeout)))
     assert mixed_exc.value.code == "in_use"
     assert_credential_unreferenced(
         SSH_A,
@@ -103,8 +106,7 @@ def test_attach_public_refs_and_inquiry_logs_omit_credential_ids(caplog):
     assert failed_records[0].exc_info is None
     assert finished[0].args == ("monitor_count_credential_refs", "monitor", "ok", 1)
     assert finished[0].getMessage() == (
-        "event=credential_ref_count_inquiry_finished method=monitor_count_credential_refs module=monitor "
-        "outcome=ok id_count=1"
+        "event=credential_ref_count_inquiry_finished method=monitor_count_credential_refs module=monitor " "outcome=ok id_count=1"
     )
     formatter = logging.Formatter("%(levelname)s %(message)s")
     formatted = "".join(formatter.format(record) for record in caplog.records)
@@ -128,3 +130,14 @@ def test_query_module_counts_chunks_ids():
     ids = [f"crd-ssh-{index:032x}" for index in range(101)]
     query_module_counts(ids, queriers=(("cmdb", record),))
     assert [len(chunk) for chunk in seen] == [100, 1]
+
+
+def test_vault_lists_job_chip_and_blocks_confirmed_job_reference(monkeypatch):
+    def run(_client, method, credential_ids, **options):
+        return {"result": True, "data": {"counts": {key: int(method == "job_count_credential_refs") for key in credential_ids}}}
+
+    monkeypatch.setattr("apps.system_mgmt.services.credential_ref_count.RpcClient.run", run)
+    queriers = _live_queriers()
+    assert list_ref_chips([SSH_A], queriers=queriers) == {SSH_A: [{"module": "job", "count": 1}]}
+    with pytest.raises(CredentialServiceError, match="in_use"):
+        assert_credential_unreferenced(SSH_A, queriers=queriers)

@@ -179,9 +179,10 @@ class TestBuildHostCredentials:
         creds = Base._build_host_credentials([t])
         assert creds[0]["connection"] == "winrm"
 
-    def test_credential_mode_skipped(self):
+    def test_credential_mode_requires_consumer_identity(self):
         t = _target(credential_source=CredentialSource.CREDENTIAL, credential_id="c1")
-        assert Base._build_host_credentials([t]) == []
+        with pytest.raises(ValueError, match="消费身份"):
+            Base._build_host_credentials([t])
 
 
 class TestErrorFormatting:

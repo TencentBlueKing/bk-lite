@@ -1709,6 +1709,7 @@
       "organization": "组织",
       "refs": "引用情况",
       "refCmdb": "CMDB {count}",
+      "refJob": "作业 {count}",
       "refMonitor": "监控 {count}",
       "inUse": "该凭据仍被业务模块引用，无法删除或更改所属组织。",
       "enabled": "启用",

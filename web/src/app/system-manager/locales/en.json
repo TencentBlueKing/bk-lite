@@ -1709,6 +1709,7 @@
       "organization": "Organization",
       "refs": "References",
       "refCmdb": "CMDB {count}",
+      "refJob": "Job {count}",
       "refMonitor": "Monitor {count}",
       "inUse": "This credential is still referenced by other modules, so it cannot be deleted or moved.",
       "enabled": "Enabled",
