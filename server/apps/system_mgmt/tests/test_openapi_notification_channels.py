@@ -716,8 +716,24 @@ def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
     assert item["channel_type"] == "sms"
     assert item["recipient_mode"] == "system_user"
     parameters = {parameter["name"]: parameter for parameter in item["send_parameters"]}
-    assert list(parameters) == ["channel_id", "channel_type", "title", "content", "receivers"]
-    assert "云模板" in parameters["title"]["description"]
-    assert "云模板" in parameters["content"]["description"]
+    assert list(parameters) == ["channel_id", "channel_type", "title", "content", "receivers", "template_params"]
+    assert parameters["template_params"]["required"] is False
+    assert parameters["template_params"]["type"] == "array"
+    assert "template_params" in parameters["title"]["description"]
+    assert "template_params" in parameters["content"]["description"]
+    assert "字符串数组" in parameters["template_params"]["description"]
+    assert "JSON 对象" not in parameters["template_params"]["description"]
+
+    aliyun = Channel.objects.create(
+        name="阿里云短信",
+        channel_type=ChannelChoices.SMS,
+        description="告警短信",
+        team=[1],
+        config={"provider": "aliyun", "access_key_secret": "secret-sentinel"},
+    )
+    aliyun_parameters = {parameter["name"]: parameter for parameter in _openapi_notification_channel(aliyun, "zh-Hans")["send_parameters"]}
+    assert aliyun_parameters["template_params"]["type"] == "object"
+    assert "JSON 对象" in aliyun_parameters["template_params"]["description"]
+    assert "字符串数组" not in aliyun_parameters["template_params"]["description"]
     assert "用户 ID" in parameters["receivers"]["description"]
     assert "secret-sentinel" not in json.dumps(item, ensure_ascii=False)

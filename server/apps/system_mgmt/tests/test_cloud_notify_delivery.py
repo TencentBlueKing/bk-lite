@@ -61,7 +61,7 @@ def test_sms_skips_missing_phone_and_accepts_the_other_recipient():
     ready = _user(username="ready", display_name="有号用户", email="ready@example.com")
 
     with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider", return_value=_outcome("accepted", "req-1", "serial-1")) as send:
-        result = send_msg_with_channel(channel.id, TITLE, BODY, [missing.id, ready.id])
+        result = send_msg_with_channel(channel.id, TITLE, BODY, [missing.id, ready.id], template_params=[TITLE, BODY])
 
     assert send.call_count == 1
     channel_type, config, phone, params = send.call_args.args
@@ -98,7 +98,7 @@ def test_sms_maps_provider_accept_reject_and_network_outcomes():
     }
 
     with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider", side_effect=lambda *_args: outcomes[_args[2]]):
-        result = send_msg_with_channel(channel.id, "标题", "正文", [accepted.id, rejected.id, unknown.id])
+        result = send_msg_with_channel(channel.id, "标题", "正文", [accepted.id, rejected.id, unknown.id], template_params=["标题", "正文"])
 
     assert result["result"] is False
     assert result["retryable"] is False
@@ -129,7 +129,7 @@ def test_sms_provider_exception_is_unknown_and_logs_one_sanitized_error(caplog):
         "apps.system_mgmt.services.cloud_notify.delivery.call_provider",
         side_effect=explode,
     ):
-        result = send_msg_with_channel(channel.id, TITLE, BODY, [user.id])
+        result = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params=["标题", "正文"])
 
     error = caught["error"]
     assert str(error) == f"{SECRET} {PHONE} {TITLE} {BODY}"
@@ -150,3 +150,75 @@ def test_sms_provider_exception_is_unknown_and_logs_one_sanitized_error(caplog):
     assert "正文-sentinel" not in formatted
     finished = [record for record in caplog.records if record.msg == _FINISHED]
     assert finished == []
+
+
+def test_sms_rejects_template_params_that_do_not_match_the_channel():
+    channel = _sms_channel()
+    user = _user()
+
+    with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider") as send:
+        missing = send_msg_with_channel(channel.id, TITLE, BODY, [user.id])
+        extra = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params=["只有一个"])
+        wrong_shape = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params={"1": "4370"})
+
+    assert send.call_count == 0
+    assert missing["result"] is False
+    assert missing["retryable"] is False
+    assert missing["recipients"] == []
+    assert "不一致" in missing["message"]
+    assert extra["message"] == missing["message"]
+    assert "字符串数组" in wrong_shape["message"]
+
+
+def test_aliyun_sms_sends_named_template_params_and_ignores_title():
+    config = {
+        "provider": "aliyun",
+        "access_key_id": "LTAIexample",
+        "access_key_secret": SECRET,
+        "sign_name": "运维平台",
+        "template_code": "SMS_1",
+        "parameters": [{"name": "scene"}, {"name": "level"}],
+    }
+    Channel.encrypt_field("access_key_secret", config)
+    channel = Channel.objects.create(name="阿里云短信", channel_type=ChannelChoices.SMS, description="告警短信", team=[1], config=config)
+    user = _user(username="aliyun-user", email="aliyun-user@example.com")
+
+    with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider", return_value=_outcome("accepted", "req-1", "biz-1")) as send:
+        wrong_shape = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params=["磁盘", "严重"])
+        result = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params={"level": "严重", "scene": "告警\n平台"})
+
+    assert "JSON 对象" in wrong_shape["message"]
+    assert result["result"] is True
+    assert send.call_count == 1
+    assert send.call_args.args[3] == {"scene": "告警 平台", "level": "严重"}
+
+
+def test_saved_test_values_do_not_fill_a_formal_send():
+    channel = _sms_channel()
+    channel.config["parameters"] = [{"name": "", "test_value": "磁盘"}, {"name": "", "test_value": "严重"}]
+    channel.save(update_fields=["config"])
+    user = _user(username="sample-user", email="sample-user@example.com")
+
+    with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider", return_value=_outcome("accepted", "req-1", "serial-1")) as send:
+        missing = send_msg_with_channel(channel.id, TITLE, BODY, [user.id])
+        sent = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params=["甲", "乙"])
+
+    assert missing["result"] is False
+    assert "不一致" in missing["message"]
+    assert sent["result"] is True
+    assert send.call_count == 1
+    assert send.call_args.args[3] == ["甲", "乙"]
+
+
+def test_sms_without_variables_omits_template_params():
+    channel = _sms_channel()
+    channel.config["parameters"] = []
+    channel.save(update_fields=["config"])
+    user = _user(username="plain-user", email="plain-user@example.com")
+
+    with patch("apps.system_mgmt.services.cloud_notify.delivery.call_provider", return_value=_outcome("accepted", "req-1", "serial-1")) as send:
+        result = send_msg_with_channel(channel.id, TITLE, BODY, [user.id], template_params={"scene": "告警"})
+
+    assert send.call_count == 0
+    assert result["result"] is False
+    assert "没有变量" in result["message"]

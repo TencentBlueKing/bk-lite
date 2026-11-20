@@ -263,8 +263,6 @@ const NOTIFICATION_CHANNEL_TYPE: Record<string, string> = {
   FEISHU_BOT: 'feishu_bot',
   DINGTALK_BOT: 'dingtalk_bot',
   CUSTOM_WEBHOOK: 'custom_webhook',
-  SMS: 'sms',
-  VOICE: 'voice',
 };
 
 const NOTIFICATION_TYPE_TEXT: Record<string, { id: string; defaultMessage: string }> = {
@@ -273,8 +271,6 @@ const NOTIFICATION_TYPE_TEXT: Record<string, { id: string; defaultMessage: strin
   FEISHU_BOT: { id: 'workflowOrchestration.editor.notificationTypeFeishuBot', defaultMessage: '飞书机器人' },
   DINGTALK_BOT: { id: 'workflowOrchestration.editor.notificationTypeDingtalkBot', defaultMessage: '钉钉机器人' },
   CUSTOM_WEBHOOK: { id: 'workflowOrchestration.editor.notificationTypeCustomWebhook', defaultMessage: '自定义 Webhook' },
-  SMS: { id: 'workflowOrchestration.editor.notificationTypeSms', defaultMessage: '短信' },
-  VOICE: { id: 'workflowOrchestration.editor.notificationTypeVoice', defaultMessage: '语音' },
 };
 
 function notificationChannelOptions(schema: JsonSchema, notificationType: string) {
@@ -348,7 +344,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
     setField('channel_id', first);
   }, [channelOptions, readOnly, value.channel_id]);
 
-  const personalNotification = notificationType === 'EMAIL' || notificationType === 'SMS' || notificationType === 'VOICE';
+  const personalNotification = notificationType === 'EMAIL';
 
   return <>
     <Form.Item className="mb-0" label={t('workflowOrchestration.editor.notificationCategory', '通知类别')} required>

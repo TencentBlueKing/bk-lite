@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from apps.core.logger import safe_exception_info
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import User
-from apps.system_mgmt.services.cloud_notify.config import runtime_config, validate_cloud_config
+from apps.system_mgmt.services.cloud_notify.config import match_template_params, runtime_config, validate_cloud_config
 from apps.system_mgmt.utils.i18n import system_mgmt_message
 
 _FINISHED = "event=cloud_notification_finished channel_id=%s accepted=%s unknown=%s"
@@ -26,7 +26,9 @@ def call_provider(channel_type, config, phone, template_params):
     return dispatch_provider(channel_type, config, phone, template_params)
 
 
-def send_cloud_notification(channel, title, content, receivers):
+def send_cloud_notification(channel, title, content, receivers, template_params=None):
+    """title 和 content 留给共用发送入口，不填入云模板变量。"""
+    del title, content
     config = runtime_config(channel)
     if _secrets_unreadable(channel, config):
         return _stopped(system_mgmt_message(None, "error.cloud_secret_unreadable"))
@@ -37,7 +39,9 @@ def send_cloud_notification(channel, title, content, receivers):
     if not people:
         return _stopped(system_mgmt_message(None, "error.cloud_no_recipients"))
 
-    params = _template_params(config, title, content)
+    params, error_key = match_template_params(config, template_params)
+    if error_key:
+        return _stopped(system_mgmt_message(None, error_key))
     recipients = []
     provider_called = False
     provider_failed = False
@@ -150,26 +154,6 @@ def _mainland_mobile(raw):
     if len(digits) == 11 and digits.startswith("1") and digits.isdigit():
         return digits
     return ""
-
-
-def _template_params(config, title, content):
-    provider = config.get("provider")
-    values = []
-    named = {}
-    for item in config.get("parameters") or []:
-        source = item.get("source")
-        if source == "title":
-            text = title
-        elif source == "content":
-            text = content
-        else:
-            text = item.get("value") or ""
-        text = str(text or "").replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
-        if provider == "aliyun":
-            named[str(item.get("name") or "")] = text
-        else:
-            values.append(text)
-    return named if provider == "aliyun" else values
 
 
 def _secrets_unreadable(channel, config):

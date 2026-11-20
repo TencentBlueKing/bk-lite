@@ -26,7 +26,5 @@ describe('notification template channel formats', () => {
     });
     expect(getNotificationTemplateChannel('custom_webhook')?.editorMode).toBe('text');
     expect(getNotificationTemplateChannel('nats')?.editorMode).toBe('text');
-    expect(getNotificationTemplateChannel('sms')).toMatchObject({ editorMode: 'text', hasSubject: true });
-    expect(getNotificationTemplateChannel('voice')).toMatchObject({ editorMode: 'text', hasSubject: true });
   });
 });

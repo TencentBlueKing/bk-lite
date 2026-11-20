@@ -105,6 +105,13 @@ error:
   cloud_parameter_source_invalid: 参数来源必须是标题、正文或固定文字
   cloud_parameter_name_invalid: 参数名必须是字符串
   cloud_parameter_name_required: 阿里云模板参数名不能为空
+  cloud_parameter_name_duplicate: 阿里云模板参数名不能重复
+  cloud_test_value_invalid: 测试值必须是字符串
+  cloud_template_params_unexpected: 该模板没有变量，不能传模板变量
+  cloud_template_params_mismatch: 模板变量与渠道登记的参数不一致
+  cloud_template_params_object: 阿里云模板变量必须是 JSON 对象
+  cloud_template_params_array: 腾讯云模板变量必须是字符串数组
+  cloud_template_params_value: 模板变量的值必须是非空字符串
   cloud_literal_required: 固定文字不能为空
   cloud_literal_too_long: 固定文字不能超过 200 字
   cloud_secret_unreadable: 密钥无法解密
@@ -319,8 +326,8 @@ channel:
     title_feishu_bot: 飞书卡片标题。留空时渠道侧显示为「通知」。
     title_dingtalk_bot: 钉钉 markdown 标题。留空时渠道侧显示为「通知」。
     title_custom_webhook: 自定义 Webhook 不使用标题，传空字符串即可。
-    title_sms: 短信标题。按该渠道已配置的参数对应，填入客户已审核的云模板。
-    title_voice: 语音标题。按该渠道已配置的参数对应，填入客户已审核的云模板。
+    title_sms: 短信不使用标题。云模板变量放在 template_params。可以传空字符串。
+    title_voice: 语音不使用标题。云模板变量放在 template_params。可以传空字符串。
     title_im_notification: IM 应用通知标题。可以留空。最长 512 个字符。
     title_default: 标题。可以留空。最长 512 个字符。
     content_email: 邮件正文。按 HTML 发送，不会转义标签，换行也不会改成换行标签。
@@ -330,8 +337,12 @@ channel:
     content_dingtalk_bot: 钉钉 markdown 正文。接收人名会追加在正文后面。
     # format() 把 {{{{content}}}} 还原成字面量 {{content}}
     content_custom_webhook: '通知正文，会替换该渠道模板中的 {{{{content}}}}。接收人名会追加在正文后面。'
-    content_sms: 短信正文。按该渠道已配置的参数对应，填入客户已审核的云模板。
-    content_voice: 语音正文。按该渠道已配置的参数对应，填入客户已审核的云模板。播放次数固定为 1。
+    content_sms: 短信不使用正文。云模板变量放在 template_params。接口仍要求本字段非空，可传任意占位文字。
+    content_voice: 语音不使用正文。云模板变量放在 template_params。接口仍要求本字段非空，可传任意占位文字。播放次数固定为 1。
+    template_params_sms_aliyun: 可选。渠道没有登记模板变量时省略或传空。传 JSON 对象，键与渠道参数名一致。值必须是非空字符串。
+    template_params_sms_tencent: 可选。渠道没有登记模板变量时省略或传空。传字符串数组，长度和顺序与渠道参数一致。值必须是非空字符串。示例：["4370"]。
+    template_params_voice_aliyun: 可选。渠道没有登记模板变量时省略或传空。传 JSON 对象，键与渠道参数名一致。值必须是非空字符串。
+    template_params_voice_tencent: 可选。渠道没有登记模板变量时省略或传空。传字符串数组，长度和顺序与渠道参数一致。值必须是非空字符串。示例：["4370"]。
     content_im_notification: IM 应用通知正文，不能为空。最长 20000 个字符。
     content_default: 通知正文，不能为空。最长 20000 个字符。
     receivers_system_user: 平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。

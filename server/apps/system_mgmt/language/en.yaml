@@ -109,6 +109,13 @@ error:
   cloud_parameter_source_invalid: A parameter source must be title, content, or literal
   cloud_parameter_name_invalid: A parameter name must be a string
   cloud_parameter_name_required: Alibaba Cloud template parameter names are required
+  cloud_parameter_name_duplicate: Alibaba Cloud template parameter names must be unique
+  cloud_test_value_invalid: A test value must be a string
+  cloud_template_params_unexpected: This template has no variables, so template parameters must be omitted
+  cloud_template_params_mismatch: Template parameters do not match the variables registered on the channel
+  cloud_template_params_object: Alibaba Cloud template parameters must be a JSON object
+  cloud_template_params_array: Tencent Cloud template parameters must be a string array
+  cloud_template_params_value: Each template parameter value must be a non-empty string
   cloud_literal_required: Literal text is required
   cloud_literal_too_long: Literal text cannot exceed 200 characters
   cloud_secret_unreadable: The cloud secret cannot be decrypted
@@ -350,8 +357,8 @@ channel:
     title_feishu_bot: 'Feishu card title. If left empty, the channel displays "通知".'
     title_dingtalk_bot: 'DingTalk markdown title. If left empty, the channel displays "通知".'
     title_custom_webhook: Custom webhooks do not use a title; pass an empty string.
-    title_sms: SMS title. Mapped by the channel parameters into the customer's approved cloud template.
-    title_voice: Voice title. Mapped by the channel parameters into the customer's approved cloud template.
+    title_sms: SMS does not use a title. Put cloud template variables in template_params. An empty string is allowed.
+    title_voice: Voice does not use a title. Put cloud template variables in template_params. An empty string is allowed.
     title_im_notification: IM app notification title. Can be left empty. Maximum 512 characters.
     title_default: Title. Can be left empty. Maximum 512 characters.
     content_email: Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.
@@ -361,8 +368,12 @@ channel:
     content_dingtalk_bot: DingTalk markdown body. Recipient names are appended to the body.
     # format() turns {{{{content}}}} back into the literal {{content}}
     content_custom_webhook: 'Notification body; it replaces {{{{content}}}} in the channel template. Recipient names are appended to the body.'
-    content_sms: SMS body. Mapped by the channel parameters into the customer's approved cloud template.
-    content_voice: Voice body. Mapped by the channel parameters into the customer's approved cloud template. Playback count is fixed at 1.
+    content_sms: SMS does not use the body. Put cloud template variables in template_params. This field is still required and can be any placeholder text.
+    content_voice: Voice does not use the body. Put cloud template variables in template_params. This field is still required and can be any placeholder text. Playback count is fixed at 1.
+    template_params_sms_aliyun: Optional. Omit it when the channel registers no template variables. Pass a JSON object whose keys match the registered names. Each value must be a non-empty string.
+    template_params_sms_tencent: 'Optional. Omit it when the channel registers no template variables. Pass a string array with the same length and order as the registered parameters. Each value must be a non-empty string. Example: ["4370"].'
+    template_params_voice_aliyun: Optional. Omit it when the channel registers no template variables. Pass a JSON object whose keys match the registered names. Each value must be a non-empty string.
+    template_params_voice_tencent: 'Optional. Omit it when the channel registers no template variables. Pass a string array with the same length and order as the registered parameters. Each value must be a non-empty string. Example: ["4370"].'
     content_im_notification: IM app notification body. Required. Maximum 20,000 characters.
     content_default: Notification body. Required. Maximum 20,000 characters.
     receivers_system_user: Platform user ID strings from the id field returned by GET /openapi/v1/system-mgmt/users. They must belong to the current organization. Do not pass usernames. 1 to 100 items, no duplicates.

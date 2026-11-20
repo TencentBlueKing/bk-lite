@@ -450,7 +450,7 @@ def _typed_send_parameter_name(prefix, value, known):
 def _notification_send_parameters(channel, locale):
     capability = _notification_channel_capabilities(channel)
     recipient_mode = capability["recipient_mode"]
-    return [
+    parameters = [
         _send_parameter(
             "channel_id",
             "integer",
@@ -482,6 +482,18 @@ def _notification_send_parameters(channel, locale):
             _send_parameter_text(locale, _typed_send_parameter_name("receivers", recipient_mode, {"system_user", "free_text"})),
         ),
     ]
+    if channel.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
+        provider = (channel.config or {}).get("provider")
+        shape = "aliyun" if provider == "aliyun" else "tencent"
+        parameters.append(
+            _send_parameter(
+                "template_params",
+                "object" if shape == "aliyun" else "array",
+                False,
+                _send_parameter_text(locale, f"template_params_{channel.channel_type}_{shape}"),
+            )
+        )
+    return parameters
 
 
 def _openapi_notification_channel(channel, locale):
@@ -674,6 +686,7 @@ def openapi_send_notification(
     receivers,
     channel_type,
     title="",
+    template_params=None,
     group_id=None,
     include_children=False,
     *,
@@ -714,6 +727,7 @@ def openapi_send_notification(
         content,
         [str(receiver).strip() for receiver in receivers],
         channel_type=channel.channel_type,
+        template_params=template_params,
     )
     if not _channel_delivery_accepted(result):
         return _soft_error(_channel_delivery_failure_message(result))

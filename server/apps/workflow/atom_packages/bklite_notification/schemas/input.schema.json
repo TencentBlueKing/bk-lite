@@ -2,8 +2,8 @@
   "type": "object",
   "properties": {
     "notification_type": {
-      "type": "string", "title": "通知类型",       "enum": ["EMAIL", "WECOM_BOT", "FEISHU_BOT", "DINGTALK_BOT", "CUSTOM_WEBHOOK", "SMS", "VOICE"],
-      "x-enum-labels": {"EMAIL": "邮件", "WECOM_BOT": "企业微信机器人", "FEISHU_BOT": "飞书机器人", "DINGTALK_BOT": "钉钉机器人", "CUSTOM_WEBHOOK": "自定义 Webhook", "SMS": "短信", "VOICE": "语音"},
+      "type": "string", "title": "通知类型", "enum": ["EMAIL", "WECOM_BOT", "FEISHU_BOT", "DINGTALK_BOT", "CUSTOM_WEBHOOK"],
+      "x-enum-labels": {"EMAIL": "邮件", "WECOM_BOT": "企业微信机器人", "FEISHU_BOT": "飞书机器人", "DINGTALK_BOT": "钉钉机器人", "CUSTOM_WEBHOOK": "自定义 Webhook"},
       "default": "EMAIL", "x-binding": "literal-only"
     },
     "channel_id": {"type": "integer", "title": "通知渠道", "x-binding": "literal-only"},

@@ -18,8 +18,6 @@ SUPPORTED_CHANNEL_TYPES = {
     ChannelChoices.FEISHU_BOT,
     ChannelChoices.CUSTOM_WEBHOOK,
     ChannelChoices.NATS,
-    ChannelChoices.SMS,
-    ChannelChoices.VOICE,
 }
 MANAGED_NATS_SOURCES = {"opspilot", "workflow"}
 ALERT_DETAIL_PATH = "/alarm/alarms?alert_id="
@@ -85,16 +83,6 @@ def _legacy_default_content(channel_type: str) -> tuple[str, str]:
             "**告警内容**\n{{ alert.content }}\n\n"
             "告警 ID：{{ alert.alert_id }}  \n"
             "本次接收人：{{ notification.receiver_names }}"
-        )
-    if channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
-        return subject, (
-            "[{{ notification.scene_name }}][{{ alert.level }}] {{ alert.title }}\n"
-            "资源：{{ alert.resource_name }}（{{ alert.resource_type }}）\n"
-            "来源：{{ alert.source_name }} / {{ alert.item }}\n"
-            "内容：{{ alert.content }}\n"
-            "时间：{{ alert.created_at }}\n"
-            "告警 ID：{{ alert.alert_id }}\n"
-            "接收人：{{ notification.receiver_names }}"
         )
     return "", (
         "[{{ notification.scene_name }}][{{ alert.level }}] {{ alert.title }}\n"
@@ -299,9 +287,8 @@ def _operation_base_content(channel_type: str) -> tuple[str, str]:
             )
         return subject, body
     prefix = "[WeOps 告警操作通知]" if channel_type == ChannelChoices.NATS else "[告警操作通知]"
-    text_subject = subject if channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE} else ""
     return (
-        text_subject,
+        "",
         f"""{prefix}
 通知场景：{{{{ notification.scene_name }}}}
 处理状态：待认领

@@ -628,7 +628,17 @@ def _with_group_mention(content, mention_text, separator):
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True, channel_type=None):
+def send_msg_with_channel(
+    channel_id,
+    title,
+    content,
+    receivers,
+    attachments=None,
+    internal_auth=None,
+    append_receivers=True,
+    channel_type=None,
+    template_params=None,
+):
     """
     通过指定通道发送消息
     :param channel_id: 通道ID
@@ -691,7 +701,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             at_mobiles=at_mobiles,
         )
     elif channel_obj.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
-        return send_cloud_notification(channel_obj, title, content, receivers)
+        return send_cloud_notification(channel_obj, title, content, receivers, template_params=template_params)
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
         return send_by_custom_webhook(channel_obj, content, receivers if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.NATS:

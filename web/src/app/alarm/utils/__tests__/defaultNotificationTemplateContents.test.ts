@@ -19,8 +19,6 @@ describe('通知模板组默认内容', () => {
       'feishu_bot',
       'custom_webhook',
       'nats',
-      'sms',
-      'voice',
     ]);
     for (const content of DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS) {
       expect(content.body_template).toContain('{{ notification.action_summary }}');
@@ -30,7 +28,7 @@ describe('通知模板组默认内容', () => {
       expect(content.body_template).toContain('请进入告警中心认领并处理该告警');
     }
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.filter((item) => item.subject_template).map((item) => item.channel_type))
-      .toEqual(['email', 'dingtalk_bot', 'feishu_bot', 'sms', 'voice']);
+      .toEqual(['email', 'dingtalk_bot', 'feishu_bot']);
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === 'feishu_bot')?.body_template)
       .toContain("<font color='{{ alert.feishu_color }}'>{{ alert.level }}</font>");
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === 'dingtalk_bot')?.body_template)
@@ -56,8 +54,6 @@ describe('通知模板组默认内容', () => {
       'feishu_bot',
       'custom_webhook',
       'nats',
-      'sms',
-      'voice',
     ]);
 
     expect(DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS).toEqual([
@@ -213,44 +209,6 @@ describe('通知模板组默认内容', () => {
 - 监控指标：{{ alert.item }}
 - 发生时间：{{ alert.created_at }}
 - 本次接收人：{{ notification.receiver_names }}
-
-告警内容：
-{{ alert.content }}`,
-      },
-      {
-        channel_type: 'sms',
-        subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
-        body_template: `[告警通知]
-通知场景：{{ notification.scene_name }}
-告警级别：{{ alert.level }}
-告警标题：{{ alert.title }}
-告警 ID：{{ alert.alert_id }}
-告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
-资源 ID：{{ alert.resource_id }}
-监控来源：{{ alert.source_name }}
-监控指标：{{ alert.item }}
-发生时间：{{ alert.created_at }}
-本次接收人：{{ notification.receiver_names }}
-通知时间：{{ notification.generated_at }}
-
-告警内容：
-{{ alert.content }}`,
-      },
-      {
-        channel_type: 'voice',
-        subject_template: '【{{ notification.scene_name }}·{{ alert.level }}】{{ alert.title }}',
-        body_template: `[告警通知]
-通知场景：{{ notification.scene_name }}
-告警级别：{{ alert.level }}
-告警标题：{{ alert.title }}
-告警 ID：{{ alert.alert_id }}
-告警资源：{{ alert.resource_name }}（{{ alert.resource_type }}）
-资源 ID：{{ alert.resource_id }}
-监控来源：{{ alert.source_name }}
-监控指标：{{ alert.item }}
-发生时间：{{ alert.created_at }}
-本次接收人：{{ notification.receiver_names }}
-通知时间：{{ notification.generated_at }}
 
 告警内容：
 {{ alert.content }}`,

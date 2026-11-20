@@ -938,8 +938,6 @@
       "notificationTypeFeishuBot": "飞书机器人",
       "notificationTypeDingtalkBot": "钉钉机器人",
       "notificationTypeCustomWebhook": "自定义 Webhook",
-      "notificationTypeSms": "短信",
-      "notificationTypeVoice": "语音",
       "webhookExampleToken": "点击“监听测试请求”后自动生成",
       "webhookExampleBody": "请替换为真实业务数据",
       "webhookExampleTriggerId": "发布后自动生成",

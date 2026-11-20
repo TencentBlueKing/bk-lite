@@ -129,10 +129,7 @@ const cloudDefaultConfig = () => ({
   access_key_secret: '',
   template_code: '',
   called_show_number: '',
-  parameters: [
-    { source: 'title', name: '', value: '' },
-    { source: 'content', name: '', value: '' },
-  ],
+  parameters: [],
 });
 
 const getDefaultConfig = (st: ChannelType): Record<string, unknown> => {
@@ -203,6 +200,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const watchedNatsMode = Form.useWatch('nats_mode', form);
   const watchedSmtpAuthEnabled = Form.useWatch('smtp_auth_enabled', form);
   const watchedProvider = Form.useWatch('provider', form);
+  const watchedParameters = Form.useWatch('parameters', form);
   useEffect(() => {
     if (!isWebhookChannel || !watchedSubType || isFillingForm.current) return;
     if (watchedSubType as ChannelType !== subType) {
@@ -330,6 +328,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       cancelled = true;
     };
   }, [visible, isPackChannel, channelType]);
+
+  const savedCloudParameters = Array.isArray(channelData.config?.parameters) ? channelData.config.parameters : [];
+  const savedCloudProvider = channelData.config?.provider === 'aliyun' ? 'aliyun' : 'tencent';
+  const formParameterCount = Array.isArray(watchedParameters) ? watchedParameters.length : 0;
 
   useEffect(() => {
     if (!visible || !isPackChannel || !packManifest || type !== 'add') {
@@ -484,6 +486,12 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       Object.keys(finalConfig).forEach((key) => {
         if (!keep.has(key)) delete finalConfig[key];
       });
+      if (Array.isArray(finalConfig.parameters)) {
+        finalConfig.parameters = finalConfig.parameters.map((item) => ({
+          name: provider === 'aliyun' ? String(item?.name || '').trim() : '',
+          test_value: String(item?.test_value || '').trim(),
+        }));
+      }
     }
     if (isPackChannel && packManifest) {
       const keep = new Set(packManifest.instance_template.map((field) => field.key));
@@ -517,9 +525,28 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
           message.warning(t('system.channel.settings.cloudTestSaveFirst'));
           return;
         }
+        let templateParams: Record<string, string> | string[] | undefined;
+        if (isCloudChannel && savedCloudParameters.length > 0) {
+          const formRows = Array.isArray(watchedParameters) ? watchedParameters : [];
+          const formNames = formRows.map((item: { name?: string }) => String(item?.name || '').trim());
+          const savedNames = savedCloudParameters.map((item: { name?: string }) => String(item?.name || '').trim());
+          const formTestValues = formRows.map((item: { test_value?: string }) => String(item?.test_value || '').trim());
+          if (formNames.length !== savedNames.length || formNames.some((name, index) => name !== savedNames[index])) {
+            message.warning(t('system.channel.settings.cloudTestSaveFirst'));
+            return;
+          }
+          if (formTestValues.length !== savedCloudParameters.length || formTestValues.some((item) => !item)) {
+            message.warning(t('system.channel.settings.cloudTestParamsRequired'));
+            return;
+          }
+          templateParams = savedCloudProvider === 'aliyun'
+            ? Object.fromEntries(savedNames.map((name, index) => [name, formTestValues[index]]))
+            : formTestValues;
+        }
         await testChannel({
           channel_id: channelId,
           channel_type: channelType,
+          ...(templateParams === undefined ? {} : { template_params: templateParams }),
         });
         message.success(t('system.channel.settings.testSuccess'));
         return;
@@ -740,7 +767,12 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: 'parameters',
         type: 'cloudParameters',
         label: t('system.channel.settings.parameters'),
-        component: <CloudParameterList showName={provider === 'aliyun'} />,
+        component: (
+          <CloudParameterList
+            declareOnly
+            showName={provider === 'aliyun'}
+          />
+        ),
       },
     ] : [];
 
@@ -809,6 +841,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
           form={form}
           fields={formFields}
         />
+        {isCloudChannel && formParameterCount > 0 ? (
+          <p className="mb-0 text-(--color-text-3)">{t('system.channel.settings.cloudTestParamsHint')}</p>
+        ) : null}
       </Spin>
     </OperateModal>
   );

@@ -18,10 +18,8 @@ SUPPORTED_CHANNEL_TYPES = {
     "custom_webhook",
     "nats",
     "im_notification",
-    "sms",
-    "voice",
 }
-SUBJECT_CHANNEL_TYPES = {"email", "dingtalk_bot", "feishu_bot", "im_notification", "sms", "voice"}
+SUBJECT_CHANNEL_TYPES = {"email", "dingtalk_bot", "feishu_bot", "im_notification"}
 
 
 class NotificationTemplateContentSerializer(serializers.ModelSerializer):

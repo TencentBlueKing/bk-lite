@@ -7,6 +7,7 @@ from apps.system_mgmt.models import Channel, ChannelChoices
 from apps.system_mgmt.services.cloud_notify.config import (
     CLOUD_SECRET_FIELDS,
     apply_preserved_secrets,
+    declared_parameter_rows,
     fields_preserving_existing_secret,
     masked_config,
     validate_cloud_config,
@@ -137,6 +138,7 @@ class ChannelSerializer(UsernameSerializer):
             cloud_errors = validate_cloud_config(channel_type, config, preserved)
             if cloud_errors:
                 raise serializers.ValidationError({"config": self._localize_cloud_errors(cloud_errors)})
+            config["parameters"] = declared_parameter_rows(config.get("parameters") or [], config.get("provider"))
         if manifest is not None and "config" in attrs:
             config = attrs.get("config")
             if not isinstance(config, dict):

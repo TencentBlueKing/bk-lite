@@ -34,4 +34,12 @@ describe('CloudParameterList', () => {
     rerender(<CloudParameterList value={[row]} />);
     expect(screen.queryByPlaceholderText('system.channel.settings.cloudParameterName')).toBeNull();
   });
+
+  it('declares cloud variables without a value source', () => {
+    render(<CloudParameterList value={[{ ...row, test_value: '告警' }]} declareOnly showName />);
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByPlaceholderText('system.channel.settings.cloudParameterName')).toBeTruthy();
+    expect(screen.getByDisplayValue('告警')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('system.channel.settings.cloudLiteral')).toBeNull();
+  });
 });

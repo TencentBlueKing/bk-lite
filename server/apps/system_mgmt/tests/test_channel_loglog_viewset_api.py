@@ -293,3 +293,4 @@ def test_cloud_test_send_uses_the_saved_channel_and_current_user_phone(super_cli
     assert title == "[短信] Test Message"
     assert content == "This is a test message from channel '短信'. Receiver: 管理员"
     assert receivers == [SysUser.objects.get(username="chadmin").id]
+    assert send.call_args.kwargs["template_params"] is None

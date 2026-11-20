@@ -2,8 +2,6 @@ from copy import deepcopy
 
 CLOUD_SECRET_FIELDS = ("secret_id", "secret_key", "access_key_id", "access_key_secret")
 MAX_TEMPLATE_PARAMETERS = 20
-MAX_LITERAL_LENGTH = 200
-PARAMETER_SOURCES = {"title", "content", "literal"}
 TENCENT_REGION = "ap-guangzhou"
 
 _REQUIRED = {
@@ -43,8 +41,9 @@ def validate_cloud_config(channel_type, config, preserved_fields=()):
     elif len(parameters) > MAX_TEMPLATE_PARAMETERS:
         errors["parameters"] = "error.cloud_parameters_limit"
     else:
+        seen_names = set()
         for index, item in enumerate(parameters):
-            item_errors = _validate_parameter(item, provider)
+            item_errors = _validate_parameter(item, provider, seen_names)
             if item_errors:
                 errors[f"parameters.{index}"] = item_errors
     called_show_number = config.get("called_show_number")
@@ -53,23 +52,94 @@ def validate_cloud_config(channel_type, config, preserved_fields=()):
     return errors
 
 
-def _validate_parameter(item, provider):
+def _validate_parameter(item, provider, seen_names):
     if not isinstance(item, dict):
         return "error.cloud_parameter_invalid"
-    if item.get("source") not in PARAMETER_SOURCES:
-        return "error.cloud_parameter_source_invalid"
+    test_value = item.get("test_value", "")
+    if test_value is None:
+        test_value = ""
+    if not isinstance(test_value, str):
+        return "error.cloud_test_value_invalid"
     name = item.get("name", "")
     if not isinstance(name, str):
         return "error.cloud_parameter_name_invalid"
-    if provider == "aliyun" and not name.strip():
+    if provider != "aliyun":
+        return ""
+    stripped = name.strip()
+    if not stripped:
         return "error.cloud_parameter_name_required"
-    if item.get("source") == "literal":
-        value = item.get("value", "")
-        if not isinstance(value, str) or not value.strip():
-            return "error.cloud_literal_required"
-        if len(value) > MAX_LITERAL_LENGTH:
-            return "error.cloud_literal_too_long"
+    if stripped in seen_names:
+        return "error.cloud_parameter_name_duplicate"
+    seen_names.add(stripped)
     return ""
+
+
+def declared_parameter_rows(parameters, provider):
+    """保存变量声明和测试值。阿里云保留参数名，腾讯云只保留顺序。"""
+    rows = []
+    for item in parameters or []:
+        name = ""
+        test_value = ""
+        if isinstance(item, dict):
+            if provider == "aliyun":
+                name = str(item.get("name") or "").strip()
+            raw_test_value = item.get("test_value") or ""
+            if isinstance(raw_test_value, str):
+                test_value = raw_test_value.strip()
+        rows.append({"name": name, "test_value": test_value})
+    return rows
+
+
+def match_template_params(config, template_params):
+    """按渠道登记的变量检查本次发送的参数。返回 (厂商参数, 错误键)。"""
+    provider = config.get("provider")
+    declared = [item for item in (config.get("parameters") or []) if isinstance(item, dict)]
+    if provider == "aliyun":
+        names = [str(item.get("name") or "").strip() for item in declared]
+        if any(not name for name in names):
+            return None, "error.cloud_parameter_name_required"
+        if len(set(names)) != len(names):
+            return None, "error.cloud_parameter_name_duplicate"
+        if not names:
+            if template_params in (None, {}, []):
+                return {}, None
+            return None, "error.cloud_template_params_unexpected"
+        if not isinstance(template_params, dict):
+            return None, "error.cloud_template_params_mismatch" if template_params is None else "error.cloud_template_params_object"
+        if set(template_params) != set(names):
+            return None, "error.cloud_template_params_mismatch"
+        values = {}
+        for name in names:
+            flattened = _flatten_template_value(template_params.get(name))
+            if flattened is None:
+                return None, "error.cloud_template_params_value"
+            values[name] = flattened
+        return values, None
+    count = len(declared)
+    if count == 0:
+        if template_params in (None, {}, []):
+            return [], None
+        return None, "error.cloud_template_params_unexpected"
+    if not isinstance(template_params, list):
+        return None, "error.cloud_template_params_mismatch" if template_params is None else "error.cloud_template_params_array"
+    if len(template_params) != count:
+        return None, "error.cloud_template_params_mismatch"
+    values = []
+    for item in template_params:
+        flattened = _flatten_template_value(item)
+        if flattened is None:
+            return None, "error.cloud_template_params_value"
+        values.append(flattened)
+    return values, None
+
+
+def _flatten_template_value(value):
+    if not isinstance(value, str):
+        return None
+    text = value.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ").strip()
+    if not text:
+        return None
+    return text
 
 
 def runtime_config(channel):

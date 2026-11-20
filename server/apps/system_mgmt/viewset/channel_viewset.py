@@ -427,7 +427,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         if user is None or not (user.phone or "").strip():
             return Response({"result": False, "message": loader.get("error.cloud_test_phone_missing")}, status=400)
         title, content = self._fixed_template_test_copy(channel, user)
-        result = send_cloud_notification(channel, title, content, [user.id])
+        result = send_cloud_notification(channel, title, content, [user.id], template_params=request.data.get("template_params"))
         return Response(
             {"result": result.get("result"), "message": result.get("message"), "recipients": result.get("recipients")},
             status=200 if result.get("result") else 400,

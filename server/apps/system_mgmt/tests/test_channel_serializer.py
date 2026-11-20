@@ -185,6 +185,44 @@ def test_sms_channel_rejects_missing_template_id_and_unknown_provider():
 
 
 @pytest.mark.django_db
+def test_sms_channel_stores_aliyun_names_and_rejects_duplicates():
+    payload = _sms_payload(
+        provider="aliyun",
+        access_key_id="LTAIexample",
+        access_key_secret="cloud-secret-key",
+        template_code="SMS_1",
+        parameters=[{"source": "content", "name": " scene ", "value": "旧值", "test_value": " 磁盘 "}, {"name": "level"}],
+    )
+    payload["config"].pop("secret_id", None)
+    payload["config"].pop("secret_key", None)
+    payload["config"].pop("sdk_app_id", None)
+    payload["config"].pop("template_id", None)
+    created = ChannelSerializer(data=payload)
+    assert created.is_valid(), created.errors
+    channel = created.save()
+    assert channel.config["parameters"] == [{"name": "scene", "test_value": "磁盘"}, {"name": "level", "test_value": ""}]
+
+    payload["config"]["parameters"] = [{"name": "scene"}, {"name": "scene"}]
+    duplicated = ChannelSerializer(data=payload)
+    assert duplicated.is_valid() is False
+    assert "parameters.1" in duplicated.errors["config"]
+
+
+@pytest.mark.django_db
+def test_sms_channel_stores_tencent_test_values_and_rejects_non_strings():
+    payload = _sms_payload(parameters=[{"name": "ignored", "test_value": " 磁盘 "}, {"test_value": ""}])
+    created = ChannelSerializer(data=payload)
+    assert created.is_valid(), created.errors
+    channel = created.save()
+    assert channel.config["parameters"] == [{"name": "", "test_value": "磁盘"}, {"name": "", "test_value": ""}]
+
+    payload["config"]["parameters"] = [{"name": "", "test_value": 1}]
+    rejected = ChannelSerializer(data=payload)
+    assert rejected.is_valid() is False
+    assert rejected.errors["config"]["parameters.0"] == "A test value must be a string"
+
+
+@pytest.mark.django_db
 def test_sms_channel_rejects_more_than_twenty_template_parameters():
     serializer = ChannelSerializer(data=_sms_payload(parameters=[{"source": "title", "name": "", "value": ""} for _ in range(21)]))
     assert serializer.is_valid() is False

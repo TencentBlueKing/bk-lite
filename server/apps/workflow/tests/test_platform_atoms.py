@@ -261,31 +261,6 @@ def test_notification_atom_fails_when_the_channel_rejects_delivery(mocker):
 
 
 @pytest.mark.django_db
-def test_sms_notification_atom_returns_non_retryable_failure(mocker):
-    system = mocker.patch("apps.workflow.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
-    system.dispatch_notification.return_value = {
-        "result": False,
-        "retryable": False,
-        "message": "无号用户：没有可用手机号",
-    }
-
-    result = notification_atom(
-        {
-            "team": 7,
-            "execution_id": "execution-1",
-            "notification_type": "SMS",
-            "channel_id": 8,
-            "recipients": ["12"],
-            "title": "告警",
-            "body": "主机离线",
-        }
-    )
-
-    assert result["delivery"]["message"] == "无号用户：没有可用手机号"
-    assert result["delivery"]["retryable"] is False
-
-
-@pytest.mark.django_db
 def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker, settings):
     from datetime import timedelta
 

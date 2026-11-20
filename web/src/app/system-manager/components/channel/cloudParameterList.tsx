@@ -8,12 +8,14 @@ export interface CloudTemplateParameter {
   source: 'title' | 'content' | 'literal';
   name: string;
   value: string;
+  test_value?: string;
 }
 
 interface CloudParameterListProps {
   value?: CloudTemplateParameter[];
   onChange?: (value: CloudTemplateParameter[]) => void;
   showName?: boolean;
+  declareOnly?: boolean;
 }
 
 const SOURCES = [
@@ -22,7 +24,12 @@ const SOURCES = [
   { value: 'literal', labelKey: 'system.channel.settings.cloudSourceLiteral' },
 ] as const;
 
-const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange, showName = false }) => {
+const CloudParameterList: React.FC<CloudParameterListProps> = ({
+  value,
+  onChange,
+  showName = false,
+  declareOnly = false,
+}) => {
   const { t } = useTranslation();
   const items = Array.isArray(value) ? value : [];
   const update = (next: CloudTemplateParameter[]) => onChange?.(next);
@@ -30,17 +37,19 @@ const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange
   return (
     <div className="flex flex-col gap-2">
       {items.map((item, index) => (
-        <div className="flex items-center gap-2" key={`${item.source}-${index}`}>
-          <Select
-            className="w-[120px]"
-            value={item.source}
-            options={SOURCES.map((source) => ({ value: source.value, label: t(source.labelKey) }))}
-            onChange={(source) => {
-              const next = items.slice();
-              next[index] = { ...item, source };
-              update(next);
-            }}
-          />
+        <div className="flex items-center gap-2" key={`${item.name}-${index}`}>
+          {declareOnly ? null : (
+            <Select
+              className="w-[120px]"
+              value={item.source}
+              options={SOURCES.map((source) => ({ value: source.value, label: t(source.labelKey) }))}
+              onChange={(source) => {
+                const next = items.slice();
+                next[index] = { ...item, source };
+                update(next);
+              }}
+            />
+          )}
           {showName ? (
             <Input
               className="w-[140px]"
@@ -52,8 +61,21 @@ const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange
                 update(next);
               }}
             />
+          ) : declareOnly ? (
+            <span className="w-[72px] shrink-0 text-(--color-text-2)">{t('system.channel.settings.cloudParameterSlot', undefined, { index: index + 1 })}</span>
           ) : null}
-          {item.source === 'literal' ? (
+          {declareOnly ? (
+            <Input
+              value={item.test_value || ''}
+              placeholder={t('system.channel.settings.cloudTestValue')}
+              onChange={(event) => {
+                const next = items.slice();
+                next[index] = { ...item, test_value: event.target.value };
+                update(next);
+              }}
+            />
+          ) : null}
+          {!declareOnly && item.source === 'literal' ? (
             <Input
               value={item.value}
               placeholder={t('system.channel.settings.cloudLiteral')}
@@ -72,7 +94,7 @@ const CloudParameterList: React.FC<CloudParameterListProps> = ({ value, onChange
       <Button
         disabled={items.length >= 20}
         type="dashed"
-        onClick={() => update([...items, { source: 'content', name: '', value: '' }])}
+        onClick={() => update([...items, { source: 'content', name: '', value: '', test_value: '' }])}
       >
         {t('system.channel.settings.cloudAddParameter')}
       </Button>

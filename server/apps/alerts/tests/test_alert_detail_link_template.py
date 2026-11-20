@@ -29,23 +29,6 @@ def test_loopback_request_uses_detected_server_ip(monkeypatch):
     assert resolve_alert_detail_prefix(_Request("127.0.0.1:8000", secure=True)) == "http://10.11.27.147"
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize("channel_type", ["sms", "voice"])
-def test_cloud_operation_template_uses_the_operation_subject(channel_type):
-    from apps.alerts.notification_templates.operation import ensure_alert_operation_template
-    from apps.system_mgmt.models.channel import Channel
-
-    Channel.objects.create(name="云渠道", channel_type=channel_type, config={}, description="", team=[1])
-
-    template = ensure_alert_operation_template(1)
-    content = template.contents.get()
-
-    assert content.channel_type == channel_type
-    assert content.subject_template == "【{{ notification.scene_name }}】【待认领】【{{ alert.level }}】{{ alert.title }}"
-    assert content.body_template.startswith("[告警操作通知]")
-    assert "待认领" in content.body_template
-
-
 @pytest.mark.parametrize("channel_type", ["email", "enterprise_wechat_bot", "custom_webhook"])
 def test_builtin_operation_template_explains_prefix_plus_alert_id(channel_type):
     _subject, body = _default_content(channel_type, "http://10.11.27.147")
