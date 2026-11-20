@@ -37,6 +37,7 @@ from apps.opspilot.views.chat_flow import (
     skill_execute,
     validate_openai_token,
 )
+from apps.opspilot.views.chat_wiki_material import chat_wiki_material_decide, chat_wiki_material_outcome
 from apps.opspilot.views.hitl import LOCAL_SKILL_HITL_NODES, submit_approval
 from apps.opspilot.views.job_distribute_file import list_job_distribute_files, upload_job_distribute_file
 from apps.opspilot.views.skill_channel import (
@@ -70,6 +71,8 @@ __all__ = [
     "_token_consumption_queryset",
     "_user_team_ids",
     "chat_attachment_status",
+    "chat_wiki_material_decide",
+    "chat_wiki_material_outcome",
     "delete_skill_channel_session",
     "download_chat_attachment",
     "download_workflow_attachment",
