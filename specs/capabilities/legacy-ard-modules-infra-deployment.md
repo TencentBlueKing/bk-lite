@@ -27,7 +27,7 @@
 | Kubernetes | 采集 DaemonSet、opspilot bot 部署 | `deploy/*`、opspilot |
 
 ## 2. 运行进程【已实现/已存在】
-- 后端：Uvicorn ASGI **:8011（`make dev` 开发）**；Celery worker+Beat（`make celery`，Beat 用 `DatabaseScheduler`，周期任务存 `django_celery_beat` 表）；NATS 监听（`make start-nats`）。
+- 后端：Uvicorn ASGI **:8011（`make dev` 开发）**；Celery worker+Beat（`make celery`，Beat 用 `FutureLastRunDatabaseScheduler`：`last_run_at` 超前超过 60 秒时按当前时间续算，见 `specs/changes/celery-beat-future-last-run/spec.md`；周期任务存 `django_celery_beat` 表）；NATS 监听（`make start-nats`）。
   - Celery 由 `ENABLE_CELERY` 环境变量开关（默认 `False`）：仅当为 `true` 时才把 `django_celery_beat`、`django_celery_results` 装入 `INSTALLED_APPS`，并遍历各 app 的 `<app>.config.CELERY_BEAT_SCHEDULE` 聚合为 `CELERY_BEAT_SCHEDULE`。关键默认值：`CELERY_WORKER_CONCURRENCY=2`、`CELERY_MAX_TASKS_PER_CHILD=5`（worker 执行 5 个任务后自销毁释放内存）、`CELERY_RESULT_BACKEND` 取自 env（`celery.py:9-43`）。【已实现】
   - ⚠️ 生产 web Dockerfile 配置 `NEXTAPI_URL=http://bklite-server:8000`，与开发端口 :8011 不一致，部署时需统一后端容器端口（`web/Dockerfile`）。
 - 前端：web :3000、mobile :3001。

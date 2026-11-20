@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildImpactGraph,
   collectSeedUuids,
+  defaultImpactCopy,
   IMPACT_NODE_WIDTH,
   type ImpactAlertRef,
 } from '../impactTopology';
@@ -196,6 +197,105 @@ describe('incident impact topology merge', () => {
     const appCenter = (app?.x || 0) + IMPACT_NODE_WIDTH / 2;
     const hostCenter = hosts[0].x + (hosts[1].x + IMPACT_NODE_WIDTH - hosts[0].x) / 2;
     expect(appCenter).toBe(hostCenter);
+  });
+
+  it('keeps a quiet related object distinct from unbound and an unknown node distinct from no alerts', () => {
+    const nic = '00000000-0000-4000-8000-000000000014';
+    const model = buildImpactGraph(
+      [alert({
+        id: 1,
+        title: '主机告警',
+        level: 1,
+        monitor_objects: [{ cmdb_id: HOST, resource_name: 'web-01' }],
+      })],
+      {
+        relation_status: 'ok',
+        quiet_omitted: 3,
+        nodes: [
+          {
+            inst_uuid: HOST,
+            inst_name: 'web-01',
+            layer: 'host',
+            role: 'seed',
+            found: true,
+            outside_incident_count: 2,
+          },
+          {
+            inst_uuid: nic,
+            inst_name: 'nic-1',
+            layer: 'infrastructure',
+            role: 'related',
+            found: true,
+            alert_state: 'clear',
+            alert_count: 0,
+          },
+          {
+            inst_uuid: APP,
+            inst_name: '支付中台',
+            layer: 'service',
+            role: 'application',
+            found: true,
+            alert_state: 'unknown',
+            alert_count: 0,
+          },
+        ],
+        links: [{
+          src_inst_uuid: nic,
+          dst_inst_uuid: HOST,
+          asst_id: 'belong',
+          asst_name: '属于',
+          model_asst_id: 'nic_belong_host',
+        }],
+      },
+    );
+    const related = model.nodes.find((node) => node.id === nic);
+    const application = model.nodes.find((node) => node.id === APP);
+    const host = model.nodes.find((node) => node.id === HOST);
+    expect(related?.kind).toBe('related');
+    expect(related?.detail).toBe('无告警');
+    expect(related?.kind).not.toBe('unbound');
+    expect(application?.detail).toBe('告警情况暂时查不到');
+    expect(application?.y).toBeLessThan(host?.y || 0);
+    expect(host?.detail).toContain('另有 2 条未入本事故');
+    expect(model.quietOmitted).toBe(3);
+    expect(model.hint).not.toContain('未画入');
+    expect(model.edges.map((edge) => edge.label)).toEqual(['属于']);
+  });
+
+  it('draws every omitted quiet object after the caller asks for them', () => {
+    const rack = '00000000-0000-4000-8000-000000000013';
+    const payload = {
+      relation_status: 'ok' as const,
+      quiet_omitted: 1,
+      nodes: [{ inst_uuid: HOST, inst_name: 'web-01', layer: 'host', role: 'seed', found: true }],
+      links: [],
+      omitted_quiet_nodes: [{
+        inst_uuid: rack,
+        inst_name: 'rack-1',
+        layer: 'infrastructure',
+        role: 'related',
+        found: true,
+        alert_state: 'clear',
+        alert_count: 0,
+      }],
+      omitted_quiet_links: [{
+        src_inst_uuid: rack,
+        dst_inst_uuid: HOST,
+        asst_id: 'belong',
+        asst_name: '属于',
+        model_asst_id: 'host_belong_rack',
+      }],
+    };
+    const alerts = [alert({
+      id: 1,
+      title: '主机告警',
+      monitor_objects: [{ cmdb_id: HOST, resource_name: 'web-01' }],
+    })];
+    expect(buildImpactGraph(alerts, payload).nodes.some((node) => node.id === rack)).toBe(false);
+    const drawn = buildImpactGraph(alerts, payload, [], {}, defaultImpactCopy, true);
+    expect(drawn.nodes.some((node) => node.id === rack && node.detail === '无告警')).toBe(true);
+    expect(drawn.edges.map((edge) => edge.label)).toEqual(['属于']);
+    expect(drawn.quietOmitted).toBe(0);
   });
 
   it('keeps the page on the alarm api and the three alert views', () => {

@@ -98,6 +98,8 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "trigger_type": str(context.get("trigger_type") or ""),
         "unattended": context.get("trigger_type") in AUTOMATIC_TRIGGERS,
     }
+    if context.get("reply_channel") == "WECOM_BOT":
+        flow_input["reply_channel"] = "WECOM_BOT"
     identity = accepted_tool_caller_identity(context.get("caller_identity"))
     if identity is not None:
         flow_input["caller_identity"] = identity
@@ -128,7 +130,6 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     context = _trusted_context(inputs)
     skill = _scoped_skill(inputs.get("agent_id"), context["organization_id"])
     message = _clean_text(inputs.get("message"), label="message", maximum=50_000)
-    prompt = _clean_text(inputs.get("prompt", ""), label="prompt", maximum=10_000, required=False)
     uploaded_files = resolve_uploaded_agent_knowledge(
         inputs.get("knowledge_files"),
         workflow_id=context.get("workflow_id"),
@@ -141,7 +142,6 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
             "data": {
                 "config": {
                     "agent": skill.id,
-                    "prompt": prompt,
                     "uploadedFiles": uploaded_files,
                     "inputParams": "message",
                     "outputParams": "message",

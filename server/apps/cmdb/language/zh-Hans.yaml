@@ -4592,6 +4592,8 @@ ChangeRecordScenario:
   collect_automation_change: 自动采集
   model_management_change: 模型管理变更
   custom_reporting_change: 自定义上报变更
+  governance_confirm: 确认仍有效
+  owner_handover: 负责人交接
 ChangeRecordObject:
   instance: 资产实例
   model: 模型管理

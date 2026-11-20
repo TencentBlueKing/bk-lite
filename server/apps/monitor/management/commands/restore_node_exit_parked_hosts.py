@@ -21,11 +21,11 @@ class Command(BaseCommand):
         )
         live_index = _live_instance_index()
         plans = [(_conflict_id(instance, live_index), instance) for instance in candidates]
-        restorable_ids = [instance.id for conflict_id, instance in plans if conflict_id is None]
-        if apply and restorable_ids:
+        restorable = [instance for conflict_id, instance in plans if conflict_id is None]
+        node_labels = {instance.id: _node_label(instance) for instance in restorable}
+        if apply and restorable:
             with transaction.atomic():
-                MonitorInstance.objects.filter(id__in=restorable_ids).update(is_deleted=False, is_active=True)
-                CollectConfig.objects.filter(monitor_instance_id__in=restorable_ids).update(executor_node_removed=True)
+                _apply_restore(restorable)
         for conflict_id, instance in plans:
             if conflict_id is not None:
                 verdict = f"conflict:{conflict_id}"
@@ -33,12 +33,12 @@ class Command(BaseCommand):
                 verdict = "restored"
             else:
                 verdict = "restorable"
-            self.stdout.write(f"{instance.id}\t{instance.name}\t{instance.config_count}\t{verdict}")
+            node_label = node_labels.get(instance.id, "none")
+            self.stdout.write(f"{instance.id}\t{instance.name}\t{instance.config_count}\t{verdict}\tnode={node_label}")
         count_label = "restored" if apply else "restorable"
         dry_run = "false" if apply else "true"
         self.stdout.write(
-            f"summary\tcandidates={len(plans)}\t{count_label}={len(restorable_ids)}\t"
-            f"conflicts={len(plans) - len(restorable_ids)}\tdry-run={dry_run}"
+            f"summary\tcandidates={len(plans)}\t{count_label}={len(restorable)}\t" f"conflicts={len(plans) - len(restorable)}\tdry-run={dry_run}"
         )
 
 
@@ -51,6 +51,35 @@ def _live_instance_index():
             continue
         index.setdefault((object_id, ip, region_id), instance_id)
     return index
+
+
+def _node_label(instance):
+    node_id = (instance.node_id or "").strip()
+    if node_id:
+        return node_id
+    existing = (
+        CollectConfig.objects.filter(monitor_instance_id=instance.id)
+        .exclude(executor_node_id="")
+        .order_by("id")
+        .values_list("executor_node_id", flat=True)
+        .first()
+    )
+    return existing or "none"
+
+
+def _apply_restore(instances):
+    instance_ids = [instance.id for instance in instances]
+    MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=False, is_active=True)
+    CollectConfig.objects.filter(monitor_instance_id__in=instance_ids).update(executor_node_removed=True)
+    for instance in instances:
+        node_id = (instance.node_id or "").strip()
+        if not node_id:
+            continue
+        CollectConfig.objects.filter(monitor_instance_id=instance.id, executor_node_id="").update(
+            executor_node_id=node_id,
+            executor_node_name=node_id,
+        )
+    MonitorInstance.objects.filter(id__in=instance_ids).exclude(node_id="").exclude(node_id__isnull=True).update(node_id=None)
 
 
 def _conflict_id(instance, live_index):

@@ -88,7 +88,7 @@ class _TopologyService(NATSTopologyMixin):
         self.js = jetstream
 
 
-def _config(tmp_path, node_id, namespace):
+def _config(tmp_path, node_id, namespace, dlq_subject=None):
     path = tmp_path / f"{node_id}.yml"
     path.write_text(
         "\n".join(
@@ -99,7 +99,7 @@ def _config(tmp_path, node_id, namespace):
                 f"  instance_id: {node_id}",
                 "jetstream:",
                 f"  namespace: {namespace}",
-                f"  dlq_subject: {namespace}.tasks.dlq",
+                f"  dlq_subject: {dlq_subject or f'{namespace}.dlq'}",
             ]
         ),
         encoding="utf-8",
@@ -108,7 +108,7 @@ def _config(tmp_path, node_id, namespace):
 
 
 def _task_streams(jetstream):
-    return {name: config for name, config in jetstream.streams.items() if not name.endswith("_CALLBACK_RETRY")}
+    return {name: config for name, config in jetstream.streams.items() if not name.endswith("_CALLBACK_RETRY") and not name.endswith("_DLQ")}
 
 
 @pytest.mark.asyncio
@@ -127,6 +127,9 @@ async def test_distinct_namespaces_keep_separate_streams_and_consumers(tmp_path)
     assert len(main_subscriptions) == 2
     assert main_subscriptions[0][1] != main_subscriptions[1][1]
     assert main_subscriptions[0][2] != main_subscriptions[1][2]
+    dlq_streams = [name for name in jetstream.streams if name.endswith("_DLQ")]
+    assert len(dlq_streams) == 2
+    assert not any(subject.endswith(".dlq") for subject, _durable, _stream in jetstream.subscriptions)
 
 
 @pytest.mark.asyncio
@@ -142,3 +145,17 @@ async def test_shared_namespace_reuses_the_first_stream_and_consumer(tmp_path):
     assert len(_task_streams(jetstream)) == 1
     main_subscriptions = [item for item in jetstream.subscriptions if item[0] == "bk.ans_exec.tasks.>"]
     assert main_subscriptions[0][1:] == main_subscriptions[1][1:]
+
+
+@pytest.mark.asyncio
+async def test_legacy_dlq_inside_work_subject_does_not_open_another_stream(tmp_path):
+    jetstream = SharedJetStream()
+    service = _TopologyService(
+        config=_config(tmp_path, "node-a", "bk.ans_exec.node-a", dlq_subject="bk.ans_exec.node-a.tasks.dlq"),
+        jetstream=jetstream,
+    )
+
+    await service._ensure_stream_and_consumer()
+
+    assert not any(name.endswith("_DLQ") for name in jetstream.streams)
+    assert any(subject.endswith(".tasks.>") for subject, _durable, _stream in jetstream.subscriptions)

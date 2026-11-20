@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 
+from apps.core.celery_runtime.config import BEAT_SCHEDULER
 from apps.core.celery_runtime.routing import declared_queues, route_task
 from config.components.locale import TIME_ZONE
 
@@ -51,7 +52,7 @@ if IS_USE_CELERY:
     # 旧名 CELERY_MAX_TASKS_PER_CHILD 不会映射到 Celery 配置，threads 下也无效。
     CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_MAX_TASKS_PER_CHILD", "200"))
     CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv("CELERY_MAX_MEMORY_PER_CHILD", "512000"))
-    CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
+    CELERY_BEAT_SCHEDULER = BEAT_SCHEDULER
     CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
     CELERY_ACCEPT_CONTENT = ["application/json"]
     CELERY_TASK_SERIALIZER = "json"

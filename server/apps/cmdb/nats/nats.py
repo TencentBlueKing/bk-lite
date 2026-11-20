@@ -2056,7 +2056,7 @@ def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
 
 @nats_client.register
 def incident_impact_topology(inst_uuids=None, user_info=None, **kwargs):
-    """事故影响拓扑。只查种子上的 run / connect，失败时不把图库异常正文带回调用方。"""
+    """事故影响拓扑。基础图沿 run / connect，一层候选沿种子模型的全部关系。失败时不把图库异常正文带回调用方。"""
     from apps.cmdb.services.incident_impact_topology import query_incident_impact_topology
     from apps.core.logger import safe_exception_info
 

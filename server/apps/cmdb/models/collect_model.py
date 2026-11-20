@@ -135,6 +135,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
     model_id = models.CharField(max_length=64, help_text="模型ID")
 
     is_interval = models.BooleanField(default=False, help_text="是否开启周期巡检")
+    enabled = models.BooleanField(default=True, help_text="是否启用采集。关闭后保留任务配置，不再下发节点采集配置")
     cycle_value_type = models.CharField(max_length=32, help_text="周期任务类型")
     cycle_value = models.CharField(max_length=32, blank=True, null=True, help_text="周期任务值")
     scan_cycle = models.CharField(max_length=50, blank=True, null=True, help_text="扫描周期")

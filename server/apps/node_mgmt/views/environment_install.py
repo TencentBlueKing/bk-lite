@@ -134,6 +134,7 @@ class EnvironmentInstallViewSet(ViewSet):
                     "node_name",
                     "created_at",
                     "registered_at",
+                    "last_heartbeat_at",
                     "failure_stage",
                     "error_code",
                     "last_reported_at",

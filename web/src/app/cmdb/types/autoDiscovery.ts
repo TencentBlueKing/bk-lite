@@ -104,6 +104,7 @@ export interface CollectTask {
   driver_type: string;
   model_id: string;
   exec_status: number;
+  enabled?: boolean;
   data_cleanup_strategy?: string;
   expire_days?: number;
   updated_at: string;

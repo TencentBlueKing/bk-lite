@@ -2,6 +2,8 @@
 
 Status: implemented — 2026-11-18
 
+2026-11-18 修订：策略组搜索的清除使用本次输入值，不再读尚未更新的搜索状态。列表在默认指针还在、组已被删时返回 `default_removed`，空状态改为「默认组已删除，之后新实例不再自动告警」，不再承诺接入时会重新生成。
+
 实测证据：
 
 - sqlite：`INSTALL_APPS=`（避开本机 `.env` 里不含 cmdb 的 `INSTALL_APPS`，否则 monitor 启动导入 cmdb 模型失败）、`DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true uv run pytest apps/monitor/tests/test_init_default_policy_groups.py apps/monitor/tests/test_policy_group_service.py apps/core/tests/test_batch_init_command.py apps/monitor/tests/test_policy_group_views.py --nomigrations --no-cov -o addopts=` → `124 passed in 7.27s`。
