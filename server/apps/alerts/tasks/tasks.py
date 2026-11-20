@@ -175,6 +175,14 @@ def beat_close_alert():
 
 
 @shared_task
+def beat_replay_monitor_shield_events():
+    """屏蔽窗口结束后，重放仍未恢复的监控源事件。"""
+    from apps.alerts.common.shield_replay import replay_settled_monitor_shields
+
+    return replay_settled_monitor_shields()
+
+
+@shared_task
 def check_and_send_reminders():
     """
     统一的提醒检查任务 - 每分钟执行一次轮询

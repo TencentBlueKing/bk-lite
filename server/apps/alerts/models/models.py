@@ -73,6 +73,11 @@ class Event(models.Model):
         default=EventStatus.RECEIVED,
         help_text="事件状态",
     )
+    shield_settled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="监控源屏蔽事件已了结时间；空表示仍待窗口结束后重放",
+    )
     assignee = JSONField(default=list, blank=True, help_text="事件责任人")
     # note = models.TextField(null=True, blank=True, help_text="事件备注")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
