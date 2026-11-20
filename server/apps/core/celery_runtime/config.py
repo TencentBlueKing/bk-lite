@@ -24,6 +24,7 @@ POOL_QUEUES = {
     "state": ("state",),
     "background": ("background", "celery"),
 }
+BEAT_SCHEDULER = "apps.core.celery_runtime.beat_scheduler.FutureLastRunDatabaseScheduler"
 
 
 def positive_integer(env, name, default=None):
@@ -119,7 +120,8 @@ class RuntimeConfig:
         if self.pools and self.run_beat:
             sections.append(
                 self._program(
-                    "beat", "celery -A apps.core.celery beat --loglevel=info " "--scheduler django_celery_beat.schedulers.DatabaseScheduler"
+                    "beat",
+                    f"celery -A apps.core.celery beat --loglevel=info --scheduler {BEAT_SCHEDULER}",
                 )
             )
         return "\n".join(sections)

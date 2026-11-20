@@ -513,6 +513,31 @@ def test_batch_update_node_property_values_empty_list_skips_query():
     assert c._graph.calls == []
 
 
+def test_batch_set_node_properties_writes_different_values_in_one_query():
+    c = _client(_entity_result([]))
+    rows = [
+        {"id": 11, "properties": {"operator": [4], "operator_display": "李四(lisi)"}},
+        {"id": 12, "properties": {"operator": [4, 5], "operator_display": "李四(lisi), 王五(wangwu)"}},
+    ]
+
+    updated = c.batch_set_node_properties("instance", rows)
+
+    assert len(c._graph.calls) == 1
+    assert "UNWIND $rows AS row" in c._graph.last_query
+    assert "ID(n) = row.id" in c._graph.last_query
+    assert "SET n.operator = row.operator, n.operator_display = row.operator_display" in c._graph.last_query
+    assert c._graph.last_params["rows"][1]["operator"] == [4, 5]
+    assert updated == []
+
+
+def test_batch_set_node_properties_rejects_invalid_field():
+    c = _client(_entity_result([]))
+
+    with pytest.raises(BaseAppException):
+        c.batch_set_node_properties("instance", [{"id": 1, "properties": {"bad-field": [1]}}])
+    assert c._graph.calls == []
+
+
 def test_batch_update_node_property_values_rejects_invalid_field():
     c = _client(_entity_result([]))
 

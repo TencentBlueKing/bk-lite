@@ -46,7 +46,7 @@ import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { Alert, Button, Drawer, Input, Modal, Segmented, Spin, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Drawer, Input, Modal, Segmented, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
 import {
@@ -153,6 +153,7 @@ const ProfessionalCollection: React.FC = () => {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
+  const [togglingTaskIds, setTogglingTaskIds] = useState<number[]>([]);
   const [docDrawerVisible, setDocDrawerVisible] = useState(false);
   const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
   const [pluginDoc, setPluginDoc] = useState<string>('');
@@ -604,8 +605,36 @@ const ProfessionalCollection: React.FC = () => {
     });
   };
 
+  const handleToggleEnabled = useCallback(
+    async (record: CollectTask, enabled: boolean) => {
+      const currentEnabled = record.enabled !== false;
+      if (togglingTaskIds.includes(record.id) || currentEnabled === enabled) {
+        return;
+      }
+      setTogglingTaskIds((prev) => [...prev, record.id]);
+      try {
+        await collectApi.setCollectEnabled(record.id.toString(), enabled);
+        setTableData((prev) =>
+          prev.map((item) => (item.id === record.id ? { ...item, enabled } : item))
+        );
+        message.success(
+          t(enabled ? 'Collection.taskEnabledSuccess' : 'Collection.taskDisabledSuccess')
+        );
+      } catch (error) {
+        console.error('Failed to change collect task enabled:', error);
+      } finally {
+        setTogglingTaskIds((prev) => prev.filter((id) => id !== record.id));
+      }
+    },
+    [collectApi, t, togglingTaskIds]
+  );
+
   const handleExecuteNow = useCallback(
     async (record: CollectTask) => {
+      if (record.enabled === false) {
+        message.warning(t('Collection.taskDisabled'));
+        return;
+      }
       if (executingTaskIds.includes(record.id)) {
         return;
       }
@@ -626,7 +655,7 @@ const ProfessionalCollection: React.FC = () => {
         setExecutingTaskIds((prev) => prev.filter((id) => id !== record.id));
       }
     },
-    [executingTaskIds]
+    [collectApi, executingTaskIds, t]
   );
 
   const handleGoToCollectTool = useCallback(
@@ -752,14 +781,21 @@ const ProfessionalCollection: React.FC = () => {
 
   const onSelectFields = (fields: string[]) => {
     setDisplayFieldKeys(fields);
+    const enabledCol = allColumns.find((col) => col.key === 'enabled');
     const actionCol = allColumns.find((col) => col.key === 'action');
     const ordered = [
       ...allColumns
-        .filter((col) => fields.includes(col.key as string))
+        .filter(
+          (col) =>
+            col.key !== 'enabled' &&
+            col.key !== 'action' &&
+            fields.includes(col.key as string)
+        )
         .sort(
           (a, b) =>
             fields.indexOf(a.key as string) - fields.indexOf(b.key as string)
         ),
+      ...(enabledCol ? [enabledCol] : []),
       ...(actionCol ? [actionCol] : []),
     ] as ExtendedColumnItem[];
     setCurrentColumns(ordered);
@@ -772,9 +808,10 @@ const ProfessionalCollection: React.FC = () => {
         record.exec_status === EXEC_STATUS.COLLECTING ||
         record.exec_status === EXEC_STATUS.WRITING ||
         loadingExec;
+      const taskEnabled = record.enabled !== false;
 
       return (
-        <div className="flex gap-3 whitespace-nowrap">
+        <div className="flex items-center gap-3 whitespace-nowrap">
           <Button
             type="link"
             size="small"
@@ -787,13 +824,15 @@ const ProfessionalCollection: React.FC = () => {
             requiredPermissions={['Execute']}
             instPermissions={record.permission}
           >
-            <Button
-              type="link"
-              size="small"
-              disabled={executing}
-              loading={loadingExec}
-              onClick={() => handleExecuteNow(record)}
-            >
+            <Tooltip title={taskEnabled ? undefined : t('Collection.taskDisabled')}>
+              <span className="inline-flex">
+                <Button
+                  type="link"
+                  size="small"
+                  disabled={executing || !taskEnabled}
+                  loading={loadingExec}
+                  onClick={() => handleExecuteNow(record)}
+                >
               {record.model_id === 'pc'
                 ? t(
                   loadingExec
@@ -805,7 +844,9 @@ const ProfessionalCollection: React.FC = () => {
                     ? 'Collection.table.syncing'
                     : 'Collection.table.sync'
                 )}
-            </Button>
+                </Button>
+              </span>
+            </Tooltip>
           </PermissionWrapper>
           <PermissionWrapper
             requiredPermissions={['Edit']}
@@ -850,7 +891,30 @@ const ProfessionalCollection: React.FC = () => {
         </div>
       );
     },
-    [executingTaskIds, t]
+    [executingTaskIds, handleExecuteNow, t]
+  );
+
+  const enabledRender = useCallback(
+    (record: CollectTask) => {
+      const taskEnabled = record.enabled !== false;
+      return (
+        <PermissionWrapper
+          requiredPermissions={['Edit']}
+          instPermissions={record.permission}
+        >
+          <Tooltip title={taskEnabled ? t('Collection.table.collectionOpen') : t('Collection.table.collectionPaused')}>
+            <Switch
+              size="small"
+              checked={taskEnabled}
+              loading={togglingTaskIds.includes(record.id)}
+              aria-label={t('Collection.table.collectionSwitch')}
+              onChange={(checked) => handleToggleEnabled(record, checked)}
+            />
+          </Tooltip>
+        </PermissionWrapper>
+      );
+    },
+    [handleToggleEnabled, t, togglingTaskIds]
   );
 
   const getColumns = useCallback(
@@ -1007,6 +1071,18 @@ const ProfessionalCollection: React.FC = () => {
         render: (text: string) => <span>{text || '--'}</span>,
       },
       {
+        title: (
+          <Tooltip title={t('Collection.table.collectionSwitchHint')}>
+            <span>{t('Collection.table.collectionSwitch')}</span>
+          </Tooltip>
+        ),
+        dataIndex: 'enabled',
+        key: 'enabled',
+        fixed: 'right',
+        width: 120,
+        render: (_, record) => enabledRender(record),
+      },
+      {
         title: t('Collection.table.actions'),
         dataIndex: 'action',
         key: 'action',
@@ -1015,7 +1091,7 @@ const ProfessionalCollection: React.FC = () => {
         render: (_, record) => actionRender(record),
       },
     ],
-    [t, actionRender, categoryList, handleGoToCollectTool, currentExecStatusUI]
+    [t, actionRender, enabledRender, categoryList, handleGoToCollectTool, currentExecStatusUI]
   );
 
   const handleViewDetail = (record: CollectTask) => {
@@ -1385,7 +1461,9 @@ const ProfessionalCollection: React.FC = () => {
                     displayFieldKeys,
                     choosableFields: allColumns.filter(
                       (item): item is ColumnItem =>
-                        item.key !== 'action' && 'dataIndex' in item,
+                        item.key !== 'action' &&
+                        item.key !== 'enabled' &&
+                        'dataIndex' in item,
                     ),
                   }}
                 />
