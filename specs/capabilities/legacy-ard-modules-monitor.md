@@ -109,6 +109,9 @@
 ## 2026-11-05 Code-ARD 校准
 - `[monitor#20261105-001]` 节点删除或卸载后联动主机不软删，该主机的 `CollectConfig` 标 `executor_node_removed` 后仍保护对应子配置，再次接入不会把它当成无主子配置删除。同 IP 再接挂回所选节点，不报已存在、不物理删除。「已接入主机监控」仍只认未软删的 Host 对象。
 
+## 2026-11-20 Code-ARD 校准
+- `[monitor#20261120-001]` 资产列表可对已有实例「重新下发」：`update_collect_template_configs` 带 `force_redispatch` 时按当前模板重渲并下发，不比较探针版本或内容指纹。已手改配置仍不覆盖。空指纹不再挡住这条路径；「升级探针」仍只在指纹变化时出现。
+
 ## 2026-11-06 Code-ARD 校准
 - `[monitor#20261106-001]` `query_latest_active_alerts` 增加可选 `order`。缺省和 `latest` 仍按开始时间倒序取调用方 limit（数据源默认 10）。`order=severity` 在授权组织内对全部 `status=new` 告警按 critical、error、warning、info、no_data 排序，未知级别最低，同级按开始时间更早优先，再截断。`get_host_resource_top` 的组织范围仍由调用方 `user_info.team` 决定；数据源可声明可选 `organization`，不带该参数时行为不变，额外 organization 入参不扩大范围。
 

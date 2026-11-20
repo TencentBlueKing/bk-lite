@@ -207,9 +207,9 @@ class CollectConfigUpdateService:
 
         field = MonitorPlugin._meta.get_field("monitor_object")
         object_ids = set(
-            field.remote_field.through.objects.filter(
-                **{f"{field.m2m_column_name()}__in": plugin_fps}
-            ).values_list(field.m2m_reverse_name(), flat=True)
+            field.remote_field.through.objects.filter(**{f"{field.m2m_column_name()}__in": plugin_fps}).values_list(
+                field.m2m_reverse_name(), flat=True
+            )
         )
 
         authorized_ids: set[str] = set()
@@ -521,7 +521,13 @@ class CollectConfigUpdateService:
         )
 
     @staticmethod
-    def update_instances(instance_ids, plugin_id, actor_context, discard_hand_edited=False) -> dict:
+    def update_instances(
+        instance_ids,
+        plugin_id,
+        actor_context,
+        discard_hand_edited=False,
+        force_redispatch=False,
+    ) -> dict:
         raw_ids = [str(item) for item in (instance_ids or []) if item not in (None, "")]
         if not raw_ids:
             raise BaseAppException("instance_ids 不能为空")
@@ -558,6 +564,7 @@ class CollectConfigUpdateService:
                 plugin,
                 actor_context,
                 discard_hand_edited=bool(discard_hand_edited),
+                force_redispatch=bool(force_redispatch),
             )
             merged["updated"].extend(result["updated"])
             merged["skipped"].extend(result["skipped"])
@@ -577,9 +584,16 @@ class CollectConfigUpdateService:
         return merged
 
     @staticmethod
-    def _update_instances_for_plugin(raw_ids, plugin: MonitorPlugin, actor_context, discard_hand_edited=False) -> dict:
+    def _update_instances_for_plugin(
+        raw_ids,
+        plugin: MonitorPlugin,
+        actor_context,
+        discard_hand_edited=False,
+        force_redispatch=False,
+    ) -> dict:
         plugin_fp = plugin_content_fingerprint(plugin)
-        if not plugin_fp:
+        # 重新下发不看版本和内容指纹。空指纹只表示「升级探针」无方向，不阻止按当前模板重渲。
+        if not plugin_fp and not force_redispatch:
             return {
                 "updated": [],
                 "skipped": [{"instance_id": item, "reason": "not_stale"} for item in raw_ids],
@@ -624,7 +638,7 @@ class CollectConfigUpdateService:
 
             def _rerender_row(config_obj):
                 nonlocal instance_updated, instance_edited, instance_failed
-                if not discard_hand_edited and not is_config_stale(config_obj, plugin):
+                if not force_redispatch and not discard_hand_edited and not is_config_stale(config_obj, plugin):
                     return
                 if is_config_hand_edited(config_obj) and not discard_hand_edited:
                     instance_edited = True
@@ -668,7 +682,7 @@ class CollectConfigUpdateService:
                             continue
                         try:
                             with transaction.atomic():
-                                if not discard_hand_edited and not is_config_stale(current, plugin):
+                                if not force_redispatch and not discard_hand_edited and not is_config_stale(current, plugin):
                                     continue
                                 if is_config_hand_edited(current) and not discard_hand_edited:
                                     instance_edited = True
