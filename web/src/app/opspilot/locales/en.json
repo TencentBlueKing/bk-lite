@@ -2439,6 +2439,7 @@
       "apiBase": "API Base URL",
       "apiBaseRequired": "Please enter the API base URL",
       "apiBasePlaceholder": "Please enter the API base URL",
+      "skipSslVerify": "Skip SSL certificate verification",
       "apiBaseHelp": "If you use a proxy or private deployment, enter its URL here",
       "apiKey": "API Key",
       "apiKeyRequired": "Please enter the API key",

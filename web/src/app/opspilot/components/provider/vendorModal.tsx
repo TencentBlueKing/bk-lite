@@ -75,6 +75,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
         vendor_type: vendor.vendor_type,
         protocol_type: vendor.protocol_type || getDefaultProtocolType(vendor.vendor_type),
         api_base: vendor.api_base,
+        skip_ssl_verify: vendor.skip_ssl_verify ?? false,
         api_key: MASKED_API_KEY,
         team: vendor.team || [],
         description: vendor.description || '',
@@ -92,6 +93,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
             vendor_type: detail.vendor_type,
             protocol_type: detail.protocol_type || getDefaultProtocolType(detail.vendor_type),
             api_base: detail.api_base,
+            skip_ssl_verify: detail.skip_ssl_verify ?? false,
             api_key: MASKED_API_KEY,
             team: detail.team || [],
             description: detail.description || '',
@@ -117,6 +119,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
       vendor_type: defaultVendor.value,
       protocol_type: getDefaultProtocolType(defaultVendor.value),
       api_base: defaultVendor.defaultApiBase,
+      skip_ssl_verify: false,
       team: selectedGroup ? [Number(selectedGroup.id)] : [],
       enabled: true,
     });
@@ -161,6 +164,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
         vendor_type: values.vendor_type,
         protocol_type: supportsProtocolSelection(values.vendor_type) ? values.protocol_type : undefined,
         api_base: values.api_base,
+        skip_ssl_verify: values.skip_ssl_verify,
         team: values.team,
         description: values.description,
         enabled: values.enabled,
@@ -185,7 +189,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
   const handleTestConnection = async () => {
     try {
       setSubmitError('');
-      const fieldsToValidate = ['api_base'] as Array<keyof ModelVendorPayload>;
+      const fieldsToValidate = ['api_base', 'skip_ssl_verify'] as Array<keyof ModelVendorPayload>;
       if (mode === 'add' || apiKeyChanged) {
         fieldsToValidate.push('api_key');
       }
@@ -205,6 +209,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
       setTesting(true);
       const result = await testVendorConnection({
         api_base: values.api_base,
+        skip_ssl_verify: values.skip_ssl_verify,
         api_key: mode === 'add' || apiKeyChanged ? values.api_key : undefined,
         password_changed: mode === 'add' ? true : apiKeyChanged,
         original_id: mode === 'edit' && vendor ? vendor.id : undefined,
@@ -349,6 +354,10 @@ const VendorModal: React.FC<VendorModalProps> = ({
               form.setFieldValue('api_key', value);
             }}
           />
+        </Form.Item>
+
+        <Form.Item name="skip_ssl_verify" label={t('provider.vendor.skipSslVerify')} valuePropName="checked">
+          <Switch size="small" />
         </Form.Item>
 
         <Form.Item

@@ -16,6 +16,7 @@ from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, saf
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import LLMModel, WorkflowAttachmentAsset
 from apps.opspilot.services.chat_service import append_reply_language
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -31,6 +32,7 @@ def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, 
 
     request = BasicLLMRequest(
         openai_api_base=llm_model.openai_api_base,
+        skip_ssl_verify=vendor_skips_ssl_verify(llm_model),
         openai_api_key=llm_model.openai_api_key,
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,

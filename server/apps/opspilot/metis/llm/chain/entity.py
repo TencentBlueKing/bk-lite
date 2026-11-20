@@ -420,6 +420,7 @@ class ToolsServer(BaseModel):
 
 
 class BasicLLMRequest(BaseModel):
+    skip_ssl_verify: bool = False
     openai_api_base: str = "https://api.openai.com"
     openai_api_key: str = ""
     model: str = "gpt-4o"

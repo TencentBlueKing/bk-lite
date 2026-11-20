@@ -423,6 +423,40 @@ describe('执行记录统一详情入口', () => {
     expect(screen.queryByText('finish_release')).toBeNull();
   });
 
+  it('调试执行概要可下载上游智能体生成的多个文件，即使当前显示其他节点', async () => {
+    const files = ['告警报告.pdf', '明细.csv', '过期.txt', '已删除.txt'].map((filename, index) => ({
+      id: String(index), filename, format: filename.split('.').pop(), size: 42,
+      expires_at: new Date(Date.now() + (index === 2 ? -60_000 : 60_000)).toISOString(),
+      deleted_at: index === 3 ? new Date().toISOString() : null,
+      download_url: `/workflow/api/artifacts/${index}/download/`,
+    }));
+    mocks.get.mockImplementation((url: string) => {
+      if (url.endsWith('/executions/execution-1/')) return Promise.resolve({ ...execution, mode: 'DEBUG', artifacts: files });
+      if (url.endsWith('/nodes/')) return Promise.resolve({ nodes: [approvalNode], default_node_reference: approvalNode.reference });
+      if (url.includes('/nodes/approve_release/')) return Promise.resolve({
+        node: approvalNode, instances: [], selected_instance_id: null, execution_info: {}, inputs: {}, outputs: {},
+        system_context: {}, error: null, audit_events: [], artifacts: [], control: {}, interaction: null, technical: {},
+      });
+      if (url.includes('/artifacts/')) return Promise.resolve(new Blob(['report']));
+      return Promise.resolve({ count: 0, items: [] });
+    });
+    const originalURL = URL;
+    class TestURL extends originalURL {
+      static createObjectURL = vi.fn(() => 'blob:report');
+      static revokeObjectURL = vi.fn();
+    }
+    vi.stubGlobal('URL', TestURL);
+    try {
+      renderPage('execution-1');
+      expect(await screen.findByRole('button', { name: '下载 告警报告.pdf' })).not.toBeNull();
+      expect(screen.queryByRole('button', { name: /下载 (过期|已删除)/ })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '下载 明细.csv' }));
+      await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(files[1].download_url, { responseType: 'blob' }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('执行详情隐藏引擎结束节点，且默认选中最后一个用户节点', async () => {
     const approvalDecisionNode = {
       ...approvalNode,
@@ -698,7 +732,7 @@ describe('执行记录统一详情入口', () => {
 
   it('执行列表用产物抽屉列出可下载文件，一份和多份都先打开抽屉再下载', async () => {
     const file = (id: string, filename: string) => ({
-      id, format: filename.endsWith('.xlsx') ? 'xlsx' : 'docx', filename, size: 1024,
+      id, format: filename.split('.').pop(), filename, size: 1024,
       created_at: '2026-10-09T02:00:00Z', expires_at: '2026-11-08T02:00:00Z',
       download_url: `/workflow/api/artifacts/${id}/download/`,
     });
@@ -708,7 +742,7 @@ describe('执行记录统一详情入口', () => {
     };
     const withMany = {
       ...execution, id: 'execution-many', workflow_name: '多报告巡检', status: 'SUCCEEDED', actionable_approval_ids: [],
-      downloadable_artifacts: [file('artifact-a', 'health-a.xlsx'), file('artifact-b', 'health-b.docx')],
+      downloadable_artifacts: [file('artifact-a', 'health-a.xlsx'), file('artifact-b', 'health-b.pdf')],
     };
     const withoutFile = {
       ...execution, id: 'execution-none', workflow_name: '无报告流程', status: 'FAILED', actionable_approval_ids: [],
@@ -759,7 +793,7 @@ describe('执行记录统一详情入口', () => {
       const manyDrawer = await waitFor(() => {
         const element = document.querySelector<HTMLElement>('.ant-drawer-open');
         expect(within(element as HTMLElement).getByText(/多报告巡检/)).not.toBeNull();
-        expect(within(element as HTMLElement).getByText('health-b.docx')).not.toBeNull();
+        expect(within(element as HTMLElement).getByText('health-b.pdf')).not.toBeNull();
         return element!;
       });
       const manyGrid = manyDrawer.querySelector('.grid-cols-2');
@@ -767,11 +801,11 @@ describe('执行记录统一详情入口', () => {
       fireEvent.change(within(manyDrawer).getByPlaceholderText('搜索文件'), { target: { value: 'missing' } });
       expect(within(manyDrawer).getByText('无结果')).not.toBeNull();
       expect(within(manyDrawer).queryByText('health-a.xlsx')).toBeNull();
-      fireEvent.change(within(manyDrawer).getByPlaceholderText('搜索文件'), { target: { value: 'docx' } });
+      fireEvent.change(within(manyDrawer).getByPlaceholderText('搜索文件'), { target: { value: 'pdf' } });
       expect(within(manyDrawer).queryByText('health-a.xlsx')).toBeNull();
       expect(manyDrawer.querySelector('.grid-cols-2')?.children).toHaveLength(1);
       expect(manyDrawer.querySelector('.grid-cols-2')?.children[0]?.className).not.toContain('col-span');
-      fireEvent.click(within(manyDrawer).getByRole('button', { name: '下载 health-b.docx' }));
+      fireEvent.click(within(manyDrawer).getByRole('button', { name: '下载 health-b.pdf' }));
       await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
         '/workflow/api/artifacts/artifact-b/download/',
         { responseType: 'blob' },

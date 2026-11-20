@@ -346,7 +346,7 @@ def test_notification_atom_sends_expiring_report_link_instead_of_the_file(mocker
     assert body == "已完成"
     assert "报告下载" not in body
     assert artifact.object_key not in body
-    assert payload["report_link"].startswith("https://portal.example/workflow/api/artifacts/shared/?token=")
+    assert payload["report_link"].startswith("https://portal.example/api/proxy/workflow/api/artifacts/shared/?token=")
 
 
 @pytest.mark.django_db

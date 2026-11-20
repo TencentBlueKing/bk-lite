@@ -89,13 +89,14 @@ class ModelVendorViewSet(AuthViewSet):
     @action(methods=["POST"], detail=False)
     @HasPermission("provide_list-Add")
     def test_connection(self, request):
-        serializer = ModelVendorTestConnectionSerializer(data=request.data)
+        serializer = ModelVendorTestConnectionSerializer(data=request.data, context={"view": self, "request": request})
         serializer.is_valid(raise_exception=True)
         raw_validated_data = serializer.validated_data
         validated_data: dict[str, Any] = raw_validated_data if isinstance(raw_validated_data, dict) else {}
         api_base = validated_data.get("api_base") or ""
         resolved_api_key = validated_data.get("resolved_api_key") or ""
         protocol_type = validated_data.get("protocol_type") or "openai"
+        skip_ssl_verify = validated_data.get("skip_ssl_verify", False)
         vendor_type = validated_data.get("vendor_type") or ""
         locale = getattr(request.user, "locale", "en") or "en"
         try:
@@ -106,13 +107,17 @@ class ModelVendorViewSet(AuthViewSet):
             if protocol_type == "anthropic":
                 if vendor_type == "anthropic":
                     # 真正的 Anthropic 供应商，使用 Claude 模型验证
-                    ModelVendorSyncService.test_anthropic_connection(api_base, resolved_api_key, locale=locale)
+                    ModelVendorSyncService.test_anthropic_connection(api_base, resolved_api_key, locale=locale, skip_ssl_verify=skip_ssl_verify)
                 else:
                     # DeepSeek/other 使用 Anthropic 协议，用 deepseek-chat 模型验证
                     test_model = "deepseek-chat" if vendor_type == "deepseek" else "deepseek-chat"
-                    ModelVendorSyncService.test_anthropic_connection(api_base, resolved_api_key, model=test_model, locale=locale)
+                    ModelVendorSyncService.test_anthropic_connection(
+                        api_base, resolved_api_key, model=test_model, locale=locale, skip_ssl_verify=skip_ssl_verify
+                    )
             else:
-                ModelVendorSyncService.fetch_models_with_credentials(api_base, resolved_api_key, protocol_type=protocol_type, locale=locale)
+                ModelVendorSyncService.fetch_models_with_credentials(
+                    api_base, resolved_api_key, protocol_type=protocol_type, locale=locale, skip_ssl_verify=skip_ssl_verify
+                )
         except Exception as error:
             return JsonResponse({"result": False, "message": str(error)})
         return JsonResponse({"result": True})
