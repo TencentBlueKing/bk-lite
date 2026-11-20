@@ -13,7 +13,7 @@ This capability collects broker throughput, CommitLog disk usage, current topic 
 1. From the actual collector node, confirm that the NameServer address is reachable.
 2. Enter the NameServer address. Separate multiple addresses with commas.
 3. Enter a Broker address, access key, and secret key only when needed.
-4. Set the timeout (default 10 seconds) and the interval (default 60 seconds; 30 seconds or more is recommended).
+4. Set the interval (default 60 seconds; 30 seconds or more is recommended).
 5. In the monitored objects table, select the node and enter the same NameServer address, optional Broker address, instance name, and optional group.
 6. Save the configuration and wait for at least one collection interval.
 
@@ -33,7 +33,6 @@ The command should report that the port is reachable. Run it on the actual colle
 | Broker Address | No | One reachable `host:port` when the registered address cannot be reached. Leave empty to use the registered address. |
 | Access Key | No | Enter with the secret key when access control is enabled. Leave empty otherwise. |
 | Secret Key | No | Enter with the access key when access control is enabled. Leave empty otherwise. |
-| Timeout | Yes | Maximum wait for one collection request, in seconds. The default is 10. |
 | Interval | Yes | Collection interval in seconds. The default is 60; 30 seconds or more is recommended. |
 | Node | Yes | Collector node that can reach the NameServer. |
 | Instance Name | Yes | Display name in the platform. |

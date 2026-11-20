@@ -14,8 +14,11 @@ if TYPE_CHECKING:
 _HELP_FIELD_KEYS = ("description", "description_en", "tooltip", "guide_short", "guide_short_en")
 _HELP_WIDGET_KEYS = ("placeholder", "placeholder_en")
 # 标签和同一行布局也以磁盘 UI.json 为准。采集页读的是 DB 模板，
-# 不覆盖的话要等下一次 plugin_init 才会改「超时」和左右并排。
+# 不覆盖的话要等下一次 plugin_init 才会改标签和左右并排。
 _DISPLAY_FIELD_KEYS = ("label", "label_en", "row")
+# RocketMQ 表单已去掉「超时」。已初始化 DB 模板仍可能留着 response_timeout，
+# 读路径按磁盘字段集丢掉它，官方采集页不用再跑 plugin_init。
+_ROCKETMQ_RETIRED_FORM_FIELDS = ("response_timeout",)
 
 
 def _named_items(items) -> dict:
@@ -32,11 +35,48 @@ def _copy_help_keys(target: dict, source: dict, keys: tuple[str, ...]) -> None:
         target[key] = deepcopy(value)
 
 
+def _sync_row_from_file(target: dict, source: dict) -> None:
+    """磁盘未声明 row 时清掉 DB 里的旧并排标记。"""
+    row = source.get("row")
+    if isinstance(row, str) and row.strip():
+        target["row"] = row
+        return
+    target.pop("row", None)
+
+
+def _is_rocketmq_ui(file_ui: dict, content: dict) -> bool:
+    for candidate in (file_ui, content):
+        if str(candidate.get("instance_type") or "").strip().lower() == "rocketmq":
+            return True
+        config_type = candidate.get("config_type") or []
+        if isinstance(config_type, str):
+            config_type = [config_type]
+        if isinstance(config_type, (list, tuple)) and any(
+            str(item).strip().lower() == "rocketmq" for item in config_type
+        ):
+            return True
+    return False
+
+
+def _drop_retired_rocketmq_fields(form_fields: list, file_fields: dict, file_ui: dict, content: dict) -> list:
+    if not _is_rocketmq_ui(file_ui, content):
+        return form_fields
+    retired = {name for name in _ROCKETMQ_RETIRED_FORM_FIELDS if name not in file_fields}
+    if not retired:
+        return form_fields
+    return [
+        field
+        for field in form_fields
+        if not (isinstance(field, dict) and str(field.get("name") or "") in retired)
+    ]
+
+
 def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: MonitorPlugin | None) -> dict | None:
     """用当前插件 UI.json 覆盖 form_fields 的说明、标签和同一行布局。
 
     按字段 name 只对齐「同一个插件」的磁盘文案，不会把 Windows WMI 的
     domain\\user 套到 Host AIX Remote、Host FreeBSD Remote、Host HP-UX Remote、Host Solaris Remote 或 Host Remote。
+    RocketMQ 磁盘表单不再包含 response_timeout 时，读路径去掉已初始化模板里的「超时」。
     """
     if content is None or not plugin or not isinstance(content, dict):
         return content
@@ -69,6 +109,8 @@ def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: Moni
     form_fields = enriched.get("form_fields")
     if not isinstance(form_fields, list):
         return enriched
+    form_fields = _drop_retired_rocketmq_fields(form_fields, file_fields, file_ui, enriched)
+    enriched["form_fields"] = form_fields
     for field in form_fields:
         if not isinstance(field, dict):
             continue
@@ -77,6 +119,7 @@ def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: Moni
             continue
         _copy_help_keys(field, source, _HELP_FIELD_KEYS)
         _copy_help_keys(field, source, _DISPLAY_FIELD_KEYS)
+        _sync_row_from_file(field, source)
         source_widget = source.get("widget_props")
         if not isinstance(source_widget, dict):
             continue

@@ -103,42 +103,12 @@
       "label_en": "Secret Key"
     },
     {
-      "name": "response_timeout",
-      "label": "超时",
-      "type": "inputNumber",
-      "required": true,
-      "default_value": 10,
-      "row": "collect_timing",
-      "description": "单次采集请求的最大等待秒数，默认 10，最小 1。超过该时间视为失败。",
-      "guide_short": "单次采集请求的最大等待秒数，默认 10，最小 1。超过该时间视为失败。",
-      "guide_short_en": "Maximum wait for one collection request, in seconds. The default is 10 and the minimum is 1. A request that exceeds this time is treated as failed.",
-      "widget_props": {
-        "min": 1,
-        "precision": 0,
-        "placeholder": "超时",
-        "addonAfter": "s",
-        "placeholder_en": "Timeout"
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.response_timeout",
-        "to_form": {
-          "regex": "^(\\d+)s$"
-        },
-        "to_api": {
-          "suffix": "s"
-        }
-      },
-      "label_en": "Timeout",
-      "description_en": "Maximum wait for one collection request, in seconds. The default is 10 and the minimum is 1. A request that exceeds this time is treated as failed."
-    },
-    {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
       "required": true,
       "default_value": 60,
-      "row": "collect_timing",
-      "description": "默认 60 秒；过低会增加 NameServer 压力，过高会延误告警；建议不少于 30 秒。",
+      "description": "监控数据的采集时间间隔（单位：秒）",
       "guide_short": "默认 60 秒；过低会增加 NameServer 压力，过高会延误告警；建议不少于 30 秒。",
       "guide_short_en": "The default is 60 seconds. Short intervals increase NameServer load, while long intervals delay alerts; use at least 30 seconds.",
       "widget_props": {
@@ -158,7 +128,7 @@
         }
       },
       "label_en": "Interval",
-      "description_en": "The default is 60 seconds. Short intervals increase NameServer load, while long intervals delay alerts; use at least 30 seconds."
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
