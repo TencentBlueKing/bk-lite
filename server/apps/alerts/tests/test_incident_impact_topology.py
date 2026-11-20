@@ -249,6 +249,110 @@ def test_denied_incident_does_not_call_cmdb(monkeypatch, authenticated_user):
     assert response.status_code in (200, 400)
 
 
+@pytest.mark.django_db
+def test_alert_query_failure_keeps_the_graph_and_owns_one_log(monkeypatch, superuser, caplog):
+    incident = _incident()
+    sentinel = "SECRET-ALERT-QUERY"
+    original = RuntimeError(sentinel)
+
+    def fake(self, **kwargs):
+        return {
+            "result": True,
+            "data": {
+                "truncated": False,
+                "context_status": "ok",
+                "nodes": [{"inst_uuid": HOST_A, "role": "seed", "found": True, "inst_name": "web-01"}],
+                "related_candidates": [{"inst_uuid": HOST_B, "role": "related", "found": True, "inst_name": "web-02"}],
+                "links": [],
+            },
+        }
+
+    def boom(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr("apps.alerts.service.incident_impact_topology.CMDB.incident_impact_topology", fake)
+    monkeypatch.setattr("apps.alerts.service.incident_impact_topology._load_active_alerts", boom)
+    with caplog.at_level(logging.WARNING, logger="alert"):
+        response, payload = _call(superuser, incident, {"inst_uuids": [HOST_A]})
+    assert response.status_code == 200
+    assert payload["data"]["relation_status"] == "ok"
+    assert payload["data"]["alert_status"] == "unavailable"
+    nodes = {item["inst_uuid"]: item for item in payload["data"]["nodes"]}
+    assert nodes[HOST_A]["alert_state"] == "incident"
+    assert nodes[HOST_B]["alert_state"] == "unknown"
+    assert sentinel not in str(payload)
+    records = [record for record in caplog.records if "incident_impact_alerts_unavailable" in record.msg]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].args == ("INC-1", "RuntimeError")
+    assert records[0].getMessage() == "event=incident_impact_alerts_unavailable incident_id=INC-1 failed_stage=query error_type=RuntimeError"
+    assert records[0].exc_info[0] is SafeLogException
+    assert sentinel not in records[0].getMessage()
+    assert sentinel not in caplog.text
+    assert HOST_A not in records[0].getMessage()
+
+
+@pytest.mark.django_db
+def test_quiet_objects_beyond_the_cap_stay_available_for_a_later_draw(monkeypatch, superuser):
+    incident = _incident()
+    omitted = "00000000-0000-4000-8000-000000000050"
+    candidates = []
+    related_links = []
+    for index in range(30, 51):
+        inst_uuid = f"00000000-0000-4000-8000-{index:012d}"
+        candidates.append(
+            {
+                "inst_uuid": inst_uuid,
+                "inst_name": f"quiet-{index}",
+                "role": "related",
+                "found": True,
+                "layer": "infrastructure",
+            }
+        )
+        related_links.append(
+            {
+                "src_inst_uuid": inst_uuid,
+                "dst_inst_uuid": HOST_A,
+                "asst_id": "belong",
+                "model_asst_id": f"quiet_belong_{index}",
+                "asst_name": "属于",
+            }
+        )
+
+    def fake(self, **kwargs):
+        return {
+            "result": True,
+            "data": {
+                "truncated": False,
+                "context_status": "ok",
+                "nodes": [{"inst_uuid": HOST_A, "role": "seed", "found": True, "inst_name": "web-01", "layer": "host"}],
+                "related_candidates": candidates,
+                "related_links": related_links,
+                "links": [],
+            },
+        }
+
+    monkeypatch.setattr("apps.alerts.service.incident_impact_topology.CMDB.incident_impact_topology", fake)
+    response, payload = _call(superuser, incident, {"inst_uuids": [HOST_A]})
+    assert response.status_code == 200
+    data = payload["data"]
+    drawn = {item["inst_uuid"] for item in data["nodes"]}
+    assert data["quiet_omitted"] == 1
+    assert omitted not in drawn
+    assert [item["inst_uuid"] for item in data["omitted_quiet_nodes"]] == [omitted]
+    assert data["omitted_quiet_nodes"][0]["alert_state"] == "clear"
+    assert data["omitted_quiet_links"][0]["dst_inst_uuid"] == HOST_A
+
+    request = _request(
+        f"/alerts/api/incident/{incident.id}/impact_topology_alerts/",
+        superuser,
+        {"inst_uuid": omitted, "page": 1},
+    )
+    listed = _render(IncidentModelViewSet.as_view({"post": "impact_topology_alerts"})(request, pk=str(incident.id)))
+    assert listed["result"] is True
+    assert listed["data"]["count"] == 0
+
+
 def test_alerts_source_does_not_import_cmdb_services_or_probe_purchase():
     alerts_root = Path(__file__).resolve().parents[1]
     service = (alerts_root / "service" / "incident_impact_topology.py").read_text(encoding="utf-8")

@@ -193,6 +193,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     ref
   ) => {
     const editingId = useAssetManageStore((state) => state.editingId);
+    const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
     const scan_cycle_type = useAssetManageStore((state) => state.scan_cycle_type);
     const { model_id: modelId, task_type: taskType, target_model_id: targetModelId } = modelItem;
     const isCustomScriptTask = taskType === 'custom_script';
@@ -238,6 +239,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [ipRangeOrg, setIpRangeOrg] = useState<number[]>([]);
     const [selectedInstUuids, setSelectedInstUuids] = useState<string[]>([]);
     const cleanupStrategyValue = Form.useWatch('cleanupStrategy', form);
+    const enabledValue = Form.useWatch('enabled', form);
+    const copyEnabledApplied = useRef(false);
     const accessPointId = Form.useWatch('accessPointId', form);
     const organizationValue = Form.useWatch('organization', form);
     const [instPagination, setInstPagination] = useState({
@@ -324,6 +327,14 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         setIpRangeOrg(orgArray);
       }
     }, [organizationValue, ipRangeOrg, normalizeOrganizationValue]);
+
+    useEffect(() => {
+      if (!copyTaskData || copyEnabledApplied.current || enabledValue !== false) {
+        return;
+      }
+      copyEnabledApplied.current = true;
+      form.setFieldValue('enabled', true);
+    }, [copyTaskData, enabledValue, form]);
 
     useEffect(() => {
       if (editingId || !selectedGroup?.id) {
@@ -893,6 +904,23 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               rules={rules.taskName}
             >
               <Input placeholder={t('common.inputTip')} />
+            </Form.Item>
+
+            <Form.Item
+              label={
+                <span>
+                  {t('Collection.taskEnabled')}
+                  <Tooltip title={t('Collection.taskEnabledHint')}>
+                    <QuestionCircleOutlined className="ml-1 text-[var(--color-text-4)]" />
+                  </Tooltip>
+                </span>
+              }
+              name="enabled"
+              valuePropName="checked"
+              initialValue={true}
+              getValueProps={(value) => ({ checked: value !== false })}
+            >
+              <Switch />
             </Form.Item>
 
             {/* 扫描周期 */}

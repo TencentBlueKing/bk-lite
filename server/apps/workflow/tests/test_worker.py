@@ -431,6 +431,44 @@ def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_
     assert "caller_identity" not in payload["__bklite_context"]
 
 
+@pytest.mark.parametrize(
+    ("extra_inputs", "outputs", "channel", "body", "expected"),
+    [
+        ({}, {}, "WECOM_BOT", "${agent.output.message}", True),
+        ({"request": [{"message": "摘要：${agent.output.message}"}]}, {}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {"result": "${agent.output}"}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {}, "EMAIL", "${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "前缀 ${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "${other_agent.output.message}", False),
+    ],
+)
+def test_agent_reply_channel_follows_exclusive_body_consumers_in_execution_snapshot(extra_inputs, outputs, channel, body, expected):
+    notification = {"name": "bklite_notification", "type": "SIMPLE", "inputParameters": {"notification_type": channel, "body": body}}
+    execution = WorkflowExecution(
+        workflow_id=1,
+        workflow_version=1,
+        team=[7],
+        definition_snapshot={
+            "tasks": [
+                {"taskReferenceName": "agent", "type": "SIMPLE", "name": "bklite_agent"},
+                {
+                    "type": "SWITCH",
+                    "decisionCases": {"true": [notification]},
+                    "defaultCase": [{"name": "transform", "inputParameters": extra_inputs}],
+                },
+            ],
+            "outputParameters": outputs,
+        },
+    )
+    runtime = _build_runtime_inputs(
+        inputs={"__bklite_context": {"reply_channel": "WECOM_BOT"}},
+        atom_execution=SimpleNamespace(pk=1, output={}, task_reference="agent"),
+        task_type="bklite_agent",
+        execution=execution,
+    )
+    assert runtime["__bklite_context"].get("reply_channel") == ("WECOM_BOT" if expected else None)
+
+
 def test_completed_atom_returns_without_waiting_for_the_pool_thread_to_exit(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
 

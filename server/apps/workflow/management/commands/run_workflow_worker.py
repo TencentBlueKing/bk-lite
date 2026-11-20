@@ -16,6 +16,7 @@ from apps.workflow.services.atom_packages import atom_requires_trusted_context, 
 from apps.workflow.services.atoms import ATOM_HANDLERS, TASK_DEFINITIONS, execute_atom, package_atom_task_definitions
 from apps.workflow.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow.services.data_contracts import mask_secret_envelopes, resolve_secret_envelopes
+from apps.workflow.services.definitions import agent_reply_is_wecom_body
 from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 
 
@@ -66,6 +67,8 @@ def _build_runtime_inputs(*, inputs, atom_execution, task_type, execution):
         node_context["locale"] = execution.locale
         if atom_execution:
             node_context["task_reference"] = atom_execution.task_reference
+            if agent_reply_is_wecom_body(execution.definition_snapshot, atom_execution.task_reference):
+                node_context["reply_channel"] = "WECOM_BOT"
         if organization_id != execution.team[0]:
             node_context["workflow_organization_id"] = execution.team[0]
     return {

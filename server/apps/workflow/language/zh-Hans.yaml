@@ -485,8 +485,7 @@ field_label:
     success_status_codes: "额外成功状态码"
   bklite_agent:
     agent_id: "智能体"
-    message: "输入内容"
-    prompt: "补充提示词"
+    message: "任务内容"
     knowledge_files: "上传知识"
     memory_context: "记忆上下文"
   bklite_intent_classification:
