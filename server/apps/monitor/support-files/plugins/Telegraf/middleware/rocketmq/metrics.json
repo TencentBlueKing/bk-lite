@@ -36,7 +36,7 @@
       "display_name": "Broker Write TPS",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "cps",
+      "unit": "",
       "dimensions": [
         {"name": "cluster", "description": "集群"},
         {"name": "broker", "description": "Broker"},
@@ -51,7 +51,7 @@
       "display_name": "Broker Read TPS",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "cps",
+      "unit": "",
       "dimensions": [
         {"name": "cluster", "description": "集群"},
         {"name": "broker", "description": "Broker"},
