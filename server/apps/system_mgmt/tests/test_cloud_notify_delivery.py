@@ -12,8 +12,9 @@ from apps.system_mgmt.services.cloud_notify.delivery import CloudSendOutcome
 
 pytestmark = pytest.mark.django_db
 
-_FINISHED = "event=cloud_notification_finished channel_id=%s accepted=%s unknown=%s"
+_FINISHED = "event=cloud_notification_finished channel_id=%s accepted=%s unknown=%s rejected=%s"
 _FAILED = "event=cloud_notification_failed channel_id=%s failed_stage=%s error_type=%s"
+_REJECTED = "event=cloud_notification_rejected channel_id=%s failed_stage=%s error_type=%s count=%s"
 SECRET = "cloud-secret-sentinel"
 PHONE = "13800138000"
 TITLE = "告警\n标题-sentinel"
@@ -112,6 +113,53 @@ def test_sms_maps_provider_accept_reject_and_network_outcomes():
     assert by_user[unknown.id]["request_id"] == "req-net"
     assert "拒绝" in result["message"]
     assert "未知" in result["message"]
+
+
+def test_sms_provider_rejection_logs_warning_by_code(caplog):
+    channel = _sms_channel()
+    first = _user(username="reject-one", display_name="拒绝一", email="reject-one@example.com", phone="13800138001")
+    second = _user(username="reject-two", display_name="拒绝二", email="reject-two@example.com", phone="13800138002")
+    leaked = _user(username="reject-leak", display_name="拒绝三", email="reject-leak@example.com", phone="13800138003")
+    accepted = _user(username="accepted-user", display_name="受理", email="accepted-user@example.com", phone="13800138004")
+    leak = f"leak {SECRET} {PHONE} {TITLE}"
+    outcomes = {
+        "+8613800138001": _outcome("rejected", "req-1", "", "isv.SMS_TEMPLATE_ILLEGAL"),
+        "+8613800138002": _outcome("rejected", "req-2", "", "isv.SMS_TEMPLATE_ILLEGAL"),
+        "+8613800138003": _outcome("rejected", "req-3", "", leak),
+        "+8613800138004": _outcome("accepted", "req-ok", "serial-ok"),
+    }
+
+    with caplog.at_level(logging.DEBUG, logger="system-manager"), patch(
+        "apps.system_mgmt.services.cloud_notify.delivery.call_provider",
+        side_effect=lambda *_args: outcomes[_args[2]],
+    ):
+        result = send_msg_with_channel(channel.id, TITLE, BODY, [first.id, second.id, leaked.id, accepted.id], template_params=["甲", "乙"])
+
+    assert result["result"] is False
+    assert result["retryable"] is False
+    by_user = {item["user_id"]: item for item in result["recipients"]}
+    assert by_user[first.id]["status"] == "rejected"
+    assert "isv.SMS_TEMPLATE_ILLEGAL" in by_user[first.id]["reason"]
+    assert leak in by_user[leaked.id]["reason"]
+    assert by_user[accepted.id]["status"] == "accepted"
+    warnings = [record for record in caplog.records if record.msg == _REJECTED]
+    assert [(record.args, record.levelno, record.exc_info) for record in warnings] == [
+        ((channel.id, "provider_rejected", "isv.SMS_TEMPLATE_ILLEGAL", 2), logging.WARNING, None),
+        ((channel.id, "provider_rejected", "rejected", 1), logging.WARNING, None),
+    ]
+    finished = [record for record in caplog.records if record.msg == _FINISHED]
+    assert len(finished) == 1
+    assert finished[0].args == (channel.id, 1, 0, 3)
+    assert finished[0].levelno == logging.INFO
+    formatted = "\n".join(logging.Formatter("%(levelname)s %(message)s").format(record) for record in warnings + finished)
+    assert "WARNING event=cloud_notification_rejected" in formatted
+    assert "isv.SMS_TEMPLATE_ILLEGAL" in formatted
+    assert "INFO event=cloud_notification_finished" in formatted
+    assert SECRET not in formatted
+    assert PHONE not in formatted
+    assert "标题-sentinel" not in formatted
+    assert "正文-sentinel" not in formatted
+    assert [record for record in caplog.records if record.levelno >= logging.ERROR] == []
 
 
 def test_sms_provider_exception_is_unknown_and_logs_one_sanitized_error(caplog):

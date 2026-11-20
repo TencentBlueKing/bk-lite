@@ -37,7 +37,7 @@ const CloudParameterList: React.FC<CloudParameterListProps> = ({
   return (
     <div className="flex flex-col gap-2">
       {items.map((item, index) => (
-        <div className="flex items-center gap-2" key={`${item.name}-${index}`}>
+        <div className="flex items-center gap-2" key={index}>
           {declareOnly ? null : (
             <Select
               className="w-[120px]"

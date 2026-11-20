@@ -339,10 +339,10 @@ channel:
     content_custom_webhook: '通知正文，会替换该渠道模板中的 {{{{content}}}}。接收人名会追加在正文后面。'
     content_sms: 短信不使用正文。云模板变量放在 template_params。接口仍要求本字段非空，可传任意占位文字。
     content_voice: 语音不使用正文。云模板变量放在 template_params。接口仍要求本字段非空，可传任意占位文字。播放次数固定为 1。
-    template_params_sms_aliyun: 可选。渠道没有登记模板变量时省略或传空。传 JSON 对象，键与渠道参数名一致。值必须是非空字符串。
-    template_params_sms_tencent: 可选。渠道没有登记模板变量时省略或传空。传字符串数组，长度和顺序与渠道参数一致。值必须是非空字符串。示例：["4370"]。
-    template_params_voice_aliyun: 可选。渠道没有登记模板变量时省略或传空。传 JSON 对象，键与渠道参数名一致。值必须是非空字符串。
-    template_params_voice_tencent: 可选。渠道没有登记模板变量时省略或传空。传字符串数组，长度和顺序与渠道参数一致。值必须是非空字符串。示例：["4370"]。
+    template_params_sms_aliyun: 登记了模板变量时必须传 JSON 对象，键与渠道参数名一致，值必须是非空字符串。没有登记变量时省略或传空，传入变量会在本地被拒绝。
+    template_params_sms_tencent: 登记了模板变量时必须传字符串数组，长度和顺序与渠道参数一致，值必须是非空字符串。没有登记变量时省略或传空，传入变量会在本地被拒绝。示例：["4370"]。
+    template_params_voice_aliyun: 登记了模板变量时必须传 JSON 对象，键与渠道参数名一致，值必须是非空字符串。没有登记变量时省略或传空，传入变量会在本地被拒绝。
+    template_params_voice_tencent: 登记了模板变量时必须传字符串数组，长度和顺序与渠道参数一致，值必须是非空字符串。没有登记变量时省略或传空，传入变量会在本地被拒绝。示例：["4370"]。
     content_im_notification: IM 应用通知正文，不能为空。最长 20000 个字符。
     content_default: 通知正文，不能为空。最长 20000 个字符。
     receivers_system_user: 平台用户 ID 字符串，取自 GET /openapi/v1/system-mgmt/users 返回的 id，且必须属于当前组织。不要传用户名。1 到 100 个，不能重复。

@@ -35,6 +35,16 @@ describe('CloudParameterList', () => {
     expect(screen.queryByPlaceholderText('system.channel.settings.cloudParameterName')).toBeNull();
   });
 
+  it('keeps the name field mounted while the name changes', () => {
+    const empty = { source: 'content' as const, name: '', value: '', test_value: '' };
+    const { rerender } = render(<CloudParameterList value={[empty]} declareOnly showName />);
+    const input = screen.getByPlaceholderText('system.channel.settings.cloudParameterName');
+
+    rerender(<CloudParameterList value={[{ ...empty, name: '参' }]} declareOnly showName />);
+
+    expect(screen.getByDisplayValue('参')).toBe(input);
+  });
+
   it('declares cloud variables without a value source', () => {
     render(<CloudParameterList value={[{ ...row, test_value: '告警' }]} declareOnly showName />);
     expect(screen.queryByRole('combobox')).toBeNull();

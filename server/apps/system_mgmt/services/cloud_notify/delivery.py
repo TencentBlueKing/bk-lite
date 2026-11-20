@@ -1,3 +1,5 @@
+import re
+from collections import Counter
 from dataclasses import dataclass
 
 from apps.core.logger import safe_exception_info
@@ -6,8 +8,10 @@ from apps.system_mgmt.models import User
 from apps.system_mgmt.services.cloud_notify.config import match_template_params, runtime_config, validate_cloud_config
 from apps.system_mgmt.utils.i18n import system_mgmt_message
 
-_FINISHED = "event=cloud_notification_finished channel_id=%s accepted=%s unknown=%s"
+_FINISHED = "event=cloud_notification_finished channel_id=%s accepted=%s unknown=%s rejected=%s"
 _FAILED = "event=cloud_notification_failed channel_id=%s failed_stage=%s error_type=%s"
+_REJECTED = "event=cloud_notification_rejected channel_id=%s failed_stage=%s error_type=%s count=%s"
+_PROVIDER_ERROR_CODE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 _STATUSES = {"accepted", "rejected", "unknown"}
 
 
@@ -45,6 +49,7 @@ def send_cloud_notification(channel, title, content, receivers, template_params=
     recipients = []
     provider_called = False
     provider_failed = False
+    rejected_codes = Counter()
     for user_id, user in people:
         if user is None:
             recipients.append(_recipient(user_id, "not_sent", reason=system_mgmt_message(None, "error.cloud_user_missing")))
@@ -65,13 +70,24 @@ def send_cloud_notification(channel, title, content, receivers, template_params=
             logger.error(_FAILED, channel.id, "call_provider", type(error).__name__, exc_info=safe_exception_info(error))
             recipients.append(_recipient(user.id, "unknown", reason=system_mgmt_message(None, "error.cloud_send_unknown")))
             continue
+        if outcome.status == "rejected":
+            rejected_codes[_provider_error_code(outcome.reason)] += 1
         recipients.append(_from_outcome(user.id, outcome))
 
+    for code, count in sorted(rejected_codes.items()):
+        logger.warning(_REJECTED, channel.id, "provider_rejected", code, count)
     if provider_called and not provider_failed:
         accepted = sum(item["status"] == "accepted" for item in recipients)
         unknown = sum(item["status"] == "unknown" for item in recipients)
-        logger.info(_FINISHED, channel.id, accepted, unknown)
+        logger.info(_FINISHED, channel.id, accepted, unknown, sum(rejected_codes.values()))
     return _result(recipients, people)
+
+
+def _provider_error_code(reason):
+    code = str(reason or "").strip()
+    if _PROVIDER_ERROR_CODE.fullmatch(code):
+        return code
+    return "rejected"
 
 
 def _stopped(message):

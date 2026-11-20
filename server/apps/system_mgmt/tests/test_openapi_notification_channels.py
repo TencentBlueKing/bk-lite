@@ -700,6 +700,7 @@ def test_unknown_send_field_is_rejected(tenants):
 
 
 def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
+    from apps.core.openapi.registry import default_registry
     from apps.system_mgmt.openapi_api import _EXTERNAL_NOTIFICATION_CHANNEL_TYPES, _openapi_notification_channel
 
     channel = Channel.objects.create(
@@ -721,7 +722,8 @@ def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
     assert parameters["template_params"]["type"] == "array"
     assert "template_params" in parameters["title"]["description"]
     assert "template_params" in parameters["content"]["description"]
-    assert "字符串数组" in parameters["template_params"]["description"]
+    assert "必须传字符串数组" in parameters["template_params"]["description"]
+    assert "没有登记变量时省略或传空" in parameters["template_params"]["description"]
     assert "JSON 对象" not in parameters["template_params"]["description"]
 
     aliyun = Channel.objects.create(
@@ -733,7 +735,17 @@ def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
     )
     aliyun_parameters = {parameter["name"]: parameter for parameter in _openapi_notification_channel(aliyun, "zh-Hans")["send_parameters"]}
     assert aliyun_parameters["template_params"]["type"] == "object"
-    assert "JSON 对象" in aliyun_parameters["template_params"]["description"]
+    assert "必须传 JSON 对象" in aliyun_parameters["template_params"]["description"]
+    assert "没有登记变量时省略或传空" in aliyun_parameters["template_params"]["description"]
     assert "字符串数组" not in aliyun_parameters["template_params"]["description"]
     assert "用户 ID" in parameters["receivers"]["description"]
     assert "secret-sentinel" not in json.dumps(item, ensure_ascii=False)
+    send = next(
+        endpoint
+        for endpoint in default_registry.endpoints()
+        if endpoint.path == "system-mgmt/notification-channels/send" and endpoint.method == "POST"
+    )
+    assert "阿里云传 JSON 对象" in send.summary
+    assert "腾讯云传字符串数组" in send.summary
+    assert "没有登记变量时省略或传空" in send.summary
+    assert "邮件等其他渠道可以不传" in send.summary

@@ -62,7 +62,12 @@ _CHANNEL_SEND_SUMMARY = (
     "按通知渠道目录中的 channel_id 和 channel_type 投递一条消息。channel_type 必填，取目录返回的原值。"
     "im_notification 投递 IM 应用通知，其他值投递对应的普通渠道。"
     "recipient_mode=system_user 时 receivers 为用户目录中的用户 ID 字符串；"
-    "recipient_mode=free_text 时 receivers 为渠道侧接收人名。不接受附件，不投递内部 NATS 通道。" + _ORG_SCOPE
+    "recipient_mode=free_text 时 receivers 为渠道侧接收人名。"
+    "短信和语音使用 template_params 传递模板变量。渠道登记了变量时必须传："
+    "阿里云传 JSON 对象，键与渠道参数名一致；腾讯云传字符串数组，长度和顺序与渠道参数一致。"
+    "值必须是非空字符串。没有登记变量时省略或传空，传入变量会在本地被拒绝。"
+    "邮件等其他渠道可以不传，传了也会被忽略。"
+    "不接受附件，不投递内部 NATS 通道。" + _ORG_SCOPE
 )
 
 
