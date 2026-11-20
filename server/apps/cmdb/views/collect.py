@@ -70,6 +70,7 @@ class CollectModelViewSet(AuthViewSet):
         "destroy",
         "info",
         "exec_task",
+        "set_enabled",
         "task_overview",
     }
 
@@ -392,6 +393,12 @@ class CollectModelViewSet(AuthViewSet):
     def info(self, request, *args, **kwargs):
         instance = self.get_object()
         return WebUtils.response_success(instance.info)
+
+    @HasPermission("auto_collection-Edit")
+    @action(methods=["POST"], detail=True, url_path="set_enabled")
+    def set_enabled(self, request, *args, **kwargs):
+        data = CollectModelService.set_enabled(request, self)
+        return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=True)

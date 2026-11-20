@@ -221,6 +221,19 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
       .map((channel) => ({ label: channel.name, value: channelOptionValue(channel) })),
     [channelId, channels, contents, isOperationTemplate],
   );
+  const channelVersionOptions = useMemo(() => {
+    const selectable = NOTIFICATION_TEMPLATE_CHANNELS.map((channel) => ({
+      value: channel.key,
+      label: t(channel.labelKey),
+    }));
+    const retained = contents
+      .filter((content) => !selectable.some((option) => option.value === content.channel_type))
+      .map((content) => {
+        const channel = getNotificationTemplateChannel(content.channel_type);
+        return { value: content.channel_type, label: channel ? t(channel.labelKey) : content.channel_type };
+      });
+    return [...selectable, ...retained];
+  }, [contents, t]);
   const testReceiverOptions = useMemo(
     () => userList.map((user) => {
       const displayName = typeof user.display_name === 'string' ? user.display_name : '';
@@ -644,8 +657,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
                   <Select
                     mode="multiple"
                     className="w-full"
+                    aria-label={t('settings.notificationTemplate.channels')}
                     value={contents.map((item) => item.channel_type)}
-                    options={NOTIFICATION_TEMPLATE_CHANNELS.map((channel) => ({ value: channel.key, label: t(channel.labelKey) }))}
+                    options={channelVersionOptions}
                     onChange={updateChannels}
                   />
                 </Form.Item>

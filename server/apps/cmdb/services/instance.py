@@ -1399,6 +1399,7 @@ class InstanceManage(object):
         schedule_post_actions: bool = True,
         expected_monitor_id: str | None = None,
         audit_source: str = "",
+        audit_action: str = "修改模型实例属性",
     ):
         """修改实例属性"""
         from apps.cmdb.services.module_ingest import strip_system_link_fields
@@ -1503,7 +1504,7 @@ class InstanceManage(object):
                     operator=operator,
                     model_object=OPERATOR_INSTANCE,
                     message=format_instance_audit_message(
-                        "修改模型实例属性",
+                        audit_action,
                         model_info["model_name"],
                         result[0]["inst_name"],
                         source=audit_source,

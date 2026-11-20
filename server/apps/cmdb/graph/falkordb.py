@@ -29,7 +29,7 @@ from apps.cmdb.graph.format_type import (
     attr_values_equal,
     coerce_cloud_id_properties,
 )
-from apps.cmdb.graph.validators import CQLValidator
+from apps.cmdb.graph.validators import CQLValidator, group_property_maps
 from apps.cmdb.services.instance_identity import (
     EDGE_DST_UUID_FIELD,
     EDGE_SRC_UUID_FIELD,
@@ -1317,6 +1317,22 @@ class FalkorDBClient:
             params={"property_values": validated_property_values},
         )
         return self.entity_to_list(result)
+
+    def batch_set_node_properties(self, label: str, rows: list[dict]):
+        """一次查询按节点写入各自的属性。属性名相同的节点合并成一条 SET。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_rows = CQLValidator.validate_property_maps(rows)
+        if not validated_rows:
+            return []
+
+        updated = []
+        for fields, group in group_property_maps(validated_rows):
+            assignments = ", ".join(f"n.{field} = row.{field}" for field in fields)
+            payload = [{"id": item["id"], **item["properties"]} for item in group]
+            query = f"UNWIND $rows AS row MATCH (n:{validated_label}) WHERE ID(n) = row.id SET {assignments} RETURN n"
+            result = self._execute_query(query, params={"rows": payload})
+            updated.extend(self.entity_to_list(result))
+        return updated
 
     def ensure_node_property_index(self, label: str, field: str):
         """创建节点属性索引。

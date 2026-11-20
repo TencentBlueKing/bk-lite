@@ -485,8 +485,7 @@ field_label:
     success_status_codes: "Extra Success Status Codes"
   bklite_agent:
     agent_id: "Agent"
-    message: "Input"
-    prompt: "Additional Prompt"
+    message: "Task content"
     knowledge_files: "Knowledge Files"
     memory_context: "Memory Context"
   bklite_intent_classification:

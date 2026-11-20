@@ -166,6 +166,47 @@ describe('通知模板组编辑初始化', () => {
     expect((screen.getByRole('button', { name: /common.save/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('新建模板的渠道版本不提供已下线的企微应用消息', async () => {
+    api.getNotificationTemplateCatalog.mockResolvedValue({ variables: [] });
+    api.getChannelList.mockResolvedValue([
+      { id: 7, name: '企微【IM Notification】', channel_type: 'im_notification', team: [1] },
+    ]);
+
+    render(<TemplateEditor />);
+
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: 'settings.notificationTemplate.channels' }));
+
+    expect(await screen.findByText('settings.notificationTemplate.imNotification')).toBeTruthy();
+    expect(screen.queryByText('settings.notificationTemplate.wecomApp')).toBeNull();
+  });
+
+  it('已保存的企微应用消息版本仍可查看', async () => {
+    api.getNotificationTemplateCatalog.mockResolvedValue({ variables: [] });
+    api.getChannelList.mockResolvedValue([]);
+    api.getNotificationTemplate.mockResolvedValue({
+      id: 9,
+      name: '历史企微模板',
+      description: '',
+      team: [1],
+      scope: 'single_alert',
+      is_global: false,
+      is_builtin: false,
+      assignment_count: 0,
+      revision: 1,
+      contents: [{
+        channel_type: 'enterprise_wechat',
+        subject_template: '',
+        body_template: '历史正文',
+      }],
+      updated_at: '2026-09-09T00:00:00Z',
+    });
+
+    render(<TemplateEditor templateId="9" />);
+
+    expect((await screen.findAllByText('settings.notificationTemplate.wecomApp')).length).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue('历史正文')).toBeTruthy();
+  });
+
   it('告警操作内置模板只展示一个具体通知渠道选择框', async () => {
     api.getNotificationTemplateCatalog.mockResolvedValue({ variables: [] });
     api.getChannelList.mockResolvedValue([
