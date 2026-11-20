@@ -15,6 +15,7 @@ from django.core.cache import cache
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import LLMModel, Material, PageVersion, WikiGenerationIndexEntry
 from apps.opspilot.services.llm_context_budget import working_budget_for_model
 from apps.opspilot.services.wiki.active_generation_query_service import (
@@ -658,6 +659,7 @@ def _qa_basic_llm_request(llm, prompt, *, max_output_tokens):
     protocol_type = getattr(llm, "protocol_type", None) or "openai"
     return BasicLLMRequest(
         openai_api_base=llm.openai_api_base,
+        skip_ssl_verify=vendor_skips_ssl_verify(llm),
         openai_api_key=llm.openai_api_key,
         model=llm.model_name,
         temperature=0.2,

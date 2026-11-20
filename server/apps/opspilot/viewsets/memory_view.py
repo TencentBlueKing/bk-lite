@@ -10,6 +10,7 @@ from apps.opspilot.memory.identity import resolve_owner_identity
 from apps.opspilot.memory.visibility import get_visible_memories_qs
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 from apps.opspilot.serializers.memory_serializer import (
@@ -112,6 +113,7 @@ class MemorySpaceViewSet(AuthViewSet):
         try:
             llm_request = BasicLLMRequest(
                 openai_api_base=llm_model.openai_api_base,
+                skip_ssl_verify=vendor_skips_ssl_verify(llm_model),
                 openai_api_key=llm_model.openai_api_key,
                 model=llm_model.model_name,
                 protocol_type=llm_model.protocol_type,

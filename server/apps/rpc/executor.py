@@ -201,6 +201,7 @@ class Executor(object):
         overwrite=True,
         local_path="/tmp",
         fast_fail=False,
+        with_status=False,
     ):
         """
         下载文件到远程
@@ -217,6 +218,7 @@ class Executor(object):
         :param timeout: 执行超时时间(秒)
         :param overwrite: 是否覆盖已存在文件，默认True
         :param local_path: 执行器本地下载目录（可选，默认/tmp）
+        :param with_status: 保留执行器的成功标志和状态码
         :return: 下载结果
         """
         request_data = {
@@ -244,6 +246,7 @@ class Executor(object):
             self.instance_id,
             request_data,
             _timeout=_resolve_rpc_timeout(timeout),
+            _raw=with_status,
         )
         return return_data
 

@@ -138,6 +138,7 @@ from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
     KIND_LIMIT_CONTINUE,
     KIND_USER_CHOICE,
+    allows_user_questions,
     deserialize_evidence,
     is_answer_after_choice_prompt,
     messages_include_terminal_choice,
@@ -2210,8 +2211,8 @@ class ToolsNodes(
         """汇总传给 deepagent 的业务工具：langchain + MCP（+ 知识库检索工具）。"""
         tools = list(self.all_tools or self.tools or [])
         extra = getattr(graph_request, "extra_config", None) or {}
-        unattended = isinstance(extra, dict) and extra.get("unattended") is True
-        if unattended:
+        can_ask = allows_user_questions(extra)
+        if not can_ask:
             tools = [tool for tool in tools if getattr(tool, "name", "") != "request_user_choice"]
         kb_tool = self._build_knowledge_retrieve_tool(graph_request)
         if kb_tool is not None:
@@ -2219,11 +2220,7 @@ class ToolsNodes(
 
         # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
         # K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if (
-            not unattended
-            and self._catalog_has_business_tools(tools)
-            and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools)
-        ):
+        if can_ask and self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2296,9 +2293,9 @@ class ToolsNodes(
             configurable = {}
         graph_request = configurable.get("graph_request")
         extra = getattr(graph_request, "extra_config", None) if graph_request is not None else None
-        unattended = isinstance(extra, dict) and extra.get("unattended") is True
+        can_ask = allows_user_questions(extra)
         pending = extra.get("pending_question") if isinstance(extra, dict) else None
-        if not unattended and isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
+        if can_ask and isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
             user_message = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "")
             group_by = self._match_repair_group_reply(user_message)
             if not group_by:
@@ -2322,7 +2319,7 @@ class ToolsNodes(
             "problematic": int(analysis.get("problematic") or 0),
             "issues_detail": analysis.get("issues_detail"),
         }
-        if unattended:
+        if not can_ask:
             await self._emit_k8s_repair_report(k8s_analysis, "all", config, output_messages)
             return True
         question_text, tool_message = finalize_user_choice(
@@ -2574,9 +2571,11 @@ class ToolsNodes(
             graph_request = config["configurable"]["graph_request"]
             request_extra = getattr(graph_request, "extra_config", None) or {}
             unattended = isinstance(request_extra, dict) and request_extra.get("unattended") is True
+            can_ask = allows_user_questions(request_extra)
+            one_way_reply = isinstance(request_extra, dict) and request_extra.get("reply_channel") == "WECOM_BOT"
             auto_instruction = (
                 ("\n\n【无人值守】本次没有用户在线回答问题。不要提问或请求确认；" "利用已知上下文和可用工具尽力完成目标，合理选择只读查询范围并说明假设。" "无法确定必要目标或缺少权限时，完成其余可行步骤并明确说明未完成原因；不得虚构数据或批准操作。")
-                if unattended
+                if not can_ask
                 else ""
             )
             missing_params_thread_id = getattr(graph_request, "thread_id", None)
@@ -3152,7 +3151,7 @@ class ToolsNodes(
                             is_last_step=is_last_step,
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            unattended=unattended,
+                            unattended=not can_ask,
                         )
                     step_guidance += auto_instruction
                     if attachments:
@@ -3383,7 +3382,7 @@ class ToolsNodes(
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or [])
-                                    + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
+                                    + [_internal_message(auto_instruction if not can_ask else MISSING_PARAMS_CHOICE_HINT)],
                                 }
                                 continue
                             if is_non_replanable_tool_failure(failure):
@@ -3397,7 +3396,7 @@ class ToolsNodes(
                         result_messages = list(step_result.get("messages") or [])
                         step_messages = result_messages[len(step_payload["messages"]) :]
                         remember_planned_tool_steps(config, step_index, step_messages)
-                        if messages_include_terminal_choice(step_messages):
+                        if not one_way_reply and messages_include_terminal_choice(step_messages):
                             _collect_output_messages(step_messages)
                             pending_steps.clear()
                             choice_stopped = True
@@ -3456,7 +3455,7 @@ class ToolsNodes(
                             step_payload = {
                                 **agent_state,
                                 "messages": list(agent_state.get("messages") or [])
-                                + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
+                                + [_internal_message(auto_instruction if not can_ask else MISSING_PARAMS_CHOICE_HINT)],
                             }
                             continue
                         if ppt_authoring and ppt_run is not None:
@@ -3529,6 +3528,8 @@ class ToolsNodes(
                             limit_kind = ""
                         else:
                             limit_kind = detect_limit_kind(step_messages)
+                        if limit_kind and one_way_reply:
+                            return {"messages": [AIMessage(content="本次任务已达执行上限，未能完成。")]}
                         if limit_kind:
                             summary = _step_summary_for_limit_continue(step_messages)
                             question_text, tool_message = await ask_limit_continue(
@@ -3816,6 +3817,10 @@ class ToolsNodes(
                     replan_count=replan_count,
                     summary_ran=1 if summary_ran else 0,
                 )
+
+            if one_way_reply and any("generate_attachment_file" in step.tools for step in plan.steps) and not ppt_authoring:
+                if not attachment_step_produced_file(collected_output_messages):
+                    raise ValueError("智能体未能生成计划中的附件")
 
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])

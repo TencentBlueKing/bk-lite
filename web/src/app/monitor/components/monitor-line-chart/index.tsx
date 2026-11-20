@@ -41,6 +41,7 @@ import {
   getChartDataWithGapBreaks,
   getRenderedGapIntervals
 } from '@/app/monitor/components/monitor-chart-runtime/gap-intervals';
+import { resolveRocketmqCollectionUpAxis } from '@/app/monitor/utils/rocketmqCollectionUpAxis';
 
 interface LineChartProps {
   data: ChartData[];
@@ -393,7 +394,14 @@ const LineChart: React.FC<LineChartProps> = memo(
       return [yMin, yMax];
     }, [data, chartAreaKeys, threshold]);
 
-    const niceYAxis = useMemo(() => buildNiceAxis(yAxisDomain, yAxisTickCount), [yAxisDomain, yAxisTickCount]);
+    const rocketmqUpAxis = useMemo(
+      () => resolveRocketmqCollectionUpAxis(metric?.name),
+      [metric?.name]
+    );
+    const niceYAxis = useMemo(
+      () => rocketmqUpAxis ?? buildNiceAxis(yAxisDomain, yAxisTickCount),
+      [rocketmqUpAxis, yAxisDomain, yAxisTickCount]
+    );
 
     const leftAxisWidth = useMemo(() => {
       if (typeof leftAxisWidthOverride === 'number') {
@@ -830,7 +838,7 @@ const LineChart: React.FC<LineChartProps> = memo(
               xAxisTickCount={xAxisTickCount}
               xAxisTickFormatter={formatXAxisTick}
               xAxisType="number"
-              yAxisAllowDataOverflow={false}
+              yAxisAllowDataOverflow={Boolean(rocketmqUpAxis)}
               yAxisDomain={niceYAxis.domain}
               yAxisId="left"
               yAxisInterval={0}

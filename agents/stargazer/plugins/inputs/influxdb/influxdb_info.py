@@ -64,7 +64,7 @@ class InfluxdbInfo:
                 if config.status_code == 401:
                     return AccessProbeResult(
                         status=AccessProbeStatus.AUTH_FAILED,
-                        error_code="authentication_failed",
+                        error_code="credential_token",
                     )
                 if config.status_code == 403:
                     return AccessProbeResult(

@@ -314,7 +314,7 @@ async def test_mysql_probe_returns_stable_auth_failure_without_secret(monkeypatc
     result = await plugin.probe()
 
     assert result.status == AccessProbeStatus.AUTH_FAILED
-    assert result.error_code == "authentication_failed"
+    assert result.error_code == "credential_user_or_password"
     assert "secret-do-not-return" not in result.detail
 
 

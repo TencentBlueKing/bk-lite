@@ -569,16 +569,41 @@ def list_usable_groups(actor=None, *, current_team=None, group_list=None, is_sup
 
 def resolve_credential(credential_id, current_team, actor=None, *, group_list=None, is_superuser=None):
     credential = _load_credential(credential_id)
-    current_team, group_list, is_superuser = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
+    current_team, _, _ = _require_current_team(actor, current_team=current_team, group_list=group_list, is_superuser=is_superuser)
+    _check_consumable(credential, current_team)
+    result = _public_credential(credential)
+    result["fields"] = decrypt_instance_fields(effective_type_fields(credential.type), credential.fields)
+    result["secret_version"] = credential.secret_version
+    return result
+
+
+def describe_host_credentials(credential_ids, actor):
+    current_team, _, _ = _require_current_team(actor)
+    rows = Credential.objects.filter(
+        credential_id__in=credential_ids,
+        group_id__in=usable_owner_group_ids(current_team),
+        type__is_builtin=True,
+        type_id__in=("ssh", "winrm"),
+    ).values("credential_id", "type_id", "name", "disabled")
+    return {row["credential_id"]: {"type": row["type_id"], "name": row["name"], "disabled": row["disabled"]} for row in rows}
+
+
+def resolve_job_host_fields(credential_id, expected_type, authorized_team):
+    """供已复核执行身份和目标的 Job 进程内调用；仅接受主机登录类型。"""
+    credential = _load_credential(credential_id)
+    _check_consumable(credential, authorized_team)
+    if expected_type not in ("ssh", "winrm") or not credential.type.is_builtin or credential.type_id != expected_type:
+        raise CredentialServiceError("type_mismatch")
+    schema = effective_type_fields(credential.type)
+    values = decrypt_instance_fields(schema, credential.fields)
+    return validate_instance_fields(type_fields=schema, values=values, require_secrets=True)
+
+
+def _check_consumable(credential, current_team):
     if credential.group_id not in usable_owner_group_ids(current_team):
         raise CredentialServiceError("forbidden")
     if credential.disabled:
         raise CredentialServiceError("disabled")
-    type_fields = effective_type_fields(credential.type)
-    result = _public_credential(credential)
-    result["fields"] = decrypt_instance_fields(type_fields, credential.fields)
-    result["secret_version"] = credential.secret_version
-    return result
 
 
 def describe_credential(credential_id, current_team, actor=None, *, group_list=None, is_superuser=None):

@@ -30,6 +30,7 @@ class ModelVendor(models.Model, EncryptMixin):
     vendor_type = models.CharField(max_length=50, choices=VENDOR_TYPE_CHOICES, default="openai", verbose_name="供应商类型")
     protocol_type = models.CharField(max_length=20, choices=PROTOCOL_TYPE_CHOICES, default="openai", verbose_name="协议类型")
     api_base = models.CharField(max_length=500, blank=True, default="", verbose_name="API地址")
+    skip_ssl_verify = models.BooleanField(default=False, verbose_name="跳过 SSL 证书校验")
     api_key = models.TextField(blank=True, default="", verbose_name="API Key")
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
     team = models.JSONField(default=list, verbose_name="组织")
@@ -224,12 +225,14 @@ class OCRProvider(models.Model, EncryptMixin):
         if self.vendor_id:
             if self.vendor.vendor_type == "azure":
                 return {
+                    **({"skip_ssl_verify": True} if self.vendor.skip_ssl_verify else {}),
                     "ocr_type": "azure_ocr",
                     "endpoint": self.vendor.api_base,
                     "api_key": self.vendor.decrypted_api_key,
                     "model": self.model or "",
                 }
         return {
+            **({"skip_ssl_verify": True} if self.vendor_id and self.vendor.skip_ssl_verify else {}),
             "ocr_type": "olm_ocr",
             "base_url": self.vendor.api_base if self.vendor_id else "",
             "endpoint": self.vendor.api_base if self.vendor_id else "",

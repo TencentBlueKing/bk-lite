@@ -70,7 +70,8 @@ async def test_vmware_manage_probe_maps_auth_failure(vmware_modules):
         result = await manager.probe()
 
     assert result.status == AccessProbeStatus.AUTH_FAILED
-    assert result.error_code == "authentication_failed"
+    assert result.error_code == "credential_user_or_password"
+    assert "bad" not in result.detail
 
 
 @pytest.mark.asyncio
@@ -94,7 +95,8 @@ async def test_vmware_probe_classifies_sanitized_connect_error_from_cause(vmware
     result = await manager.probe()
 
     assert result.status == AccessProbeStatus.AUTH_FAILED
-    assert result.error_code == "authentication_failed"
+    assert result.error_code == "credential_user_or_password"
+    assert "secret" not in result.detail
 
 
 @pytest.mark.asyncio

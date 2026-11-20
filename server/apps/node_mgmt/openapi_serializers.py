@@ -101,28 +101,3 @@ class NodeConfigurationBindSerializer(OpenAPIRequestSerializer):
 
     node_ids = serializers.ListField(child=serializers.CharField(max_length=100), allow_empty=False)
     collector_configuration_id = serializers.CharField(max_length=100)
-
-
-class EnvironmentProgressSerializer(OpenAPIRequestSerializer):
-    stage = serializers.ChoiceField(
-        choices=["request", "identity", "session", "preflight", "download", "extract", "install", "registration", "components", "result", "complete"]
-    )
-    error_code = serializers.ChoiceField(choices=[0, 10, 20, 30, 40, 50, 60, 70])
-
-
-class EnvironmentStatusRequestSerializer(OpenAPIRequestSerializer):
-    grant_id = serializers.UUIDField()
-    installation_key = serializers.RegexField(r"^bksys_[0-9a-f]{64}$", write_only=True)
-    install_id = serializers.UUIDField()
-    report = EnvironmentProgressSerializer(required=False)
-
-
-class EnvironmentInstallRequestSerializer(OpenAPIRequestSerializer):
-    grant_id = serializers.UUIDField()
-    installation_key = serializers.RegexField(r"^bksys_[0-9a-f]{64}$", write_only=True)
-    request_id = serializers.UUIDField()
-    node_id = serializers.UUIDField()
-    ip = serializers.IPAddressField(protocol="IPv4")
-    node_name = serializers.RegexField(r"^[^\r\n]{1,100}$")
-    os = serializers.ChoiceField(choices=["linux"])
-    cpu_architecture = serializers.ChoiceField(choices=["x86_64"])

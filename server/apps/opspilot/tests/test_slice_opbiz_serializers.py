@@ -15,11 +15,8 @@ import pytest
 
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
 from apps.opspilot.serializers.llm_serializer import LLMSerializer
-from apps.opspilot.serializers.model_vendor_serializer import (
-    CustomProviderSerializer,
-    ModelVendorSerializer,
-    ModelVendorTestConnectionSerializer,
-)
+from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer, ModelVendorSerializer, ModelVendorTestConnectionSerializer
+from apps.opspilot.viewsets.model_vendor_view import ModelVendorViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -71,39 +68,33 @@ class TestModelVendorSerializerUpdate:
 
 class TestTestConnectionSerializer:
     def test_密码变更需api_key(self):
-        ser = ModelVendorTestConnectionSerializer(
-            data={"api_base": "https://x", "password_changed": True, "api_key": ""}
-        )
+        ser = ModelVendorTestConnectionSerializer(data={"api_base": "https://x", "password_changed": True, "api_key": ""})
         assert not ser.is_valid()
         assert "api_key" in ser.errors
 
     def test_密码变更解析为输入key(self):
-        ser = ModelVendorTestConnectionSerializer(
-            data={"api_base": "https://x", "password_changed": True, "api_key": "sk-in"}
-        )
+        ser = ModelVendorTestConnectionSerializer(data={"api_base": "https://x", "password_changed": True, "api_key": "sk-in"})
         assert ser.is_valid(), ser.errors
         assert ser.validated_data["resolved_api_key"] == "sk-in"
 
     def test_未变更密码需original_id(self):
-        ser = ModelVendorTestConnectionSerializer(
-            data={"api_base": "https://x", "password_changed": False}
-        )
+        ser = ModelVendorTestConnectionSerializer(data={"api_base": "https://x", "password_changed": False})
         assert not ser.is_valid()
         assert "original_id" in ser.errors
 
     def test_未变更密码original_id不存在(self):
         ser = ModelVendorTestConnectionSerializer(
-            data={"api_base": "https://x", "password_changed": False, "original_id": 999999}
+            data={"api_base": "https://x", "password_changed": False, "original_id": 999999},
+            context={"view": ModelVendorViewSet(), "request": SimpleNamespace(user=SimpleNamespace(group_list=[1]), COOKIES={"current_team": "1"})},
         )
         assert not ser.is_valid()
         assert "original_id" in ser.errors
 
     def test_未变更密码从db取回解密key(self):
-        vendor = ModelVendor.objects.create(
-            name="v-conn", api_base="https://b", api_key="sk-stored", team=[1]
-        )
+        vendor = ModelVendor.objects.create(name="v-conn", api_base="https://b", api_key="sk-stored", team=[1])
         ser = ModelVendorTestConnectionSerializer(
-            data={"api_base": "https://x", "password_changed": False, "original_id": vendor.id}
+            data={"api_base": "https://x", "password_changed": False, "original_id": vendor.id},
+            context={"view": ModelVendorViewSet(), "request": SimpleNamespace(user=SimpleNamespace(group_list=[1]), COOKIES={"current_team": "1"})},
         )
         assert ser.is_valid(), ser.errors
         # resolved_api_key 为 DB 中密文解密后的明文
@@ -166,9 +157,7 @@ class TestCustomProviderSerializer:
         return {"request": request}
 
     def test_vendor_name_type_来自map(self):
-        ModelVendor.objects.create(
-            id=7001, name="厂商A", vendor_type="anthropic", api_base="b", team=[1]
-        )
+        ModelVendor.objects.create(id=7001, name="厂商A", vendor_type="anthropic", api_base="b", team=[1])
         ser = CustomProviderSerializer(context=self._ctx())
         inst = SimpleNamespace(vendor_id=7001)
         assert ser.get_vendor_name(inst) == "厂商A"

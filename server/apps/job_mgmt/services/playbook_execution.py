@@ -5,12 +5,11 @@ from asgiref.sync import async_to_sync
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus
-from apps.job_mgmt.services import ExecutionTaskBaseService
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService, call_target_executor
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 from apps.rpc.ansible import AnsibleExecutor
-from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
 
 
@@ -31,21 +30,15 @@ class PlaybookExecution(ExecutionTaskBaseService):
             self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
             return
 
-        logger.info(
-            f"[{self.task_name}] Playbook信息: "
-            f"name={execution.playbook.name}, version={execution.playbook.version}, "
-            f"file_key={execution.playbook.file_key}, bucket={execution.playbook.bucket_name}, "
-            f"targets={len(target_list)}, target_source={execution.target_source}, "
-            f"params='{execution.params}', timeout={execution.timeout}"
-        )
-
-        # 判断是否走 Ansible 路径
-        if self._should_use_ansible(execution.target_source, target_list):
-            logger.info(f"[{self.task_name}] 使用 Ansible 路径执行: execution_id={self.execution_id}")
+        try:
+            use_ansible = self._should_use_ansible(execution.target_source, target_list)
+        except ValueError as exc:
+            self.finalize_execution(execution, self.task_name, [self.build_target_failed_result(t, str(exc)) for t in target_list])
+            return
+        if use_ansible:
             self._run_via_ansible(execution, target_list)
         else:
             error_msg = "Playbook 执行仅支持 Ansible 驱动的目标管理主机"
-            logger.warning(f"[{self.task_name}] {error_msg}: execution_id={self.execution_id}")
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
             execution.save(update_fields=["execution_results", "updated_at"])
             self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
@@ -65,10 +58,8 @@ class PlaybookExecution(ExecutionTaskBaseService):
             logger.info(f"[{self.task_name}] Ansible Playbook 任务已提交，等待回调: execution_id={self.execution_id}")
         except Exception as e:
             error_msg = f"Ansible Playbook 执行失败: {str(e)}"
-            logger.exception(f"[{self.task_name}] {error_msg}")
-            self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
-            execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
-            execution.save(update_fields=["execution_results", "updated_at"])
+            self._log_execution_failure("submit_playbook", e)
+            self.finalize_execution(execution, self.task_name, [self.build_target_failed_result(t, error_msg) for t in target_list])
             # 提交失败时立即清理 NATS OS 中转文件
             cleanup_key = nats_file_key or execution.playbook_temp_file_key
             if cleanup_key:
@@ -102,32 +93,9 @@ class PlaybookExecution(ExecutionTaskBaseService):
         if not targets:
             raise ValueError("未找到有效的目标记录")
 
-        logger.info(f"[{task_name}] 目标主机: " + ", ".join(f"{t.ip}(id={t.id}, driver={t.driver}, region={t.cloud_region_id})" for t in targets))
-
-        # 按云区域分组，当前仅取第一个云区域
-        region_targets = {}
-        for target in targets:
-            region_id = target.cloud_region_id
-            if region_id not in region_targets:
-                region_targets[region_id] = []
-            region_targets[region_id].append(target)
-
-        if len(region_targets) > 1:
-            logger.warning(f"[{task_name}] 检测到多个云区域({list(region_targets.keys())})，当前仅使用第一个云区域执行")
-
-        cloud_region_id = list(region_targets.keys())[0]
-        region_target_list = region_targets[cloud_region_id]
-
-        # 获取 Ansible 执行节点
+        cloud_region_id, region_target_list = cls._ansible_region_targets(targets)
+        host_credentials = cls._build_host_credentials(region_target_list, execution=execution)
         ansible_node_id = cls._get_ansible_node(cloud_region_id)
-        logger.info(f"[{task_name}] Ansible 执行节点: node_id={ansible_node_id}, cloud_region_id={cloud_region_id}")
-
-        # 构建主机凭据
-        host_credentials = cls._build_host_credentials(region_target_list)
-        logger.info(
-            f"[{task_name}] 主机凭据: "
-            + ", ".join(f"{c.get('host')}(port={c.get('port')}, user={c.get('user')}, conn={c.get('connection')})" for c in host_credentials)
-        )
 
         # 构建回调配置
         from apps.job_mgmt.services.ansible_callback_service import build_ansible_callback_config
@@ -136,7 +104,6 @@ class PlaybookExecution(ExecutionTaskBaseService):
 
         # 构建 extra_vars（从 execution.params 和 playbook.params 还原）
         extra_vars = cls._build_extra_vars(execution.params, playbook.params)
-        logger.info(f"[{task_name}] extra_vars_keys: {list(extra_vars.keys())}")
 
         # 将 Playbook ZIP 从 MinIO 中转到 NATS JetStream Object Store
         # ansible-executor 只能从 NATS OS 下载文件，而 Playbook 存储在 MinIO 中
@@ -171,7 +138,6 @@ class PlaybookExecution(ExecutionTaskBaseService):
                     "bucket_name": NATS_NAMESPACE,
                 }
             )
-        logger.info(f"[{task_name}] Playbook 文件: {files}")
 
         # 调用 AnsibleExecutor.playbook()
         # 最后一次检查取消状态，避免已取消但仍提交 RPC
@@ -179,13 +145,9 @@ class PlaybookExecution(ExecutionTaskBaseService):
             raise ValueError("任务已取消，中止 Playbook 提交")
 
         executor = AnsibleExecutor(ansible_node_id)
-        logger.info(
-            f"[{task_name}] 调用 AnsibleExecutor.playbook(): "
-            f"playbook_path=playbook.yml, task_id={execution.id}, timeout={execution.timeout}, "
-            f"callback_subject={callback_config['subject']}, "
-            f"host_count={len(host_credentials)}, file_count={len(files)}, extra_vars_keys={list(extra_vars.keys())}"
-        )
-        result = executor.playbook(
+        call_target_executor(
+            executor.playbook,
+            protect_errors=any(t.credential_source == CredentialSource.CREDENTIAL for t in region_target_list),
             playbook_path="playbook.yml",
             host_credentials=host_credentials,
             files=files,
@@ -194,8 +156,6 @@ class PlaybookExecution(ExecutionTaskBaseService):
             task_id=str(execution.id),
             timeout=execution.timeout,
         )
-
-        logger.info(f"[{task_name}] Ansible Playbook 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
 
         return nats_file_key
 

@@ -16,6 +16,7 @@ import {
   ReportFileDownload,
   UserChoiceRequest,
   WikiCitation,
+  WikiMaterialWrite,
 } from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 import { getOpspilotTranslate } from './i18n';
@@ -692,6 +693,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
     skillViews: sharedContent.skillViews || (skillViews.length > 0 ? skillViews : undefined),
     reportFileDownloads: sharedContent.reportFileDownloads || (reportFileDownloads.length > 0 ? reportFileDownloads : undefined),
     wikiCitations: sharedContent.wikiCitations || (wikiCitations.length > 0 ? wikiCitations : undefined),
+    wikiMaterialWrites: sharedContent.wikiMaterialWrites,
     plannedExecutionSteps,
     isStreamingTools: finalize ? false : Boolean(plannedExecutionSteps?.some((s) => s.status === 'running')),
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
@@ -757,6 +759,7 @@ const buildHistoryMessageExtras = (
   reportFileDownloads?: ReportFileDownload[];
   plannedExecutionSteps?: PlannedExecutionStepView[];
   wikiCitations?: WikiCitation[];
+  wikiMaterialWrites?: WikiMaterialWrite[];
   isStreamingTools?: boolean;
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed' | 'error'; result?: string }>;
 } => {

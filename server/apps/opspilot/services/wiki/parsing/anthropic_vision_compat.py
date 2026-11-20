@@ -15,13 +15,14 @@ from urllib.parse import urlparse
 import anthropic
 
 from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import normalize_anthropic_compatible_api_base
+from apps.opspilot.metis.llm.common.vendor_tls import sdk_http_options
 
 _DATA_URI_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL | re.IGNORECASE)
 _DEFAULT_MAX_TOKENS = 1024
 _DEFAULT_ANTHROPIC_BASE = "https://api.anthropic.com"
 
 
-def build_anthropic_vision_client(*, api_base: str, api_key: str, vendor_type: str = ""):
+def build_anthropic_vision_client(*, api_base: str, api_key: str, vendor_type: str = "", skip_ssl_verify: bool = False):
     """Return an OpenAI-compatible client for Anthropic-protocol vision models."""
     base = (api_base or "").strip()
     if not base or base == "https://api.openai.com":
@@ -29,7 +30,7 @@ def build_anthropic_vision_client(*, api_base: str, api_key: str, vendor_type: s
     else:
         base = normalize_anthropic_compatible_api_base(base, vendor_type)
     return AnthropicOpenAICompatClient(
-        anthropic.Anthropic(api_key=api_key or "", base_url=base),
+        anthropic.Anthropic(api_key=api_key or "", base_url=base, **sdk_http_options(skip_ssl_verify)),
     )
 
 

@@ -17,6 +17,40 @@ from psycopg.rows import dict_row
 from sanic.log import logger
 
 
+def _classify_postgresql_failure(
+    error: BaseException,
+    *,
+    user_present: bool,
+    password_present: bool,
+) -> AccessProbeResult | None:
+    cause = error.__cause__ or error.__context__
+    sqlstate = getattr(error, "sqlstate", None) or getattr(cause, "sqlstate", None)
+    if sqlstate == "28P01":
+        if not user_present:
+            detail = "credential_user"
+        elif not password_present:
+            detail = "credential_password"
+        else:
+            detail = "credential_user_or_password"
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code=detail)
+    if sqlstate == "3D000":
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code="credential_database")
+    if sqlstate in {"08001", "08006"}:
+        text = " ".join(str(part) for part in (error, cause) if part).lower()
+        if "timeout" in text or "timed out" in text:
+            detail = "tcp_connect_timeout"
+        elif "refused" in text:
+            detail = "tcp_connection_refused"
+        elif "name or service not known" in text or "could not translate host" in text:
+            detail = "dns_resolution_failed"
+        elif "no route" in text:
+            detail = "tcp_no_route"
+        else:
+            detail = "tcp_connect_failed"
+        return AccessProbeResult(status=AccessProbeStatus.TARGET_UNREACHABLE, error_code=detail)
+    return None
+
+
 class PostgresqlInfo:
     def __init__(self, kwargs):
         self.host = kwargs.get("host", "localhost")
@@ -43,7 +77,7 @@ class PostgresqlInfo:
             )
             self.cursor = self.connection.cursor()
         except Exception as e:  # noqa
-            raise RuntimeError(f"Failed to connect to PostgreSQL: {str(e)}")
+            raise RuntimeError("Failed to connect to PostgreSQL") from e
 
     async def probe(self) -> AccessProbeResult:
         try:
@@ -54,6 +88,15 @@ class PostgresqlInfo:
                 status=AccessProbeStatus.READY,
                 evidence={"server_version": version},
             )
+        except Exception as error:
+            result = _classify_postgresql_failure(
+                error,
+                user_present=bool(str(self.user or "").strip()),
+                password_present=bool(self.password),
+            )
+            if result is None:
+                raise
+            return result
         finally:
             await self.close()
 

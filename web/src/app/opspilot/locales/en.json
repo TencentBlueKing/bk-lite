@@ -1801,6 +1801,7 @@
       "groupIm": "Messaging",
       "groupImDesc": "WeCom / DingTalk / Feishu / Official Account (org check skipped)",
       "accountAssociation": "Account association",
+      "accountAssociationTooltip": "When a message is received, use this account association's matching rules and the sender's IM account to determine the corresponding platform user.",
       "accountAssociationPlaceholder": "Select an account association",
       "manageAccountAssociation": "Manage account associations",
       "fields": {
@@ -2438,6 +2439,7 @@
       "apiBase": "API Base URL",
       "apiBaseRequired": "Please enter the API base URL",
       "apiBasePlaceholder": "Please enter the API base URL",
+      "skipSslVerify": "Skip SSL certificate verification",
       "apiBaseHelp": "If you use a proxy or private deployment, enter its URL here",
       "apiKey": "API Key",
       "apiKeyRequired": "Please enter the API key",

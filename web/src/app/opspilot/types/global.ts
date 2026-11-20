@@ -1,7 +1,7 @@
 import type { BrowserStepProgressData, BrowserStepsHistory, AgentStepProgressData } from '@bk-lite/chat-content/types';
 export type { BrowserStepAction, BrowserStepProgressData, BrowserStepsHistory, AgentStepProgressData } from '@bk-lite/chat-content/types';
-import type { ApprovalRequest, UserChoiceRequest, WikiCitation, SkillViewItem, ConfigDiffReport, ConfigAnalysisReport, ReportFileDownload, RepairCommands } from '@bk-lite/chat-content/types';
-export type { ApprovalRequest, UserChoiceOption, UserChoiceRequest, WikiSearchExplanation, WikiCitation, SkillViewItem, ConfigDiffItem, A2UIAction, A2UIReportContract, ConfigDiffReport, ConfigAnalysisReportItem, ConfigAnalysisReportScope, ConfigAnalysisReportScanRange, ConfigAnalysisReportSummary, ConfigAnalysisSeveritySection, ConfigAnalysisRecommendation, ConfigAnalysisReport, ReportFileDownload, RepairCommands } from '@bk-lite/chat-content/types';
+import type { ApprovalRequest, UserChoiceRequest, WikiCitation, WikiMaterialWrite, SkillViewItem, ConfigDiffReport, ConfigAnalysisReport, ReportFileDownload, RepairCommands } from '@bk-lite/chat-content/types';
+export type { ApprovalRequest, UserChoiceOption, UserChoiceRequest, WikiSearchExplanation, WikiCitation, WikiMaterialWrite, SkillViewItem, ConfigDiffItem, A2UIAction, A2UIReportContract, ConfigDiffReport, ConfigAnalysisReportItem, ConfigAnalysisReportScope, ConfigAnalysisReportScanRange, ConfigAnalysisReportSummary, ConfigAnalysisSeveritySection, ConfigAnalysisRecommendation, ConfigAnalysisReport, ReportFileDownload, RepairCommands } from '@bk-lite/chat-content/types';
 
 
 
@@ -95,6 +95,7 @@ export interface CustomChatMessage {
   isStreamingTools?: boolean;
   skillViews?: SkillViewItem[];
   wikiCitations?: WikiCitation[];
+  wikiMaterialWrites?: WikiMaterialWrite[];
 }
 
 

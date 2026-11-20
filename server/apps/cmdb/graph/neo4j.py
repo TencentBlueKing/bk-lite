@@ -318,7 +318,8 @@ class Neo4jClient:
           - params_str: 带 $placeholder 的 Cypher WHERE 子句片段
           - query_params: 传给 session.run 的参数字典
 
-        bool: {"field": "is_host", "type": "bool", "value": True} -> "n.is_host = $bool1"
+        bool true: {"field": "is_host", "type": "bool", "value": True} -> "n.is_host = $bool1"
+        bool false: {"field": "is_host", "type": "bool", "value": False} -> "(n.is_host = $bool1 OR n.is_host IS NULL)"
         str=: {"field": "name", "type": "str=", "value": "host"} -> "n.name = $str1"
         id=:  {"field": "id",   "type": "id=",  "value": 115}   -> "ID(n) = $id1"
         """
