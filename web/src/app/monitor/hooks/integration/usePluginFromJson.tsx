@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import { Fragment, useState, useCallback, useMemo } from 'react';
 import { Collapse, Form } from 'antd';
-import { FormFieldOptionControls, useConfigRenderer } from './useConfigRenderer';
+import { FormFieldOptionControls, FORM_WIDGET_WIDTH, useConfigRenderer } from './useConfigRenderer';
+import { FormFieldRow, groupFormFieldsIntoRows } from './formFieldRows';
 import {
   applyScriptCollectSubmit,
   inferScriptOs,
@@ -362,28 +363,42 @@ export const usePluginFromJson = () => {
           />
         );
       };
-      const renderConfigFields = (fields: any[]) => {
-        const nodes: ReactNode[] = [];
+      const renderSingleConfigField = (fieldConfig: any) => {
         const scriptCollect = isScriptCollectConfig(config);
-        for (let index = 0; index < fields.length; index += 1) {
-          const fieldConfig = fields[index];
-          if (scriptCollect && fieldConfig?.name === 'interval') {
-            nodes.push(
-              <ScriptIntervalField
-                key="script-interval"
-                intervalField={fieldConfig}
-                mode={extra.mode}
-              />
-            );
-            continue;
-          }
-          if (scriptCollect && fieldConfig?.name === 'timeout') {
-            continue;
-          }
-          nodes.push(renderMaybeCredentialField(fieldConfig));
+        if (scriptCollect && fieldConfig?.name === 'interval') {
+          return (
+            <ScriptIntervalField
+              key="script-interval"
+              intervalField={fieldConfig}
+              mode={extra.mode}
+            />
+          );
         }
-        return nodes;
+        if (scriptCollect && fieldConfig?.name === 'timeout') {
+          return null;
+        }
+        return renderMaybeCredentialField(fieldConfig);
       };
+
+      const renderConfigFields = (fields: any[]) =>
+        groupFormFieldsIntoRows(fields).map((group) => {
+          if (!group.rowKey || group.fields.length < 2) {
+            return (
+              <Fragment key={group.fields.map((field) => field?.name).join('-') || 'field'}>
+                {group.fields.map((fieldConfig) => renderSingleConfigField(fieldConfig))}
+              </Fragment>
+            );
+          }
+          return (
+            <FormFieldRow
+              key={`form-row-${group.rowKey}`}
+              rowKey={group.rowKey}
+              fields={group.fields}
+              width={FORM_WIDGET_WIDTH}
+              renderField={renderSingleConfigField}
+            />
+          );
+        });
 
       const renderAdvancedFieldGroups = (fields: any[]) => {
         const hasSections = fields.some((field) => field.section);

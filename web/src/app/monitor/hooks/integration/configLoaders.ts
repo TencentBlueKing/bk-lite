@@ -43,6 +43,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   Tomcat: () => import('./objects/middleware/tomcat').then((m) => m.useTomcatConfig),
   Minio: () => import('./objects/middleware/minio').then((m) => m.useMinioBkpullConfig),
   RabbitMQ: () => import('./objects/middleware/rabbitMQ').then((m) => m.useRabbitMQConfig),
+  RocketMQ: () => import('./objects/middleware/rocketmq').then((m) => m.useRocketMQConfig),
   Router: () => import('./objects/networkDevice/router').then((m) => m.useRouterConfig),
   Loadbalance: () =>
     import('./objects/networkDevice/loadbalance').then((m) => m.useLoadbalanceConfig),
