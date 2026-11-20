@@ -881,7 +881,7 @@ def _record_build(material, **overrides):
     inputs["material_id"] = material.pk
     return BuildRecord.objects.create(
         knowledge_base=material.knowledge_base,
-        trigger=QUEUE_ITEM_TRIGGER,
+        trigger="material",
         status=status,
         stage="done",
         counts=counts,
@@ -1044,11 +1044,11 @@ def test_open_check_for_this_material_asks_for_a_decision_in_the_chat():
     check = outcome["checks"][0]
     assert check["page_id"] == page.id
     assert check["page_title"] == "告警规则"
-    assert check["current_body"] == "现" * 4000
-    assert check["incoming_body"] == "新" * 4000
+    assert check["current_body"] == "现" * 4001
+    assert check["incoming_body"] == "新" * 4001
     assert check["actions"] == ["keep_current", "edit_accept"]
     assert check["status"] == "open"
-    assert "现" * 4001 not in check["current_body"]
+    assert "现" * 4001 in check["current_body"]
 
 
 def test_non_chat_material_has_no_write_result():
@@ -1225,3 +1225,206 @@ def test_accepting_actions_pass_the_chat_material(action):
     assert [call.args[1] for call in decide.call_args_list] == ["keep_current", action]
     assert decide.call_args_list[0].kwargs["material"] is None
     assert decide.call_args_list[1].kwargs["material"].pk == material.pk
+
+
+def _material_build(material, **overrides):
+    status = overrides.pop("status", "running")
+    counts = overrides.pop("counts", {})
+    page_actions = overrides.pop("page_actions", [])
+    inputs = {"material_id": material.pk}
+    extra_inputs = overrides.pop("inputs", None)
+    if isinstance(extra_inputs, dict):
+        inputs.update(extra_inputs)
+    inputs["material_id"] = material.pk
+    return BuildRecord.objects.create(
+        knowledge_base=material.knowledge_base,
+        trigger="material",
+        status=status,
+        stage=overrides.pop("stage", status),
+        counts=counts,
+        page_actions=page_actions,
+        inputs=inputs,
+    )
+
+
+def _open_material_check(kb, material, *, body, current="当前规则", materials=None, actions=None):
+    page = KnowledgePage.objects.create(knowledge_base=kb, title="告警规则", page_type="concept")
+    current_version = PageVersion.objects.create(page=page, no=1, body=current, is_current=True, change_type="ai_create")
+    page.current_version = current_version
+    page.save(update_fields=["current_version"])
+    candidate = PageVersion.objects.create(page=page, no=2, body=body, is_current=False, change_type="candidate")
+    check = CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="conflict",
+        status="open",
+        related={"pages": [page.id], "materials": materials if materials is not None else [material.id]},
+        candidate_version=candidate,
+        suggested_actions=actions or ["keep_current", "edit_accept"],
+    )
+    return page, check
+
+
+def test_running_material_build_stays_writing_until_success_even_with_open_checks():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    other = _chat_material(kb, body="另一份")
+    _page, first = _open_material_check(kb, material, body="第一条新规则")
+    _open_material_check(kb, other, body="无关规则", materials=[other.id])
+    build = _material_build(material, status="running")
+
+    writing = read_chat_wiki_outcome(material)
+    assert writing["phase"] == "writing"
+    assert writing["summary"] == REPLY_SUCCESS
+
+    build.status = "success"
+    build.stage = "done"
+    build.save(update_fields=["status", "stage"])
+    _page, second = _open_material_check(
+        kb,
+        material,
+        body="第二条新规则",
+        materials=[{"material_id": material.id}],
+    )
+
+    decided = read_chat_wiki_outcome(material)
+    assert decided["phase"] == "needs_decision"
+    assert decided["summary"] == SUMMARY_CONFLICT
+    assert [item["id"] for item in decided["checks"]] == [first.id, second.id]
+    assert {item["incoming_body"] for item in decided["checks"]} == {"第一条新规则", "第二条新规则"}
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled"])
+def test_failed_or_cancelled_material_build_is_failed_even_with_an_open_check(status):
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _material_build(material, status=status)
+    _open_material_check(kb, material, body="残留候选")
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "failed"
+    assert outcome["summary"] == REPLY_FAILED
+
+
+def test_failed_material_status_is_failed_even_with_an_open_check_and_a_nonstandard_build():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    material.status = "build_failed"
+    material.save(update_fields=["status"])
+    _material_build(material, status="budget_exhausted", stage="budget_exhausted")
+    _open_material_check(kb, material, body="残留候选")
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "failed"
+    assert outcome["summary"] == REPLY_FAILED
+
+
+def test_a_later_successful_queue_ticket_does_not_finish_a_running_material_build():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    _material_build(material, status="running", stage="preparing")
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=QUEUE_ITEM_TRIGGER,
+        status="success",
+        stage="dispatched",
+        inputs={"material_id": material.pk},
+        counts={"new": 1},
+        page_actions=[{"action": "create", "page_id": 41, "title": "磁盘清理"}],
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "writing"
+    assert outcome["summary"] == REPLY_SUCCESS
+    assert outcome["pages"] == []
+
+
+def test_outcome_checks_match_int_and_dict_material_refs_and_ignore_other_materials():
+    kb = _kb("运维知识")
+    material = _chat_material(kb)
+    other = _chat_material(kb, body="另一份")
+    _material_build(material, status="success", stage="done")
+    _page, as_int = _open_material_check(kb, material, body="整数引用")
+    _page, as_material_id = _open_material_check(
+        kb,
+        material,
+        body="对象 material_id",
+        materials=[{"material_id": str(material.id)}],
+    )
+    _page, as_id = _open_material_check(
+        kb,
+        material,
+        body="对象 id",
+        materials=[{"material_id": "", "id": material.id}],
+    )
+    _open_material_check(kb, other, body="其它资料", materials=[other.id])
+    _open_material_check(
+        kb,
+        other,
+        body="id 撞车但 material_id 指向其它资料",
+        materials=[{"material_id": other.id, "id": material.id}],
+    )
+
+    outcome = read_chat_wiki_outcome(material)
+    assert outcome["phase"] == "needs_decision"
+    assert [item["id"] for item in outcome["checks"]] == [as_int.id, as_material_id.id, as_id.id]
+    assert [item["incoming_body"] for item in outcome["checks"]] == ["整数引用", "对象 material_id", "对象 id"]
+
+
+def _long_conflict(username):
+    factory = WikiFactory()
+    kb = factory.bootstrapped_knowledge_base(name="运维知识")
+    material = _chat_material(kb, body="待确认正文")
+    material.content_hash = "h-long-candidate"
+    material.save(update_fields=["content_hash"])
+    full = "# 告警规则\n\n" + ("细则" * 2001) + "TAIL"
+    page = factory.page(knowledge_base=kb, title="告警规则", body="当前规则")
+    check = create_candidate(
+        page,
+        body=full,
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=material,
+        related={"pages": [page.id], "materials": [material.id]},
+        suggested_actions=["keep_current", "use_new", "edit_accept"],
+    )
+    _material_build(material, status="success", stage="done")
+    return material, page, check, full, _auth_user(username)
+
+
+def test_edit_accept_submits_the_full_candidate_when_the_body_is_longer_than_four_thousand_characters():
+    material, page, check, full, member = _long_conflict("editor")
+    assert len(full) > 4000
+
+    outcome = _outcome_request(member, material.id)
+    assert outcome.status_code == 200
+    payload = _body(outcome)["data"]["checks"][0]
+    assert payload["current_body"] == "当前规则"
+    assert payload["incoming_body"] == full
+    assert payload["incoming_body"].endswith("TAIL")
+    excerpt = payload.get("incoming_excerpt")
+    if excerpt is not None:
+        assert excerpt != full
+        assert len(excerpt) < len(full)
+        assert payload.get("incoming_truncated") is True
+
+    accepted = _decide_request(
+        member,
+        material.id,
+        {"check_id": check.id, "action": "edit_accept", "body": payload["incoming_body"]},
+    )
+    assert accepted.status_code == 200
+    page.refresh_from_db()
+    assert page.current_version.body == full
+
+
+def test_use_new_keeps_the_server_candidate_when_the_client_sends_a_short_body():
+    material, page, check, full, member = _long_conflict("keeper")
+
+    accepted = _decide_request(
+        member,
+        material.id,
+        {"check_id": check.id, "action": "use_new", "body": full[:4000]},
+    )
+    assert accepted.status_code == 200
+    page.refresh_from_db()
+    assert page.current_version.body == full

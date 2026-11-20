@@ -40,6 +40,14 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_ORDER = ['keep_current', 'use_new', 'keep_all', 'keep_separate', 'merge', 'edit_accept'];
+const DISPLAY_BODY_LIMIT = 4000;
+
+const previewBody = (body: string) => {
+  if (body.length <= DISPLAY_BODY_LIMIT) {
+    return { text: body, truncated: false };
+  }
+  return { text: body.slice(0, DISPLAY_BODY_LIMIT), truncated: true };
+};
 
 const orderedActions = (actions: string[]) =>
   [...actions].sort((left, right) => {
@@ -142,13 +150,15 @@ const WikiMaterialWriteCard: React.FC<WikiMaterialWriteCardProps> = ({
   };
 
   const knowledgePane = (label: string, body: string, title?: string) => {
-    const content = withoutRepeatedTitle(body, title);
+    const preview = previewBody(body);
+    const content = withoutRepeatedTitle(preview.text, title);
     return (
       <section className="min-w-0 rounded-md bg-[var(--color-fill-1)] px-3 py-2">
         <div className="mb-1 text-xs text-[var(--color-text-2)]">{label}</div>
         <div className="max-h-56 overflow-auto [&_.chat-markdown>:first-child]:mt-0">
           {content ? <ChatMarkdown content={content} /> : <span className="text-sm text-[var(--color-text-2)]">无</span>}
         </div>
+        {preview.truncated ? <div className="mt-1 text-xs text-[var(--color-text-2)]">还有未展示的全文</div> : null}
       </section>
     );
   };
