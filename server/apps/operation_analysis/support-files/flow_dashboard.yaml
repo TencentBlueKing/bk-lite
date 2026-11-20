@@ -71,7 +71,7 @@ dashboards:
                 type: dynamic
                 sourceRef:
                   type: rest_api
-                  value: monitor/get_monitor_instance_list
+                  value: 监控实例列表::monitor/get_monitor_instance_list
                 valueField: instance_id
                 labelField: display_name
           - name: metric
@@ -683,7 +683,7 @@ datasources:
         type: dynamic
         sourceRef:
           type: rest_api
-          value: monitor/get_monitor_instance_list
+          value: 监控实例列表::monitor/get_monitor_instance_list
         valueField: instance_id
         labelField: display_name
   - name: metric
@@ -741,7 +741,7 @@ datasources:
         type: dynamic
         sourceRef:
           type: rest_api
-          value: monitor/get_monitor_instance_list
+          value: 监控实例列表::monitor/get_monitor_instance_list
         valueField: instance_id
         labelField: display_name
   - name: metric

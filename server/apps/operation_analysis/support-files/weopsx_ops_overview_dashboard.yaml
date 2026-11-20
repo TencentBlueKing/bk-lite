@@ -572,7 +572,7 @@ dashboards:
                 type: dynamic
                 sourceRef:
                   type: rest_api
-                  value: monitor/get_host_instance_list
+                  value: 监控主机列表::monitor/get_host_instance_list
                 labelField: display_name
                 valueField: instance_id
           - name: organization

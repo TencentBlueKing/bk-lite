@@ -336,6 +336,8 @@ export interface ViewConfigProps {
   previewSingleStyle?: SingleValueStyleConfig;
   /** 面板模式把预览传送到这个节点。抽屉模式忽略。 */
   previewHost?: HTMLElement | null;
+  /** 有 EditChart 时组件参数显示修复文案。不授予保存权限。 */
+  canRepairOptionSource?: boolean;
   /** 把当前查询拷成画布上的一条数据变量。不传则不显示入口。 */
   onCreateDataVariable?: (variable: DataVariable) => void;
 }

@@ -360,7 +360,7 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert "每种取值" in group_by["desc"]
     instance_fields = _param(sources["cmdb/query_cmdb_instances"], "filters")["inputConfig"]["fields"]
     assert instance_fields["kind"] == "dynamic"
-    assert instance_fields["sourceRef"]["value"] == "cmdb/list_cmdb_attr_options"
+    assert instance_fields["sourceRef"]["value"] == "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
     assert instance_fields["valueField"] == "attr_id"
     assert instance_fields["labelField"] == "attr_name"
     assert instance_fields["queryParams"]["model_id"] == {"ref": "model_id"}
@@ -379,12 +379,12 @@ def test_generic_query_seed_uses_chart_driven_filters_and_order():
     assert "filters" not in {param["name"] for param in center["params"]}
     for name in ("source", "level", "status"):
         assert _param(center, name).get("hidden") is not True
-    assert _param(center, "source")["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "alert/list_alert_source_options"
+    assert _param(center, "source")["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "告警来源列表::alert/list_alert_source_options"
     metric = sources["monitor/query_monitor_metric"]
     metric_filters = _param(metric, "filters")
     assert metric_filters["type"] == "conditionFilter"
     assert metric_filters["inputConfig"]["fields"]["queryParams"]["metric_id"] == {"ref": "metric_id"}
-    assert metric_filters["inputConfig"]["fields"]["sourceRef"]["value"] == "monitor/list_metric_dimensions"
+    assert metric_filters["inputConfig"]["fields"]["sourceRef"]["value"] == "监控指标维度::monitor/list_metric_dimensions"
     assert "dimension_label" not in {param["name"] for param in metric["params"]}
     assert "analysis_mode" not in {param["name"] for param in metric["params"]}
     assert metric["chart_type"] == ["line", "bar", "table"]
@@ -440,7 +440,7 @@ def test_instance_and_one_hop_classification_is_single_select_and_declared():
         assert classification["inputConfig"]["control"] == "select"
         assert classification["inputConfig"].get("multiple") is not True
         assert options["valueField"] == "classification_id"
-        assert options["sourceRef"]["value"] == "cmdb/get_model_classification_options"
+        assert options["sourceRef"]["value"] == "CMDB 模型分类列表::cmdb/get_model_classification_options"
         model = _param(source, model_name)
         model_options = model["inputConfig"]["optionsSource"]
         assert model["inputConfig"].get("multiple") is not True

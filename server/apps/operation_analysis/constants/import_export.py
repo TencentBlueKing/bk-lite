@@ -69,6 +69,10 @@ class ConflictAction(str, Enum):
     SKIP = "skip"
     OVERWRITE = "overwrite"
     RENAME = "rename"
+    # 同一稳定身份但业务配置不同：沿用目标环境现有配置，不改它的参数。
+    REUSE_TARGET = "reuse_target"
+    # 同一稳定身份但业务配置不同：新建一条用户数据源，只改本次导入的引用。
+    IMPORT_AS_NEW = "import_as_new"
 
 
 class ImportStatus(str, Enum):
@@ -91,10 +95,10 @@ YAML_MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 # 单次导入最大对象数量限制，超过此限制将拒绝导入
 IMPORT_OBJECT_LIMIT = 200
 
-# YAML schema版本号，用于版本兼容性检查。1.2.0 增加数据源连接器配置；
-# 导入端继续接受 1.1.0，使存量 NATS YAML 可以迁移到新版本。
-YAML_SCHEMA_VERSION = "1.2.0"
-YAML_SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.1.0", YAML_SCHEMA_VERSION})
+# YAML schema版本号。1.3.0 给数据源增加稳定身份。
+# 导入端继续接受 1.1.0 和 1.2.0。旧包没有身份字段，不能按名称并到已有行。
+YAML_SCHEMA_VERSION = "1.3.0"
+YAML_SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.1.0", "1.2.0", YAML_SCHEMA_VERSION})
 
 
 # ===== 敏感字段配置 =====
@@ -205,8 +209,10 @@ class ConflictReason:
 
     # 名称冲突：当前组织可访问该记录
     NAME_CONFLICT = "name_conflict"
-    # 无权限冲突：记录存在但当前组织无权访问（只允许重命名）
+    # 无权限冲突：记录存在但当前组织无权访问（只允许重命名或作为新数据源）
     NO_PERMISSION_CONFLICT = "no_permission_conflict"
+    # 稳定身份相同，业务配置不同。不能静默覆盖。
+    IDENTITY_CONFIG_CONFLICT = "identity_config_conflict"
 
 
 # ===== 警告码定义 =====
