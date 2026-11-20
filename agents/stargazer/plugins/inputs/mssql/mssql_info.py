@@ -7,8 +7,34 @@ A standalone script to gather information about MSSQL servers.
 from typing import Any, Dict
 
 import aioodbc
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.decorator import timer
 from sanic.log import logger
+
+
+def _mssql_probe_status(error: BaseException, *, user_present: bool, password_present: bool) -> AccessProbeResult | None:
+    text = " ".join(str(part) for part in getattr(error, "args", ())).lower()
+    if "18456" in text or "login failed" in text:
+        if not user_present:
+            detail = "credential_user"
+        elif not password_present:
+            detail = "credential_password"
+        else:
+            detail = "credential_user_or_password"
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code=detail)
+    if "4060" in text or "cannot open database" in text:
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code="credential_database")
+    if "timeout" in text or "timed out" in text:
+        detail = "tcp_connect_timeout"
+    elif "refused" in text:
+        detail = "tcp_connection_refused"
+    elif "no route" in text:
+        detail = "tcp_no_route"
+    elif "name or service not known" in text or "08001" in text:
+        detail = "dns_resolution_failed" if "name or service not known" in text else "tcp_connect_failed"
+    else:
+        return None
+    return AccessProbeResult(status=AccessProbeStatus.TARGET_UNREACHABLE, error_code=detail)
 
 
 class MSSQLInfo:
@@ -48,8 +74,30 @@ class MSSQLInfo:
             self.cursor = await self.connection.cursor()
             logger.info(f"Connected to MSSQL database at {self.host}:{self.port}")
         except Exception as e:
-            logger.error(f"Failed to connect to MSSQL: {str(e)}")
-            raise RuntimeError(f"Connection error: {str(e)}")
+            logger.error("event=mssql_connect_failed host=%s port=%s error_type=%s", self.host, self.port, type(e).__name__)
+            raise RuntimeError("Failed to connect to MSSQL") from e
+
+    async def probe(self) -> AccessProbeResult:
+        try:
+            await self._connect()
+            row = await self._exec_sql(self.SQL_QUERIES["version"])
+            if not row.get("version"):
+                return AccessProbeResult(
+                    status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+                    error_code="mssql_version_empty",
+                )
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        except RuntimeError as error:
+            result = _mssql_probe_status(
+                error.__cause__ or error,
+                user_present=bool(str(self.user or "").strip()),
+                password_present=bool(self.password),
+            )
+            if result is None:
+                raise
+            return result
+        finally:
+            await self.close()
 
     async def close(self):
         """Close MSSQL connection and cursor."""

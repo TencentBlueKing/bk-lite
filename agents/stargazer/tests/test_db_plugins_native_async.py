@@ -98,7 +98,7 @@ async def test_mysql_probe_auth_failure(monkeypatch):
     monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", rejected)
     result = await MysqlInfo({"host": "10.0.0.8", "user": "collector", "password": "secret-do-not-return"}).probe()
     assert result.status == AccessProbeStatus.AUTH_FAILED
-    assert result.error_code == "authentication_failed"
+    assert result.error_code == "credential_user_or_password"
     assert "secret-do-not-return" not in result.detail
 
 

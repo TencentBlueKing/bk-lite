@@ -16,6 +16,7 @@ from core.collection.runtime import CollectionRequest, RunLease
 
 # 兼容：历史调用方从 contracts 导入枚举
 __all__ = [
+    "AccessCheckRow",
     "AccessProbe",
     "AccessProbeResult",
     "AccessProbeStatus",
@@ -102,6 +103,18 @@ class CredentialFailureResult:
 
 
 @dataclass(frozen=True)
+class AccessCheckRow:
+    """一次连通性测试里，一个目标上的一条凭据。"""
+
+    target: str
+    credential_id: str
+    credential_name: str
+    conclusion: str
+    detail_code: str = ""
+    attempted: bool = False
+
+
+@dataclass(frozen=True)
 class TargetCollectionResult:
     target: str
     status: str
@@ -113,6 +126,7 @@ class TargetCollectionResult:
     publish_timestamp_ms: int = 0
     detail: str = ""
     failed_stage: FailureStage | None = None
+    access_rows: tuple[AccessCheckRow, ...] = ()
 
 
 class PublishStatus(str, Enum):

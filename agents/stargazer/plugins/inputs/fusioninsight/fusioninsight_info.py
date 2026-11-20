@@ -85,16 +85,40 @@ class FusionInsightManager:
         self.scheme = self.params.get("scheme", "https") or "https"
         self.port = int(self.params.get("port", 443))
         raw_verify_tls = self.params.get("verify_tls", True)
-        self.verify_tls = (
-            raw_verify_tls
-            if isinstance(raw_verify_tls, bool)
-            else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
-        )
+        self.verify_tls = raw_verify_tls if isinstance(raw_verify_tls, bool) else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
         port_suffix = "" if self.port == 443 else f":{self.port}"
         self.basic_url = f"{self.scheme}://{self.host}{port_suffix}/web"
         self.cw_headers = {"Content-Type": "application/json"}
         self._client: httpx.AsyncClient | None = None
         self._authed = False
+
+    async def probe(self):
+        import httpx
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        try:
+            await self.login()
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        except httpx.TimeoutException:
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_probe_no_response",
+            )
+        except httpx.ConnectError:
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code="target_unreachable",
+            )
+        except Exception:  # noqa: BLE001 - 登录失败不把响应正文写入结论
+            return AccessProbeResult(
+                status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+                error_code="fusioninsight_login_failed",
+            )
+        finally:
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None
+                self._authed = False
 
     async def login(self):
         if self._client is None:
@@ -149,8 +173,15 @@ class FusionInsightManager:
         data = _filter_obj_fields_by_list(
             hosts,
             [
-                "hostname", "ip", "cpuCores", "totalMemory", "totalHardDiskSpace",
-                "runningStatus", "osType", "clusterName", "clusterId",
+                "hostname",
+                "ip",
+                "cpuCores",
+                "totalMemory",
+                "totalHardDiskSpace",
+                "runningStatus",
+                "osType",
+                "clusterName",
+                "clusterId",
             ],
         )
         return {"result": True, "data": data}

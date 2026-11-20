@@ -1508,3 +1508,10 @@ def enrich_scan_middleware_snapshots(self, execution_id, attempt=0, deadline_ts=
     from apps.cmdb.services.scan_finalize_service import enrich_middleware_snapshots
 
     return enrich_middleware_snapshots(execution_id, attempt=attempt, deadline_ts=deadline_ts)
+
+
+@shared_task(name="apps.cmdb.tasks.celery_tasks.apply_access_check_result")
+def apply_access_check_result(payload):
+    from apps.cmdb.services.collect_access_check_service import apply_access_check_callback
+
+    apply_access_check_callback(payload or {})
