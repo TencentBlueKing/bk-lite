@@ -11,10 +11,10 @@ monitor_object_metric:
       name: 采集存活
       desc: 采集是否存活。1 表示存活，0 表示未存活。
     bklite_rocketmq_broker_tps:
-      name: Broker 写入 TPS
+      name: Broker 每秒写入的消息
       desc: Broker 每秒写入的消息条数。
     bklite_rocketmq_broker_qps:
-      name: Broker 读取 TPS
+      name: Broker 每秒读取的消息
       desc: Broker 每秒读取的消息条数。
     bklite_rocketmq_broker_commitlog_disk_ratio:
       name: CommitLog 磁盘占用率

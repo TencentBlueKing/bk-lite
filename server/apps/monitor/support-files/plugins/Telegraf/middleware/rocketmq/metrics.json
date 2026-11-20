@@ -14,7 +14,7 @@
   "supplementary_indicators": ["bklite_rocketmq_up", "bklite_rocketmq_broker_tps", "bklite_rocketmq_group_diff", "bklite_rocketmq_broker_commitlog_disk_ratio"],
   "display_fields": [
     {"name": "采集存活", "sort_order": 0, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_up"}]},
-    {"name": "Broker 写入 TPS", "sort_order": 1, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_broker_tps"}]},
+    {"name": "Broker 每秒写入的消息", "sort_order": 1, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_broker_tps"}]},
     {"name": "消费堆积", "sort_order": 2, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_group_diff"}]},
     {"name": "CommitLog 磁盘占用率", "sort_order": 3, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_broker_commitlog_disk_ratio"}]}
   ],
