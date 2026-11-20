@@ -13,6 +13,9 @@ if TYPE_CHECKING:
 # 英语 locale 用 guide_short_en 替换 guide_short；不覆盖则磁盘新文案到不了英文界面。
 _HELP_FIELD_KEYS = ("description", "description_en", "tooltip", "guide_short", "guide_short_en")
 _HELP_WIDGET_KEYS = ("placeholder", "placeholder_en")
+# 标签和同一行布局也以磁盘 UI.json 为准。采集页读的是 DB 模板，
+# 不覆盖的话要等下一次 plugin_init 才会改「超时」和左右并排。
+_DISPLAY_FIELD_KEYS = ("label", "label_en", "row")
 
 
 def _named_items(items) -> dict:
@@ -30,7 +33,7 @@ def _copy_help_keys(target: dict, source: dict, keys: tuple[str, ...]) -> None:
 
 
 def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: MonitorPlugin | None) -> dict | None:
-    """用当前插件 UI.json 覆盖 form_fields 的 description/placeholder。
+    """用当前插件 UI.json 覆盖 form_fields 的说明、标签和同一行布局。
 
     按字段 name 只对齐「同一个插件」的磁盘文案，不会把 Windows WMI 的
     domain\\user 套到 Host AIX Remote、Host FreeBSD Remote、Host HP-UX Remote、Host Solaris Remote 或 Host Remote。
@@ -73,6 +76,7 @@ def overlay_form_field_help_from_plugin_files(content: dict | None, plugin: Moni
         if not source:
             continue
         _copy_help_keys(field, source, _HELP_FIELD_KEYS)
+        _copy_help_keys(field, source, _DISPLAY_FIELD_KEYS)
         source_widget = source.get("widget_props")
         if not isinstance(source_widget, dict):
             continue
