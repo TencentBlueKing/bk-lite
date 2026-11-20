@@ -1,20 +1,8 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
-import type { CardListAccentStyle } from '@/app/ops-analysis/utils/cardList';
 import { collectSampleFieldKeys } from './chartFieldOptions';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export type CardListFormState = NonNullable<WidgetConfigFormValues['cardList']>;
-
-export interface CardListPreviewSlots {
-  leading?: string;
-  leadingStyle?: CardListAccentStyle;
-  primary: string;
-  secondary?: string;
-  badge?: string;
-  badgeStyle?: CardListAccentStyle;
-  trailingPrimary?: string;
-  trailingSecondary?: string;
-}
 
 export interface CardListFieldOption {
   value: string;
@@ -80,77 +68,62 @@ export const resolveCardListOptionalOpenState = (cardList?: CardListFormState) =
   ),
 });
 
-export const resolveCardListPreviewSlots = (
+export interface CardListSummaryCopy {
+  none: string;
+  index: string;
+  field: string;
+  unconfigured: string;
+  firstLine: string;
+  secondLine: string;
+}
+
+export interface CardListOptionalSummaries {
+  leading: string;
+  badge: string;
+  trailing: string;
+}
+
+const fieldDisplayName = (
+  fieldKey: string | undefined,
+  options: CardListFieldOption[],
+) => {
+  const key = trimField(fieldKey);
+  if (!key) return undefined;
+  return resolveCardListFieldLabel(key, options, key);
+};
+
+/** 折叠头摘要只读当前草稿。显示名优先，不写入配置，也不代表启用。 */
+export const resolveCardListOptionalSummaries = (
   cardList: CardListFormState | undefined,
   options: CardListFieldOption[],
-  placeholders: {
-    title: string;
-    description: string;
-    badge: string;
-    trailing: string;
-    index: string;
-  },
-): CardListPreviewSlots => {
-  const slots: CardListPreviewSlots = {
-    primary: resolveCardListFieldLabel(
-      cardList?.titleField,
-      options,
-      placeholders.title,
-    ),
+  copy: CardListSummaryCopy,
+): CardListOptionalSummaries => {
+  const leadingType = cardList?.leading?.type;
+  let leading = copy.none;
+  if (leadingType === 'index') {
+    leading = copy.index;
+  } else if (leadingType === 'field') {
+    const name = fieldDisplayName(cardList?.leading?.field, options);
+    leading = `${copy.field} · ${name || copy.unconfigured}`;
+  }
+
+  const badgeName = fieldDisplayName(cardList?.badgeField, options);
+  const primaryName = fieldDisplayName(cardList?.trailingPrimaryField, options);
+  const secondaryName = fieldDisplayName(cardList?.trailingSecondaryField, options);
+  let trailing = copy.unconfigured;
+  if (primaryName && secondaryName) {
+    trailing = `${primaryName} · ${secondaryName}`;
+  } else if (primaryName) {
+    trailing = `${copy.firstLine} · ${primaryName}`;
+  } else if (secondaryName) {
+    trailing = `${copy.secondLine} · ${secondaryName}`;
+  }
+
+  return {
+    leading,
+    badge: badgeName || copy.unconfigured,
+    trailing,
   };
-
-  if (trimField(cardList?.descriptionField)) {
-    slots.secondary = resolveCardListFieldLabel(
-      cardList?.descriptionField,
-      options,
-      placeholders.description,
-    );
-  }
-
-  if (cardList?.leading?.type === 'index') {
-    slots.leading = placeholders.index;
-    if (cardList.leading.style) {
-      slots.leadingStyle = cardList.leading.style;
-    }
-  } else if (cardList?.leading?.type === 'field' && trimField(cardList.leading.field)) {
-    slots.leading = resolveCardListFieldLabel(
-      cardList.leading.field,
-      options,
-      placeholders.index,
-    );
-    if (cardList.leading.style) {
-      slots.leadingStyle = cardList.leading.style;
-    }
-  }
-
-  if (trimField(cardList?.badgeField)) {
-    slots.badge = resolveCardListFieldLabel(
-      cardList?.badgeField,
-      options,
-      placeholders.badge,
-    );
-    if (cardList?.badgeStyle) {
-      slots.badgeStyle = cardList.badgeStyle;
-    }
-  }
-
-  if (trimField(cardList?.trailingPrimaryField)) {
-    slots.trailingPrimary = resolveCardListFieldLabel(
-      cardList?.trailingPrimaryField,
-      options,
-      placeholders.trailing,
-    );
-  }
-
-  if (trimField(cardList?.trailingSecondaryField)) {
-    slots.trailingSecondary = resolveCardListFieldLabel(
-      cardList?.trailingSecondaryField,
-      options,
-      placeholders.trailing,
-    );
-  }
-
-  return slots;
 };
 
 export const findCardListDuplicateFieldUses = (

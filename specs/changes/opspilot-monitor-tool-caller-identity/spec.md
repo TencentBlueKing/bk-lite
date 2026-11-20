@@ -10,6 +10,8 @@ OpsPilot Skill 内置 Monitor 工具当前要求在 Skill 配置中填写登录�
 
 在交互式 HTTP 入口与 Skill 直接执行场景下，网关受理请求时把已校验的用户身份、当前组，以及（若有）是否包含子组写入工作流/Agent 运行时上下文。Monitor 工具只从该上下文组装 Monitor RPC 所需的 `user_info`，不再二次密码登录，也不再暴露可被模型改写的身份参数。Skill 配置 UI 去掉账号、密码与组织选择，仅说明「使用调用方登录身份与当前组」。定时任务、IM 渠道等无登录态入口若挂载了 Monitor 工具，返回明确错误。
 
+编排中心随后扩展了受信任身份来源。发布时绑定账号和组织的定时流程、已认证的 OpenAPI 和 NATS 用户调用可向 Monitor 传递执行身份，具体约束见 [编排中心定时执行身份](../workflow-execution-identity/spec.md)。
+
 ## User Stories
 
 1. As a 已登录的运维人员, I want 在 Web/Mobile/嵌入式等会话里使用挂了 Monitor 的 Skill 或工作流时自动按我的身份与当前组查监控, so that 我不必在 Skill 里保存账号密码。

@@ -15,6 +15,7 @@ from apps.workflow.services.capability_profiles import capability_resource_snaps
 from apps.workflow.services.conductor import ConductorClient, ConductorRejected, ConductorUnavailable, ExecutionStartUnknown
 from apps.workflow.services.data_contracts import redact_sensitive_inputs, seal_sensitive_inputs
 from apps.workflow.services.definitions import prepare_definition_for_publish
+from apps.workflow.utils.i18n import normalize_execution_locale
 
 # Unattached QUEUED/UNKNOWN reconcile backoff: 60s * 2^n, capped at 1h.
 _RECONCILE_BACKOFF_BASE_SECONDS = 60
@@ -114,17 +115,17 @@ def _system_context(
     workflow: Workflow,
     *,
     execution_id: str,
+    organization_id: int,
     version: int,
     trigger_type: str,
     trigger_id: str,
     started_by: str,
 ) -> dict[str, Any]:
-    team = str(workflow.team[0]) if workflow.team else ""
     return {
         "execution_id": execution_id,
         "workflow_id": str(workflow.pk),
         "workflow_version": version,
-        "organization_id": team,
+        "organization_id": str(organization_id),
         "trigger_id": trigger_id,
         "trigger_type": trigger_type,
         "actor_id": started_by,
@@ -151,6 +152,21 @@ def _walk_definition_tasks(tasks):
                 yield from _walk_definition_tasks(branch)
 
 
+def _execution_team(workflow, caller_identity, *, started_by, domain, execution_team_id):
+    if execution_team_id is not None and caller_identity != {
+        "username": started_by,
+        "domain": domain,
+        "team_id": execution_team_id,
+        "include_children": False,
+    }:
+        raise ValueError("执行组织与调用者身份不一致")
+    if execution_team_id is not None:
+        return execution_team_id
+    # A shared workflow can be executed from any of its owning teams.
+    caller_team = (caller_identity or {}).get("team_id")
+    return caller_team if caller_team in workflow.team else workflow.team[0]
+
+
 @transaction.atomic
 def _claim_execution(
     workflow: Workflow,
@@ -158,6 +174,9 @@ def _claim_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
+    caller_identity: dict | None = None,
+    execution_team_id: int | None = None,
     version_number: int | None = None,
     mode: str = WorkflowExecution.Mode.PRODUCTION,
     trigger_type: str = "FORM",
@@ -188,9 +207,12 @@ def _claim_execution(
         "workflow": workflow,
         "workflow_version": version.version,
         "team": workflow.team,
+        "execution_team_id": _execution_team(workflow, caller_identity, started_by=started_by, domain=domain, execution_team_id=execution_team_id),
         "input": copy.deepcopy(redacted_inputs),
         "started_by": started_by,
         "domain": domain,
+        "locale": normalize_execution_locale(locale),
+        "caller_identity": caller_identity,
         "definition_snapshot": copy.deepcopy(version.definition),
         "resource_snapshot": copy.deepcopy(version.resource_snapshot),
         "target_snapshot": copy.deepcopy(target_snapshot or {}),
@@ -221,6 +243,9 @@ def start_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
+    caller_identity: dict | None = None,
+    execution_team_id: int | None = None,
     client: ConductorClient | None = None,
     version_number: int | None = None,
     mode: str = WorkflowExecution.Mode.PRODUCTION,
@@ -239,6 +264,9 @@ def start_execution(
         inputs=inputs,
         started_by=started_by,
         domain=domain,
+        locale=locale,
+        caller_identity=caller_identity,
+        execution_team_id=execution_team_id,
         version_number=version_number,
         mode=mode,
         trigger_type=trigger_type,
@@ -274,6 +302,7 @@ def start_execution(
         "__system": _system_context(
             workflow,
             execution_id=str(execution.id),
+            organization_id=execution.effective_execution_team_id,
             version=version.version,
             trigger_type=trigger_type,
             trigger_id=trigger_id,
@@ -326,6 +355,9 @@ def start_debug_execution(
     inputs: dict[str, Any],
     started_by: str,
     domain: str,
+    locale: str | None = None,
+    caller_identity: dict | None = None,
+    execution_team_id: int | None = None,
     client: ConductorClient | None = None,
     definition_override: dict[str, Any] | None = None,
     canvas_metadata_override: dict[str, Any] | None = None,
@@ -370,9 +402,12 @@ def start_debug_execution(
             workflow=workflow,
             workflow_version=0,
             team=workflow.team,
+            execution_team_id=_execution_team(workflow, caller_identity, started_by=started_by, domain=domain, execution_team_id=execution_team_id),
             input=copy.deepcopy(redacted_inputs),
             started_by=started_by,
             domain=domain,
+            locale=normalize_execution_locale(locale),
+            caller_identity=caller_identity,
             definition_snapshot=copy.deepcopy(definition),
             resource_snapshot={
                 "atoms": [{"key": key} for key in sorted(atom_keys)],
@@ -392,6 +427,7 @@ def start_debug_execution(
             "__system": _system_context(
                 workflow,
                 execution_id=str(execution.id),
+                organization_id=execution.effective_execution_team_id,
                 version=0,
                 trigger_type=trigger_type,
                 trigger_id=trigger_id,

@@ -6,8 +6,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 
+from apps.core.utils.viewset_utils import user_group_id_set
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.workflow.services.definitions import DefinitionValidationError
 
 FREQUENCIES = {"daily", "weekly", "monthly", "crontab"}
@@ -71,6 +74,11 @@ def compile_schedule_config(config: dict, *, timezone_name: str | None = None) -
         raise DefinitionValidationError("frequency 必须是 daily、weekly、monthly 或 crontab")
 
     normalized: dict = {"frequency": frequency}
+    if "execution_team_id" in config:
+        team_id = config["execution_team_id"]
+        if type(team_id) is not int or not 0 < team_id <= 2**63 - 1:
+            raise DefinitionValidationError("定时执行组织必须是单个有效组织")
+        normalized["execution_team_id"] = team_id
     expressions: list[str]
     if frequency == "crontab":
         expression = str(config.get("crontab_expression") or config.get("expression") or "").strip()
@@ -161,10 +169,28 @@ def build_schedule_event(
     }
 
 
-def bind_schedule_timezones(canvas_metadata: dict, *, timezone_name: str) -> dict:
-    """Compile schedules and capture the publisher timezone in a published snapshot."""
+def schedule_execution_identity(config: dict, *, user, current_team: int) -> dict:
+    """Bind a validated schedule selection to the user operating the designer."""
+    team_id = config.get("execution_team_id", current_team)
+    bound_team = getattr(user, "_api_secret_team", None)
+    if (
+        (bound_team is not None and team_id != bound_team)
+        or (not user.is_superuser and team_id not in user_group_id_set(user))
+        or not GroupUtils.active_queryset(id=team_id).exists()
+    ):
+        raise PermissionDenied("定时执行组织不在当前用户的可用组织内")
+    if not user.username or len(user.username) > 32 or not user.domain:
+        raise DefinitionValidationError("流程执行身份非法")
+    return {"username": user.username, "domain": user.domain, "team_id": team_id, "include_children": False}
+
+
+def bind_published_schedules(canvas_metadata: dict, *, user, current_team: int) -> dict:
+    """Freeze the selected active team and display the authenticated publisher on each schedule."""
     metadata = copy.deepcopy(canvas_metadata)
     for node in metadata.get("trigger_nodes") or []:
-        if node.get("trigger_type") == "SCHEDULE":
-            node["config"] = compile_schedule_config(node.get("config") or {}, timezone_name=timezone_name)
+        if node.get("trigger_type") != "SCHEDULE":
+            continue
+        config = compile_schedule_config(node.get("config") or {}, timezone_name=resolve_user_timezone(user))
+        identity = schedule_execution_identity(config, user=user, current_team=current_team)
+        node["config"] = {**config, "execution_team_id": identity["team_id"], "execution_username": identity["username"]}
     return metadata

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
@@ -17,9 +17,18 @@ import {
 import { HorizontalBarPanel, TitleWithGuide } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import { MSSQL_DASHBOARD_CONFIG } from './config';
 import { MSSQL_TOP_DB_QUERIES } from './queries';
 import { topDbBars } from './parse';
+import MssqlCategoryLayout from './layered/category-layout';
+import { MssqlIdentityExtra } from './layered/identity';
+import { MSSQL_PRO_METRIC_NAMES, MSSQL_PRO_METRICS } from './layered/queries';
 import styles from './index.module.scss';
 
 // 数据库类对象首行统一带「运行时长」(放首位);采集状态 + 5 张 KPI = 6 列一行。
@@ -33,10 +42,25 @@ const RING_TITLES = ['存储空间分布'];
 const BAR_TITLES = ['调度器压力'];
 const TOP_DB_CONCURRENCY = 3;
 
+const isMssqlDashboardMode = (mode: string): mode is ObjectDashboardMode => (
+  mode === 'dashboard' || mode === 'metrics' || mode === 'category'
+);
+
 export default function MssqlDashboardPage() {
-  const dashboard = useSimpleDashboardData(MSSQL_DASHBOARD_CONFIG);
-  const { getInstanceQuery } = useViewApi();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const layout = resolveObjectDashboardMode('mssql', new URLSearchParams(searchParams.toString()));
+  const proConfig = useMemo(() => ({
+    ...MSSQL_DASHBOARD_CONFIG,
+    metrics: MSSQL_PRO_METRICS
+  }), []);
+  const dashboard = useSimpleDashboardData(
+    layout === 'category' ? proConfig : MSSQL_DASHBOARD_CONFIG,
+    layout === 'category'
+      ? { metricNames: MSSQL_PRO_METRIC_NAMES, reuseLoadedSeries: true }
+      : undefined
+  );
+  const { getInstanceQuery } = useViewApi();
   const instanceIdKeys = useMemo(
     () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
     [searchParams]
@@ -57,7 +81,7 @@ export default function MssqlDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode || !idValues.length) {
+    if (layout !== 'dashboard' || !isDashboardMode || !idValues.length) {
       setTopDb({});
       return;
     }
@@ -80,12 +104,52 @@ export default function MssqlDashboardPage() {
       active = false;
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
-  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, layout, loadTick]);
+
+  const onLayoutChange = (mode: string) => {
+    if (!isMssqlDashboardMode(mode) || mode === layout) return;
+    const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      preserveLayouts
+      unifiedChrome
+      identityExtra={layout === 'category' ? (
+        <MssqlIdentityExtra
+          instanceName={dashboard.resolvedInstanceName}
+          instanceId={String(dashboard.instanceId || '')}
+          idValues={dashboard.idValues}
+          version={dashboard.instanceVersion}
+          port={dashboard.instancePort}
+        />
+      ) : undefined}
+      viewSwitcher={{
+        mode: layout,
+        onChange: onLayoutChange,
+        control: 'pill',
+        options: dashboardModeOptions('mssql')
+      }}
+      pageClassName={layout === 'category' ? styles.proPage : undefined}
+      shellClassName={layout === 'category' ? styles.proShell : undefined}
+      categoryContent={(
+        <MssqlCategoryLayout
+          instanceId={dashboard.instanceId}
+          monitorObjectId={dashboard.monitorObjectId}
+          idValues={dashboard.idValues}
+          instanceIdKeys={instanceIdKeys}
+          timeValues={dashboard.timeValues}
+          queryTimeRange={dashboard.queryTimeRange}
+          loading={dashboard.loading}
+          pendingMetricNames={dashboard.pendingMetricNames}
+          metricMap={dashboard.metricSeries}
+          reloadKey={dashboard.loadTick}
+          minStepSeconds={dashboard.currentInstanceInterval}
+        />
+      )}
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>

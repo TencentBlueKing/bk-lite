@@ -9,6 +9,7 @@ from django.conf import settings
 
 from apps.workflow.models import WorkflowExecution, WorkflowTrigger, WorkflowVersion
 from apps.workflow.services.conductor import ConductorClient
+from apps.workflow.services.definitions import DefinitionValidationError
 from apps.workflow.services.executions import TERMINAL_STATUSES, apply_remote_execution
 
 WEBHOOK_INPUT_SCHEMA = {
@@ -26,14 +27,52 @@ WEBHOOK_INPUT_SCHEMA = {
 }
 
 _OUTPUT_REFERENCE = re.compile(r"^\$\{(?P<reference>[A-Za-z][A-Za-z0-9_-]{0,99})\.output(?:\.(?P<path>[^{}]+))?}$")
+_BODY_FIELD_KEY = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_BODY_FIELD_WIDGETS = {"input", "textarea", "number", "switch", "select", "radio", "multiselect"}
+_MAX_BODY_FIELDS = 50
 
 
 class WebhookResponseError(ValueError):
     pass
 
 
-def webhook_input_schema() -> dict[str, Any]:
-    return deepcopy(WEBHOOK_INPUT_SCHEMA)
+def webhook_input_schema(declared: dict[str, Any] | None = None) -> dict[str, Any]:
+    schema = deepcopy(WEBHOOK_INPUT_SCHEMA)
+    properties, required = _declared_body_fields(declared)
+    body = schema["properties"]["body"]
+    body["properties"] = properties
+    if required:
+        body["required"] = required
+    return schema
+
+
+def _declared_body_fields(declared: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
+    if not isinstance(declared, dict):
+        return {}, []
+    raw_properties = declared.get("properties")
+    raw_body = raw_properties.get("body") if isinstance(raw_properties, dict) else None
+    if not isinstance(raw_body, dict):
+        return {}, []
+    fields = raw_body.get("properties")
+    if not isinstance(fields, dict):
+        return {}, []
+    if len(fields) > _MAX_BODY_FIELDS:
+        raise DefinitionValidationError("Webhook 请求正文最多定义 50 个字段")
+    properties: dict[str, Any] = {}
+    for key, field in fields.items():
+        if not isinstance(key, str) or not _BODY_FIELD_KEY.fullmatch(key):
+            raise DefinitionValidationError(f"Webhook 请求字段 {key} 的标识非法")
+        if not isinstance(field, dict):
+            raise DefinitionValidationError(f"Webhook 请求字段 {key} 的定义非法")
+        widget = field.get("x-widget")
+        if isinstance(widget, str) and widget not in _BODY_FIELD_WIDGETS:
+            raise DefinitionValidationError(f"Webhook 请求字段 {key} 的类型不支持")
+        properties[key] = deepcopy(field)
+    raw_required = raw_body.get("required")
+    required = raw_required if isinstance(raw_required, list) else []
+    if not all(isinstance(key, str) and key in properties for key in required):
+        raise DefinitionValidationError("Webhook 请求正文的 required 引用了不存在的字段")
+    return properties, required
 
 
 def _response_reference(trigger: WorkflowTrigger, metadata: dict[str, Any]) -> str:

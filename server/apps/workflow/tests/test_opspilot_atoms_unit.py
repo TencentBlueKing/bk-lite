@@ -97,7 +97,7 @@ def test_clean_text_enforces_type_and_size_limits():
         atoms._clean_text("", label="message", maximum=10)
     with pytest.raises(ValueError, match="超出限额"):
         atoms._clean_text("x" * 11, label="message", maximum=10)
-    assert atoms._clean_text("", label="prompt", maximum=10, required=False) == ""
+    assert atoms._clean_text("", label="title", maximum=10, required=False) == ""
 
 
 def test_execute_agent_happy_path_and_failure_modes(mocker, monkeypatch):
@@ -111,7 +111,6 @@ def test_execute_agent_happy_path_and_failure_modes(mocker, monkeypatch):
         {
             "agent_id": 11,
             "message": "inspect host",
-            "prompt": "summarize",
             "memory_context": "known " + ("c" * atoms.MAX_MEMORY_CONTEXT_CHARS),
             "__bklite_context": _context(),
         }
@@ -238,6 +237,13 @@ def test_memory_atoms_validate_limits_and_bind_entity_scope(mocker, monkeypatch)
                 "__bklite_context": _context(),
             }
         )
+
+    machine = _context(trigger_type="NATS", actor={"username": "managed-nats-channel", "domain": "domain.com"})
+    with pytest.raises(ValueError, match="个人记忆需要"):
+        atoms.execute_memory_read({"memory_space_id": 1, "query": "cpu", "__bklite_context": machine})
+    with pytest.raises(ValueError, match="个人记忆需要"):
+        atoms.execute_memory_write({"memory_space_id": 1, "content": "event", "__bklite_context": machine})
+    assert atoms.execute_memory_read({"memory_space_id": 2, "query": "cpu", "__bklite_context": machine})["count"] == 2
 
     engine.write.return_value = SimpleNamespace(success=False, memory_id=None, event_id=None)
     with pytest.raises(ValueError, match="记忆写入失败"):

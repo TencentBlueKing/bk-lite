@@ -77,7 +77,7 @@ export interface Target {
   id: number;
   name: string;
   ip: string;
-  os_type: string;
+  os_type: TargetOS;
   os_type_display: string;
   driver: string;
   driver_display: string;
@@ -87,9 +87,9 @@ export interface Target {
   source: TargetSource;
   source_display: string;
   source_id: string;
-  credential_source: string;
+  credential_source: CredentialSource;
   credential_source_display: string;
-  ssh_credential_type: string;
+  ssh_credential_type: SSHCredentialType;
   ssh_credential_type_display: string;
   ssh_port: number;
   ssh_user: string;
@@ -99,6 +99,9 @@ export interface Target {
   has_ssh_key: boolean;
   has_winrm_password: boolean;
   credential_id: string;
+  credential_name: string | null;
+  credential_available: boolean | null;
+  winrm_transport?: string;
   winrm_port: number;
   winrm_scheme: string;
   winrm_scheme_display: string;

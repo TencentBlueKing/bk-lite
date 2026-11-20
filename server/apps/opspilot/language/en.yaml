@@ -289,7 +289,7 @@ tools:
     name: Job management
     description: |
       Run library scripts and custom scripts, and distribute files staged in this conversation, as the current user and team.
-      Playbook scripts can be selected by path inside the package. Script output is shown to the user, and the model only sees the job id and final status. When there is no output, the reply includes a job record link. A finished file distribution reports only success or failure. An unfinished one includes the job record link and asks the user to check Job management.
+      Find historical executions by script, scheduled task, or time range, then read script output by execution ID. Playbook scripts can be selected by path inside the package. When there is no output, the reply includes a job record link. A finished file distribution reports only success or failure. An unfinished one includes the job record link and asks the user to check Job management.
     tools:
       job_mgmt_list_scripts:
         description: List library scripts in the current team, without script bodies. Confirm the name and type with the user even when there is only one.
@@ -307,6 +307,8 @@ tools:
         description: Execute a custom script after user confirmation; the agent may generate it. script_type is shell, python, powershell, or bat. target_ids is the id from search or list, not an IP. Linux accepts shell and python. Windows accepts powershell and bat.
       job_mgmt_distribute:
         description: Distribute files staged in this conversation. target_ids is the id from search or list, not an IP. A finished job reports only success or failure. An unfinished job returns the job record link and must not be called a failure.
+      job_mgmt_list_executions:
+        description: List historical executions by script, scheduled task, and creation time. Returns execution IDs, status, and target counts. Use the execution ID to read script output.
       job_mgmt_query:
         description: Query a job by id in the current organization, or the latest job recorded in this conversation when no id is given. Do not submit again.
       job_mgmt_schedule_watch:
@@ -364,7 +366,7 @@ tools:
       Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
     tools:
       alerts_list_alerts:
-        description: List alert-center tickets. status=active means open alerts. Content keywords must appear verbatim in the user text. Pass Chinese content in the keyword. Status, time, and query phrasing, such as current, which, active, or hours, are not keywords. Ordinary words and output formats are not keywords. error, hostnames, IPs, and metric names still count. Filter by status and level.
+        description: List alert-center tickets. status=active means open alerts. Content keywords must appear verbatim in the user text. Pass Chinese content in the keyword. Status, time, and query phrasing, such as current, which, active, or hours, are not keywords. Ordinary words and output formats are not keywords. error, hostnames, IPs, and metric names still count. Filter by status and level. Optional start and end filter created_at. Omit them to skip the time filter. Times without a timezone use the current user's timezone.
       alerts_get_alert_detail:
         description: Get alert details by alert ID.
       alerts_list_alert_events:
@@ -396,6 +398,13 @@ tools:
     tools:
       generate_attachment_file:
         description: Generate a txt, md, pdf, docx, pptx, xlsx, or csv attachment and return its download link. txt and md are plain text. pptx becomes slides. xlsx and csv require comma-separated data with a header row. Use pptx when the user asks for a PowerPoint file; do not downgrade it to docx. Keep txt when the user asked for txt.
+  conversation_skill_package:
+    name: Generate Skill Package
+    description: |
+      Draft a skill package from the current conversation. Only a confirm click writes it. Do not call this tool unless the user explicitly asked.
+    tools:
+      prepare_conversation_skill_package:
+        description: Draft a skill package from the current conversation and send a confirm card.
   kubernetes:
     name: Kubernetes Tools
     description: |

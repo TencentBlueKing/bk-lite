@@ -38,12 +38,13 @@ import {
 } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import {
   findComponentSwitchParams,
-  getTypedValueKey,
-  reconcileComponentSwitchValue,
+  reconcileComponentSwitchSelection,
   resolveComponentSwitchRequestGate,
   resolveComponentSwitchRuntime,
+  sameParamValue,
   supportsComponentSwitch,
 } from "@/app/ops-analysis/utils/componentParamSwitch";
+import { isMultipleSelectInputConfig } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
@@ -99,7 +100,10 @@ import {
   dynamicQueryParamsOf,
   resolveOptionsQueryParams,
 } from "@/app/ops-analysis/utils/optionsQueryParamRefs";
-import { readComponentOptionsQueryUpstream } from "@/app/ops-analysis/utils/optionsQueryCandidates";
+import {
+  preferComponentSwitchLiveValue,
+  readComponentOptionsQueryUpstream,
+} from "@/app/ops-analysis/utils/optionsQueryCandidates";
 import { localizeOptionLoadError } from "@/app/ops-analysis/utils/paramInputOptionsLoader";
 
 const validateTopNData = (
@@ -383,25 +387,88 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     ],
   );
   const variableRuntime = useDataVariableRuntime();
+  const switchMultiple = isMultipleSelectInputConfig(componentSwitchParam?.inputConfig);
+  const rawSavedComponentSwitchValue = componentSwitchParam
+    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
+    : undefined;
+  const savedComponentSwitchValue = useMemo(() => {
+    if (!componentSwitchParam) return undefined;
+    if (switchMultiple) {
+      if (Array.isArray(rawSavedComponentSwitchValue)) {
+        const items = rawSavedComponentSwitchValue.filter(
+          (item): item is string | number => typeof item === "string" || typeof item === "number",
+        );
+        return items.length > 0 && items.length === rawSavedComponentSwitchValue.length
+          ? items
+          : undefined;
+      }
+      if (
+        typeof rawSavedComponentSwitchValue === "string"
+        || typeof rawSavedComponentSwitchValue === "number"
+      ) {
+        return [rawSavedComponentSwitchValue];
+      }
+      return undefined;
+    }
+    return typeof rawSavedComponentSwitchValue === "string"
+      || typeof rawSavedComponentSwitchValue === "number"
+      ? rawSavedComponentSwitchValue
+      : undefined;
+  }, [componentSwitchParam, rawSavedComponentSwitchValue, switchMultiple]);
+  const runtimeParamScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        chartType,
+        dataSource: config?.dataSource,
+        param: componentSwitchParam?.name,
+        inputConfig: componentSwitchParam?.inputConfig,
+        savedValue: savedComponentSwitchValue ?? null,
+      }),
+    [
+      chartType,
+      config?.dataSource,
+      componentSwitchParam?.inputConfig,
+      componentSwitchParam?.name,
+      savedComponentSwitchValue,
+    ],
+  );
+  const [runtimeParamState, setRuntimeParamState] = useState<{
+    scopeKey: string;
+    value?: string | number | Array<string | number>;
+  }>(() => ({
+    scopeKey: runtimeParamScopeKey,
+    value: savedComponentSwitchValue,
+  }));
+  const runtimeParamValue =
+    runtimeParamState.scopeKey === runtimeParamScopeKey
+      ? runtimeParamState.value
+      : savedComponentSwitchValue;
   const componentSwitchQuery = useMemo(() => {
     return resolveOptionsQueryParams(dynamicQueryParamsOf(componentSwitchParam?.inputConfig), (ref) => (
-      substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
+      preferComponentSwitchLiveValue(
         ref,
-        componentParams: effectiveComponentParams,
-        definitions: filterDefinitions || [],
-        filterBindings: config?.filterBindings,
-        readFilterValue: (id) => (
-          unifiedFilterValues && Object.prototype.hasOwnProperty.call(unifiedFilterValues, id)
-            ? unifiedFilterValues[id]
-            : undefined
-        ),
-      }), variableRuntime?.columns)
+        substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
+          ref,
+          componentParams: effectiveComponentParams,
+          definitions: filterDefinitions || [],
+          filterBindings: config?.filterBindings,
+          readFilterValue: (id) => (
+            unifiedFilterValues && Object.prototype.hasOwnProperty.call(unifiedFilterValues, id)
+              ? unifiedFilterValues[id]
+              : undefined
+          ),
+        }), variableRuntime?.columns),
+        componentSwitchParam
+          ? { name: componentSwitchParam.name, value: runtimeParamValue }
+          : undefined,
+      )
     ));
   }, [
     componentSwitchParam,
     config?.filterBindings,
     effectiveComponentParams,
     filterDefinitions,
+    runtimeParamValue,
     unifiedFilterValues,
     variableRuntime?.columns,
   ]);
@@ -416,55 +483,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       optionsBlockReason: componentSwitchQuery.blockReason,
     },
   );
-  const rawSavedComponentSwitchValue = componentSwitchParam
-    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
-    : undefined;
-  const savedComponentSwitchValue =
-    typeof rawSavedComponentSwitchValue === "string" || typeof rawSavedComponentSwitchValue === "number"
-      ? rawSavedComponentSwitchValue
-      : undefined;
-  const runtimeParamScopeKey = useMemo(
-    () =>
-      JSON.stringify({
-        chartType,
-        dataSource: config?.dataSource,
-        param: componentSwitchParam?.name,
-        inputConfig: componentSwitchParam?.inputConfig,
-        savedValue:
-          typeof savedComponentSwitchValue === "string" || typeof savedComponentSwitchValue === "number"
-            ? getTypedValueKey(savedComponentSwitchValue)
-            : null,
-      }),
-    [
-      chartType,
-      config?.dataSource,
-      componentSwitchParam?.inputConfig,
-      componentSwitchParam?.name,
-      savedComponentSwitchValue,
-    ],
-  );
-  const runtimeParamInitialValue = useMemo(
-    () => {
-      const reconciled = optionState.status === "success"
-        ? reconcileComponentSwitchValue(savedComponentSwitchValue, optionState.options)
-        : savedComponentSwitchValue;
-      return typeof reconciled === "string" || typeof reconciled === "number"
-        ? reconciled
-        : undefined;
-    },
-    [optionState.status, optionState.options, savedComponentSwitchValue],
-  );
-  const [runtimeParamState, setRuntimeParamState] = useState<{
-    scopeKey: string;
-    value?: string | number;
-  }>(() => ({
-    scopeKey: runtimeParamScopeKey,
-    value: runtimeParamInitialValue,
-  }));
-  const runtimeParamValue =
-    runtimeParamState.scopeKey === runtimeParamScopeKey
-      ? runtimeParamState.value
-      : runtimeParamInitialValue;
 
   useEffect(() => {
     setRuntimeParamState((previous) =>
@@ -472,31 +490,47 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ? previous
         : {
           scopeKey: runtimeParamScopeKey,
-          value: runtimeParamInitialValue,
+          value: savedComponentSwitchValue,
         },
     );
-  }, [runtimeParamInitialValue, runtimeParamScopeKey]);
+  }, [runtimeParamScopeKey, savedComponentSwitchValue]);
 
   useEffect(() => {
-    if (optionState.status !== "success" && optionState.status !== "blocked") return;
+    if (
+      optionState.status !== "success"
+      && optionState.status !== "blocked"
+      && optionState.status !== "error"
+    ) return;
     setRuntimeParamState((previous) => {
       if (previous.scopeKey !== runtimeParamScopeKey) {
-        return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
+        return {
+          scopeKey: runtimeParamScopeKey,
+          value: optionState.status === "error" ? undefined : savedComponentSwitchValue,
+        };
+      }
+      if (optionState.status === "error") {
+        return previous.value === undefined
+          ? previous
+          : { ...previous, value: undefined };
       }
       const reconciled = optionState.status === "blocked"
         ? null
-        : reconcileComponentSwitchValue(previous.value, optionState.options);
-      const nextValue = typeof reconciled === "string" || typeof reconciled === "number"
-        ? reconciled
-        : undefined;
-      return nextValue === previous.value
+        : reconcileComponentSwitchSelection(previous.value, optionState.options, switchMultiple);
+      const nextValue = reconciled == null ? undefined : reconciled;
+      return sameParamValue(nextValue, previous.value)
         ? previous
-        : { ...previous, value: nextValue };
+        : { ...previous, value: nextValue as typeof previous.value };
     });
-  }, [optionState.status, optionState.options, runtimeParamInitialValue, runtimeParamScopeKey]);
+  }, [
+    optionState.options,
+    optionState.status,
+    runtimeParamScopeKey,
+    savedComponentSwitchValue,
+    switchMultiple,
+  ]);
 
   const handleRuntimeParamChange = useCallback(
-    (value: string | number) => {
+    (value: string | number | Array<string | number>) => {
       setRuntimeParamState({ scopeKey: runtimeParamScopeKey, value });
     },
     [runtimeParamScopeKey],
@@ -505,21 +539,24 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <ComponentParamSwitchControl
       inputConfig={componentSwitchParam?.inputConfig}
       options={optionState.options}
-      value={runtimeParamValue as string | number | undefined}
+      value={runtimeParamValue}
       onChange={handleRuntimeParamChange}
       block={false}
       chartThemeMode={config?.chartThemeMode}
       scale={getScreenWidgetScale(screenRenderContext)}
+      screenDensity={screenRenderContext?.enabled ? screenRenderContext.screenDensity : undefined}
+      layoutMode={screenRenderContext?.enabled ? screenRenderContext.layoutMode : undefined}
+      fitScale={screenRenderContext?.enabled ? screenRenderContext.fitScale : undefined}
     />
   ) : null;
   const runtimeHeaderControl =
-    (chartType === "topN" || chartType === "table") && headerRuntimeSlot && componentSwitchControl
+    headerRuntimeSlot && componentSwitchControl
       ? createPortal(
         componentSwitchControl,
         headerRuntimeSlot,
       )
       : null;
-  const inlineComponentSwitchControl = headerRuntimeSlot
+  const componentSwitchShell = headerRuntimeSlot
     ? null
     : componentSwitchControl;
 
@@ -1501,7 +1538,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           onError={handleRendererError}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
           paginationResetKey={chartType === "table" ? JSON.stringify(runtimeParams) : undefined}
-          componentSwitchControl={inlineComponentSwitchControl}
           errorMessage={
             hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
               ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
@@ -1519,10 +1555,19 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
+  const framedBody = componentSwitchShell ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 overflow-x-auto overflow-y-hidden px-3 py-px pt-2">
+        {componentSwitchShell}
+      </div>
+      <div className="min-h-0 flex-1">{body}</div>
+    </div>
+  ) : body;
+
   return (
     <ScreenWidgetThemeProvider mode={config?.chartThemeMode}>
       {runtimeHeaderControl}
-      {body}
+      {framedBody}
     </ScreenWidgetThemeProvider>
   );
 };

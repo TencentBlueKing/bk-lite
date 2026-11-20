@@ -3762,8 +3762,8 @@ screens:
     - 应用系统::cmdb/list_application_systems
     namespace_keys: []
 - key: screen::监控值班总览_内置
-  name: 监控值班总览
-  desc: 基于当前监控数据快照，展示监控运行规模、采集失败情况和当前未关闭的监控告警。
+  name: 监控概况大屏
+  desc: 基于当前监控数据快照，展示监控对象、运行规模、采集失败情况和当前未关闭的监控告警。
   view_sets:
     viewport:
       theme: screen-light
@@ -3781,7 +3781,7 @@ screens:
       id: 0d3674fb-3b85-4cb6-8b21-456d321b4ba8
       kind: text
       zIndex: 6
-      content: 监控值班总览
+      content: 监控概况大屏
       textStyle:
         align: left
         color: '#1f2d3d'
@@ -3794,7 +3794,7 @@ screens:
       id: bc006bd8-8f6f-4829-b1bf-6988a1193fad
       kind: text
       zIndex: 6
-      content: 基于当前监控数据快照，展示监控运行规模、采集失败情况和当前未关闭的监控告警。
+      content: 基于当前监控数据快照，展示监控对象、运行规模、采集失败情况和当前未关闭的监控告警。
       textStyle:
         align: left
         color: '#8b9aaf'
@@ -3813,8 +3813,78 @@ screens:
         fontSize: 17
         fontWeight: 400
     - h: 148
-      w: 361
+      w: 298
       x: 25
+      y: 100
+      id: 7c1a0e44-6b2d-4f8a-9c31-0a6e5d84b217
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 45
+      y: 112
+      id: 8d2b1f55-7c3e-4a9b-8d42-1b7f6e95c328
+      kind: text
+      zIndex: 6
+      content: 监控对象总数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 41
+      y: 142
+      id: 9e3c2066-8d4f-4b0c-9e53-2c806fa6d439
+      kind: widget
+      type: widget
+      title: 监控对象总数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 监控对象总数
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+        description: 系统已定义的全部监控对象。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IiB2aWV3Qm94PSIwIDAgNDAgNDAiIGZpbGw9Im5vbmUiIHNoYXBlLXJlbmRlcmluZz0iZ2VvbWV0cmljUHJlY2lzaW9uIj4KICA8Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U3RjZGMyIvPgogIDxnPgogICAgPHJlY3QgeD0iMTEuMiIgeT0iMTEuNiIgd2lkdGg9IjcuNCIgaGVpZ2h0PSI3LjQiIHJ4PSIxLjciIGZpbGw9IiMwRjc2NkUiLz4KICAgIDxyZWN0IHg9IjIxLjQiIHk9IjExLjYiIHdpZHRoPSI3LjQiIGhlaWdodD0iNy40IiByeD0iMS43IiBmaWxsPSIjMTRCOEE2Ii8+CiAgICA8cmVjdCB4PSIxMS4yIiB5PSIyMS44IiB3aWR0aD0iNy40IiBoZWlnaHQ9IjcuNCIgcng9IjEuNyIgZmlsbD0iIzE0QjhBNiIvPgogICAgPHJlY3QgeD0iMjEuNCIgeT0iMjEuOCIgd2lkdGg9IjcuNCIgaGVpZ2h0PSI3LjQiIHJ4PSIxLjciIGZpbGw9IiMwRjc2NkUiLz4KICA8L2c+Cjwvc3ZnPgo=
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - monitor_object_total
+        thresholdColors:
+        - color: '#0f766e'
+          value: '0'
+        dataSourceParams:
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 339
       y: 100
       id: 9b8c616a-15fe-40a8-8460-470d991aa451
       kind: shape
@@ -3832,30 +3902,30 @@ screens:
         backgroundColor: '#ffffff'
         gradientDirection: vertical
     - h: 28
-      w: 321
-      x: 45
+      w: 258
+      x: 359
       y: 112
       id: 03bc4697-6865-4111-a863-3a6a0275bc69
       kind: text
       zIndex: 6
-      content: 实例总数
+      content: 监控实例总数
       textStyle:
         align: left
         color: '#8b9aaf'
         fontSize: 16
         fontWeight: 500
     - h: 92
-      w: 329
-      x: 41
+      w: 266
+      x: 355
       y: 142
       id: ede73ed2-8410-488b-8b42-08146dbf5e2f
       kind: widget
       type: widget
-      title: 实例总数
+      title: 监控实例总数
       zIndex: 4
       chartType: single
       valueConfig:
-        name: 实例总数
+        name: 监控实例总数
         chartType: single
         appearance:
           frame: bare
@@ -3933,8 +4003,8 @@ screens:
           inputConfig:
             control: organization
     - h: 148
-      w: 361
-      x: 402
+      w: 298
+      x: 653
       y: 100
       id: 3ce106ff-284b-450a-bdad-14ed24774fa9
       kind: shape
@@ -3952,8 +4022,8 @@ screens:
         backgroundColor: '#ffffff'
         gradientDirection: vertical
     - h: 28
-      w: 321
-      x: 422
+      w: 258
+      x: 673
       y: 112
       id: 2f5a3f6a-79c2-4b1b-8530-474f07a64674
       kind: text
@@ -3965,8 +4035,8 @@ screens:
         fontSize: 16
         fontWeight: 500
     - h: 92
-      w: 329
-      x: 418
+      w: 266
+      x: 669
       y: 142
       id: 1b233abe-d3c3-405b-8cf4-e927dcb5b55f
       kind: widget
@@ -4053,8 +4123,8 @@ screens:
           inputConfig:
             control: organization
     - h: 148
-      w: 361
-      x: 779
+      w: 298
+      x: 967
       y: 100
       id: 1c856527-5924-46ef-a4c0-1a6a820f1da9
       kind: shape
@@ -4072,8 +4142,8 @@ screens:
         backgroundColor: '#ffffff'
         gradientDirection: vertical
     - h: 28
-      w: 321
-      x: 799
+      w: 258
+      x: 987
       y: 112
       id: c24512f6-8be0-40ca-a0f7-c9d7f849be58
       kind: text
@@ -4085,8 +4155,8 @@ screens:
         fontSize: 16
         fontWeight: 500
     - h: 92
-      w: 329
-      x: 795
+      w: 266
+      x: 983
       y: 142
       id: 7810c95b-8307-4e96-bfe0-cf94e3bdf0d1
       kind: widget
@@ -4173,8 +4243,8 @@ screens:
           inputConfig:
             control: organization
     - h: 148
-      w: 361
-      x: 1156
+      w: 298
+      x: 1281
       y: 100
       id: 88fc07fd-2267-4f35-b7ea-3f4969c7023d
       kind: shape
@@ -4192,8 +4262,8 @@ screens:
         backgroundColor: '#ffffff'
         gradientDirection: vertical
     - h: 28
-      w: 321
-      x: 1176
+      w: 258
+      x: 1301
       y: 112
       id: 12ab26b6-6ef0-4798-acd1-83786d5d123a
       kind: text
@@ -4205,8 +4275,8 @@ screens:
         fontSize: 16
         fontWeight: 500
     - h: 92
-      w: 329
-      x: 1173
+      w: 266
+      x: 1297
       y: 142
       id: d34d3bf4-c98d-4fa6-8d29-e698601b1202
       kind: widget
@@ -4353,8 +4423,8 @@ screens:
           inputConfig:
             control: organization
     - h: 148
-      w: 361
-      x: 1533
+      w: 298
+      x: 1595
       y: 100
       id: 4e19d782-e728-4d99-a208-16ef15bdfa06
       kind: shape
@@ -4372,35 +4442,35 @@ screens:
         backgroundColor: '#ffffff'
         gradientDirection: vertical
     - h: 28
-      w: 321
-      x: 1553
+      w: 258
+      x: 1615
       y: 112
       id: e277b3af-25e3-4b90-83c9-892d6377c3f6
       kind: text
       zIndex: 6
-      content: 最近24小时新增告警
+      content: 24小时内仍未恢复
       textStyle:
         align: left
         color: '#8b9aaf'
         fontSize: 16
         fontWeight: 500
     - h: 92
-      w: 329
-      x: 1549
+      w: 266
+      x: 1611
       y: 142
       id: ba07c92e-997b-40fe-ad9a-eded13a2ae16
       kind: widget
       type: widget
-      title: 最近24小时新增告警
+      title: 24小时内仍未恢复
       zIndex: 4
       chartType: single
       valueConfig:
-        name: 最近24小时新增告警
+        name: 24小时内仍未恢复
         chartType: single
         appearance:
           frame: bare
         dataSource: 监控告警计数::monitor/query_monitor_alert_counts
-        description: 按告警开始时间统计最近 24 小时，不是自然日。
+        description: 最近 24 小时内开始、且仍未恢复的告警。不是自然日。
         singleStyle:
           align: left
           iconSize: large
@@ -5311,7 +5381,7 @@ screens:
       id: 93bd9edd-df5c-497d-bd10-b9c62a2991fa
       kind: text
       zIndex: 6
-      content: 基于当前监控数据快照，汇总交换机、路由器、防火墙、负载均衡的运行情况。
+      content: 基于当前监控数据快照，按整个网络设备分类汇总运行情况。
       textStyle:
         align: left
         color: '#8b9aaf'
@@ -5412,11 +5482,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5539,11 +5605,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5714,11 +5776,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -5866,11 +5924,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6018,11 +6072,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6171,7 +6221,7 @@ screens:
           frame: bare
         dataSource: 监控实例分布::monitor/query_monitor_instance_distribution
         valueField: instance_count
-        description: 只统计交换机、路由器、防火墙、负载均衡。库里没有 WAN 优化这个监控对象。
+        description: 统计该分类下实际有实例的对象。
         dimensionField: group_value
         filterBindings:
           organization__string: true
@@ -6210,11 +6260,7 @@ screens:
         - desc: 先选分类后才出现。不选表示所选分类下的全部对象。
           name: monitor_object_ids
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6480,11 +6526,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:
@@ -6782,11 +6824,7 @@ screens:
               valueField: id
         - name: monitor_object_id
           type: string
-          value:
-          - 3
-          - 4
-          - 2
-          - 1
+          value: []
           alias_name: 监控对象
           filterType: params
           inputConfig:

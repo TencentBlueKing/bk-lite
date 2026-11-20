@@ -8,7 +8,7 @@ from typing import Any
 from apps.monitor.utils.dimension import parse_instance_id
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "traffic")
-NETWORK_DEVICE_OBJECT_NAMES = ("Switch", "Router", "Firewall", "Loadbalance", "Wanopt")
+NETWORK_DEVICE_TYPE_ID = "Network Device"
 DEFAULT_INTERVAL_SECONDS = 300
 
 
@@ -49,6 +49,20 @@ def _valid_value(value):
     return number if math.isfinite(number) and number >= 0 else None
 
 
+def _monitor_object_type_id(monitor_object) -> str:
+    if monitor_object is None:
+        return ""
+    if hasattr(monitor_object, "type_id"):
+        type_id = monitor_object.type_id
+        return "" if type_id in (None, "") else str(type_id)
+    related_id = getattr(getattr(monitor_object, "type", None), "id", None)
+    return "" if related_id in (None, "") else str(related_id)
+
+
+def _is_network_device(meta) -> bool:
+    return bool(meta) and meta.get("object_type_id") == NETWORK_DEVICE_TYPE_ID
+
+
 def normalize_candidates(candidates, device_meta, *, now=None):
     reference = _aware(now) or datetime.now(timezone.utc)
     fresh = []
@@ -57,7 +71,7 @@ def normalize_candidates(candidates, device_meta, *, now=None):
         meta = device_meta.get(instance_id)
         sampled_at = _aware(item.sampled_at)
         value = _valid_value(item.value)
-        if not instance_id or not meta or meta.get("object_name") not in NETWORK_DEVICE_OBJECT_NAMES:
+        if not instance_id or not _is_network_device(meta):
             continue
         if sampled_at is None or value is None:
             continue
@@ -135,11 +149,12 @@ class NetworkDeviceResourceTopService:
                 "ip": getattr(instance, "ip", ""),
                 "interval": getattr(instance, "interval", DEFAULT_INTERVAL_SECONDS),
                 "object_name": getattr(getattr(instance, "monitor_object", None), "name", ""),
+                "object_type_id": _monitor_object_type_id(getattr(instance, "monitor_object", None)),
             }
             for instance in authorized_instances
             if getattr(instance, "id", None)
         }
-        meta = {key: value for key, value in meta.items() if value["object_name"] in NETWORK_DEVICE_OBJECT_NAMES}
+        meta = {key: value for key, value in meta.items() if _is_network_device(value)}
         if not meta:
             return []
         lookback = max(2 * _interval(value) for value in meta.values())

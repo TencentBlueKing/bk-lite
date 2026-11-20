@@ -1,6 +1,6 @@
 import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ScreenCanvas from '../screenCanvas';
 import { createScreenTextItem } from '../../utils/screenItems';
@@ -18,15 +18,17 @@ vi.mock('react-rnd', () => ({
     enableResizing,
     resizeHandleClasses,
     style,
+    onClick,
     ...rest
   }: {
     children: React.ReactNode;
     enableResizing?: Record<string, boolean>;
     resizeHandleClasses?: Record<string, string>;
     style?: React.CSSProperties;
+    onClick?: React.MouseEventHandler<HTMLDivElement>;
     'data-screen-item-id'?: string;
   }) => (
-    <div data-screen-item-id={rest['data-screen-item-id']} style={style}>
+    <div data-screen-item-id={rest['data-screen-item-id']} style={style} onClick={onClick}>
       {Object.entries(enableResizing ?? {}).map(([direction, enabled]) =>
         enabled ? (
           <span
@@ -107,6 +109,24 @@ const handleDirections = (view: ReturnType<typeof render>) =>
   [...view.container.querySelectorAll('[data-resize-handle]')].map((node) =>
     node.getAttribute('data-resize-handle'),
   );
+
+describe('ScreenCanvas item click', () => {
+  it('selects once when a click both releases the pointer and clicks', () => {
+    HTMLElement.prototype.setPointerCapture = () => undefined;
+    HTMLElement.prototype.releasePointerCapture = () => undefined;
+    const onSelectItem = vi.fn();
+    const view = renderItem({ w: 320, h: 180 }, { onSelectItem, selectedItemId: 'other' });
+    const handle = view.container.querySelector('.screen-widget-frame__drag-handle');
+    if (!handle) throw new Error('drag handle was not rendered');
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(handle, { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.click(handle);
+
+    expect(onSelectItem).toHaveBeenCalledTimes(1);
+    expect(onSelectItem).toHaveBeenCalledWith('title');
+  });
+});
 
 describe('ScreenCanvas resize handles', () => {
   it('renders eight handles with the existing corner classes when selected', () => {

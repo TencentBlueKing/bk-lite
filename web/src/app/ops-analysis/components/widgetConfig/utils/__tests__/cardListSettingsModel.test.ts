@@ -4,7 +4,7 @@ import { buildWidgetSubmitConfig } from '../submitConfig';
 import {
   buildCardListFieldOptions,
   resolveCardListOptionalOpenState,
-  resolveCardListPreviewSlots,
+  resolveCardListOptionalSummaries,
 } from '../cardListSettingsModel';
 
 const fields = [
@@ -13,12 +13,13 @@ const fields = [
   { key: 'severity', title: '', value_type: 'string' as const },
 ];
 
-const placeholders = {
-  title: '标题',
-  description: '摘要',
-  badge: '标签',
-  trailing: '右侧信息',
-  index: '01',
+const summaryCopy = {
+  none: '不显示',
+  index: '序号',
+  field: '字段',
+  unconfigured: '未配置',
+  firstLine: '第一行',
+  secondLine: '第二行',
 };
 
 const submit = (cardList: Record<string, unknown>) =>
@@ -75,25 +76,57 @@ test('edit restore opens optional groups from persisted fields', () => {
   );
 });
 
-test('preview only shows configured slots and uses field labels', () => {
-  const slots = resolveCardListPreviewSlots(
-    {
-      titleField: 'name',
-      descriptionField: 'summary',
-      leading: { type: 'index' },
-      badgeField: 'severity',
-    },
-    buildCardListFieldOptions(fields),
-    placeholders,
+test('optional summaries follow the current draft and prefer display names', () => {
+  const options = buildCardListFieldOptions(fields);
+  assert.deepEqual(
+    resolveCardListOptionalSummaries(
+      { leading: { type: 'none' } },
+      options,
+      summaryCopy,
+    ),
+    { leading: '不显示', badge: '未配置', trailing: '未配置' },
   );
-
-  assert.deepEqual(slots, {
-    leading: '01',
-    primary: '名称',
-    secondary: '摘要',
-    badge: 'severity',
-  });
-  assert.equal('trailingPrimary' in slots, false);
+  assert.deepEqual(
+    resolveCardListOptionalSummaries(
+      {
+        leading: { type: 'index' },
+        badgeField: 'severity',
+        trailingPrimaryField: 'name',
+        trailingSecondaryField: 'summary',
+      },
+      options,
+      summaryCopy,
+    ),
+    {
+      leading: '序号',
+      badge: 'severity',
+      trailing: '名称 · 摘要',
+    },
+  );
+  assert.equal(
+    resolveCardListOptionalSummaries(
+      { leading: { type: 'field', field: 'name' } },
+      options,
+      summaryCopy,
+    ).leading,
+    '字段 · 名称',
+  );
+  assert.equal(
+    resolveCardListOptionalSummaries(
+      { leading: { type: 'field', field: '  ' } },
+      options,
+      summaryCopy,
+    ).leading,
+    '字段 · 未配置',
+  );
+  assert.equal(
+    resolveCardListOptionalSummaries(
+      { trailingSecondaryField: 'owner' },
+      options,
+      summaryCopy,
+    ).trailing,
+    '第二行 · owner',
+  );
 });
 
 test('clearing optional selects and leading none omits them on submit', () => {

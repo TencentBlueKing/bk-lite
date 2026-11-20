@@ -292,6 +292,9 @@ const CredentialListTab: React.FC<CredentialListTabProps> = ({ onGoTypes, active
             if (moduleName === 'monitor') {
               return t('system.credential.refMonitor', '监控 {count}', { count });
             }
+            if (moduleName === 'job') {
+              return t('system.credential.refJob', '作业 {count}', { count });
+            }
             return `${moduleName} ${count}`;
           };
           return (

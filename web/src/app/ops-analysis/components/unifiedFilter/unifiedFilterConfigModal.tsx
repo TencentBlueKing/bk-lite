@@ -657,6 +657,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
           return (
             <ParamInputControl
+              valuePicker
               inputConfig={inputConfig}
               fallback={fallbackInput}
               value={controlValue}

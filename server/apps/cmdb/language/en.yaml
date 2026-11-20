@@ -4592,6 +4592,8 @@ ChangeRecordScenario:
   collect_automation_change: Auto Collection
   model_management_change: Model Management
   custom_reporting_change: Custom Reporting
+  governance_confirm: Confirm Still Valid
+  owner_handover: Owner Handover
 ChangeRecordObject:
   instance: Asset Instance
   model: Model Management

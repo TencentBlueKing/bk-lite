@@ -8,7 +8,7 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs
+from apps.workflow.management.commands.run_workflow_worker import Command, _build_runtime_inputs, _run_atom_with_heartbeat
 from apps.workflow.models import AtomExecution, Workflow, WorkflowExecution
 from apps.workflow.services.conductor import ConductorUnavailable
 from apps.workflow.services.data_contracts import seal_sensitive_inputs
@@ -404,19 +404,99 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
         "actor": {"username": "alice", "domain": "example.com"},
         "trigger_type": "FORM",
         "task_reference": "agent",
+        "locale": "zh-Hans",
     }
     assert "__bklite_context" not in AtomExecution.objects.get(execution=execution).input
 
 
-def test_agent_node_reference_comes_from_claimed_atom_not_input():
-    execution = SimpleNamespace(
-        id="run-1", workflow_id="flow-1", workflow_version=1, team=[7], started_by="alice", domain="example.com", trigger_type="NATS"
+@pytest.mark.parametrize("caller_identity", [None, {"username": "alice", "domain": "example.com", "team_id": 8, "include_children": False}])
+def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_identity):
+    execution = WorkflowExecution(
+        workflow_id=1,
+        workflow_version=1,
+        team=[7],
+        started_by="alice",
+        domain="example.com",
+        trigger_type="NATS",
+        caller_identity=caller_identity,
     )
     atom = SimpleNamespace(pk=3, output={}, task_reference="agent-real")
     payload = _build_runtime_inputs(
-        inputs={"__bklite_context": {"task_reference": "agent-forged"}}, atom_execution=atom, task_type="bklite_agent", execution=execution
+        inputs={"__bklite_context": {"task_reference": "agent-forged", "caller_identity": {"username": "forged", "team_id": 7}}},
+        atom_execution=atom,
+        task_type="bklite_agent",
+        execution=execution,
     )
     assert payload["__bklite_context"]["task_reference"] == "agent-real"
+    assert "caller_identity" not in payload["__bklite_context"]
+
+
+@pytest.mark.parametrize(
+    ("extra_inputs", "outputs", "channel", "body", "expected"),
+    [
+        ({}, {}, "WECOM_BOT", "${agent.output.message}", True),
+        ({"request": [{"message": "摘要：${agent.output.message}"}]}, {}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {"result": "${agent.output}"}, "WECOM_BOT", "${agent.output.message}", False),
+        ({}, {}, "EMAIL", "${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "前缀 ${agent.output.message}", False),
+        ({}, {}, "WECOM_BOT", "${other_agent.output.message}", False),
+    ],
+)
+def test_agent_reply_channel_follows_exclusive_body_consumers_in_execution_snapshot(extra_inputs, outputs, channel, body, expected):
+    notification = {"name": "bklite_notification", "type": "SIMPLE", "inputParameters": {"notification_type": channel, "body": body}}
+    execution = WorkflowExecution(
+        workflow_id=1,
+        workflow_version=1,
+        team=[7],
+        definition_snapshot={
+            "tasks": [
+                {"taskReferenceName": "agent", "type": "SIMPLE", "name": "bklite_agent"},
+                {
+                    "type": "SWITCH",
+                    "decisionCases": {"true": [notification]},
+                    "defaultCase": [{"name": "transform", "inputParameters": extra_inputs}],
+                },
+            ],
+            "outputParameters": outputs,
+        },
+    )
+    runtime = _build_runtime_inputs(
+        inputs={"__bklite_context": {"reply_channel": "WECOM_BOT"}},
+        atom_execution=SimpleNamespace(pk=1, output={}, task_reference="agent"),
+        task_type="bklite_agent",
+        execution=execution,
+    )
+    assert runtime["__bklite_context"].get("reply_channel") == ("WECOM_BOT" if expected else None)
+
+
+def test_completed_atom_returns_without_waiting_for_the_pool_thread_to_exit(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from apps.workflow.management.commands import run_workflow_worker as worker
+
+    class Executor(ThreadPoolExecutor):
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            if wait:
+                raise AssertionError("pool shutdown waited for the worker thread")
+            super().shutdown(wait=False, cancel_futures=cancel_futures)
+
+    monkeypatch.setattr(worker, "ThreadPoolExecutor", Executor)
+
+    result = _run_atom_with_heartbeat(
+        client=None,
+        execute=lambda _inputs: {"message": "done"},
+        runtime_inputs={},
+        interval=0.01,
+        atom_execution=None,
+        claim_token=None,
+        lease_duration=timedelta(seconds=60),
+        workflow_id="workflow-1",
+        task_id="task-1",
+        worker_id="worker-1",
+        task_type="bklite_agent",
+    )
+
+    assert result == {"message": "done"}
 
 
 @pytest.mark.django_db
@@ -427,22 +507,18 @@ def test_worker_heartbeats_while_atom_is_running(mocker):
 
     def slow_handler(_inputs):
         started.set()
+        threading.Timer(0.05, release.set).start()
         release.wait(timeout=1)
         return {"ok": True}
 
-    timer = threading.Timer(0.05, release.set)
-    timer.start()
-    try:
-        Command._execute_task(
-            client,
-            "worker-1",
-            "bklite_inspection_group_targets",
-            {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
-            handler=slow_handler,
-            heartbeat_interval=0.01,
-        )
-    finally:
-        timer.cancel()
+    Command._execute_task(
+        client,
+        "worker-1",
+        "bklite_inspection_group_targets",
+        {"taskId": "task-1", "workflowInstanceId": "workflow-1", "inputData": {"targets": []}},
+        handler=slow_handler,
+        heartbeat_interval=0.01,
+    )
 
     assert started.is_set()
     statuses = [call.args[0]["status"] for call in client.update_task.call_args_list]

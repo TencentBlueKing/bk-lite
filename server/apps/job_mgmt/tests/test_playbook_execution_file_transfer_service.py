@@ -4,21 +4,13 @@
 断言真实分支与调用契约。
 """
 
-import pydantic.root_model  # noqa
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pydantic.root_model  # noqa
 import pytest
 
-from apps.job_mgmt.constants import (
-    CredentialSource,
-    ExecutionStatus,
-    ExecutorDriver,
-    JobType,
-    OSType,
-    SSHCredentialType,
-    TargetSource,
-)
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, JobType, OSType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 
@@ -83,7 +75,7 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
             bucket_name="job-mgmt-private",
         )
         ex_proxy = SimpleNamespace(
-            id=12345,
+            id=_execution(target_list=[{"target_id": target.id}]).id,
             timeout=60,
             params="{}",
             playbook=pb_proxy,
@@ -100,9 +92,7 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         executor.playbook.return_value = {"task_id": "x"}
         with patch.object(PlaybookExecution, "_get_ansible_node", return_value="node-1"), patch.object(
             PlaybookExecution, "is_cancelled", return_value=False
-        ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1234)), patch(
-            f"{MOD}.upload_file_to_s3"
-        ) as mupload, patch(
+        ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1234)), patch(f"{MOD}.upload_file_to_s3") as mupload, patch(
             "apps.job_mgmt.services.completion_outbox_service.reserve_playbook_cleanup"
         ) as reserve_cleanup, patch(
             f"{MOD}.AnsibleExecutor", return_value=executor

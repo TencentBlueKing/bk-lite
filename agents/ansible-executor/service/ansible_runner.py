@@ -20,6 +20,8 @@ from typing import Any
 
 import yaml
 from core.config import ServiceConfig, logger
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
 from service.runtime import current_entrypoint_command
 
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
@@ -426,10 +428,21 @@ def _build_windows_file_distribution_playbook(downloaded_files: list[dict[str, A
     return yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False)
 
 
-def _materialize_private_key(workspace: Path, key_content: str) -> str:
-    key_file = workspace / "id_rsa"
-    key_file.write_text(key_content, encoding="utf-8")
-    os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
+def _materialize_private_key(workspace: Path, key_content: str, passphrase: str | None = None, *, filename: str = "id_rsa") -> str:
+    data = key_content.encode("utf-8")
+    if passphrase:
+        load_key = (
+            serialization.load_ssh_private_key
+            if data.lstrip().startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----")
+            else serialization.load_pem_private_key
+        )
+        try:
+            key = load_key(data, passphrase.encode("utf-8"))
+            data = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH, serialization.NoEncryption())
+        except (ValueError, TypeError, UnsupportedAlgorithm):
+            raise ValueError("SSH private key or passphrase is invalid or unsupported") from None
+    key_file = workspace / filename
+    _write_restricted_bytes(key_file, data)
     return str(key_file)
 
 
@@ -771,17 +784,13 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
 
         private_key_file = item.get("private_key_file")
         private_key_content = item.get("private_key_content")
+        passphrase = item.get("private_key_passphrase")
         if private_key_content:
-            key_file = workspace / f"id_rsa_{idx}"
-            key_file.write_text(str(private_key_content), encoding="utf-8")
-            os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
-            private_key_file = str(key_file)
+            private_key_file = _materialize_private_key(workspace, private_key_content, passphrase, filename=f"id_rsa_{idx}")
+        elif passphrase:
+            raise ValueError("SSH key passphrase requires inline private key content")
         if private_key_file:
             parts.append(f"ansible_ssh_private_key_file={_quote_inventory_value(private_key_file)}")
-
-        passphrase = item.get("private_key_passphrase")
-        if passphrase:
-            parts.append(f"ansible_ssh_passphrase={_quote_inventory_value(passphrase)}")
 
         lines.append(" ".join(parts))
 
@@ -810,7 +819,7 @@ def create_task_workspace(task_id: str | None = None) -> Path:
     workspace = BASE_TASK_DIR / task_name
     if workspace.exists():
         workspace = BASE_TASK_DIR / f"{task_name}-{uuid.uuid4().hex[:8]}"
-    workspace.mkdir(parents=True, exist_ok=False)
+    workspace.mkdir(mode=0o700, parents=True, exist_ok=False)
     return workspace
 
 
@@ -828,16 +837,28 @@ def cleanup_workspace(workspace: Path | None) -> None:
     shutil.rmtree(target, ignore_errors=True)
 
 
+@contextlib.contextmanager
+def _workspace_for_preparation(task_id):
+    with contextlib.ExitStack() as pending:
+        workspace = create_task_workspace(task_id)
+        pending.callback(cleanup_workspace, workspace)
+        yield workspace
+        # Successful preparation hands cleanup to the executing worker.
+        pending.pop_all()
+
+
 def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
-    workspace = create_task_workspace(payload.task_id)
+    with _workspace_for_preparation(payload.task_id) as workspace:
+        return _prepare_adhoc_in_workspace(payload, workspace)
+
+
+def _prepare_adhoc_in_workspace(payload: AdhocRequest, workspace: Path) -> tuple[list[str], Path]:
     inventory_value = payload.inventory
     extra_vars = dict(payload.extra_vars or {})
 
     if payload.private_key_content and not payload.host_credentials:
-        private_key_path = _materialize_private_key(workspace, payload.private_key_content)
+        private_key_path = _materialize_private_key(workspace, payload.private_key_content, payload.private_key_passphrase)
         extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
-        if payload.private_key_passphrase:
-            extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
 
     if payload.inventory_content or payload.host_credentials:
         inventory_file = workspace / "inventory.ini"
@@ -982,10 +1003,8 @@ def _finalize_script_playbook_command(
 
     extra_vars = dict(payload.extra_vars or {})
     if payload.private_key_content and not payload.host_credentials:
-        private_key_path = _materialize_private_key(workspace, payload.private_key_content)
+        private_key_path = _materialize_private_key(workspace, payload.private_key_content, payload.private_key_passphrase)
         extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
-        if payload.private_key_passphrase:
-            extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
 
     return build_playbook_command(
         PlaybookRequest(
@@ -1161,7 +1180,11 @@ async def prepare_playbook_execution(
     config: ServiceConfig,
     payload: PlaybookRequest,
 ) -> tuple[list[str], Path, PlaybookRequest]:
-    workspace = create_task_workspace(payload.task_id)
+    with _workspace_for_preparation(payload.task_id) as workspace:
+        return await _prepare_playbook_in_workspace(config, payload, workspace)
+
+
+async def _prepare_playbook_in_workspace(config: ServiceConfig, payload: PlaybookRequest, workspace: Path):
     extra_vars = dict(payload.extra_vars or {})
 
     logger.info(
@@ -1179,12 +1202,6 @@ async def prepare_playbook_execution(
         list((payload.extra_vars or {}).keys()),
         payload.execute_timeout,
     )
-
-    if payload.private_key_content and not payload.host_credentials:
-        private_key_path = _materialize_private_key(workspace, payload.private_key_content)
-        extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
-        if payload.private_key_passphrase:
-            extra_vars.setdefault("ansible_ssh_passphrase", payload.private_key_passphrase)
 
     playbook_path = payload.playbook_path
     playbook_content = payload.playbook_content
@@ -1257,6 +1274,10 @@ async def prepare_playbook_execution(
         _write_restricted_text(inventory_file, "\n".join([p for p in parts if p]) + "\n")
         inventory_value = str(inventory_file)
         logger.info("[prepare_playbook] inventory 已写入: %s", inventory_file)
+
+    if payload.private_key_content and not payload.host_credentials:
+        private_key_path = _materialize_private_key(workspace, payload.private_key_content, payload.private_key_passphrase)
+        extra_vars.setdefault("ansible_ssh_private_key_file", private_key_path)
 
     prepared_payload = PlaybookRequest(
         playbook_path=playbook_path,

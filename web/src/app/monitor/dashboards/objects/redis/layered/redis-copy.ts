@@ -14,7 +14,7 @@ export const REDIS_CATEGORY_COPY = {
   tabReplication: [textId('redisCategoryTabReplication'), '复制 · 哨兵'],
   tabCluster: [textId('redisCategoryTabCluster'), '集群'],
   healthOverview: [textId('redisCategoryHealthOverview'), '健康概览'],
-  kpiAlerts: [textId('redisCategoryKpiAlerts'), '告警事件统计'],
+  kpiAlerts: [textId('redisCategoryKpiAlerts'), '告警数量'],
   events: [textId('redisCategoryEvents'), '事件'],
   sectionReadings: [textId('redisCategorySectionReadings'), '对比 / 读数'],
   sectionTrends: [textId('redisCategorySectionTrends'), '趋势'],

@@ -147,17 +147,22 @@ const EventBody = ({
 export default function EventsRail({
   events,
   onFocusAlert,
-  loading = false
+  loading = false,
+  clipToWindow = true
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
   loading?: boolean;
+  /** 缺省仍按图表窗口裁剪。传 false 时展示调用方给出的全部事件。 */
+  clipToWindow?: boolean;
 }) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
   const shownEvents = useMemo(
-    () => events.filter((event) => alertEventInsideWindow(event.at, chartWindow)),
-    [chartWindow, events]
+    () => (clipToWindow
+      ? events.filter((event) => alertEventInsideWindow(event.at, chartWindow))
+      : events),
+    [chartWindow, clipToWindow, events]
   );
   const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useDashboardText();

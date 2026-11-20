@@ -381,6 +381,8 @@ class ExecutionArtifactSerializer(serializers.ModelSerializer):
 
 
 class WorkflowExecutionSerializer(serializers.ModelSerializer):
+    execution_team_id = serializers.IntegerField(source="effective_execution_team_id", read_only=True, allow_null=True)
+
     def to_representation(self, instance):
         return _localize_error_message(self, super().to_representation(instance))
 
@@ -441,6 +443,7 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
             "failed_stage",
             "termination_reason",
             "started_by",
+            "execution_team_id",
             "created_at",
             "finished_at",
             "duration_ms",
@@ -451,6 +454,8 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
 
 
 class WorkflowExecutionListSerializer(serializers.ModelSerializer):
+    execution_team_id = serializers.IntegerField(source="effective_execution_team_id", read_only=True, allow_null=True)
+
     def to_representation(self, instance):
         return _localize_error_message(self, super().to_representation(instance))
 
@@ -528,6 +533,7 @@ class WorkflowExecutionListSerializer(serializers.ModelSerializer):
             "debug_task_reference",
             "parent_execution",
             "started_by",
+            "execution_team_id",
             "error_message",
             "failed_stage",
             "termination_reason",

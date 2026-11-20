@@ -54,6 +54,11 @@
           ]
         },
         {
+          "id": "owner_handover",
+          "name": "Owner Handover",
+          "operation": ["View", "Execute"]
+        },
+        {
         "id": "auto_collection",
         "name": "Auto Collection",
         "operation": [

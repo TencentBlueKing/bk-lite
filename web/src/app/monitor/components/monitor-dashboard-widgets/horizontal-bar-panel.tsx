@@ -57,6 +57,8 @@ export interface HorizontalBarPanelProps {
   tiered?: boolean;
   isEmpty?: boolean;
   emptyDescription?: React.ReactNode;
+  /** 占住图区时不走空态组件，避免加载中和「暂无数据」叠在同一张卡上。 */
+  placeholder?: React.ReactNode;
   headerAction?: React.ReactNode;
   styles: HorizontalBarPanelStyles;
 }
@@ -167,6 +169,7 @@ export const HorizontalBarPanel = ({
   tiered = false,
   isEmpty = false,
   emptyDescription,
+  placeholder,
   headerAction,
   styles,
 }: HorizontalBarPanelProps) => {
@@ -194,7 +197,11 @@ export const HorizontalBarPanel = ({
         </div>
         {headerAction ? <div className="shrink-0 self-start">{headerAction}</div> : null}
       </div>
-      {isEmpty ? (
+      {placeholder != null && placeholder !== false ? (
+        <div className="flex min-h-[176px] items-center justify-center" data-bar-panel-placeholder="">
+          {placeholder}
+        </div>
+      ) : isEmpty ? (
         <div className="flex min-h-[176px] items-center justify-center">
           <ChartEmptyState
             description={

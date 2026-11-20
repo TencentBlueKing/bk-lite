@@ -284,7 +284,7 @@ tools:
     name: 作业管理
     description: |
       用当前用户和当前组织执行脚本库脚本、自定义脚本，并分发本会话暂存的文件。
-      也可按 Playbook 包内路径选择脚本。有脚本输出时直接展示给用户，模型只看作业号和终态。没有输出时给出作业记录链接。文件分发终态只看成功或失败；还在执行时给出作业记录链接，请用户到作业管理查看。
+      可按脚本、定时任务和时间范围查询历史执行，再按作业号读取脚本输出。也可按 Playbook 包内路径选择脚本。没有输出时给出作业记录链接。文件分发终态只看成功或失败；还在执行时给出作业记录链接，请用户到作业管理查看。
     tools:
       job_mgmt_list_scripts:
         description: 列出当前组织的脚本库脚本，不含脚本正文。即使只有一个也要让用户确认名称和类型。
@@ -302,6 +302,8 @@ tools:
         description: 执行经用户确认的自定义脚本，可由智能体生成。script_type 只能是 shell、python、powershell、bat。target_ids 填查询结果的 id，不要填 IP。Linux 只接受 shell 和 python，Windows 只接受 powershell 和 bat。
       job_mgmt_distribute:
         description: 分发本会话暂存文件。target_ids 填查询结果的 id，不要填 IP。终态只有成功或失败。未结束时给出作业记录链接，请用户到作业管理查看，不要说成失败。
+      job_mgmt_list_executions:
+        description: 按脚本、定时任务和创建时间分页查询历史作业，返回执行 ID、状态和目标计数。用执行 ID 查询脚本输出。
       job_mgmt_query:
         description: 按作业号查询当前组织的作业；未指定时查询本会话最近的作业，不重新提交。
       job_mgmt_schedule_watch:
@@ -359,7 +361,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警。中文正文关键字只使用调用时传入、且原样出现在用户原话里的词。状态、时间和查询口头语不会变成关键字，中英文都一样。问句里的普通英文单词和输出格式也不会变成关键字。可按状态、级别筛选。start、end 按创建时间筛选，不传则不筛选。没写时区按当前用户时区理解。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:
@@ -391,6 +393,13 @@ tools:
     tools:
       generate_attachment_file:
         description: 生成 txt、md、pdf、docx、pptx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；pptx 按标题分页；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 PPT 时必须用 pptx，禁止降级成 docx。用户要 txt 时不要改成 md。
+  conversation_skill_package:
+    name: 生成技能包
+    description: |
+      把当前对话整理成技能包成稿。只有用户点确认后才写入。用户没有明确要求时不要调用。
+    tools:
+      prepare_conversation_skill_package:
+        description: 把当前对话整理成技能包成稿，并发出确认卡。
   kubernetes:
     name: Kubernetes工具
     description: |

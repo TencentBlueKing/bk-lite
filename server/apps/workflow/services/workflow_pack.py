@@ -173,13 +173,22 @@ def import_workflow_pack(
     return {"created": created, "failed": failed, "rebind": []}
 
 
+def _portable_canvas(canvas):
+    canvas = copy.deepcopy(canvas)
+    for node in canvas.get("trigger_nodes") or []:
+        if isinstance(node, dict) and node.get("trigger_type") == "SCHEDULE" and isinstance(node.get("config"), dict):
+            node["config"].pop("execution_username", None)
+            node["config"].pop("execution_team_id", None)
+    return canvas
+
+
 def _export_one(workflow, store, sequence: int) -> tuple[dict[str, Any], list[tuple[str, bytes]], int]:
     definition = workflow.definition if isinstance(workflow.definition, dict) else None
     canvas = workflow.canvas_metadata if isinstance(workflow.canvas_metadata, dict) else {}
     if definition is None:
         raise PackFileError("流程定义无效")
     definition = copy.deepcopy(definition)
-    canvas = copy.deepcopy(canvas)
+    canvas = _portable_canvas(canvas)
     files: list[tuple[str, bytes]] = []
     records: list[dict[str, str]] = []
     for task in _walk_tasks(definition.get("tasks")):
@@ -372,7 +381,7 @@ def _create_imported_workflow(entry: dict[str, Any], *, request, team: list[int]
     if not isinstance(definition, dict) or not isinstance(canvas, dict):
         raise ValueError("流程定义无效")
     definition = copy.deepcopy(definition)
-    canvas = copy.deepcopy(canvas)
+    canvas = _portable_canvas(canvas)
     files = _prepared_files(entry, definition)
     _reject_unpacked_files(definition, files)
     _strip_packed_inputs(definition)

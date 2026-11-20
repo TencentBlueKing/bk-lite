@@ -82,21 +82,25 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     if result.get("client_id") != "system-manager" or "license_mgmt" not in install_apps:
         return result
 
-    organization_menu = next((item for item in result.get("menus", []) if item.get("name") == "Organization"), None)
+    security_menu = next((item for item in result.get("menus", []) if item.get("name") == "Security"), None)
     setting_menu = next((item for item in result.get("menus", []) if item.get("name") == "Setting"), None)
+    if not security_menu or not setting_menu:
+        return result
 
     setting_children = setting_menu.setdefault("children", [])
     if any(child.get("id") == "license_mgmt" for child in setting_children):
         return result
 
-    if not organization_menu or not setting_menu:
-        return result
-
     setting_children.append({"id": "portal_settings", "name": "Portal Settings", "operation": ["View", "Edit"]})
     setting_children.append({"id": "license_mgmt", "name": "License Management", "operation": ["View", "Add", "Edit", "Delete"]})
 
-    organization_children = organization_menu.setdefault("children", [])
-    organization_children.append({"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]})
+    security_children = security_menu.setdefault("children", [])
+    sensitive_info = {"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]}
+    after_index = next((index for index, child in enumerate(security_children) if child.get("id") == "super_admin"), None)
+    if after_index is None:
+        security_children.append(sensitive_info)
+    else:
+        security_children.insert(after_index + 1, sensitive_info)
 
     security_role = next((item for item in result.get("roles", []) if item.get("name") == "security"), None)
     if security_role:

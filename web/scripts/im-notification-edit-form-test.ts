@@ -97,6 +97,28 @@ const imModal = readFileSync(
   'utf8',
 );
 assert.match(imModal, /dropdownRender/);
+assert.match(imModal, /function AccountAssociationField/);
+assert.doesNotMatch(imModal, /AccountAssociationSelect/);
+assert.match(imModal, /name="account_association"/);
+assert.match(imModal, /required: true/);
+const instanceAt = imModal.indexOf('name="integration_instance"');
+const associationAt = imModal.indexOf('name="account_association"');
+const teamAt = imModal.indexOf('name="team"');
+assert.ok(instanceAt >= 0 && associationAt > instanceAt && teamAt > associationAt);
+const channelModal = readFileSync(
+  new URL('../src/app/system-manager/components/channel/channelModal.tsx', import.meta.url),
+  'utf8',
+);
+const skillChannelPage = readFileSync(
+  new URL('../src/app/opspilot/(pages)/skill/detail/channel/page.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(channelModal, /function AccountAssociationField/);
+assert.match(channelModal, /dropdownRender/);
+assert.doesNotMatch(channelModal, /AccountAssociationSelect/);
+assert.match(skillChannelPage, /function AccountAssociationField/);
+assert.match(skillChannelPage, /dropdownRender/);
+assert.doesNotMatch(skillChannelPage, /@\/app\/system-manager\/components/);
 assert.match(imModal, /accountAssociationTooltip/);
 assert.match(imModal, /GroupTreeSelect/);
 assert.match(imModal, /name="team"/);

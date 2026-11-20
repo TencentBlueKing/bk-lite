@@ -385,3 +385,52 @@ def test_list_playbook_scripts_returns_paths_without_file_body():
     rendered = str(listed)
     assert "SECRET_README" not in rendered
     assert "SECRET_PLAYBOOK" not in rendered
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"days": 0},
+        {"limit": 101},
+        {"cursor": -1},
+        {"scheduled_task_id": "bad"},
+        {"start_time": "2026-01-02T00:00:00Z", "end_time": "2026-01-01T00:00:00Z"},
+    ],
+)
+def test_execution_history_rejects_invalid_filters(filters):
+    from apps.rpc.job_opspilot import ACTION_LIST_EXECUTIONS
+
+    token = sign_opspilot_job_request(ACTION_LIST_EXECUTIONS, ACTOR)
+    result = run_opspilot_action(ACTION_LIST_EXECUTIONS, token, ACTOR, filters)
+    assert result["result"] is False
+    assert next(iter(filters)) in result["message"]
+
+
+def test_execution_history_requires_signed_actor_menu_and_instance_scope(mocker):
+    from apps.rpc.job_opspilot import ACTION_LIST_EXECUTIONS
+    from apps.system_mgmt.models import Group, Menu, Role, User
+
+    Group.objects.get_or_create(pk=1, defaults={"name": "历史查询组织"})
+    user = User.objects.create(username="alice", domain="domain.com", group_list=[1])
+    own, _, foreign = [JobExecution.objects.create(team=[team], name="任务", job_type="script") for team in (1, 1, 2)]
+    body = {"is_superuser": True, "team": 2, "user": "admin"}
+    token = sign_opspilot_job_request(ACTION_LIST_EXECUTIONS, ACTOR)
+    assert run_opspilot_action(ACTION_LIST_EXECUTIONS, sign_opspilot_job_request(ACTION_QUERY, ACTOR), ACTOR, body)["result"] is False
+    assert run_opspilot_action(ACTION_LIST_EXECUTIONS, token, ACTOR, body)["result"] is False
+
+    menu, _ = Menu.objects.get_or_create(app="job", name="job_record-View")
+    role = Role.objects.create(app="job", name="查询指定作业", menu_list=[menu.pk])
+    user.role_list = [role.pk]
+    user.save(update_fields=["role_list"])
+    rules = mocker.patch(
+        "apps.job_mgmt.services.opspilot_execution_history.get_permission_rules",
+        return_value={"team": [], "instance": [{"id": own.id}, {"id": foreign.id}]},
+    )
+    result = run_opspilot_action(ACTION_LIST_EXECUTIONS, token, ACTOR, body)
+    assert [item["task_id"] for item in result["data"]["items"]] == [own.id]
+    assert rules.call_args.args[1:] == (1, "job_mgmt", "job")
+    rules.return_value = {}
+    assert run_opspilot_action(ACTION_LIST_EXECUTIONS, token, ACTOR, {})["data"]["items"] == []
+    user.disabled = True
+    user.save(update_fields=["disabled"])
+    assert run_opspilot_action(ACTION_LIST_EXECUTIONS, token, ACTOR, body)["result"] is False

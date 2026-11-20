@@ -1,7 +1,14 @@
 import pytest
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory
+from rest_framework.exceptions import PermissionDenied
 
+from apps.rpc.workflow import invoke_nats_workflow
+from apps.system_mgmt.models.channel import Channel
+from apps.system_mgmt.nats.channels import sync_workflow_nats_channels
+from apps.system_mgmt.utils.channel_utils import send_nats_message
 from apps.workflow import nats_api
-from apps.workflow.models import Workflow, WorkflowExecution, WorkflowTrigger
+from apps.workflow.models import Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
 from apps.workflow.services.definitions import DefinitionValidationError
 from apps.workflow.services.nats_contracts import build_nats_trigger_subject
 from apps.workflow.services.nats_triggers import invoke_nats_trigger
@@ -35,11 +42,10 @@ def test_nats_adapter_enforces_actor_team_and_generated_subject_before_invoking(
         node_key="trigger_nats",
         config={"subject": build_nats_trigger_subject(workflow.id, "trigger_nats")},
     )
-    execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
-    invoke = mocker.patch(
-        "apps.workflow.services.nats_triggers.invoke_trigger",
-        return_value=(execution, True),
-    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition={"tasks": []})
+    engine = mocker.patch("apps.workflow.services.triggers.ConductorClient").return_value
+    engine.start_workflow.side_effect = ["nats-user-run", "nats-service-run"]
+    rules = mocker.patch("apps.workflow.permissions.get_permission_rules", return_value={"team": [7], "instance": []})
     data = {
         "trigger_id": str(trigger.pk),
         "team": 7,
@@ -52,14 +58,67 @@ def test_nats_adapter_enforces_actor_team_and_generated_subject_before_invoking(
     }
 
     subject = build_nats_trigger_subject(workflow.id, "trigger_nats")
-    assert invoke_nats_trigger(data, _actor(7), message_subject=subject) == (execution, True)
-    assert invoke.call_args.kwargs["started_by"] == "automation-service"
-    assert invoke.call_args.kwargs["idempotency_key"] == "event-from-input"
+
+    request = RequestFactory().post("/")
+    request.COOKIES["current_team"] = "7"
+    request.user = get_user_model().objects.create(username="alice", domain="example.com", group_list=[7])
+    request.user.permission = {"workflow": {"workflow-Execute"}}
+
+    def deliver(method, **params):
+        assert method == "trigger_orchestration_workflow_by_nats"
+        return nats_api.trigger_orchestration_workflow_by_nats(**params)
+
+    transport = mocker.patch("apps.rpc.workflow.RpcClient.run", side_effect=deliver)
+    result = invoke_nats_workflow(request, trigger_id=trigger.id, subject=subject, event=data["event"])
+    assert result["result"], result
+    execution = WorkflowExecution.objects.get(pk=result["data"]["execution_id"])
+    assert execution.caller_identity == {"username": "alice", "domain": "example.com", "team_id": 7, "include_children": False}
+    assert (execution.started_by, execution.domain) == ("alice", "example.com")
+    params = transport.call_args.kwargs
+    tampered = {**params["data"], "event": {**data["event"], "event_id": "other"}}
+    assert nats_api.trigger_orchestration_workflow_by_nats(**{**params, "data": tampered})["result"] is False
+    assert nats_api.trigger_orchestration_workflow_by_nats(params["data"], params["actor_context"])["result"] is False
+    rules.return_value = {"team": [], "instance": []}
+    assert invoke_nats_workflow(request, trigger_id=trigger.id, subject=subject, event=data["event"])["result"] is False
+    request.user.permission = {}
+    with pytest.raises(PermissionDenied):
+        invoke_nats_workflow(request, trigger_id=trigger.id, subject=subject, event=data["event"])
+
+    background = {**tampered, "subject": subject}
+    background["event"]["payload"] = {"caller_identity": execution.caller_identity, "producer": "alice"}
+    system_actor = {**_actor(7), "username": "managed-nats-channel", "domain": "domain.com"}
+    assert nats_api.trigger_orchestration_workflow_by_nats(background, system_actor)["result"] is False
+    sync_workflow_nats_channels(
+        workflow.id,
+        workflow.name,
+        [7],
+        [{"trigger_id": str(trigger.id), "node_key": trigger.node_key, "name": trigger.name, "subject": subject}],
+        True,
+    )
+    channel = Channel.objects.get(config__source="workflow", config__workflow_id=workflow.id)
+
+    def send_managed(namespace, method, _timeout, **body):
+        return deliver(method, **body)
+
+    mocker.patch("apps.system_mgmt.utils.channel_utils.nats_client.request_sync", side_effect=send_managed)
+    result = send_nats_message(
+        channel,
+        {
+            "message": "background event",
+            "team": 7,
+            "caller_identity": execution.caller_identity,
+            "producer": "alice",
+            "user_ids": ["alice"],
+        },
+    )
+    assert result["result"], result
+    background_run = WorkflowExecution.objects.get(pk=result["data"]["execution_id"])
+    assert background_run.started_by == "managed-nats-channel" and background_run.caller_identity is None
     with pytest.raises(TriggerConflict, match="授权组织"):
         invoke_nats_trigger({**data, "team": 8}, _actor(7), message_subject=subject)
     with pytest.raises(TriggerConflict, match="主题"):
         invoke_nats_trigger(data, _actor(7), message_subject="bklite.workflow.999.trigger_nats")
-    assert invoke.call_count == 1
+    assert WorkflowExecution.objects.count() == 2
 
 
 def test_nats_configuration_and_payload_are_bounded():

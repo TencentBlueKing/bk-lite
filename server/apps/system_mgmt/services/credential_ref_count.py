@@ -1,4 +1,4 @@
-"""Ask CMDB and Monitor how many tasks reference vault credential IDs."""
+"""Ask consumers how many resources reference vault credential IDs."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ REF_QUERY_TIMEOUT = 5
 REF_QUERY_MAX_IDS = 100
 REF_MODULE_CMDB = "cmdb"
 REF_MODULE_MONITOR = "monitor"
+REF_MODULE_JOB = "job"
 REF_NATS_METHODS = {
     REF_MODULE_CMDB: "cmdb_count_credential_refs",
     REF_MODULE_MONITOR: "monitor_count_credential_refs",
+    REF_MODULE_JOB: "job_count_credential_refs",
 }
 INQUIRY_STARTED_TEMPLATE = "event=credential_ref_count_inquiry_started method=%s module=%s id_count=%s"
 INQUIRY_FINISHED_TEMPLATE = "event=credential_ref_count_inquiry_finished method=%s module=%s outcome=%s id_count=%s"
-INQUIRY_FAILED_TEMPLATE = (
-    "event=credential_ref_count_inquiry_failed method=%s module=%s failed_stage=rpc id_count=%s error_type=%s"
-)
+INQUIRY_FAILED_TEMPLATE = "event=credential_ref_count_inquiry_failed method=%s module=%s failed_stage=rpc id_count=%s error_type=%s"
 
 
 def _nats_querier(method):
@@ -32,6 +32,7 @@ def _live_queriers():
     return (
         (REF_MODULE_CMDB, _nats_querier(REF_NATS_METHODS[REF_MODULE_CMDB])),
         (REF_MODULE_MONITOR, _nats_querier(REF_NATS_METHODS[REF_MODULE_MONITOR])),
+        (REF_MODULE_JOB, _nats_querier(REF_NATS_METHODS[REF_MODULE_JOB])),
     )
 
 

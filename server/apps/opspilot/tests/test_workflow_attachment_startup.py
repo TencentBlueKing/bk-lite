@@ -249,6 +249,10 @@ def test_build_attachment_bytes_xlsx_keeps_header_row():
 
 
 def test_minio_connection_failure_fails_once_with_user_message(monkeypatch):
+    from django_minio_backend.models import MinioBackend
+
+    from apps.opspilot.models.bot_mgmt import RasaModel
+
     reason = NewConnectionError(
         None,
         "Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。",
@@ -266,20 +270,40 @@ def test_minio_connection_failure_fails_once_with_user_message(monkeypatch):
             error=ConnectionRefusedError(10061, "refused"),
         )
 
-    storage = WorkflowAttachmentAsset._meta.get_field("file").storage
-    previous = (
-        getattr(storage, "HTTP_CLIENT", None),
-        getattr(storage, "_MinioBackend__CLIENT", None),
-        getattr(storage, "_MinioBackend__CLIENT_EXT", None),
+    attachment_storage = WorkflowAttachmentAsset._meta.get_field("file").storage
+    other_storage = RasaModel._meta.get_field("model_file").storage
+    shared_http = object()
+    attachment_http = object()
+    other_http = object()
+    class_client = type("CachedMinio", (), {"_http": shared_http})()
+    attachment_client = type("CachedMinio", (), {"_http": attachment_http})()
+    attachment_ext = type("CachedMinio", (), {"_http": object()})()
+    other_client = type("CachedMinio", (), {"_http": other_http})()
+    previous_class_client = getattr(MinioBackend, "_MinioBackend__CLIENT", None)
+    had_class_client = hasattr(MinioBackend, "_MinioBackend__CLIENT")
+    previous_attachment = (
+        getattr(attachment_storage, "HTTP_CLIENT", None),
+        getattr(attachment_storage, "_MinioBackend__CLIENT", None),
+        getattr(attachment_storage, "_MinioBackend__CLIENT_EXT", None),
     )
-    cached = type("CachedMinio", (), {"_http": object()})()
-    storage._MinioBackend__CLIENT = cached
-    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "filter", lambda *args, **kwargs: type("Query", (), {"first": lambda self: None})())
+    previous_other = (
+        getattr(other_storage, "HTTP_CLIENT", None),
+        getattr(other_storage, "_MinioBackend__CLIENT", None),
+    )
+    MinioBackend._MinioBackend__CLIENT = class_client
+    attachment_storage._MinioBackend__CLIENT = attachment_client
+    attachment_storage._MinioBackend__CLIENT_EXT = attachment_ext
+    other_storage._MinioBackend__CLIENT = other_client
+    seen = {}
 
-    def _reject(*args, **kwargs):
+    def _save(self, name, content, max_length=None):
+        seen["storage"] = self
+        seen["http"] = self.HTTP_CLIENT
+        seen["cached_client"] = getattr(self, "_MinioBackend__CLIENT", None)
         raise error
 
-    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "update_or_create", _reject)
+    monkeypatch.setattr(MinioBackend, "save", _save)
+    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "filter", lambda *args, **kwargs: type("Query", (), {"first": lambda self: None})())
     try:
         with pytest.raises(ValueError, match="连不上 MinIO") as caught:
             create_workflow_attachment_asset(
@@ -296,19 +320,40 @@ def test_minio_connection_failure_fails_once_with_user_message(monkeypatch):
         assert "9000" not in message
         assert "WinError" not in message
         assert "HTTPConnectionPool" not in message
-        assert storage.HTTP_CLIENT is pool
-        assert cached._http is pool
+        assert seen["storage"] is not attachment_storage
+        assert seen["storage"] is not other_storage
+        assert seen["http"] is pool
+        assert seen["cached_client"] is not class_client
+        assert seen["cached_client"] is not attachment_client
+        assert class_client._http is shared_http
+        assert attachment_client._http is attachment_http
+        assert attachment_ext._http is not pool
+        assert other_client._http is other_http
+        assert attachment_storage.HTTP_CLIENT is previous_attachment[0]
+        assert attachment_storage.HTTP_CLIENT is not pool
+        assert other_storage.HTTP_CLIENT is previous_other[0]
+        assert other_storage.HTTP_CLIENT is not pool
     finally:
-        storage.HTTP_CLIENT, storage._MinioBackend__CLIENT, storage._MinioBackend__CLIENT_EXT = previous
+        attachment_storage.HTTP_CLIENT = previous_attachment[0]
+        attachment_storage._MinioBackend__CLIENT = previous_attachment[1]
+        attachment_storage._MinioBackend__CLIENT_EXT = previous_attachment[2]
+        other_storage.HTTP_CLIENT = previous_other[0]
+        other_storage._MinioBackend__CLIENT = previous_other[1]
+        if had_class_client:
+            MinioBackend._MinioBackend__CLIENT = previous_class_client
+        elif hasattr(MinioBackend, "_MinioBackend__CLIENT"):
+            delattr(MinioBackend, "_MinioBackend__CLIENT")
 
 
 def test_minio_connection_failure_does_not_hide_other_save_errors(monkeypatch):
+    from django_minio_backend.models import MinioBackend
+
     monkeypatch.setattr(WorkflowAttachmentAsset.objects, "filter", lambda *args, **kwargs: type("Query", (), {"first": lambda self: None})())
 
-    def _reject(*args, **kwargs):
+    def _reject(self, name, content, max_length=None):
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(WorkflowAttachmentAsset.objects, "update_or_create", _reject)
+    monkeypatch.setattr(MinioBackend, "save", _reject)
     with pytest.raises(RuntimeError, match="db down"):
         create_workflow_attachment_asset(
             execution_id="exec-minio-down",
@@ -317,6 +362,32 @@ def test_minio_connection_failure_does_not_hide_other_save_errors(monkeypatch):
             content_bytes=b"doc",
             mime_type="application/octet-stream",
         )
+
+
+def test_pdf_print_timeout_becomes_user_visible_failure(monkeypatch, caplog):
+    from apps.opspilot.services.attachment_theme import _PDF_PRINT_TIMEOUT_SECONDS
+
+    sentinel = "PDF_TIMEOUT_SENTINEL"
+
+    class FakeFuture:
+        def result(self, timeout=None):
+            assert timeout == _PDF_PRINT_TIMEOUT_SECONDS
+            raise TimeoutError()
+
+    class FakePool:
+        def submit(self, fn):
+            return FakeFuture()
+
+        def shutdown(self, wait=True, cancel_futures=False):
+            assert wait is False
+
+    monkeypatch.setattr("apps.opspilot.services.attachment_theme.ThreadPoolExecutor", lambda *args, **kwargs: FakePool())
+    with pytest.raises(ValueError, match="PDF 生成失败"):
+        build_attachment_bytes(f"# 集群健康报告\n节点 {sentinel}", "pdf", title="集群健康报告")
+    record = next(record for record in caplog.records if record.msg == "attachment pdf print failed error_type=%s")
+    assert record.args == ("TimeoutError",)
+    assert sentinel not in record.getMessage()
+    assert sentinel not in caplog.text
 
 
 def test_pdf_print_failure_logs_error_type_without_document(monkeypatch, caplog):

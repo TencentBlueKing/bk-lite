@@ -12,7 +12,7 @@ import { useSettingApi } from '@/app/alarm/api/settings';
 import { NotificationTemplateItem } from '@/app/alarm/types/settings';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
-import { NOTIFICATION_TEMPLATE_CHANNELS } from '@/app/alarm/utils/notificationTemplateChannels';
+import { getNotificationTemplateChannel } from '@/app/alarm/utils/notificationTemplateChannels';
 import {
   getNotificationTemplateDeleteErrorKey,
   isNotificationTemplateDeleteDisabled,
@@ -29,10 +29,10 @@ export default function NotificationTemplatesPage() {
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<NotificationTemplateItem[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const channelLabels = useMemo<Record<string, string>>(
-    () => Object.fromEntries(NOTIFICATION_TEMPLATE_CHANNELS.map((channel) => [channel.key, t(channel.labelKey)])),
-    [t],
-  );
+  const channelLabel = useCallback((channelType: string) => {
+    const labelKey = getNotificationTemplateChannel(channelType)?.labelKey;
+    return labelKey ? t(labelKey) : channelType;
+  }, [t]);
 
   const load = useCallback(async (page = pagination.current, pageSize = pagination.pageSize, name = search) => {
     setLoading(true);
@@ -89,7 +89,7 @@ export default function NotificationTemplatesPage() {
         <Space size={[4, 4]} wrap>
           {row.contents.map((content) => (
             <Tag key={content.channel_type} color={content.channel_type === 'email' ? 'blue' : 'green'}>
-              {channelLabels[content.channel_type] || content.channel_type}
+              {channelLabel(content.channel_type)}
             </Tag>
           ))}
         </Space>
@@ -170,7 +170,7 @@ export default function NotificationTemplatesPage() {
         </Space>
       ),
     },
-  ], [channelLabels, convertToLocalizedTime, router, t]);
+  ], [channelLabel, convertToLocalizedTime, router, t]);
 
   return (
     <>

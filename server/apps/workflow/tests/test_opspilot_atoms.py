@@ -33,11 +33,35 @@ def _context(*, organization_id=7):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("reply_channel", [None, "WECOM_BOT"])
+def test_workflow_notification_audience_reaches_system_prompt_without_rewriting_question(mocker, reply_channel):
+    from apps.opspilot.services.chat_service import ChatService
+
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="notification-model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="on-call", skill_prompt="根据事实作答。", llm_model=model, team=[7], usage_team=[7])
+    invoke = mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "完成"}, None, None))
+    message = "查一下当前有哪些活动告警"
+    context = {**_context(), "reply_channel": reply_channel}
+    assert execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context}) == {"message": "完成"}
+    request = invoke.call_args.args[0]
+    assert request["user_message"] == message
+    assert "根据事实作答。" in request["skill_prompt"]
+    assert ("企业微信群" in request["skill_prompt"]) is bool(reply_channel)
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
-    "trigger_type,message,expected",
-    [("SCHEDULE", "检查告警", True), ("NATS", "检查告警", True), ("WEBHOOK", "检查告警", True), ("FORM", "检查告警", False), ("FORM", "/auto 检查告警", True)],
+    "trigger_type,message,expected,approval_trigger",
+    [
+        ("SCHEDULE", "检查告警", True, "unattended"),
+        ("NATS", "检查告警", True, "unattended"),
+        ("WEBHOOK", "检查告警", True, "unattended"),
+        ("FORM", "检查告警", False, "interactive"),
+        ("FORM", "/auto 检查告警", True, "interactive"),
+    ],
 )
-def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected):
+def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_type, message, expected, approval_trigger):
     from apps.opspilot.services.chat_service import ChatService
 
     vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
@@ -54,9 +78,135 @@ def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_
 
     mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
     context = {**_context(), "trigger_type": trigger_type, "task_reference": "agent-a"}
-    result = execute_agent({"agent_id": skill.id, "message": message, "prompt": "附加提示", "__bklite_context": context})
+    result = execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})
     assert result == {"message": "处理完成"}
     assert seen.get("unattended", False) is expected
+    assert seen["trigger_type"] == approval_trigger
+
+
+@pytest.mark.django_db
+@pytest.mark.skipif(not django_apps.is_installed("apps.alerts"), reason="需要告警中心查询处理器")
+@pytest.mark.parametrize("action", ["run", "debug", "node_debug"])
+def test_workflow_agent_queries_active_alerts_as_execution_caller(mocker, action):
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.alerts.constants.constants import AlertStatus, SessionStatus
+    from apps.alerts.models.models import Alert
+    from apps.alerts.nats.nats import list_alerts
+    from apps.opspilot.metis.llm.tools.alerts import alerts_list_alerts
+    from apps.opspilot.services.chat_service import ChatService
+    from apps.system_mgmt.models.role import Role
+    from apps.system_mgmt.models.user import User
+    from apps.workflow.management.commands.run_workflow_worker import _build_runtime_inputs
+    from apps.workflow.models import Workflow, WorkflowExecution, WorkflowVersion
+    from apps.workflow.views import WorkflowViewSet
+
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="alert-model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="shared-agent", llm_model=model, team=[99], usage_team=[7])
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    rpc = mocker.patch("apps.opspilot.metis.llm.tools.alerts.utils.AlertOperationAnaRpc").return_value.list_alerts
+    rpc.side_effect = list_alerts
+    role, _ = Role.objects.get_or_create(name="admin", app="system-manager")
+    User.objects.create(username="alice", domain="example.com", role_list=[role.pk])
+    for team_id in (7, 99):
+        Alert.objects.create(
+            alert_id=f"ALERT-{team_id}",
+            team=[team_id],
+            title="CPU 告警",
+            status=AlertStatus.UNASSIGNED,
+            session_status=SessionStatus.CONFIRMED,
+            fingerprint=f"fp-{team_id}",
+            level="warning",
+        )
+    tool_results = []
+
+    def invoke(params):
+        formatted, _, _ = ChatService.format_chat_server_kwargs(params, model)
+        tool_results.append(alerts_list_alerts.invoke({"status": "active"}, config={"configurable": formatted["extra_config"]}))
+        return {"success": True, "message": "完成"}, None, None
+
+    mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
+    inputs = {"agent_id": skill.id, "message": "查询活动告警"}
+    definition = {"tasks": [{"name": "bklite_agent", "taskReferenceName": "agent", "type": "SIMPLE", "inputParameters": inputs}]}
+    workflow = Workflow.objects.create(
+        name="告警查询", team=[7], definition=definition, current_version=1, status=Workflow.Status.PUBLISHED, enabled=True
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition=definition)
+    operator = get_user_model().objects.create(username="alice", domain="example.com", group_list=[{"id": 7}], is_superuser=True)
+    conductor = mocker.patch("apps.workflow.views.ConductorClient").return_value
+    conductor.start_workflow.return_value = "engine-run"
+
+    def request_action(method, name, data=None):
+        path = f"/workflows/{workflow.pk}/{name}/"
+        request = getattr(APIRequestFactory(), method)(path, data or {}, format="json")
+        request.COOKIES.update(current_team="7", include_children="1")
+        force_authenticate(request, user=operator)
+        return WorkflowViewSet.as_view({method: name})(request, pk=workflow.pk)
+
+    if action == "run":
+        plan = request_action("get", "launch_plan")
+        response = request_action("post", "run", {"launch_token": plan.data["launch_token"]})
+    else:
+        debug_inputs = {"task_reference": "agent", "confirmed": True} if action == "node_debug" else {}
+        response = request_action("post", "debug", debug_inputs)
+    assert response.status_code == 201, response.data
+    execution = WorkflowExecution.objects.get(pk=response.data["id"])
+    inputs = {**inputs, "__bklite_context": {"caller_identity": {"username": "untrusted", "team_id": 99}}}
+    execute_agent(_build_runtime_inputs(inputs=inputs, atom_execution=None, task_type="bklite_agent", execution=execution))
+    assert tool_results[0]["success"], tool_results[0].get("error")
+    assert [row["alert_id"] for row in tool_results[0]["data"]["items"]] == ["ALERT-7"]
+    assert rpc.call_args.kwargs["user_info"] == {"user": "alice", "domain": "example.com", "team": 7, "include_children": False}
+
+
+@pytest.mark.django_db
+def test_workflow_agent_forwards_supplied_caller_identity_and_does_not_invent_one(mocker):
+    from apps.opspilot.services.chat_service import ChatService
+
+    vendor = ModelVendor.objects.create(name="on", vendor_type="openai", team=[7], enabled=True)
+    model = LLMModel.objects.create(name="identity-model", enabled=True, team=[7], vendor=vendor)
+    skill = LLMSkill.objects.create(name="identity-agent", llm_model=model, team=[7], usage_team=[7])
+    mocker.patch("apps.workflow.services.opspilot_atoms.resolve_uploaded_agent_knowledge", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    captured = {}
+
+    def invoke(params):
+        captured.clear()
+        captured.update(params)
+        return {"success": True, "message": "处理完成"}, None, None
+
+    mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
+    snapshot = {
+        "username": "dave",
+        "domain": "hook.example",
+        "team_id": 7,
+        "include_children": False,
+    }
+    execute_agent(
+        {
+            "agent_id": skill.id,
+            "message": "统计告警",
+            "__bklite_context": {
+                **_context(),
+                "trigger_type": "WEBHOOK",
+                "caller_identity": snapshot,
+                "locale": "zh-Hans",
+            },
+        }
+    )
+    assert captured["caller_identity"] == snapshot
+    assert captured["locale"] == "zh-Hans"
+
+    execute_agent(
+        {
+            "agent_id": skill.id,
+            "message": "统计告警",
+            "__bklite_context": {**_context(), "trigger_type": "WEBHOOK"},
+        }
+    )
+    assert "caller_identity" not in captured
+    assert captured["locale"] == "en"
 
 
 @pytest.mark.django_db
@@ -102,7 +252,6 @@ def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker)
         {
             "agent_id": skill.id,
             "message": "inspect host",
-            "prompt": "return a summary",
             "knowledge_files": [{"kind": "workflow_agent_knowledge", "token": "signed"}],
             "memory_context": "known context",
             "__bklite_context": _context(),

@@ -4,7 +4,10 @@ import json
 import uuid
 from typing import Any
 
+from apps.core.utils.internal_event_auth import verify_internal_event
+from apps.rpc.workflow import MANAGED_NATS_ACTOR, MANAGED_NATS_TRIGGER_SCOPE, NATS_TRIGGER_SCOPE
 from apps.workflow.models import WorkflowTrigger
+from apps.workflow.permissions import actor_can_access_workflow
 from apps.workflow.services.definitions import DefinitionValidationError
 from apps.workflow.services.triggers import TriggerConflict, invoke_trigger
 
@@ -42,7 +45,7 @@ def _team_ids(value: Any) -> set[int]:
         return set()
     result: set[int] = set()
     for item in value:
-        if isinstance(item, bool):
+        if type(item) is not int and not (isinstance(item, str) and item.isdecimal()):
             return set()
         try:
             normalized = int(item)
@@ -54,17 +57,25 @@ def _team_ids(value: Any) -> set[int]:
     return result
 
 
-def invoke_nats_trigger(data: dict[str, Any], actor_context: dict[str, Any], *, message_subject: str):
+def invoke_nats_trigger(data: dict[str, Any], actor_context: dict[str, Any], *, message_subject: str, internal_auth=None):
     """Validate the internal caller and adapt a NATS event to a workflow trigger."""
     if not isinstance(data, dict) or not isinstance(actor_context, dict):
         raise DefinitionValidationError("NATS 触发请求非法")
     authorized_team_ids = _team_ids(actor_context.get("authorized_team_ids"))
-    username = str(actor_context.get("username") or "").strip()
-    domain = str(actor_context.get("domain") or "").strip()
-    if not authorized_team_ids or not username or len(username) > 32 or not domain or len(domain) > 100:
+    username = actor_context.get("username")
+    domain = actor_context.get("domain")
+    if (
+        not authorized_team_ids
+        or not isinstance(username, str)
+        or not username.strip()
+        or len(username) > 32
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or len(domain) > 100
+    ):
         raise TriggerConflict("NATS 调用方身份非法")
     try:
-        requested_team = int(data.get("team"))
+        (requested_team,) = _team_ids([data.get("team")])
         trigger_id = uuid.UUID(str(data.get("trigger_id") or ""))
     except (TypeError, ValueError, AttributeError) as error:
         raise DefinitionValidationError("NATS 触发参数非法") from error
@@ -79,14 +90,28 @@ def invoke_nats_trigger(data: dict[str, Any], actor_context: dict[str, Any], *, 
         )
         .first()
     )
-    if trigger is None or requested_team not in {int(item) for item in trigger.team}:
+    if trigger is None or requested_team not in trigger.team or requested_team not in trigger.workflow.team:
         raise TriggerConflict("NATS 触发器不存在或不可用")
     if message_subject != str(trigger.config.get("subject") or ""):
         raise TriggerConflict("NATS 消息主题与触发器不匹配")
+    managed_channel = "managed_channel_id" in actor_context
+    if managed_channel and (username, domain) != (MANAGED_NATS_ACTOR, "domain.com"):
+        raise TriggerConflict("NATS 调用方身份非法")
+    scope = MANAGED_NATS_TRIGGER_SCOPE if managed_channel else NATS_TRIGGER_SCOPE
+    if not verify_internal_event(scope, {"data": data, "actor_context": actor_context}, internal_auth, caller="workflow"):
+        raise TriggerConflict("NATS 调用方身份非法")
+    identity = None
+    if not managed_channel:
+        if not actor_can_access_workflow(
+            username=username, domain=domain, current_team=requested_team, workflow=trigger.workflow, require_operate=True
+        ):
+            raise TriggerConflict("缺少流程实例操作权限")
+        identity = {"username": username, "domain": domain, "team_id": requested_team, "include_children": False}
     return invoke_trigger(
         trigger,
         inputs=inputs,
         idempotency_key=event_id,
         started_by=username,
         domain=domain,
+        caller_identity=identity,
     )

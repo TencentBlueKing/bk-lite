@@ -437,6 +437,7 @@ export interface ExecutionRecord {
   failed_stage?: string;
   termination_reason?: string;
   started_by: string;
+  execution_team_id?: number | null;
   created_at: string;
   finished_at: string | null;
   duration_ms: number | null;

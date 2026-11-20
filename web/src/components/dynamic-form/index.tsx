@@ -44,13 +44,14 @@ const DynamicForm: React.FC<DynamicFormProps> = ({ form, fields, initialValues }
     <Form form={form} layout="vertical" initialValues={initialValues}>
       {fields.map((field) => {
         const Component = componentMap[field.type];
-        const { name, label, rules, initialValue, className, ...rest } = field;
+        const { name, label, rules, initialValue, className, tooltip, ...rest } = field;
 
         return (
           <Form.Item
             key={name}
             name={name}
             label={label}
+            tooltip={tooltip}
             rules={rules}
             initialValue={initialValue}
             className={className}

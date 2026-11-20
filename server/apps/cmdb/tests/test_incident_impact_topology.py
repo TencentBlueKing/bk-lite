@@ -257,11 +257,13 @@ def test_duplicate_seeds_do_not_count_twice_toward_the_limit(monkeypatch):
 
 
 class _Graph:
-    def __init__(self, entities, edges, models=None, fail_models=False):
+    def __init__(self, entities, edges, models=None, fail_models=False, model_associations=None, fail_associations=False):
         self.entities = entities
         self.edges = edges
         self.models = models or []
         self.fail_models = fail_models
+        self.model_associations = model_associations or []
+        self.fail_associations = fail_associations
         self.queried = []
 
     def __enter__(self):
@@ -282,12 +284,20 @@ class _Graph:
         return [], 0
 
     def query_edge(self, label, params, return_entity=False):
-        asst_id = next(item["value"] for item in params if item["field"] == "asst_id")
+        from apps.cmdb.constants.constants import MODEL_ASSOCIATION
+
+        if label == MODEL_ASSOCIATION:
+            if self.fail_associations:
+                raise RuntimeError("SECRET-MODEL-ASSOCIATIONS")
+            return [{"edge": item} for item in self.model_associations]
+        asst_id = next((item["value"] for item in params if item["field"] == "asst_id"), None)
         field = next(item for item in params if item["field"] in {"src_inst_uuid", "dst_inst_uuid"})
-        wanted = set(field["value"])
+        wanted = set(field["value"] if isinstance(field["value"], list) else [field["value"]])
         rows = []
         for edge in self.edges:
-            if edge.get("asst_id") != asst_id or edge.get(field["field"]) not in wanted:
+            if asst_id is not None and edge.get("asst_id") != asst_id:
+                continue
+            if edge.get(field["field"]) not in wanted:
                 continue
             rows.append(
                 {
@@ -421,3 +431,90 @@ def test_service_module_does_not_import_alerts():
     assert "apps.alerts" not in source
     assert "network_topology_among_uuids" not in source
     assert "topo_search_lite" not in source
+
+
+RACK = "00000000-0000-4000-8000-000000000013"
+NIC = "00000000-0000-4000-8000-000000000014"
+DISK = "00000000-0000-4000-8000-000000000015"
+SYSTEM = "00000000-0000-4000-8000-000000000020"
+
+
+def test_single_seed_keeps_one_node_and_exposes_every_model_relation():
+    entities = [
+        {"inst_uuid": HOST_A, "inst_name": "web-01", "model_id": "host"},
+        {"inst_uuid": RACK, "inst_name": "rack-1", "model_id": "rack"},
+        {"inst_uuid": NIC, "inst_name": "nic-1", "model_id": "nic"},
+        {"inst_uuid": DISK, "inst_name": "disk-1", "model_id": "disk"},
+    ]
+    edges = [
+        {**_edge(HOST_A, RACK, "belong", "host_belong_rack"), "src_model_id": "host", "dst_model_id": "rack"},
+        {**_edge(NIC, HOST_A, "belong", "nic_belong_host"), "src_model_id": "nic", "dst_model_id": "host"},
+        {**_edge(NIC, DISK, "connect", "nic_connect_disk"), "src_model_id": "nic", "dst_model_id": "disk"},
+    ]
+    associations = [
+        {"model_asst_id": "host_belong_rack", "asst_id": "belong", "src_model_id": "host", "dst_model_id": "rack"},
+        {"model_asst_id": "nic_belong_host", "asst_id": "belong", "src_model_id": "nic", "dst_model_id": "host"},
+        {"model_asst_id": "nic_connect_disk", "asst_id": "connect", "src_model_id": "nic", "dst_model_id": "disk"},
+    ]
+    result = query_incident_impact_topology(
+        [HOST_A],
+        user_info={"locale": "zh-Hans"},
+        graph_factory=lambda: _Graph(entities, edges, model_associations=associations),
+        can_view=lambda entity: True,
+    )
+    assert [item["inst_uuid"] for item in result["nodes"]] == [HOST_A]
+    assert {item["inst_uuid"] for item in result["related_candidates"]} == {RACK, NIC}
+    assert DISK not in {item["inst_uuid"] for item in result["related_candidates"]}
+    assert {item["asst_id"] for item in result["related_links"]} == {"belong"}
+    assert result["related_truncated"] is False
+
+
+def test_model_association_catalog_failure_does_not_fall_back(monkeypatch):
+    entities = [
+        {"inst_uuid": HOST_A, "inst_name": "web-01", "model_id": "host"},
+        {"inst_uuid": APP, "inst_name": "支付中台", "model_id": "application"},
+    ]
+    edges = [{**_edge(APP, HOST_A, "run", "application_run_host"), "src_model_id": "application", "dst_model_id": "host"}]
+    graph = _Graph(entities, edges, fail_associations=True)
+    try:
+        query_incident_impact_topology(
+            [HOST_A],
+            user_info={},
+            graph_factory=lambda: graph,
+            can_view=lambda entity: True,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "SECRET-MODEL-ASSOCIATIONS"
+    else:
+        raise AssertionError("association catalog failure returned a graph")
+
+
+def test_context_failure_keeps_the_seed_graph(monkeypatch, caplog):
+    entities = [{"inst_uuid": HOST_A, "inst_name": "web-01", "model_id": "host"}]
+    sentinel = "SECRET-CONTEXT"
+    original = RuntimeError(sentinel)
+    monkeypatch.setattr("apps.cmdb.services.incident_impact_topology._organization_ids", lambda user_info: [1])
+
+    def boom(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr("apps.cmdb.services.incident_impact_topology._load_context_bundle", boom)
+    with caplog.at_level(logging.WARNING, logger="cmdb"):
+        result = query_incident_impact_topology(
+            [HOST_A],
+            user_info={"user": "alice", "team": 1},
+            graph_factory=lambda: _Graph(entities, []),
+            can_view=lambda entity: True,
+        )
+    assert result["context_status"] == "unavailable"
+    assert result["contexts"] == []
+    assert _roles(result)[HOST_A] == "seed"
+    assert sentinel not in str(result)
+    records = [record for record in caplog.records if "incident_impact_context_unavailable" in record.msg]
+    assert len(records) == 1
+    assert records[0].args == ("RuntimeError",)
+    assert records[0].getMessage() == "event=incident_impact_context_unavailable failed_stage=context error_type=RuntimeError"
+    assert records[0].exc_info[0] is SafeLogException
+    assert sentinel not in records[0].getMessage()
+    assert sentinel not in caplog.text
+    assert HOST_A not in caplog.text

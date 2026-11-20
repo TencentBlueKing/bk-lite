@@ -7,9 +7,11 @@ from django.apps import apps as django_apps
 
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.workflow.services.agent_knowledge_inputs import resolve_uploaded_agent_knowledge
+from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 
 MAX_AGENT_OUTPUT_CHARS = 100_000
 MAX_MEMORY_CONTEXT_CHARS = 100_000
+AUTOMATIC_TRIGGERS = {"SCHEDULE", "NATS", "WEBHOOK"}
 
 
 def _trusted_context(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -94,8 +96,16 @@ def _variable_manager(context: dict[str, Any], inputs: dict[str, Any]):
         "execution_id": str(context.get("execution_id") or ""),
         "entry_type": "workflow",
         "trigger_type": str(context.get("trigger_type") or ""),
-        "unattended": context.get("trigger_type") in {"SCHEDULE", "NATS", "WEBHOOK"},
+        "unattended": context.get("trigger_type") in AUTOMATIC_TRIGGERS,
     }
+    if context.get("reply_channel") == "WECOM_BOT":
+        flow_input["reply_channel"] = "WECOM_BOT"
+    identity = accepted_tool_caller_identity(context.get("caller_identity"))
+    if identity is not None:
+        flow_input["caller_identity"] = identity
+    locale = context.get("locale")
+    if isinstance(locale, str) and locale.strip():
+        flow_input["locale"] = locale.strip()
     manager.set_variable("flow_input", flow_input)
     manager.set_variable("flow_id", str(context.get("workflow_id") or ""))
     manager.set_variable("execution_id", str(context.get("execution_id") or ""))
@@ -120,11 +130,10 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     context = _trusted_context(inputs)
     skill = _scoped_skill(inputs.get("agent_id"), context["organization_id"])
     message = _clean_text(inputs.get("message"), label="message", maximum=50_000)
-    prompt = _clean_text(inputs.get("prompt", ""), label="prompt", maximum=10_000, required=False)
     uploaded_files = resolve_uploaded_agent_knowledge(
         inputs.get("knowledge_files"),
         workflow_id=context.get("workflow_id"),
-        team=context["organization_id"],
+        team=context.get("workflow_organization_id", context["organization_id"]),
     )
     manager = _variable_manager(context, inputs)
     result = AgentNode(manager).execute(
@@ -133,7 +142,6 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
             "data": {
                 "config": {
                     "agent": skill.id,
-                    "prompt": prompt,
                     "uploadedFiles": uploaded_files,
                     "inputParams": "message",
                     "outputParams": "message",
@@ -201,6 +209,8 @@ def _memory_entity(space, context: dict[str, Any]):
     from apps.opspilot.memory.engines.base import MemoryEntity
 
     if space.scope == space.SCOPE_PERSONAL:
+        if context.get("trigger_type") in AUTOMATIC_TRIGGERS and not context.get("caller_identity"):
+            raise ValueError("自动流程访问个人记忆需要已验证的执行账号")
         return MemoryEntity(user_id=context["user_id"])
     return MemoryEntity(organization_id=context["organization_id"])
 

@@ -3,14 +3,18 @@
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Form, Input, Select, Spin } from 'antd';
 
+import GroupTreeSelect from '@/components/group-tree-select';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
+import { executionOrganizationText } from '../lib/organization-display';
 import { WorkflowPermission } from './workflow-permission';
 
 export type ScheduleFrequency = 'daily' | 'weekly' | 'monthly' | 'crontab';
 
 export interface ScheduleConfig extends Record<string, unknown> {
   frequency: ScheduleFrequency;
+  execution_team_id?: number;
   time?: string[];
   weekdays?: number[];
   days?: number[];
@@ -26,7 +30,12 @@ export interface SchedulePreview {
 }
 
 export function normalizeScheduleConfig(value: Record<string, unknown>): ScheduleConfig {
-  const frequency = value.frequency as ScheduleFrequency | undefined;
+  const schedule = scheduleFields(value);
+  return typeof value.execution_team_id === 'number' ? { ...schedule, execution_team_id: value.execution_team_id } : schedule;
+}
+
+function scheduleFields(value: Record<string, unknown>): ScheduleConfig {
+  const frequency = value.frequency;
   if (frequency === 'weekly') return { frequency, time: normalizedTimes(value.time), weekdays: normalizedNumbers(value.weekdays, [1]) };
   if (frequency === 'monthly') return { frequency, time: normalizedTimes(value.time), days: normalizedNumbers(value.days, [1]) };
   if (frequency === 'crontab') return { frequency, crontab_expression: String(value.crontab_expression || value.expression || '0 2 * * *') };
@@ -44,15 +53,10 @@ function normalizedNumbers(value: unknown, fallback: number[]) {
   return Array.isArray(value) && value.length ? value.filter((item): item is number => typeof item === 'number') : fallback;
 }
 
-function cleanConfig(config: ScheduleConfig): ScheduleConfig {
-  if (config.frequency === 'crontab') return { frequency: 'crontab', crontab_expression: config.crontab_expression || '' };
-  if (config.frequency === 'weekly') return { frequency: 'weekly', time: config.time || [], weekdays: config.weekdays || [] };
-  if (config.frequency === 'monthly') return { frequency: 'monthly', time: config.time || [], days: config.days || [] };
-  return { frequency: 'daily', time: config.time || [] };
-}
-
 export function ScheduleTriggerEditor({
   value,
+  account,
+  defaultTeamId,
   readOnly,
   preview,
   previewBusy,
@@ -60,6 +64,8 @@ export function ScheduleTriggerEditor({
   onChange,
 }: {
   value: Record<string, unknown>;
+  account: string;
+  defaultTeamId?: number;
   readOnly: boolean;
   preview?: SchedulePreview;
   previewBusy?: boolean;
@@ -67,9 +73,12 @@ export function ScheduleTriggerEditor({
   onChange: (value: ScheduleConfig) => void;
 }) {
   const { t } = useTranslation();
+  const { flatGroups } = useUserInfoContext();
   const { convertToLocalizedTime } = useLocalizedTime();
   const config = normalizeScheduleConfig(value);
-  const patch = (next: ScheduleConfig) => onChange(cleanConfig(next));
+  const executionTeamId = config.execution_team_id ?? defaultTeamId;
+  const patch = (next: ScheduleConfig) => onChange({ execution_team_id: executionTeamId, ...next });
+  const accountLabel = t('workflowOrchestration.editor.executionAccount', '执行账号');
   const times = config.time || ['02:00'];
   const cronFields = (config.crontab_expression || '0 2 * * *').trim().split(/\s+/);
   while (cronFields.length < 5) cronFields.push('*');
@@ -81,6 +90,18 @@ export function ScheduleTriggerEditor({
 
   return <section className="flex flex-col gap-5">
     <Alert type="info" showIcon message={t('workflowOrchestration.editor.scheduleSystemTimezoneHint', '按当前用户的系统时区计算，发布时固化到流程版本。')} />
+    <Form.Item className="mb-0" label={accountLabel} required>
+      <Input readOnly aria-label={accountLabel} value={account} />
+    </Form.Item>
+    <Form.Item className="mb-0" label={t('workflowOrchestration.execution.organization', '执行组织')} required>
+      {readOnly ? <Input readOnly value={executionOrganizationText(executionTeamId, flatGroups)} /> : <GroupTreeSelect
+        multiple={false}
+        showSearch
+        value={executionTeamId}
+        placeholder={t('workflowOrchestration.workflow.organizationRequired', '请选择组织')}
+        onChange={(id) => { if (typeof id === 'number') patch({ ...config, execution_team_id: id }); }}
+      />}
+    </Form.Item>
     <Form.Item className="mb-0" label={t('workflowOrchestration.editor.triggerFrequency', '触发频率')} required>
       <Select
         disabled={readOnly}

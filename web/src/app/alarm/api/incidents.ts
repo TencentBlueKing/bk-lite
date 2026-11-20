@@ -70,6 +70,15 @@ export const useIncidentsApi = () => {
     });
   };
 
+  const getImpactTopologyAlerts = async (incidentId: string, instUuid: string, page: number) => {
+    return post(`/alerts/api/incident/${incidentId}/impact_topology_alerts/`, {
+      inst_uuid: instUuid,
+      page,
+    }, {
+      suppressErrorNotification: true,
+    });
+  };
+
   return {
     getIncidentList,
     getIncidentDetail,
@@ -85,5 +94,6 @@ export const useIncidentsApi = () => {
     addAlertsToIncident,
     removeAlertsFromIncident,
     getImpactTopology,
+    getImpactTopologyAlerts,
   };
 };

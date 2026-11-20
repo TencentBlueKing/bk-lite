@@ -31,6 +31,7 @@ from apps.job_mgmt.services.execution_stream_service import (
     snapshot_sse_from_results,
     stream_execution_events,
 )
+from apps.job_mgmt.services.target_vault import request_credential_actor
 from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.renderers import CustomRenderer, EventStreamRenderer
@@ -116,6 +117,7 @@ class JobExecutionViewSet(AuthViewSet):
                 team=team,
                 authorized_team_ids=authorized_team_ids,
                 username=username,
+                credential_actor=request_credential_actor(request),
                 timeout_explicit="timeout" in request.data,
             )
         except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
@@ -164,6 +166,7 @@ class JobExecutionViewSet(AuthViewSet):
                 team=team,
                 authorized_team_ids=authorized_team_ids,
                 username=username,
+                credential_actor=request_credential_actor(request),
             )
         except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
             return Response({"error": e.message}, status=e.status_code)
@@ -262,7 +265,9 @@ class JobExecutionViewSet(AuthViewSet):
         authorized_team_ids = self._get_authorized_team_ids(request)
 
         try:
-            execution = ExecutionService.create_re_execution(original=original, username=username, authorized_team_ids=authorized_team_ids)
+            execution = ExecutionService.create_re_execution(
+                original=original, username=username, authorized_team_ids=authorized_team_ids, credential_actor=request_credential_actor(request)
+            )
         except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
             return Response({"error": e.message}, status=e.status_code)
 

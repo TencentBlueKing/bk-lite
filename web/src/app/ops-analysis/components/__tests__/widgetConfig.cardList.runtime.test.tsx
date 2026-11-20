@@ -181,9 +181,9 @@ describe('ViewConfig cardList runtime safety', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('dashboard.cardListContent')).toBeTruthy();
+      expect(screen.getByText('dashboard.cardListTitleField')).toBeTruthy();
     });
-    expect(screen.getByTestId('card-list-preview')).toBeTruthy();
+    expect(screen.queryByTestId('card-list-preview')).toBeNull();
 
     expect(() => {
       rerender(

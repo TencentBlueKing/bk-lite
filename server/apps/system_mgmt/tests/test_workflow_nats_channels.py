@@ -65,10 +65,14 @@ def test_send_nats_message_adapts_managed_channel_to_standard_event(monkeypatch)
 
     monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.nats_client.request_sync", fake_request_sync)
     channel = SimpleNamespace(
+        pk=13,
         team=[7],
         config={
             "namespace": "bklite",
             "method_name": "trigger_orchestration_workflow_by_nats",
+            "source": "workflow",
+            "workflow_id": 12,
+            "node_key": "alert_entry",
             "trigger_id": "00000000-0000-0000-0000-000000000012",
             "subject": "bklite.workflow.12.alert_entry",
             "active": True,
@@ -130,3 +134,16 @@ def test_send_nats_message_rejects_inactive_or_cross_team_managed_channel(monkey
     assert inactive == {"result": False, "message": "The orchestration workflow is inactive"}
     assert cross_team["result"] is False
     assert "organization scope" in cross_team["message"]
+
+
+@pytest.mark.django_db
+def test_custom_channel_cannot_claim_workflow_delivery():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.system_mgmt.serializers.channel_serializer import ChannelSerializer
+
+    serializer = ChannelSerializer()
+    for config in ({"source": "workflow"}, {"method_name": "trigger_orchestration_workflow_by_nats"}):
+        with pytest.raises(ValidationError):
+            serializer.validate_nats_config(config)
+    assert serializer.validate_nats_config({"method_name": "other"}) == {"method_name": "other"}

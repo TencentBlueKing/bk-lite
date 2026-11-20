@@ -4,7 +4,7 @@ import configparser
 
 import pytest
 
-from apps.core.celery_runtime.config import RuntimeConfig
+from apps.core.celery_runtime.config import BEAT_SCHEDULER, RuntimeConfig
 
 pytestmark = pytest.mark.unit
 
@@ -114,6 +114,12 @@ def test_supervisor_has_only_four_workers_and_one_beat():
         assert parser[section]["stopasgroup"] == "false"
     assert "critical@%%h" in parser["program:celery_critical"]["command"]
     assert 'AUTOSCALE_KEEPALIVE="60"' in parser["program:celery_critical"]["environment"]
+
+
+def test_beat_command_uses_future_last_run_scheduler():
+    beat = RuntimeConfig.from_env(runtime_env()).supervisor_config().split("[program:beat]", 1)[1]
+    assert f"--scheduler {BEAT_SCHEDULER}" in beat
+    assert "django_celery_beat.schedulers.DatabaseScheduler" not in beat
 
 
 def test_unknown_pool_is_rejected():
