@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import {
-  deferDynamicOptionFilterValues,
   reconcileOptionBackedFilterValue,
   retainFilterValueInOptions,
   retainOpeningFilterValues,
 } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 
 const HOSTS = [
   { label: '可见主机', value: 'host-b' },
@@ -42,24 +42,85 @@ describe('跨组织导入的动态选项默认值', () => {
     expect(retainFilterValueInOptions('host-b', HOSTS)).toBe('host-b');
   });
 
-  test('当前还没选时，用默认值和当前选项求交', () => {
+  test('还没写入时按选项求交，对不上或用户清空时不放宽、不套回旧默认', () => {
     expect(
-      reconcileOptionBackedFilterValue(hostFilter(['host-a', 'host-b']), null, HOSTS),
+      reconcileOptionBackedFilterValue(hostFilter(['host-a', 'host-b']), undefined, HOSTS),
     ).toEqual(['host-b']);
     expect(
-      reconcileOptionBackedFilterValue(hostFilter(['host-a']), null, []),
+      reconcileOptionBackedFilterValue(hostFilter(['host-a', 'host-b']), null, HOSTS, 'reset'),
+    ).toEqual(['host-b']);
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(['host-a', 'host-b']), null, HOSTS),
+    ).toBeUndefined();
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(['host-a']), ['host-a'], []),
+    ).toBeNull();
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(['host-a']), ['user-kept'], HOSTS),
+    ).toBeNull();
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(['host-a', 'host-b']), ['host-a', 'host-b'], HOSTS),
+    ).toEqual(['host-b']);
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(0), 0, []),
+    ).toBeNull();
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(0), 0, [{ label: '零', value: 0 }]),
+    ).toBeUndefined();
+    expect(
+      reconcileOptionBackedFilterValue(hostFilter(false), false, []),
     ).toBeUndefined();
   });
 
-  test('打开画布时不把动态选项默认值直接套进查询', () => {
+  test('选项失败时已存默认值仍进入查询，0、空串和 false 不被当成未设置', () => {
     const definition = hostFilter(['host-a']);
     const values = syncFilterValuesWithDefinitions([definition], {});
-    expect(values.instance_ids__string).toBeUndefined();
-    expect(
-      deferDynamicOptionFilterValues([definition], { instance_ids__string: ['host-a'] }),
-    ).toEqual({ instance_ids__string: null });
+    expect(values.instance_ids__string).toEqual(['host-a']);
     expect(
       retainOpeningFilterValues([definition], { instance_ids__string: ['host-a'] }),
     ).toEqual({ instance_ids__string: ['host-a'] });
+    expect(
+      syncFilterValuesWithDefinitions([definition], { instance_ids__string: null })
+        .instance_ids__string,
+    ).toBeNull();
+    expect(
+      syncFilterValuesWithDefinitions([definition], { instance_ids__string: ['user-kept'] })
+        .instance_ids__string,
+    ).toEqual(['user-kept']);
+
+    const zero = hostFilter(0);
+    zero.id = 'count__number';
+    zero.key = 'count';
+    zero.type = 'number';
+    expect(syncFilterValuesWithDefinitions([zero], {})[zero.id]).toBe(0);
+
+    const blank = hostFilter('');
+    if (blank.inputConfig?.control === 'select') {
+      blank.inputConfig = { ...blank.inputConfig, multiple: false };
+    }
+    expect(syncFilterValuesWithDefinitions([blank], {})[blank.id]).toBe('');
+    const emptyMulti = hostFilter([]);
+    expect(syncFilterValuesWithDefinitions([emptyMulti], {})[emptyMulti.id]).toEqual([]);
+
+    const request = processDataSourceParams({
+      sourceParams: [{
+        name: 'instance_ids',
+        type: 'string',
+        filterType: 'filter',
+        value: null,
+        inputConfig: definition.inputConfig,
+      }, {
+        name: 'enabled',
+        type: 'boolean',
+        filterType: 'params',
+        value: false,
+      }],
+      unifiedFilterValues: values,
+      filterBindings: { [definition.id]: true },
+      filterDefinitions: [definition],
+      userParams: { enabled: false },
+    });
+    expect(request.instance_ids).toEqual(['host-a']);
+    expect(request.enabled).toBe(false);
   });
 });

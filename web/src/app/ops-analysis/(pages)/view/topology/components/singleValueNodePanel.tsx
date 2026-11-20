@@ -60,6 +60,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   builtinNamespaceId,
   filterDefinitions = [],
   globalFilterValues,
+  canRepairOptionSource = false,
   onClose,
   onConfirm,
   onCancel,
@@ -442,6 +443,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
                 globalFilters={filterDefinitions}
                 filterBindings={filterBindings}
                 globalFilterValues={globalFilterValues}
+                canRepairOptionSource={canRepairOptionSource}
               />
             </Spin>
           </div>

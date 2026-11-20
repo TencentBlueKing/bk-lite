@@ -63,6 +63,8 @@ export interface DatasourceItem {
   source_type?: DataSourceSourceType;
   /** 普通列表接口返回；分享元数据刻意不返回，避免暴露内部执行路径 */
   rest_api?: string;
+  build_in_key?: string | null;
+  portable_key?: string | null;
   connection_config?: Record<string, any>;
   connection_overrides?: Record<string, any>;
   connection?: number | null;
@@ -152,6 +154,10 @@ export interface ConditionFieldSource {
   kind: 'static' | 'dynamic';
   items?: ConditionFieldOption[];
   sourceId?: number;
+  /** 内置源的稳定键。主键已删除后，只能用它找回重新种入的同一内置源。 */
+  builtinKey?: string;
+  /** 保存当时的名称和地址，只用于展示，不参与查找。 */
+  sourceSnapshot?: { name?: string; restApi?: string };
   sourceRef?: SourceRef;
   valueField?: string;
   labelField?: string;
@@ -186,6 +192,10 @@ export type OptionsQueryParamValue =
 export interface DynamicOptionsSource {
   type: 'dynamic';
   sourceId?: number;
+  /** 内置源的稳定键。主键已删除后，只能用它找回重新种入的同一内置源。 */
+  builtinKey?: string;
+  /** 保存当时的名称和地址，只用于展示，不参与查找。 */
+  sourceSnapshot?: { name?: string; restApi?: string };
   sourceRef?: SourceRef;
   valueField: string;
   labelField: string;

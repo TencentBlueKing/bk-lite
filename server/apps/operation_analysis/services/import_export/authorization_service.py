@@ -187,6 +187,19 @@ class ImportExportAuthorizationService:
             existing_map = cls.get_existing_objects_batch(object_type, items)
 
             for item in items:
+                conflict = conflict_map.get(item.key)
+                if object_type == ObjectType.DATASOURCE and cls._apply_identity_conflict_permissions(
+                    request,
+                    item,
+                    conflict,
+                    create_allowed,
+                    view_allowed,
+                    current_team,
+                    permission_errors,
+                    permission_config,
+                ):
+                    continue
+
                 existing = existing_map.get(cls._item_lookup_key(object_type, item))
                 if not existing:
                     if not create_allowed:
@@ -206,7 +219,6 @@ class ImportExportAuthorizationService:
                         )
                     continue
 
-                conflict = conflict_map.get(item.key)
                 if not conflict:
                     continue
 
@@ -246,6 +258,58 @@ class ImportExportAuthorizationService:
             result.setdefault("errors", []).extend(permission_errors)
 
         return result
+
+    @classmethod
+    def _apply_identity_conflict_permissions(
+        cls,
+        request,
+        item,
+        conflict,
+        create_allowed: bool,
+        view_allowed: bool,
+        current_team: int | None,
+        permission_errors: list,
+        permission_config: dict,
+    ) -> bool:
+        """身份冲突只保留复用和另存。不能被名称冲突的覆盖/跳过动作改掉。"""
+        if not conflict:
+            return False
+        from apps.operation_analysis.services.import_export.datasource_package_identity import find_identity_row
+
+        identity_row = find_identity_row(item)
+        if identity_row is None:
+            return False
+        reason = conflict.get("reason")
+        offered = set(conflict.get("suggested_actions") or [])
+        identity_actions = {ConflictAction.REUSE_TARGET.value, ConflictAction.IMPORT_AS_NEW.value}
+        if reason != ConflictReason.IDENTITY_CONFIG_CONFLICT and not (reason == ConflictReason.NO_PERMISSION_CONFLICT and offered & identity_actions):
+            return False
+
+        accessible = view_allowed and cls.can_access_existing_object(request, ObjectType.DATASOURCE, identity_row, current_team)
+        permission_actions = []
+        if accessible:
+            permission_actions.append(ConflictAction.REUSE_TARGET.value)
+        if create_allowed:
+            permission_actions.append(ConflictAction.IMPORT_AS_NEW.value)
+        if not accessible:
+            conflict["reason"] = ConflictReason.NO_PERMISSION_CONFLICT
+        conflict["suggested_actions"] = cls._intersect_precheck_actions(conflict, permission_actions)
+        if not conflict["suggested_actions"]:
+            permission_errors.append(
+                cls.build_permission_error(
+                    ObjectType.DATASOURCE,
+                    item,
+                    [permission_config["create"]],
+                    oa_message(
+                        "messages.import_item_permission_missing",
+                        "{object_type} '{name}' 缺少权限 {permission}",
+                        object_type=ObjectType.DATASOURCE.value,
+                        name=item.name,
+                        permission=permission_config["create"],
+                    ),
+                )
+            )
+        return True
 
     @staticmethod
     def _intersect_precheck_actions(conflict: dict[str, Any], permission_actions: list[str]) -> list[str]:
@@ -323,6 +387,8 @@ class ImportExportAuthorizationService:
                     continue
 
                 if existing and action == ConflictAction.SKIP.value:
+                    continue
+                if action == ConflictAction.REUSE_TARGET.value:
                     continue
 
                 required_permission = (

@@ -647,6 +647,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onSearch={handleFilterSearch}
           onReset={handleFilterSearch}
           onApplyInitial={setAppliedFilterValues}
+          canEditCanvas={hasPermission(['EditChart'])}
           prefixContent={namespaceSelectorElement}
           popupZIndex={isFullscreen ? 1200 : undefined}
         />
@@ -730,6 +731,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           title={nodeTitle}
           nodeType={nodeType}
           readonly={nodeReadonly}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           builtinNamespaceId={namespaceDraftId}
           editingNodeData={addNodeVisible ? null : state.editingNodeData}
           filterDefinitions={definitions}
@@ -754,6 +756,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           showChartThemeMode={true}
           filterTemplateTokens={false}
           showSingleValueStyle={false}
@@ -766,6 +769,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onCancel={() => setFilterConfigModalVisible(false)}
           layoutItems={convertNodesToLayoutItems(state.graphInstance)}
           dataSources={dataSourceManager.dataSources}
+          canRepairOptionSource={hasPermission(['EditChart'])}
         />
       </div>
     );
