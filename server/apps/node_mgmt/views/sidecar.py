@@ -5,12 +5,10 @@ from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import node_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import PackageVersion, SidecarEnv
@@ -421,7 +419,13 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             - 下载地址包含临时 token，防止未授权下载
 
         Usage:
-            if [ "$(id -u)" -eq 0 ]; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash; elif command -v sudo >/dev/null 2>&1; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash; else echo "Error: root or sudo is required"; fi
+            if [ "$(id -u)" -eq 0 ]; then
+                curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash
+            elif command -v sudo >/dev/null 2>&1; then
+                curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash
+            else
+                echo "Error: root or sudo is required"
+            fi
             iwr http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx -useb | iex
 
         示例:
@@ -547,7 +551,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 "zone_id": "1"
             }
         """
-        token = request.headers.get("X-Installation-Token") or request.query_params.get("token")
+        token = request.query_params.get("token")
         if not token:
             raise BaseAppException("Missing token parameter")
 
@@ -572,7 +576,6 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         config["remaining_usage"] = consumed_token_data["remaining_usage"]
 
         response = JsonResponse(config)
-        response["Cache-Control"] = "no-store"
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
         return response
 
