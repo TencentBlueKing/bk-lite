@@ -7,10 +7,13 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.constants import AlertOperate, AlertStatus, LogAction, LogTargetType, SessionStatus
+from apps.alerts.common.shield_replay import MONITOR_PUSH_SOURCE_ID, has_later_recovery
+from apps.alerts.constants import AlertOperate, AlertStatus, EventAction, LogAction, LogTargetType, SessionStatus
 from apps.alerts.models import AlarmStrategy, Alert, OperatorLog
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.core.logger import alert_logger as logger
+
+REOPEN_OBJECT = "告警处理-Lite Monitor未恢复重新打开"
 
 
 class WindowCalculator:
@@ -179,6 +182,15 @@ class AlertAutoClose:
                     logger.info("[AlertAutoClose] 告警 %s 获取行锁后不再满足自动关闭条件，跳过关闭", alert.id)
                     return False
 
+                unrecovered_event_ids = monitor_unrecovered_event_ids(locked_alert)
+                if unrecovered_event_ids:
+                    self._record_monitor_hold_open(locked_alert, strategy, unrecovered_event_ids)
+                    logger.info(
+                        "[AlertAutoClose] 告警 %s 来自 Lite Monitor 且存在未恢复事件，保持打开",
+                        locked_alert.alert_id,
+                    )
+                    return None
+
                 # 更新告警状态为已关闭
                 locked_alert.updated_at = timezone.now()
                 locked_alert.operate = AlertOperate.CLOSE
@@ -225,7 +237,13 @@ class AlertAutoClose:
         4. 执行自动关闭操作
         """
         logger.info("开始执行告警自动关闭检查")
+        try:
+            self._close_due_alerts()
+            self._reopen_auto_closed_monitor_alerts()
+        finally:
+            record_operator_logs_bulk(self.bulk_logs, batch_size=200)
 
+    def _close_due_alerts(self):
         if not self.alerts.exists():
             logger.info("当前没有需要检查的活跃告警")
             return
@@ -254,10 +272,11 @@ class AlertAutoClose:
                     strategy = self.rule_id_to_strategy[alert.rule_id]
                     # 判断是否应该自动关闭
                     if self.should_auto_close(alert, strategy):
-                        # 执行自动关闭
-                        if self.auto_close_alert(alert, strategy):
+                        # 执行自动关闭。None 表示 Lite Monitor 未恢复，只记变更记录。
+                        outcome = self.auto_close_alert(alert, strategy)
+                        if outcome is True:
                             closed_count += 1
-                        else:
+                        elif outcome is False:
                             error_count += 1
 
                 except Exception as e:
@@ -271,4 +290,105 @@ class AlertAutoClose:
             error_count,
         )
 
-        record_operator_logs_bulk(self.bulk_logs, batch_size=200)
+    def _reopen_auto_closed_monitor_alerts(self):
+        """已经自动关闭、但仍有 Lite Monitor 未恢复事件的告警重新打开。"""
+        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
+
+        candidates = (
+            Alert.objects.filter(
+                status=AlertStatus.AUTO_CLOSE,
+                events__push_source_id=MONITOR_PUSH_SOURCE_ID,
+                events__action=EventAction.CREATED,
+            )
+            .distinct()
+            .order_by("id")
+        )
+        for alert_list in iter_queryset_in_pk_batches(candidates, batch_size=200):
+            for alert in alert_list:
+                event_ids = monitor_unrecovered_event_ids(alert)
+                if not event_ids:
+                    continue
+                self._restore_monitor_alert(alert, event_ids)
+
+    def _record_monitor_hold_open(self, alert, strategy, event_ids):
+        if _reopen_already_recorded(alert, event_ids):
+            return
+        self.bulk_logs.append(_auto_close_log(alert, strategy))
+        self.bulk_logs.append(_reopen_log(alert, event_ids))
+
+    def _restore_monitor_alert(self, alert, event_ids):
+        status = AlertStatus.PENDING if alert.operator else AlertStatus.UNASSIGNED
+        with transaction.atomic():
+            locked = Alert.objects.select_for_update().get(pk=alert.pk)
+            if locked.status != AlertStatus.AUTO_CLOSE:
+                return
+            if not monitor_unrecovered_event_ids(locked):
+                return
+            locked.status = status
+            locked.closed_at = None
+            locked.operate = None
+            locked.save(update_fields=["status", "closed_at", "operate", "updated_at"])
+        if not _reopen_already_recorded(alert, event_ids):
+            self.bulk_logs.append(_reopen_log(alert, event_ids))
+        logger.info("[AlertAutoClose] Lite Monitor 告警 %s 因未恢复事件重新打开为 %s", alert.alert_id, status)
+
+
+def monitor_unrecovered_event_ids(alert):
+    """返回这条告警上尚未被更晚恢复事件覆盖的 Lite Monitor 事件 ID。"""
+    created = alert.events.filter(
+        push_source_id=MONITOR_PUSH_SOURCE_ID,
+        action=EventAction.CREATED,
+    ).only("event_id", "source_id", "push_source_id", "external_id", "team", "start_time", "end_time", "received_at")
+    unrecovered = []
+    for event in created:
+        if not str(event.external_id or "").strip() or not has_later_recovery(event):
+            unrecovered.append(event.event_id)
+    return sorted(unrecovered)
+
+
+def _event_marker(event_ids):
+    shown = list(event_ids)
+    if len(shown) > 5:
+        return "、".join(shown[:5]) + f" 等{len(shown)}条"
+    return "、".join(shown)
+
+
+def _reopen_overview(event_ids):
+    return "告警已重新打开。仅 Lite Monitor（lite-monitor）来源会这样处理：" f"存在尚未恢复的事件[{_event_marker(event_ids)}]，监控侧告警仍未结束，因此不保持自动关闭。"
+
+
+def _reopen_already_recorded(alert, event_ids):
+    marker = f"尚未恢复的事件[{_event_marker(event_ids)}]"
+    overview = (
+        OperatorLog.objects.filter(
+            target_type=LogTargetType.ALERT,
+            target_id=alert.alert_id,
+            operator_object=REOPEN_OBJECT,
+        )
+        .order_by("-id")
+        .values_list("overview", flat=True)
+        .first()
+    )
+    return bool(overview and marker in overview)
+
+
+def _auto_close_log(alert, strategy):
+    return OperatorLog(
+        action=LogAction.MODIFY,
+        target_type=LogTargetType.ALERT,
+        operator="system",
+        operator_object="告警处理-自动关闭",
+        target_id=alert.alert_id,
+        overview=f"告警自动关闭, 告警标题[{alert.title}], 触发策略[{strategy.name}], 超时关闭时间[{strategy.close_minutes}分钟]",
+    )
+
+
+def _reopen_log(alert, event_ids):
+    return OperatorLog(
+        action=LogAction.MODIFY,
+        target_type=LogTargetType.ALERT,
+        operator="system",
+        operator_object=REOPEN_OBJECT,
+        target_id=alert.alert_id,
+        overview=_reopen_overview(event_ids),
+    )

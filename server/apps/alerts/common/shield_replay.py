@@ -78,6 +78,10 @@ def _settle(event):
     Event.objects.filter(pk=event.pk, shield_settled_at__isnull=True).update(shield_settled_at=timezone.now())
 
 
+def has_later_recovery(event):
+    return _has_later_recovery(event)
+
+
 def _has_later_recovery(event):
     created_key = build_recovery_match_key(event)
     if created_key is None:

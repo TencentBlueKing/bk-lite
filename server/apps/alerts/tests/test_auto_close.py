@@ -8,10 +8,12 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.alerts.common.auto_close import AlertAutoClose, WindowCalculator
-from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.common.auto_close import REOPEN_OBJECT, AlertAutoClose, WindowCalculator
+from apps.alerts.constants.constants import AlertStatus, EventAction, EventStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
-from apps.alerts.models.models import Alert
+from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.models.models import Alert, Event
+from apps.alerts.models.operator_log import OperatorLog
 
 # --------------------------------------------------------------------------
 # WindowCalculator.parse_time_str
@@ -123,6 +125,93 @@ def test_auto_close_main_closes_overdue():
     _make_alert(strategy, last_event_minutes_ago=120)
     AlertAutoClose().main()
     assert Alert.objects.get(alert_id="A1").status == AlertStatus.AUTO_CLOSE
+
+
+def _monitor_event(source, event_id, external_id, when, action=EventAction.CREATED):
+    return Event.objects.create(
+        source=source,
+        push_source_id="lite-monitor",
+        raw_data={"title": "t"},
+        title="t",
+        level="1",
+        start_time=when,
+        end_time=when if action == EventAction.RECOVERY else None,
+        event_id=event_id,
+        external_id=external_id,
+        action=action,
+        status=EventStatus.RECEIVED,
+        team=[1],
+    )
+
+
+@pytest.mark.django_db
+def test_lite_monitor_without_recovery_stays_open_and_records_both_logs():
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.PROCESSING)
+    source = AlertSource.objects.create(name="NATS", source_id="nats", source_type="nats", secret="x")
+    created_at = timezone.now() - timedelta(hours=3)
+    event = _monitor_event(source, "E-created", "monitor-9", created_at)
+    alert.events.add(event)
+
+    AlertAutoClose().main()
+
+    alert.refresh_from_db()
+    overviews = list(OperatorLog.objects.filter(target_id=alert.alert_id).order_by("id").values_list("overview", flat=True))
+    assert alert.status == AlertStatus.PROCESSING
+    assert alert.closed_at is None
+    assert len(overviews) == 2
+    assert overviews[0].startswith("告警自动关闭")
+    assert "Lite Monitor（lite-monitor）" in overviews[1]
+    assert "E-created" in overviews[1]
+    assert OperatorLog.objects.filter(target_id=alert.alert_id, operator_object=REOPEN_OBJECT).count() == 1
+
+    AlertAutoClose().main()
+    assert OperatorLog.objects.filter(target_id=alert.alert_id).count() == 2
+
+
+@pytest.mark.django_db
+def test_lite_monitor_with_later_recovery_still_auto_closes():
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120)
+    source = AlertSource.objects.create(name="NATS", source_id="nats", source_type="nats", secret="x")
+    created_at = timezone.now() - timedelta(hours=3)
+    alert.events.add(_monitor_event(source, "E-created", "monitor-9", created_at))
+    alert.events.add(_monitor_event(source, "E-recovery", "monitor-9", timezone.now() - timedelta(hours=1), EventAction.RECOVERY))
+
+    AlertAutoClose().main()
+
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.AUTO_CLOSE
+    assert OperatorLog.objects.filter(target_id=alert.alert_id, operator_object=REOPEN_OBJECT).exists() is False
+
+
+@pytest.mark.django_db
+def test_already_auto_closed_lite_monitor_alert_reopens():
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.AUTO_CLOSE)
+    alert.operator = ["alice"]
+    alert.closed_at = timezone.now() - timedelta(hours=1)
+    alert.save(update_fields=["operator", "closed_at"])
+    OperatorLog.objects.create(
+        action="modify",
+        target_type="alert",
+        operator="system",
+        operator_object="告警处理-自动关闭",
+        target_id=alert.alert_id,
+        overview="告警自动关闭, 告警标题[t], 触发策略[策略], 超时关闭时间[60]分钟",
+    )
+    source = AlertSource.objects.create(name="NATS", source_id="nats", source_type="nats", secret="x")
+    alert.events.add(_monitor_event(source, "E-created", "monitor-9", timezone.now() - timedelta(hours=3)))
+
+    AlertAutoClose().main()
+
+    alert.refresh_from_db()
+    reopen = OperatorLog.objects.get(target_id=alert.alert_id, operator_object=REOPEN_OBJECT)
+    assert alert.status == AlertStatus.PENDING
+    assert alert.closed_at is None
+    assert "E-created" in reopen.overview
+    assert "Lite Monitor（lite-monitor）" in reopen.overview
+    assert OperatorLog.objects.filter(target_id=alert.alert_id, operator_object="告警处理-自动关闭").count() == 1
 
 
 @pytest.mark.django_db
