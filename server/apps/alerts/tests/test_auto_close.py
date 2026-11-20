@@ -43,14 +43,14 @@ def _make_strategy(close_minutes=60, auto_close=True, is_active=True):
     )
 
 
-def _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.PROCESSING):
+def _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.PROCESSING, alert_id="A1", fingerprint="fp"):
     now = timezone.now()
     return Alert.objects.create(
-        alert_id="A1",
+        alert_id=alert_id,
         level="0",
         title="t",
         content="c",
-        fingerprint="fp",
+        fingerprint=fingerprint,
         status=status,
         rule_id=str(strategy.id),
         first_event_time=now - timedelta(minutes=last_event_minutes_ago),
@@ -222,6 +222,65 @@ def test_auto_closed_lite_monitor_alert_older_than_a_day_stays_closed():
     alert.save(update_fields=["closed_at"])
     source = AlertSource.objects.create(name="NATS", source_id="nats-old", source_type="nats", secret="x")
     alert.events.add(_monitor_event(source, "E-old", "monitor-old", timezone.now() - timedelta(hours=50)))
+
+    AlertAutoClose().main()
+
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.AUTO_CLOSE
+    assert OperatorLog.objects.filter(target_id=alert.alert_id, operator_object=REOPEN_OBJECT).exists() is False
+
+
+@pytest.mark.django_db
+def test_recovered_auto_close_does_not_block_newer_reopen(monkeypatch, settings):
+    from django.core.cache import cache
+
+    from apps.alerts.common import auto_close
+
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "auto-close-reopen-cursor",
+        }
+    }
+    cache.close()
+    cache.delete(auto_close.REOPEN_CURSOR_KEY)
+    monkeypatch.setattr(auto_close, "REOPEN_BATCH_SIZE", 1)
+    strategy = _make_strategy(close_minutes=60)
+    source = AlertSource.objects.create(name="NATS", source_id="nats-cursor", source_type="nats", secret="x")
+    recovered = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.AUTO_CLOSE, alert_id="A-old", fingerprint="fp-old")
+    newer = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.AUTO_CLOSE, alert_id="A-new", fingerprint="fp-new")
+    closed_at = timezone.now() - timedelta(hours=1)
+    recovered.closed_at = closed_at
+    newer.closed_at = closed_at
+    recovered.save()
+    newer.save()
+    created_at = timezone.now() - timedelta(hours=3)
+    recovered.events.add(_monitor_event(source, "E-old", "monitor-old", created_at))
+    recovered.events.add(_monitor_event(source, "E-old-recovery", "monitor-old", timezone.now() - timedelta(hours=1), EventAction.RECOVERY))
+    newer.events.add(_monitor_event(source, "E-new", "monitor-new", created_at))
+
+    AlertAutoClose().main()
+    newer.refresh_from_db()
+    assert newer.status == AlertStatus.AUTO_CLOSE
+
+    AlertAutoClose().main()
+    newer.refresh_from_db()
+    assert newer.status == AlertStatus.UNASSIGNED
+    assert newer.closed_at is None
+
+
+@pytest.mark.django_db
+def test_reopen_stops_when_recovery_arrives_before_lock(monkeypatch):
+    from apps.alerts.common import auto_close
+
+    strategy = _make_strategy(close_minutes=60)
+    alert = _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.AUTO_CLOSE)
+    alert.closed_at = timezone.now() - timedelta(hours=1)
+    alert.save(update_fields=["closed_at"])
+    source = AlertSource.objects.create(name="NATS", source_id="nats-race", source_type="nats", secret="x")
+    alert.events.add(_monitor_event(source, "E-race", "monitor-race", timezone.now() - timedelta(hours=3)))
+    answers = iter([["E-race"], []])
+    monkeypatch.setattr(auto_close, "monitor_unrecovered_event_ids", lambda alert: next(answers))
 
     AlertAutoClose().main()
 

@@ -21,6 +21,7 @@ MONITOR_PUSH_SOURCE_ID = "lite-monitor"
 BATCH_SIZE = 200
 REPLAY_LIMIT = 20
 CURSOR_KEY = "alerts:shield_replay:cursor"
+SHIELD_SET_KEY = "alerts:shield_replay:shield_set"
 CURSOR_TTL_SECONDS = 7 * 24 * 60 * 60
 _REPLAY_PREFIX = "shield-replay:"
 
@@ -29,10 +30,12 @@ def replay_settled_monitor_shields():
     """了结或重放一批仍处于屏蔽状态的监控源事件。
 
     从上次停下的 id 继续往后扫。还在窗口里的事件本轮跳过，但游标照样前进，
-    避免它们一直占住队头。真正重新入库的条数每轮有上限。
+    避免它们一直占住队头。生效中的屏蔽一变，就从最老的事件重新扫。
+    真正重新入库的条数每轮有上限。
     """
-    events, cursor = _load_batch()
-    shields = list(AlertShield.objects.filter(is_active=True)) if events else []
+    shields = list(AlertShield.objects.filter(is_active=True).order_by("id"))
+    reset = _shield_set_changed(shields)
+    events, cursor = _load_batch(reset=reset)
     settled = 0
     replayed = 0
     scanned = 0
@@ -77,8 +80,30 @@ def _unsettled_queryset():
     )
 
 
-def _load_batch():
-    cursor = cache.get(CURSOR_KEY) or 0
+def _shield_set_changed(shields):
+    """生效中的屏蔽和上次不同时，调用方从最老的事件重新扫。"""
+    token = _in_effect_token(shields)
+    changed = cache.get(SHIELD_SET_KEY) != token
+    cache.set(SHIELD_SET_KEY, token, CURSOR_TTL_SECONDS)
+    return changed
+
+
+def _in_effect_token(shields):
+    now = timezone.now()
+    in_effect = []
+    for shield in shields:
+        checker = TimeRangeChecker(
+            shield.suppression_time,
+            now,
+            resolve_display_timezone([getattr(shield, "created_by", None)]),
+        )
+        if checker.is_in_range():
+            in_effect.append(str(shield.pk))
+    return ",".join(in_effect)
+
+
+def _load_batch(reset=False):
+    cursor = 0 if reset else cache.get(CURSOR_KEY) or 0
     try:
         cursor = int(cursor)
     except (TypeError, ValueError):

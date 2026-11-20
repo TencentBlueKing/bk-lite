@@ -187,6 +187,41 @@ def test_waiting_event_does_not_block_later_replay(levels, source, monkeypatch, 
 
 
 @pytest.mark.django_db
+def test_ended_shield_replays_event_already_behind_cursor(levels, source, monkeypatch, settings):
+    from django.core.cache import cache
+
+    from apps.alerts.common import shield_replay
+
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "shield-replay-reset",
+        }
+    }
+    cache.close()
+    cache.delete(shield_replay.CURSOR_KEY)
+    cache.delete(shield_replay.SHIELD_SET_KEY)
+    monkeypatch.setattr(shield_replay, "BATCH_SIZE", 1)
+    shield = _shield("open", active_now=True)
+    behind = _event(source, "E-behind", external_id="alert-behind")
+    _event(source, "E-later", external_id="alert-later")
+
+    first = replay_settled_monitor_shields()
+    cursor_after_wait = cache.get(shield_replay.CURSOR_KEY)
+    shield.suppression_time = {"type": "one", "start_time": "2000-01-01 00:00:00", "end_time": "2000-01-01 01:00:00"}
+    shield.save(update_fields=["suppression_time"])
+    second = replay_settled_monitor_shields()
+
+    behind.refresh_from_db()
+    assert first["replayed"] == 0
+    assert cursor_after_wait == behind.id
+    assert second["replayed"] == 1
+    assert behind.shield_settled_at is not None
+    assert Event.objects.filter(external_id="alert-behind", status=EventStatus.RECEIVED).exists()
+    assert Event.objects.filter(external_id="alert-later", status=EventStatus.RECEIVED).exists() is False
+
+
+@pytest.mark.django_db
 def test_other_push_sources_are_ignored(levels, source):
     _shield("ended", active_now=False)
     original = _event(source, "E-k8s", push_source_id="k8s")

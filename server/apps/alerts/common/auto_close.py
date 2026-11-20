@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -16,6 +17,8 @@ from apps.core.logger import alert_logger as logger
 REOPEN_OBJECT = "告警处理-Lite Monitor未恢复重新打开"
 REOPEN_LOOKBACK = timedelta(hours=24)
 REOPEN_BATCH_SIZE = 50
+REOPEN_CURSOR_KEY = "alerts:auto_close:reopen_cursor"
+REOPEN_CURSOR_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 class WindowCalculator:
@@ -296,22 +299,25 @@ class AlertAutoClose:
     def _reopen_auto_closed_monitor_alerts(self):
         """最近自动关闭、但仍有 Lite Monitor 未恢复事件的告警重新打开。"""
         cutoff = timezone.now() - REOPEN_LOOKBACK
-        candidate_ids = list(
-            Alert.objects.filter(
-                status=AlertStatus.AUTO_CLOSE,
-                closed_at__gte=cutoff,
-                events__push_source_id=MONITOR_PUSH_SOURCE_ID,
-                events__action=EventAction.CREATED,
-            )
-            .order_by("id")
-            .values_list("id", flat=True)
-            .distinct()[:REOPEN_BATCH_SIZE]
+        candidates = Alert.objects.filter(
+            status=AlertStatus.AUTO_CLOSE,
+            closed_at__gte=cutoff,
+            events__push_source_id=MONITOR_PUSH_SOURCE_ID,
+            events__action=EventAction.CREATED,
         )
-        for alert in Alert.objects.filter(id__in=candidate_ids):
+        cursor = _reopen_cursor()
+        candidate_ids = _reopen_candidate_ids(candidates, cursor)
+        wrapped = not candidate_ids and cursor
+        if wrapped:
+            candidate_ids = _reopen_candidate_ids(candidates, 0)
+        processed_until = 0 if wrapped else cursor
+        for alert in Alert.objects.filter(id__in=candidate_ids).order_by("id"):
+            processed_until = alert.id
             event_ids = monitor_unrecovered_event_ids(alert)
             if not event_ids:
                 continue
             self._restore_monitor_alert(alert, event_ids)
+        cache.set(REOPEN_CURSOR_KEY, processed_until, REOPEN_CURSOR_TTL_SECONDS)
 
     def _record_monitor_hold_open(self, alert, strategy, event_ids):
         if _reopen_already_recorded(alert, event_ids):
@@ -325,6 +331,9 @@ class AlertAutoClose:
             locked = Alert.objects.select_for_update().get(pk=alert.pk)
             if locked.status != AlertStatus.AUTO_CLOSE:
                 return
+            event_ids = monitor_unrecovered_event_ids(locked)
+            if not event_ids:
+                return
             locked.status = status
             locked.closed_at = None
             locked.operate = None
@@ -332,6 +341,18 @@ class AlertAutoClose:
         if not _reopen_already_recorded(alert, event_ids):
             self.bulk_logs.append(_reopen_log(alert, event_ids))
         logger.info("[AlertAutoClose] Lite Monitor 告警 %s 因未恢复事件重新打开为 %s", alert.alert_id, status)
+
+
+def _reopen_cursor():
+    cursor = cache.get(REOPEN_CURSOR_KEY) or 0
+    try:
+        return int(cursor)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _reopen_candidate_ids(candidates, cursor):
+    return list(candidates.filter(id__gt=cursor).order_by("id").values_list("id", flat=True).distinct()[:REOPEN_BATCH_SIZE])
 
 
 def monitor_unrecovered_event_ids(alert):
