@@ -2064,8 +2064,14 @@
   },
   "paramInput": {
     "title": "Parameter input settings",
+    "subtitle": "Choose how this parameter is entered and what options it offers",
     "controlType": "Control type",
     "multiple": "Multiple",
+    "sections": {
+      "control": "Control",
+      "options": "Options",
+      "interaction": "Interaction"
+    },
     "multipleDisabledByComponentSwitch": "Widget switch is enabled, so multiple selection cannot be enabled at the same time",
     "control": {
       "input": "Input",
@@ -2089,7 +2095,7 @@
       "static": "Custom options",
       "dynamic": "Data source options"
     },
-    "editButton": "Configure input",
+    "editButton": "Configure options",
     "conditionFields": {
       "static": "Custom fields",
       "dynamic": "Data source",
@@ -2113,6 +2119,12 @@
       "options": "Options",
       "label": "Label",
       "value": "Value",
+      "identifier": "Option ID",
+      "displayName": "Display name",
+      "action": "Action",
+      "drag": "Drag to reorder",
+      "remove": "Remove option",
+      "emptyList": "No options",
       "add": "Add option",
       "emptyError": "Fill in at least one complete option",
       "duplicateValueError": "Option values must be unique"

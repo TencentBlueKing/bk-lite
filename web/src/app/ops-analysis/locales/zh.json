@@ -2064,8 +2064,14 @@
   },
   "paramInput": {
     "title": "参数输入配置",
+    "subtitle": "配置组件的参数输入方式与选项内容",
     "controlType": "控件类型",
     "multiple": "多选",
+    "sections": {
+      "control": "控件设置",
+      "options": "选项设置",
+      "interaction": "交互设置"
+    },
     "multipleDisabledByComponentSwitch": "已启用组件内切换，无法同时开启多选",
     "control": {
       "input": "输入框",
@@ -2089,7 +2095,7 @@
       "static": "自定义选项",
       "dynamic": "数据源选项"
     },
-    "editButton": "配置输入方式",
+    "editButton": "配置选项",
     "conditionFields": {
       "static": "自定义字段",
       "dynamic": "数据源",
@@ -2113,7 +2119,13 @@
       "options": "选项配置",
       "label": "显示文本",
       "value": "选项值",
-      "add": "新增选项",
+      "identifier": "选项标识",
+      "displayName": "显示名称",
+      "action": "操作",
+      "drag": "拖拽排序",
+      "remove": "删除选项",
+      "emptyList": "暂无选项",
+      "add": "添加选项",
       "emptyError": "请至少填写一个完整选项",
       "duplicateValueError": "选项值不能重复"
     },
