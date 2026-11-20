@@ -119,7 +119,7 @@ def test_sample_yaml_parses_and_has_no_health_kpi():
     assert host_filter["type"] == "string"
     assert host_filter["inputConfig"]["multiple"] is True
     assert host_filter["inputConfig"]["picker"] == "table"
-    assert host_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_host_instance_list"
+    assert host_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "监控主机列表::monitor/get_host_instance_list"
 
     for item in widgets:
         bindings = item["valueConfig"]["filterBindings"]

@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 SOURCE_API = Path(__file__).parents[1] / "support-files" / "source_api.json"
 
 
@@ -27,7 +26,7 @@ def test_cmdb_region_resource_overview_datasource_contract():
     assert param["inputConfig"]["control"] == "select"
     assert param["inputConfig"]["optionsSource"] == {
         "type": "dynamic",
-        "sourceRef": {"type": "rest_api", "value": "cmdb/get_region_options"},
+        "sourceRef": {"type": "rest_api", "value": "CMDB 地区列表::cmdb/get_region_options"},
         "valueField": "value",
         "labelField": "label",
     }

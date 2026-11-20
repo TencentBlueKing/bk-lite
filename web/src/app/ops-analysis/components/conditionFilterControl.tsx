@@ -8,7 +8,7 @@ import type {
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import ConditionFilterInput from '@/app/ops-analysis/components/conditionFilterInput';
 import { conditionFieldFromSourceRow, presentConditionField } from '@/app/ops-analysis/utils/conditionFieldSource';
-import { extractDataSourceItems, resolveDynamicSourceId } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { classifyOptionSource, extractDataSourceItems } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   parseConditionGroup,
   reconcileConditionRows,
@@ -19,8 +19,7 @@ import {
   stableStringify,
   type ResolvedOptionsQuery,
 } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
-
-const sourceIds = new Map<string, number>();
+import { useTranslation } from '@/utils/i18n';
 
 const staticFields = (
   source: ConditionFieldSource | undefined,
@@ -35,6 +34,8 @@ interface ConditionFilterControlProps {
   resolvedFieldQuery?: ResolvedOptionsQuery;
   fieldQuerySignature?: string;
   disabled?: boolean;
+  /** 当前用户能否打开组件编辑器修好选项来源。文案不授予保存权限。 */
+  canRepairOptionSource?: boolean;
 }
 
 const ConditionFilterControl: React.FC<ConditionFilterControlProps> = ({
@@ -45,7 +46,9 @@ const ConditionFilterControl: React.FC<ConditionFilterControlProps> = ({
   resolvedFieldQuery,
   fieldQuerySignature,
   disabled = false,
+  canRepairOptionSource = false,
 }) => {
+  const { t } = useTranslation();
   const api = useDataSourceApi();
   // 这个 hook 每次渲染都返回新对象。放进依赖后，属性加载的 setState 会立刻再发一次请求。
   const apiRef = useRef(api);
@@ -57,17 +60,25 @@ const ConditionFilterControl: React.FC<ConditionFilterControlProps> = ({
     ? [
       'dynamic',
       fieldQuerySignature || stableStringify(dynamicResolution),
-      source.sourceRef?.value || source.sourceId || '',
+      String(source.sourceId ?? ''),
+      source.builtinKey || '',
+      source.sourceRef?.value || '',
       source.valueField || '',
       source.labelField || '',
     ].join('\0')
     : '';
   // 范围一切换，旧的字段列表就不能再拿来校验。否则重开抽屉时会在属性返回前把已存条件清掉。
-  const [loadedFields, setLoadedFields] = useState<{ scope: string; fields: ConditionFieldOption[] }>({
+  const [loadedFields, setLoadedFields] = useState<{
+    scope: string;
+    fields: ConditionFieldOption[];
+    unresolved?: 'ambiguous' | 'missing' | 'forbidden';
+  }>({
     scope: '',
     fields: [],
   });
-  const fieldsReady = !source || source.kind === 'static' || loadedFields.scope === fieldScope;
+  const fieldsReady = !source || source.kind === 'static' || (
+    loadedFields.scope === fieldScope && !loadedFields.unresolved
+  );
   const baseFields = source?.kind === 'static' || !source
     ? staticFields(source)
     : (fieldsReady ? loadedFields.fields : []);
@@ -86,22 +97,29 @@ const ConditionFilterControl: React.FC<ConditionFilterControlProps> = ({
     let cancelled = false;
     void (async () => {
       try {
-        const sourceId = source.sourceRef
-          ? await resolveSourceId(apiRef.current, source.sourceRef.value)
-          : source.sourceId;
+        const resolved = await resolveConditionSource(apiRef.current, source);
         if (cancelled) return;
-        if (!sourceId) {
-          setLoadedFields({ scope, fields: [] });
+        if (resolved.status !== 'resolved') {
+          setLoadedFields({ scope, fields: [], unresolved: resolved.status });
           return;
         }
-        const { data } = await apiRef.current.getSourceDataByApiId(sourceId, resolution.params);
+        const sourceId = resolved.id;
+        const { data } = await apiRef.current.getSourceDataByApiId(sourceId, resolution.params, {
+          suppressErrorNotification: true,
+        });
         if (cancelled) return;
         const loaded = extractDataSourceItems(data)
           .map((item) => conditionFieldFromSourceRow(item, valueField, labelField))
           .filter((item): item is ConditionFieldOption => Boolean(item));
         setLoadedFields({ scope, fields: loaded });
-      } catch {
-        if (!cancelled) setLoadedFields({ scope, fields: [] });
+      } catch (error) {
+        if (cancelled) return;
+        const status = readHttpStatus(error);
+        setLoadedFields({
+          scope,
+          fields: [],
+          unresolved: status === 403 ? 'forbidden' : 'missing',
+        });
       }
     })();
     return () => {
@@ -117,31 +135,69 @@ const ConditionFilterControl: React.FC<ConditionFilterControlProps> = ({
     if (JSON.stringify(next) !== JSON.stringify(group)) onChange(next);
   }, [fields, fieldsReady, onChange, value]);
 
+  const unresolved = loadedFields.scope === fieldScope ? loadedFields.unresolved : undefined;
+  const hintKey = unresolved === 'ambiguous'
+    ? (canRepairOptionSource
+      ? 'paramInput.dynamic.optionSourceAmbiguous'
+      : 'paramInput.dynamic.optionSourceAmbiguousReadonly')
+    : unresolved === 'forbidden'
+      ? 'paramInput.dynamic.optionSourceForbidden'
+      : unresolved === 'missing'
+        ? 'paramInput.dynamic.optionSourceMissing'
+        : '';
+
   return (
-    <ConditionFilterInput
-      value={value}
-      onChange={onChange}
-      fields={fields}
-      disabled={disabled}
-    />
+    <div>
+      <ConditionFilterInput
+        value={value}
+        onChange={onChange}
+        fields={fields}
+        disabled={disabled || Boolean(unresolved)}
+      />
+      {hintKey ? (
+        <div className="mt-1 text-xs text-[var(--color-text-2)]">{t(hintKey)}</div>
+      ) : null}
+    </div>
   );
 };
 
-const resolveSourceId = async (
-  api: ReturnType<typeof useDataSourceApi>,
-  restApi: string,
-) => {
-  const cached = sourceIds.get(restApi);
-  if (cached) return cached;
+const readHttpStatus = (error: unknown): number | undefined => {
+  if (!error || typeof error !== 'object') return undefined;
+  if ('status' in error && typeof (error as { status?: unknown }).status === 'number') {
+    return (error as { status: number }).status;
+  }
+  const response = (error as { response?: { status?: unknown } }).response;
+  if (response && typeof response.status === 'number') return response.status;
+  return undefined;
+};
+
+const resolveConditionSource = async (
+  api: ReturnType<typeof useDataSourceApi> & {
+    resolveOptionSource?: (body: { sourceId?: number; builtinKey?: string; sourceRef?: string }) => Promise<{ status?: string; id?: number }>;
+  },
+  source: ConditionFieldSource,
+): Promise<{ status: 'resolved'; id: number } | { status: 'ambiguous' | 'missing' | 'forbidden' }> => {
+  if (api.resolveOptionSource) {
+    const identity = await api.resolveOptionSource({
+      sourceId: typeof source.sourceId === 'number' ? source.sourceId : undefined,
+      builtinKey: source.builtinKey,
+      sourceRef: source.sourceRef?.value,
+    });
+    if (identity.status === 'resolved' && typeof identity.id === 'number') {
+      return { status: 'resolved', id: identity.id };
+    }
+    if (identity.status === 'ambiguous' || identity.status === 'forbidden') return { status: identity.status };
+    return { status: 'missing' };
+  }
+  if (typeof source.sourceId === 'number') return { status: 'resolved', id: source.sourceId };
   const response = await api.getDataSourceList({ page_size: -1 });
-  const items = extractDataSourceItems(response) as Array<{ id?: number; name?: string; rest_api?: string }>;
-  items.forEach((item) => {
-    if (typeof item.id === 'number' && item.rest_api) sourceIds.set(item.rest_api, item.id);
-  });
-  return resolveDynamicSourceId(
-    { type: 'dynamic', sourceRef: { type: 'rest_api', value: restApi }, valueField: 'id', labelField: 'name' },
-    items.filter((item): item is { id: number; name?: string; rest_api?: string } => typeof item.id === 'number'),
+  const items = extractDataSourceItems(response).filter(
+    (item): item is { id: number; name?: string; rest_api?: string; build_in_key?: string | null } =>
+      typeof (item as { id?: unknown }).id === 'number',
   );
+  const classified = classifyOptionSource(source, items);
+  if (classified.status === 'resolved') return classified;
+  return classified.status === 'ambiguous' ? { status: 'ambiguous' } : { status: 'missing' };
 };
 
 export default ConditionFilterControl;

@@ -275,6 +275,9 @@ describe('DataSourceParamsConfig options query', () => {
 
     const readZone = () => JSON.parse(screen.getByTestId('form-params').textContent || '{}') as Record<string, unknown>;
     expect(readZone().zone_id).toBe('zone-stale');
+    await waitFor(() => {
+      expect(getSourceDataByApiId).toHaveBeenCalled();
+    });
 
     finish({ data: [], warnings: [] });
     await waitFor(() => {
