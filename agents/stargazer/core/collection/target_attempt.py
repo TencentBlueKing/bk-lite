@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+from core.collection.access_check import credential_is_present, log_access_conclusion, preflight_rows
 from core.collection.contracts import (
     AccessProbe,
     CollectionPlugin,
@@ -91,6 +92,8 @@ class TargetAttemptRunner:
         if preflight.status == PreflightStatus.UNREACHABLE:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
+            if request.access_check:
+                return self._access_check_unreachable(request, target, error_code, preflight.failed_stage)
             return TargetCollectionResult(
                 target=target,
                 status="unreachable",
@@ -109,6 +112,15 @@ class TargetAttemptRunner:
                 failed_stage=FailureStage.CREDENTIAL,
             )
         if not credentials:
+            if request.access_check:
+                return TargetCollectionResult(
+                    target=target,
+                    status="failed",
+                    attempts=0,
+                    error_code="no_matching_credential",
+                    failed_stage=FailureStage.CREDENTIAL,
+                    access_rows=preflight_rows(target, (), ""),
+                )
             if not local_node:
                 return await self._no_credential_result(request, target)
             credentials = ({},)
@@ -143,7 +155,25 @@ class TargetAttemptRunner:
             return None
         return await resolver(target)
 
+    def _access_check_unreachable(self, request: CollectionRequest, target: str, error_code: str, failed_stage):
+        matched = self._credential_policy.matching_credentials(request, target)
+        present = tuple(credential for credential in matched if credential_is_present(credential))
+        rows = preflight_rows(target, present, error_code)
+        for row in rows:
+            log_access_conclusion(row.target, row.credential_id, row.conclusion, row.detail_code)
+        return TargetCollectionResult(
+            target=target,
+            status="unreachable",
+            attempts=0,
+            error_code=error_code,
+            failed_stage=failed_stage,
+            access_rows=rows,
+        )
+
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
+        if request.access_check:
+            matched = self._credential_policy.matching_credentials(request, target)
+            return tuple(credential for credential in matched if credential_is_present(credential))
         try:
             return await self._credential_policy.eligible_credentials(request, target)
         except Exception as exc:  # noqa: BLE001 - 凭据状态失败隔离为单目标

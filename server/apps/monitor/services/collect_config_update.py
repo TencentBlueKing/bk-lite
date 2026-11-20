@@ -133,7 +133,7 @@ def _flatten_parsed_content(parsed) -> dict:
             context["ip"] = ip
         if port and not context.get("port"):
             context["port"] = port
-    for key in ("interval", "timeout"):
+    for key in ("interval", "timeout", "response_timeout"):
         if key in context:
             context[key] = _normalize_duration(context[key])
     return context

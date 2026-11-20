@@ -1798,6 +1798,7 @@
       "groupIm": "即时通讯",
       "groupImDesc": "企微 / 钉钉 / 飞书 / 公众号（回调不校组织）",
       "accountAssociation": "账号关联",
+      "accountAssociationTooltip": "收到消息时按该账号关联的匹配规则，以发送人的 IM 账号确定对应的平台用户。",
       "accountAssociationPlaceholder": "选择账号关联",
       "manageAccountAssociation": "管理账号关联",
       "fields": {

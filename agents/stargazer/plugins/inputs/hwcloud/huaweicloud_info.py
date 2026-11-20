@@ -6,9 +6,8 @@
 """
 import asyncio
 
-from sanic.log import logger
-
 from common.cmp.driver import CMPDriver
+from sanic.log import logger
 
 
 class HuaweiCloudManager:
@@ -97,108 +96,122 @@ class HuaweiCloudManager:
         """云硬盘（attr-hwcloud_evs）。驱动 list_disks 已归一化。server_id 为隐藏关联→ECS。"""
         out = []
         for it in self._fetch("list_disks"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "disk_size": self._s(it.get("disk_size")),
-                "disk_type": self._s(it.get("disk_type")),
-                "category": self._s(it.get("category")),
-                "status": self._s(it.get("status")),
-                "charge_type": self._s(it.get("charge_type")),
-                "zone": self._s(it.get("zone")),
-                "region": self._s(it.get("region")) or self.region,
-                "create_time": self._s(it.get("create_time")),
-                "server_id": self._s(it.get("server_id")),  # 隐藏关联字段
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "disk_size": self._s(it.get("disk_size")),
+                    "disk_type": self._s(it.get("disk_type")),
+                    "category": self._s(it.get("category")),
+                    "status": self._s(it.get("status")),
+                    "charge_type": self._s(it.get("charge_type")),
+                    "zone": self._s(it.get("zone")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "create_time": self._s(it.get("create_time")),
+                    "server_id": self._s(it.get("server_id")),  # 隐藏关联字段
+                }
+            )
         return out
 
     def get_obs(self):
         """对象存储桶（attr-hwcloud_obs）。驱动 list_buckets 已归一化。"""
         out = []
         for it in self._fetch("list_buckets"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "bucket_type": self._s(it.get("bucket_type")),
-                "region": self._s(it.get("region")) or self.region,
-                "create_time": self._s(it.get("create_time")),
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "bucket_type": self._s(it.get("bucket_type")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "create_time": self._s(it.get("create_time")),
+                }
+            )
         return out
 
     def get_vpc(self):
         """VPC（attr-hwcloud_vpc）。驱动 list_vpcs 已归一化。"""
         out = []
         for it in self._fetch("list_vpcs"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "status": self._s(it.get("status")),
-                "cidr": self._s(it.get("cidr")),
-                "is_default": self._s(it.get("is_default")),
-                "region": self._s(it.get("region")) or self.region,
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "status": self._s(it.get("status")),
+                    "cidr": self._s(it.get("cidr")),
+                    "is_default": self._s(it.get("is_default")),
+                    "region": self._s(it.get("region")) or self.region,
+                }
+            )
         return out
 
     def get_subnet(self):
         """子网（attr-hwcloud_subnet）。vpc 为隐藏关联→VPC。"""
         out = []
         for it in self._fetch("list_subnets"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "status": self._s(it.get("status")),
-                "cidr": self._s(it.get("cidr")),
-                "gateway": self._s(it.get("gateway")),
-                "zone": self._s(it.get("zone")),
-                "region": self._s(it.get("region")) or self.region,
-                "vpc": self._s(it.get("vpc")),  # 隐藏关联字段（raw vpc_id）
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "status": self._s(it.get("status")),
+                    "cidr": self._s(it.get("cidr")),
+                    "gateway": self._s(it.get("gateway")),
+                    "zone": self._s(it.get("zone")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "vpc": self._s(it.get("vpc")),  # 隐藏关联字段（raw vpc_id）
+                }
+            )
         return out
 
     def get_eip(self):
         """弹性公网IP（attr-hwcloud_eip）。"""
         out = []
         for it in self._fetch("list_eips"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "ip_addr": self._s(it.get("ip_addr")),
-                "status": self._s(it.get("status")),
-                "bandwidth": self._s(it.get("bandwidth")),
-                "charge_type": self._s(it.get("charge_type")),
-                "region": self._s(it.get("region")) or self.region,
-                "create_time": self._s(it.get("create_time")),
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "ip_addr": self._s(it.get("ip_addr")),
+                    "status": self._s(it.get("status")),
+                    "bandwidth": self._s(it.get("bandwidth")),
+                    "charge_type": self._s(it.get("charge_type")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "create_time": self._s(it.get("create_time")),
+                }
+            )
         return out
 
     def get_sg(self):
         """安全组（attr-hwcloud_sg）。vpc 隐藏关联（可能为空）。"""
         out = []
         for it in self._fetch("list_security_groups"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "is_default": self._s(it.get("is_default")),
-                "region": self._s(it.get("region")) or self.region,
-                "vpc": self._s(it.get("vpc")),  # 隐藏关联字段（可能为空）
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "is_default": self._s(it.get("is_default")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "vpc": self._s(it.get("vpc")),  # 隐藏关联字段（可能为空）
+                }
+            )
         return out
 
     def get_elb(self):
         """负载均衡（attr-hwcloud_elb）。vpc 隐藏关联。"""
         out = []
         for it in self._fetch("list_load_balancers"):
-            out.append({
-                "resource_name": self._s(it.get("resource_name")),
-                "resource_id": self._s(it.get("resource_id")),
-                "status": self._s(it.get("status")),
-                "ip_version": self._s(it.get("ip_version")),
-                "ipv6_addr": self._s(it.get("ipv6_addr")),
-                "charge_type": self._s(it.get("charge_type")),
-                "region": self._s(it.get("region")) or self.region,
-                "create_time": self._s(it.get("create_time")),
-                "vpc": self._s(it.get("vpc")),  # 隐藏关联字段
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("resource_name")),
+                    "resource_id": self._s(it.get("resource_id")),
+                    "status": self._s(it.get("status")),
+                    "ip_version": self._s(it.get("ip_version")),
+                    "ipv6_addr": self._s(it.get("ipv6_addr")),
+                    "charge_type": self._s(it.get("charge_type")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "create_time": self._s(it.get("create_time")),
+                    "vpc": self._s(it.get("vpc")),  # 隐藏关联字段
+                }
+            )
         return out
 
     def get_rds(self):
@@ -214,26 +227,28 @@ class HuaweiCloudManager:
             charge = it.get("charge_info") or {}
             priv = it.get("private_ips") or []
             pub = it.get("public_ips") or []
-            out.append({
-                "resource_name": self._s(it.get("name")),
-                "resource_id": self._s(it.get("id")),
-                "ip_addr": self._s(priv[0]) if priv else "",
-                "public_ip": self._s(pub[0]) if pub else "",
-                "status": self._s(it.get("status")),
-                "db_type": self._s(it.get("type")),
-                "engine": self._s(ds.get("type")),
-                "engine_version": self._s(ds.get("version")),
-                "volume_type": self._s(vol.get("type")),
-                "volume_size": self._s(vol.get("size")),
-                "vcpus": self._s(it.get("cpu")),
-                "memory_gb": self._s(it.get("mem")),
-                "port": self._s(it.get("port")),
-                "region": self._s(it.get("region")) or self.region,
-                "charge_type": self._s(charge.get("charge_mode")),
-                "create_time": self._s(it.get("created")),
-                "vpc_id": self._s(it.get("vpc_id")),      # 隐藏字段
-                "subnet_id": self._s(it.get("subnet_id")),  # 隐藏字段
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("name")),
+                    "resource_id": self._s(it.get("id")),
+                    "ip_addr": self._s(priv[0]) if priv else "",
+                    "public_ip": self._s(pub[0]) if pub else "",
+                    "status": self._s(it.get("status")),
+                    "db_type": self._s(it.get("type")),
+                    "engine": self._s(ds.get("type")),
+                    "engine_version": self._s(ds.get("version")),
+                    "volume_type": self._s(vol.get("type")),
+                    "volume_size": self._s(vol.get("size")),
+                    "vcpus": self._s(it.get("cpu")),
+                    "memory_gb": self._s(it.get("mem")),
+                    "port": self._s(it.get("port")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "charge_type": self._s(charge.get("charge_mode")),
+                    "create_time": self._s(it.get("created")),
+                    "vpc_id": self._s(it.get("vpc_id")),  # 隐藏字段
+                    "subnet_id": self._s(it.get("subnet_id")),  # 隐藏字段
+                }
+            )
         return out
 
     def get_dcs(self):
@@ -243,23 +258,39 @@ class HuaweiCloudManager:
         """
         out = []
         for it in self._fetch("list_dcs"):
-            out.append({
-                "resource_name": self._s(it.get("name")),
-                "resource_id": self._s(it.get("instance_id")),
-                "ip_addr": self._s(it.get("ip")),
-                "port": self._s(it.get("port")),
-                "status": self._s(it.get("status")),
-                "engine": self._s(it.get("engine")),
-                "engine_version": self._s(it.get("engine_version")),
-                "capacity_gb": self._s(it.get("capacity")),
-                "cache_mode": self._s(it.get("cache_mode")),
-                "charge_type": self._s(it.get("charging_mode")),
-                "region": self._s(it.get("region")) or self.region,
-                "create_time": self._s(it.get("created_at")),
-                "vpc_id": self._s(it.get("vpc_id")),      # 隐藏字段
-                "subnet_id": self._s(it.get("subnet_id")),  # 隐藏字段
-            })
+            out.append(
+                {
+                    "resource_name": self._s(it.get("name")),
+                    "resource_id": self._s(it.get("instance_id")),
+                    "ip_addr": self._s(it.get("ip")),
+                    "port": self._s(it.get("port")),
+                    "status": self._s(it.get("status")),
+                    "engine": self._s(it.get("engine")),
+                    "engine_version": self._s(it.get("engine_version")),
+                    "capacity_gb": self._s(it.get("capacity")),
+                    "cache_mode": self._s(it.get("cache_mode")),
+                    "charge_type": self._s(it.get("charging_mode")),
+                    "region": self._s(it.get("region")) or self.region,
+                    "create_time": self._s(it.get("created_at")),
+                    "vpc_id": self._s(it.get("vpc_id")),  # 隐藏字段
+                    "subnet_id": self._s(it.get("subnet_id")),  # 隐藏字段
+                }
+            )
         return out
+
+    def _probe_connection(self):
+        return self._driver().get_connection_result()
+
+    async def probe(self):
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        result = await asyncio.to_thread(self._probe_connection)
+        if isinstance(result, dict) and result.get("result"):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        return AccessProbeResult(
+            status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+            error_code="hwcloud_connection_failed",
+        )
 
     def get_platform(self):
         """平台对象（hwcloud）：字段对齐 attr-hwcloud（endpoint）。"""

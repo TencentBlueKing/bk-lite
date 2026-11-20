@@ -1,9 +1,13 @@
+import os
 from dataclasses import dataclass
 
 import requests
 
 from apps.cmdb.constants.constants import STARGAZER_URL
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
+from apps.core.logger import cmdb_logger as logger
+from apps.rpc.exceptions import RpcTimeoutError
+from apps.rpc.stargazer import Stargazer
 
 
 class StargazerCollectTriggerError(RuntimeError):
@@ -18,11 +22,51 @@ class StargazerCollectPermanentError(StargazerCollectTriggerError):
     pass
 
 
+class AccessCheckRemoteError(StargazerCollectTriggerError):
+    def __init__(self, error_code):
+        super().__init__(error_code)
+        self.error_code = error_code
+
+
 @dataclass(frozen=True)
 class TriggerResult:
     status: str
     total: int = 1
     accepted: int = 1
+
+
+def _access_point_item(task) -> dict:
+    access_point = getattr(task, "access_point", None)
+    if isinstance(access_point, list) and access_point and isinstance(access_point[0], dict):
+        return access_point[0]
+    if isinstance(access_point, dict):
+        return access_point
+    return {}
+
+
+def _stargazer_namespace(task) -> str:
+    item = _access_point_item(task)
+    cloud_name = str(item.get("cloud_name") or item.get("cloud_region_name") or "").strip()
+    if not cloud_name:
+        try:
+            from apps.cmdb.services.collect_service import CollectModelService
+
+            _cloud, resolved = CollectModelService._resolve_host_cloud_meta(
+                params=getattr(task, "params", None) or {},
+                access_point=getattr(task, "access_point", None),
+                instances=getattr(task, "instances", None),
+                prefer_access_point=True,
+            )
+            cloud_name = str(resolved or "").strip()
+        except Exception as exc:  # noqa: BLE001 - 解析失败时退回部署配置的实例名
+            logger.error(
+                "event=access_check_namespace_failed task_id=%s failed_stage=namespace error_type=%s",
+                getattr(task, "pk", "-"),
+                type(exc).__name__,
+            )
+            cloud_name = ""
+    instance = cloud_name or os.getenv("STARGAZER_NATS_INSTANCE_ID", "default")
+    return f"{instance}_stargazer"
 
 
 class StargazerCollectTriggerClient:
@@ -81,6 +125,41 @@ class StargazerCollectTriggerClient:
         if status == "skipped":
             return TriggerResult("deduplicated")
         raise StargazerCollectPermanentError(f"Stargazer 未接受采集任务: status={status or 'unknown'}")
+
+    def admit_access_check(self, task, check_id):
+        """NATS 请求 Stargazer access_check，只取接纳结果。"""
+        try:
+            _url, _params, headers = self._build_request(task)
+            body = {key[4:]: value for key, value in headers.items() if key.startswith("cmdb")}
+            body["tags"] = {
+                "instance_id": headers.get("instance_id") or "",
+                "instance_type": headers.get("instance_type") or "",
+                "collect_type": headers.get("collect_type") or "",
+                "config_type": headers.get("config_type") or "",
+            }
+            body["check_id"] = str(check_id)
+            body["collect_task_id"] = str(task.pk)
+            body.pop("run_purpose", None)
+            namespace = _stargazer_namespace(task)
+            response = Stargazer(instance_id=namespace).client.request(
+                "access_check",
+                _timeout=10,
+                **body,
+            )
+        except AccessCheckRemoteError:
+            raise
+        except RpcTimeoutError as exc:
+            raise AccessCheckRemoteError("stargazer_timeout") from exc
+        except Exception as exc:
+            raise AccessCheckRemoteError("stargazer_unavailable") from exc
+        if not isinstance(response, dict) or not response.get("success"):
+            raise AccessCheckRemoteError("stargazer_unavailable")
+        status = str(response.get("status") or "")
+        if status == "accepted":
+            return status
+        if status == "busy":
+            raise AccessCheckRemoteError("check_busy")
+        raise AccessCheckRemoteError("stargazer_unavailable")
 
     def trigger(self, task):
         try:

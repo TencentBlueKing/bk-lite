@@ -14,6 +14,24 @@ def test_format_bool():
     assert ft.format_bool({"field": "active", "value": True}) == "n.active = True"
 
 
+def test_format_bool_false_includes_missing_property():
+    assert ft.format_bool({"field": "auto_collect", "value": False}) == "(n.auto_collect = False OR n.auto_collect IS NULL)"
+
+
+def test_format_bool_params_false_includes_missing_property():
+    collector = ft.ParameterCollector()
+    out = ft.format_bool_params({"field": "auto_collect", "value": False}, collector)
+    assert out == "(n.auto_collect = $bool1 OR n.auto_collect IS NULL)"
+    assert collector.get_params() == {"bool1": False}
+
+
+def test_format_bool_params_true_stays_equality():
+    collector = ft.ParameterCollector()
+    out = ft.format_bool_params({"field": "auto_collect", "value": True}, collector)
+    assert out == "n.auto_collect = $bool1"
+    assert collector.get_params() == {"bool1": True}
+
+
 def test_format_time():
     out = ft.format_time({"field": "ts", "start": "2026-01-01", "end": "2026-01-02"})
     assert "n.ts >= '2026-01-01'" in out and "n.ts <= '2026-01-02'" in out

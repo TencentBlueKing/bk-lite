@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
+  Divider,
   Form,
   Input,
   Popconfirm,
@@ -24,6 +25,7 @@ import {
   DeploymentUnitOutlined,
   InfoCircleOutlined,
   CopyOutlined,
+  ExportOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -89,7 +91,7 @@ function AccountAssociationField({
   value,
   onChange,
   options,
-  refreshing,
+  loading,
   onRefresh,
   onManage,
   placeholder,
@@ -98,11 +100,11 @@ function AccountAssociationField({
   value?: number | null;
   onChange?: (value: number | null) => void;
   options: AccountAssociationOption[];
-  refreshing: boolean;
-  onRefresh: () => void;
-  onManage: () => void;
-  placeholder: string;
-  manageLabel: string;
+  loading?: boolean;
+  onRefresh?: () => void;
+  onManage?: () => void;
+  placeholder?: string;
+  manageLabel?: string;
 }) {
   return (
     <div className="flex items-start gap-2">
@@ -116,9 +118,25 @@ function AccountAssociationField({
           label: `${item.name}（${item.integration_instance_name}）`,
         }))}
         onChange={(next) => onChange?.(next ?? null)}
+        dropdownRender={(menu) => (
+          <>
+            {menu}
+            <Divider style={{ margin: '8px 0' }} />
+            <div className="px-2 pb-1">
+              <Button
+                type="link"
+                size="small"
+                icon={<ExportOutlined />}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onManage}
+              >
+                {manageLabel}
+              </Button>
+            </div>
+          </>
+        )}
       />
-      <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
-      <Button onClick={onManage}>{manageLabel}</Button>
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
     </div>
   );
 }
@@ -1063,10 +1081,14 @@ const SkillChannelPage: React.FC = () => {
             <Form.Item
               name="account_association"
               label={t('skill.channel.accountAssociation', '账号关联')}
+              tooltip={t(
+                'skill.channel.accountAssociationTooltip',
+                '收到消息时按该账号关联的匹配规则，以发送人的 IM 账号确定对应的平台用户。',
+              )}
             >
               <AccountAssociationField
                 options={associationOptions}
-                refreshing={refreshingAssociations}
+                loading={refreshingAssociations}
                 onRefresh={() => void loadAssociations()}
                 onManage={openAssociationManager}
                 placeholder={t('skill.channel.accountAssociationPlaceholder', '选择账号关联')}

@@ -45,6 +45,7 @@ import {
   getChartDataWithGapBreaks,
   getRenderedGapIntervals
 } from '@/app/monitor/utils/gapIntervals';
+import { resolveRocketmqCollectionUpAxis } from '@/app/monitor/utils/rocketmqCollectionUpAxis';
 
 // 折线图默认视觉 token（报告风）：细线 + linear 折角 + 渐变淡填充。
 // 配色用固定分类色板 CHART_COLORS 按序列索引稳定分配（替代随机配色），
@@ -484,7 +485,14 @@ const LineChart: React.FC<LineChartProps> = memo(
       return [yMin, yMax];
     }, [data, chartAreaKeys, threshold]);
 
-    const niceYAxis = useMemo(() => buildNiceAxis(yAxisDomain, yAxisTickCount), [yAxisDomain, yAxisTickCount]);
+    const rocketmqUpAxis = useMemo(
+      () => resolveRocketmqCollectionUpAxis(metric?.name),
+      [metric?.name]
+    );
+    const niceYAxis = useMemo(
+      () => rocketmqUpAxis ?? buildNiceAxis(yAxisDomain, yAxisTickCount),
+      [rocketmqUpAxis, yAxisDomain, yAxisTickCount]
+    );
 
     const leftAxisWidth = useMemo(() => {
       if (typeof leftAxisWidthOverride === 'number') {
@@ -818,7 +826,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   tickLine={false}
                   tick={renderYAxisTick}
                   domain={niceYAxis.domain}
-                  allowDataOverflow={false}
+                  allowDataOverflow={Boolean(rocketmqUpAxis)}
                   ticks={niceYAxis.ticks}
                   interval={0}
                   width={leftAxisWidth}

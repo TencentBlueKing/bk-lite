@@ -34,6 +34,47 @@ class HypervInfo:
             content = content.replace("{{bk_host_innerip}}", str(self.host))
         return content
 
+    async def probe(self):
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+        from tasks.collectors.host_collector import classify_ansible_failure, extract_ansible_failure_summary
+
+        result = await ansible_adhoc(
+            ansible_node_id=self.node_id,
+            host_credentials=[
+                {
+                    "host": self.host,
+                    "user": self.username,
+                    "password": self.password,
+                    "connection": "winrm",
+                    "port": self.port,
+                    "winrm_scheme": self.params.get("winrm_scheme") or "http",
+                    "winrm_transport": self.params.get("winrm_transport") or "ntlm",
+                    "winrm_cert_validation": str(self.params.get("winrm_cert_validation") or "").lower() in {"1", "true", "yes"},
+                }
+            ],
+            module="win_shell",
+            module_args="Write-Output ok",
+            execute_timeout=self.execute_timeout,
+        )
+        if result.get("success"):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        summary = extract_ansible_failure_summary(result, self.host)
+        kind = classify_ansible_failure(summary)
+        if kind == "authentication_failed":
+            return AccessProbeResult(
+                status=AccessProbeStatus.AUTH_FAILED,
+                error_code="authentication_failed",
+            )
+        if kind == "target_unreachable":
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code="target_unreachable",
+            )
+        return AccessProbeResult(
+            status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+            error_code="hyperv_probe_failed",
+        )
+
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         try:
             script = self._read_script()
