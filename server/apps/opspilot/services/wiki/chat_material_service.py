@@ -498,8 +498,7 @@ def _related_check_query(material_id: int) -> Q:
     )
 
 
-def _narrow_related_checks(queryset, material_id: int):
-    # SQLite 的 JSONField 没有 contains。先按资料 ID 缩小文本，再按 related.materials 的原语义过滤。
+def _prefilter_checks_for_material(queryset, material_id: int):
     if connection.features.supports_json_field_contains:
         return queryset.filter(_related_check_query(material_id))
     text = str(material_id)
@@ -509,7 +508,7 @@ def _narrow_related_checks(queryset, material_id: int):
 
 def _related_checks(material):
     queryset = CheckItem.objects.filter(knowledge_base_id=material.knowledge_base_id).select_related("candidate_version")
-    queryset = _narrow_related_checks(queryset, material.pk).order_by("id")
+    queryset = _prefilter_checks_for_material(queryset, material.pk).order_by("id")
     return [check for check in queryset if material.pk in _related_material_ids(check.related)]
 
 
@@ -567,7 +566,6 @@ def _outcome(material, phase: str, summary: str, pages: list, checks: list) -> d
 
 
 def read_chat_wiki_outcome(material) -> dict:
-    """从资料、该资料最新的 material 构建记录和相关检查项读出卡片结果。"""
     build = _latest_build(material)
     build_status = getattr(build, "status", None)
     if build_status in _FAILED_BUILD_STATUSES or material.status in _FAILED_MATERIAL_STATUSES:
