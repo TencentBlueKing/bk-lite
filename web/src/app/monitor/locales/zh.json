@@ -901,6 +901,7 @@
       "batchRedispatchCollectConfig": "重新下发",
       "redispatchCollectConfigConfirmTitle": "重新下发",
       "redispatchCollectConfigConfirmTip": "按当前采集模板重新生成配置并下发到运行中的任务。保留已填写的接入参数与环境变量。不比较版本，也不升级节点上的采集器。已手改的配置不会覆盖。",
+      "redispatchCollectConfigCount": "共 {count} 个实例",
       "redispatchCollectConfigSuccess": "已重新下发采集配置",
       "redispatchCollectConfigPartial": "已重新下发 {updated} 个实例，{skipped} 个已手改未覆盖，{unauthorized} 个无权限，{failed} 个失败（写入失败的已尝试回滚）",
       "redispatchCollectConfigTruncated": "单次最多处理 {max} 个实例，超出部分已截断，请分批继续",

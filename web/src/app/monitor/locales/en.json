@@ -901,6 +901,7 @@
       "batchRedispatchCollectConfig": "Redeploy",
       "redispatchCollectConfigConfirmTitle": "Redeploy collection config",
       "redispatchCollectConfigConfirmTip": "Regenerates collection config from the current template and redeploys it to running tasks. Form values and env vars are kept. Versions are not compared, and the collector binary on the node is not upgraded. Hand-edited configs are left unchanged.",
+      "redispatchCollectConfigCount": "{count} instance(s)",
       "redispatchCollectConfigSuccess": "Collection configs were redeployed",
       "redispatchCollectConfigPartial": "Redeployed {updated} instance(s); {skipped} hand-edited and left unchanged; {unauthorized} unauthorized; {failed} failed (write failures attempted rollback)",
       "redispatchCollectConfigTruncated": "At most {max} instances are processed per request; remaining ones were truncated. Continue in batches.",

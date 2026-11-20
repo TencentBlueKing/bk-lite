@@ -9,6 +9,7 @@ import {
   Space,
   Tooltip,
   Modal,
+  Pagination as AntdPagination,
   Switch
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
@@ -82,6 +83,63 @@ type TableRowSelection<T extends object = object> =
 
 const ASSET_IP_FACT = 'asset.ip';
 const ASSET_IP_COLUMN_KEY = `summary_fact:${ASSET_IP_FACT}`;
+const REDISPATCH_CONFIRM_PAGE_SIZE = 5;
+
+const readAssetIp = (item: TableDataItem) => {
+  const facts = item?.summary_facts as Record<string, unknown> | undefined;
+  const value = facts?.[ASSET_IP_FACT] ?? item?.ip;
+  const text = value == null ? '' : String(value).trim();
+  return text;
+};
+
+const RedispatchConfirmContent = ({
+  rows,
+  tip,
+  countText
+}: {
+  rows: { id: string; name: string; ip: string }[];
+  tip: string;
+  countText: string;
+}) => {
+  const [page, setPage] = useState(1);
+  const start = (page - 1) * REDISPATCH_CONFIRM_PAGE_SIZE;
+  const pageRows = rows.slice(start, start + REDISPATCH_CONFIRM_PAGE_SIZE);
+  return (
+    <div className="space-y-3">
+      <div className="leading-6 text-[var(--color-text-2)]">{tip}</div>
+      <div className="text-sm font-medium text-[var(--color-text-1)]">{countText}</div>
+      <div className="overflow-hidden rounded border border-[var(--color-border-1)]">
+        {pageRows.map((row) => (
+          <div
+            key={row.id}
+            className="flex items-center justify-between gap-3 border-b border-[var(--color-border-1)] px-3 py-2 last:border-b-0"
+          >
+            <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">
+              {row.name}
+            </span>
+            {row.ip ? (
+              <span className="shrink-0 font-mono text-xs text-[var(--color-text-3)]">
+                {row.ip}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {rows.length > REDISPATCH_CONFIRM_PAGE_SIZE ? (
+        <div className="flex justify-end">
+          <AntdPagination
+            size="small"
+            current={page}
+            pageSize={REDISPATCH_CONFIRM_PAGE_SIZE}
+            total={rows.length}
+            showSizeChanger={false}
+            onChange={setPage}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const sameStringArray = (left: string[], right: string[]) =>
   left.length === right.length && left.every((item) => right.includes(item));
@@ -591,7 +649,7 @@ const Asset = () => {
         title: t('common.action'),
         key: 'action',
         dataIndex: 'action',
-        width: 360,
+        width: 280,
         fixed: 'right',
         render: (_, record) => {
           const canOperate = Array.isArray(record.permission)
@@ -617,6 +675,14 @@ const Asset = () => {
                 content: t('common.deleteContent')
               },
               onClick: () => deleteInstConfirm(record)
+            });
+            moreItems.push({
+              key: 'redispatch',
+              label: t('monitor.integrations.redispatchCollectConfig'),
+              permission: 'Edit',
+              disabled: updatingKeys.includes(record.instance_id),
+              onClick: () =>
+                confirmRedispatchCollectConfigs([record.instance_id])
             });
           }
           return (
@@ -653,23 +719,6 @@ const Asset = () => {
                   {t('monitor.integrations.configure')}
                 </Button>
               </Permission>
-              {canOperate ? (
-                <Permission
-                  requiredPermissions={['Edit']}
-                  instPermissions={record.permission}
-                >
-                  <Button
-                    type="link"
-                    className="ml-[10px]"
-                    loading={updatingKeys.includes(record.instance_id)}
-                    onClick={() =>
-                      confirmRedispatchCollectConfigs([record.instance_id])
-                    }
-                  >
-                    {t('monitor.integrations.redispatchCollectConfig')}
-                  </Button>
-                </Permission>
-              ) : null}
               {record.can_update ? (
                 <Permission
                   requiredPermissions={['Edit']}
@@ -1297,26 +1346,24 @@ const Asset = () => {
   };
 
   const confirmRedispatchCollectConfigs = (instanceIds: React.Key[]) => {
-    const rows = tableData.filter((item) =>
-      instanceIds.includes(item.instance_id as React.Key)
-    );
-    const names = (rows.length ? rows : []).map(
-      (item) => item.instance_name || item.instance_id || '--'
-    );
+    const rows = tableData
+      .filter((item) => instanceIds.includes(item.instance_id as React.Key))
+      .map((item) => ({
+        id: String(item.instance_id || ''),
+        name: String(item.instance_name || item.instance_id || '--'),
+        ip: readAssetIp(item)
+      }));
     modal.confirm({
       title: t('monitor.integrations.redispatchCollectConfigConfirmTitle'),
-      width: 480,
+      width: 520,
       content: (
-        <div className="space-y-2">
-          <div className="leading-6 text-[var(--color-text-2)]">
-            {t('monitor.integrations.redispatchCollectConfigConfirmTip')}
-          </div>
-          {names.length ? (
-            <div className="max-h-[200px] overflow-y-auto text-sm leading-6 text-[var(--color-text-1)]">
-              {names.join('、')}
-            </div>
-          ) : null}
-        </div>
+        <RedispatchConfirmContent
+          rows={rows}
+          tip={t('monitor.integrations.redispatchCollectConfigConfirmTip')}
+          countText={t('monitor.integrations.redispatchCollectConfigCount', '', {
+            count: rows.length
+          })}
+        />
       ),
       centered: true,
       okText: t('common.confirm'),
