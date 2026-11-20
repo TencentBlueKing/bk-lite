@@ -85,7 +85,7 @@ IM 应用通知、群聊小助手、智能机器人和事故建群选用的平�
 
 ## 8. 证据来源
 - 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py`（ChannelChoices 9 类，含 `sms`、`voice`）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
 - 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`、`nats/credentials.py:59-138`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。
