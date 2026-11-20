@@ -7,14 +7,94 @@ MySQL Server Information Collector
 A standalone script to gather information about MySQL servers.
 """
 
+import errno
+import socket
 from decimal import Decimal
 
 import aiomysql
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.decorator import timer
 from pymysql.constants import CLIENT
-from pymysql.err import OperationalError
 from sanic.log import logger
+
+_TRANSPORT_ERRNO = {
+    errno.ECONNREFUSED: "tcp_connection_refused",
+    errno.ETIMEDOUT: "tcp_connect_timeout",
+    errno.EHOSTUNREACH: "tcp_no_route",
+    errno.ENETUNREACH: "tcp_no_route",
+    errno.ENETDOWN: "tcp_no_route",
+}
+_MYSQL_CONNECT_ERRNOS = {2002, 2003, 2005, 2006, 2013}
+
+
+def _failure_chain(error: BaseException):
+    seen = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _driver_errno(error: BaseException) -> int | None:
+    for item in _failure_chain(error):
+        args = getattr(item, "args", ())
+        if args and isinstance(args[0], int) and not isinstance(item, OSError):
+            return args[0]
+    return None
+
+
+def _transport_code(error: BaseException) -> str | None:
+    for item in _failure_chain(error):
+        if isinstance(item, TimeoutError):
+            return "tcp_connect_timeout"
+        if isinstance(item, ConnectionRefusedError):
+            return "tcp_connection_refused"
+        if isinstance(item, socket.gaierror):
+            return "dns_resolution_failed"
+        code = _TRANSPORT_ERRNO.get(getattr(item, "errno", None))
+        if code:
+            return code
+    text = " ".join(str(item) for item in _failure_chain(error)).lower()
+    if "timed out" in text or "timeout" in text:
+        return "tcp_connect_timeout"
+    if "connection refused" in text or "errno 61" in text or "errno 111" in text:
+        return "tcp_connection_refused"
+    if "name or service not known" in text or "nodename nor servname" in text or "unknown mysql server host" in text:
+        return "dns_resolution_failed"
+    if "no route to host" in text or "network is unreachable" in text:
+        return "tcp_no_route"
+    return None
+
+
+def classify_mysql_failure(
+    error: BaseException,
+    *,
+    user_present: bool,
+    password_present: bool,
+) -> AccessProbeResult | None:
+    """把已知的连接失败收成稳定原因。认不出时返回 None，调用方按代码错误处理。"""
+    number = _driver_errno(error)
+    if number == 1045:
+        text = " ".join(str(item) for item in _failure_chain(error)).lower()
+        if not user_present:
+            detail = "credential_user"
+        elif not password_present or "using password: no" in text:
+            detail = "credential_password"
+        else:
+            detail = "credential_user_or_password"
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code=detail)
+    if number == 1049:
+        return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code="credential_database")
+    if number == 1044:
+        return AccessProbeResult(status=AccessProbeStatus.CAPABILITY_DENIED, error_code="capability_denied")
+    transport = _transport_code(error)
+    if number in _MYSQL_CONNECT_ERRNOS or transport:
+        return AccessProbeResult(
+            status=AccessProbeStatus.TARGET_UNREACHABLE,
+            error_code=transport or "tcp_connect_failed",
+        )
+    return None
 
 
 class MysqlInfo:
@@ -71,14 +151,14 @@ class MysqlInfo:
                 evidence={"server_version": version},
             )
         except RuntimeError as error:
-            cause = error.__cause__
-            error_number = cause.args[0] if cause is not None and cause.args else None
-            if error_number == 1045 or (isinstance(cause, OperationalError) and cause.args and cause.args[0] == 1045):
-                return AccessProbeResult(
-                    status=AccessProbeStatus.AUTH_FAILED,
-                    error_code="authentication_failed",
-                )
-            raise
+            result = classify_mysql_failure(
+                error.__cause__ or error,
+                user_present=bool(str(self.user or "").strip()),
+                password_present=bool(self.password),
+            )
+            if result is None:
+                raise
+            return result
         finally:
             await self.close()
 

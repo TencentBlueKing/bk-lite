@@ -1,0 +1,42 @@
+RocketMQ:
+  name: RocketMQ
+  desc: 采集 RocketMQ Broker 吞吐、CommitLog 磁盘占用、主题与消费者组当前偏移量、消费堆积和死信主题偏移量。
+monitor_object:
+  RocketMQ: RocketMQ
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  RocketMQ:
+    bklite_rocketmq_up:
+      name: 采集存活
+      desc: 采集是否存活。1 表示存活，0 表示未存活。
+    bklite_rocketmq_broker_tps:
+      name: Broker 每秒写入的消息
+      desc: Broker 每秒写入的消息条数。
+    bklite_rocketmq_broker_qps:
+      name: Broker 每秒读取的消息
+      desc: Broker 每秒读取的消息条数。
+    bklite_rocketmq_broker_commitlog_disk_ratio:
+      name: CommitLog 磁盘占用率
+      desc: Broker 的 CommitLog 占磁盘的百分比。
+    bklite_rocketmq_producer_offset:
+      name: Topic 当前偏移量
+      desc: 主题的当前偏移量。
+    bklite_rocketmq_consumer_offset:
+      name: 消费者组当前偏移量
+      desc: 消费者组在该主题上的当前偏移量。
+    bklite_rocketmq_consumer_tps:
+      name: 消费 TPS
+      desc: 每秒消费的消息条数。
+    bklite_rocketmq_group_diff:
+      name: 消费堆积
+      desc: 消费者组在该主题上尚未消费的消息条数。
+    bklite_rocketmq_group_dlq:
+      name: 死信主题偏移量
+      desc: 消费者组死信主题的当前偏移量。主题名是 %DLQ% 加上消费者组名。
+monitor_object_metric_group:
+  RocketMQ:
+    Collection: 采集状态
+    Broker: Broker
+    Topic: 主题
+    Consumer: 消费

@@ -1,6 +1,5 @@
 import httpx
 import pytest
-
 from core.collection.contracts import AccessProbeStatus
 from plugins.inputs.influxdb.influxdb_info import InfluxdbInfo
 from service.collection_service import CollectionService
@@ -64,7 +63,7 @@ async def test_probe_validates_http_health_and_operator_token(monkeypatch):
     ).probe()
 
     assert result.status == AccessProbeStatus.AUTH_FAILED
-    assert result.error_code == "authentication_failed"
+    assert result.error_code == "credential_token"
     assert "invalid-token" not in result.detail
 
 
@@ -77,9 +76,7 @@ async def test_probe_validates_http_health_and_operator_token(monkeypatch):
         (503, AccessProbeStatus.SERVICE_UNAVAILABLE, "service_unavailable"),
     ],
 )
-async def test_probe_classifies_http_failure_without_retrying_credentials(
-    monkeypatch, status_code, expected_status, expected_error
-):
+async def test_probe_classifies_http_failure_without_retrying_credentials(monkeypatch, status_code, expected_status, expected_error):
     def handler(url, **_kwargs):
         if url.endswith("/health"):
             return FakeResponse(body={"status": "pass", "version": "2.7.5"})
@@ -87,9 +84,7 @@ async def test_probe_classifies_http_failure_without_retrying_credentials(
 
     _patch_async_client(monkeypatch, handler)
 
-    result = await InfluxdbInfo(
-        {"host": "influx.local", "token": "must-not-leak", "timeout": 5}
-    ).probe()
+    result = await InfluxdbInfo({"host": "influx.local", "token": "must-not-leak", "timeout": 5}).probe()
 
     assert result.status == expected_status
     assert result.error_code == expected_error
@@ -139,9 +134,7 @@ async def test_v2_without_token_collects_health_only(monkeypatch):
 
     _patch_async_client(monkeypatch, handler)
 
-    result = await InfluxdbInfo(
-        {"host": "influx.local", "port": 8086, "ssl": False, "verify_tls": True}
-    ).list_all_resources()
+    result = await InfluxdbInfo({"host": "influx.local", "port": 8086, "ssl": False, "verify_tls": True}).list_all_resources()
 
     assert result["success"] is True
     assert result["result"]["influxdb"] == [
@@ -207,9 +200,7 @@ async def test_invalid_operator_token_keeps_basics_and_emits_failed_marker(monke
 
     _patch_async_client(monkeypatch, handler)
 
-    result = await InfluxdbInfo(
-        {"host": "influx.local", "token": "must-not-leak"}
-    ).list_all_resources()
+    result = await InfluxdbInfo({"host": "influx.local", "token": "must-not-leak"}).list_all_resources()
 
     rows = result["result"]["influxdb"]
     assert rows[0]["version"] == "2.7.5"
@@ -255,9 +246,7 @@ async def test_unreachable_instance_is_reported_as_collection_failure(monkeypatc
 
     _patch_async_client(monkeypatch, handler)
 
-    result = await InfluxdbInfo(
-        {"host": "influx.local", "token": "must-not-leak"}
-    ).list_all_resources()
+    result = await InfluxdbInfo({"host": "influx.local", "token": "must-not-leak"}).list_all_resources()
 
     assert result["success"] is False
     assert "cmdb_collect_error" in result["result"]
