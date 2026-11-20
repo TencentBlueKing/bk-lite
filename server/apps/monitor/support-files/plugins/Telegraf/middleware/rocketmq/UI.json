@@ -108,10 +108,9 @@
       "type": "inputNumber",
       "required": true,
       "default_value": 10,
-      "description": "单次采集请求的超时时间，超过该时间视为失败",
-      "description_en": "Timeout for one collection request. A request that exceeds this time is treated as failed.",
-      "guide_short": "单次采集请求的最大等待秒数，默认 10，最小 1。",
-      "guide_short_en": "Maximum wait for one collection request, in seconds. The default is 10 and the minimum is 1.",
+      "description": "单次采集请求的超时时间（单位：秒）",
+      "guide_short": "单次采集请求的最大等待秒数，默认 10，最小 1。超过该时间视为失败。",
+      "guide_short_en": "Maximum wait for one collection request, in seconds. The default is 10 and the minimum is 1. A request that exceeds this time is treated as failed.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -128,7 +127,8 @@
           "suffix": "s"
         }
       },
-      "label_en": "Timeout"
+      "label_en": "Timeout",
+      "description_en": "Timeout for one collection request (unit: seconds)"
     },
     {
       "name": "interval",
@@ -137,11 +137,10 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
-      "description_en": "Collection time interval (unit: seconds)",
-      "guide_short": "采集周期，单位秒，默认 60，最小 30。",
-      "guide_short_en": "Collection interval in seconds. The default is 60 and the minimum is 30.",
+      "guide_short": "默认 60 秒；过低会增加 NameServer 压力，过高会延误告警；建议不少于 30 秒。",
+      "guide_short_en": "The default is 60 seconds. Short intervals increase NameServer load, while long intervals delay alerts; use at least 30 seconds.",
       "widget_props": {
-        "min": 30,
+        "min": 1,
         "precision": 0,
         "placeholder": "间隔",
         "addonAfter": "s",
@@ -156,7 +155,8 @@
           "suffix": "s"
         }
       },
-      "label_en": "Interval"
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
     }
   ],
   "table_columns": [
