@@ -378,13 +378,14 @@ def test_release_svg_quality_gate_skips_unparseable_svg(tmp_path):
 
 def test_publish_records_download_event(tmp_path, monkeypatch):
     monkeypatch.setenv("OPSPILOT_PPT_TMP_ROOT", str(tmp_path))
-    request = SimpleNamespace(extra_config={"execution_id": "exec-ppt"}, thread_id="thread-ppt")
+    request = SimpleNamespace(extra_config={"execution_id": "exec-ppt", "flow_id": "workflow-7", "node_id": "report"}, thread_id="thread-ppt")
     run = begin_ppt_run(request)
     export_dir = run / "projects" / "demo" / "exports"
     export_dir.mkdir(parents=True)
     (export_dir / "demo.pptx").write_bytes(b"PK-fake-pptx")
 
     def _create(**kwargs):
+        assert (kwargs["flow_id"], kwargs["source_node_id"]) == ("workflow-7", "report")
         return SimpleNamespace(id=7, **kwargs)
 
     monkeypatch.setattr(

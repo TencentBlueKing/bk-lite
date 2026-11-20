@@ -1,6 +1,6 @@
 'use client';
 
-import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Empty, Input, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -24,10 +24,12 @@ import { WorkflowTablePanel } from './workflow-table-panel';
 import { WorkflowPermission } from './workflow-permission';
 
 const API = '/workflow/api';
-const ARTIFACT_FILE_ICON = {
-  docx: 'word',
-  xlsx: 'congExcelbiaogezhongshengcheng',
-} as const;
+function ArtifactIcon({ format }: { format: string }) {
+  const className = 'mt-0.5 shrink-0 text-2xl';
+  if (format === 'docx') return <Icon type="word" className={className} />;
+  if (format === 'xlsx') return <Icon type="congExcelbiaogezhongshengcheng" className={className} />;
+  return <FileOutlined className={className} />;
+}
 
 function artifactValidityText(expiresAt: string, t: (key: string, fallback: string, values?: Record<string, string | number>) => string) {
   const remainingMs = new Date(expiresAt).getTime() - Date.now();
@@ -80,7 +82,7 @@ function ExecutionArtifactDrawer({
           <div className="grid grid-cols-2 gap-3">
             {visible.map((file) => (
               <div key={file.id} className="flex min-w-0 items-start gap-2 rounded-md border border-[var(--color-border-1)] p-3">
-                <Icon type={ARTIFACT_FILE_ICON[file.format]} className="mt-0.5 shrink-0 text-2xl" />
+                <ArtifactIcon format={file.format} />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-start gap-1">
                     <EllipsisWithTooltip text={file.filename} className="min-w-0 flex-1 truncate font-medium text-[var(--color-text-1)]" />

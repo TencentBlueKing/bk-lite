@@ -12,6 +12,7 @@ export interface DataReferenceOption {
   label: string;
   value: string;
   type?: string;
+  schema?: JsonSchema;
   source: string;
   sourceLabel?: string;
   displayName?: string;
@@ -164,6 +165,7 @@ function schemaOptions(
       label: `${sourceLabel} · ${displayName}`,
       value: `${expressionPrefix}${path}}`,
       type: normalizedType(fieldSchema),
+      schema: fieldSchema,
       source,
       sourceLabel,
       displayName,

@@ -204,7 +204,7 @@ def test_agent_node_sets_attachment_link_variable(mocker):
         ],
     )
 
-    def invoke_chat_side_effect(params):
+    def invoke_chat_side_effect(params, *, execution_timeout_seconds=None):
         create_workflow_attachment_asset(
             execution_id=params["execution_id"],
             attachment_id="agent_node",

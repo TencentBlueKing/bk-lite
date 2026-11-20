@@ -2,7 +2,21 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "message": {"type": "string", "title": "智能体输出", "maxLength": 100000}
+    "message": {"type": "string", "title": "智能体输出", "maxLength": 100000},
+    "artifacts": {
+      "type": "array",
+      "title": "生成的附件",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "title": "文件标识"},
+          "filename": {"type": "string", "title": "文件名"},
+          "format": {"type": "string", "title": "格式"},
+          "size": {"type": "integer", "title": "大小"}
+        },
+        "required": ["id", "filename", "format", "size"]
+      }
+    }
   },
-  "required": ["message"]
+  "required": ["message", "artifacts"]
 }

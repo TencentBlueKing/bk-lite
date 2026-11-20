@@ -656,9 +656,7 @@ def publish_latest_export(graph_request: object, prior_filenames: list[str] | No
     from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url, create_workflow_attachment_asset
 
     extra = getattr(graph_request, "extra_config", None)
-    created_by = ""
-    if isinstance(extra, dict):
-        created_by = str(extra.get("user_id") or "")
+    context = extra if isinstance(extra, dict) else {}
     attachment_id = uuid4().hex[:12]
     try:
         asset = create_workflow_attachment_asset(
@@ -667,8 +665,9 @@ def publish_latest_export(graph_request: object, prior_filenames: list[str] | No
             filename=filename,
             content_bytes=content,
             mime_type=_PPTX_MIME,
-            source_node_id="ppt-master",
-            created_by=created_by,
+            source_node_id=str(context.get("node_id") or "ppt-master"),
+            flow_id=str(context.get("flow_id") or ""),
+            created_by=str(context.get("user_id") or ""),
         )
     except Exception as exc:
         logger.warning("ppt export register failed error_type=%s", type(exc).__name__)

@@ -290,7 +290,22 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   const typeSchema = field(schema, 'notification_type');
   const channelSchema = field(schema, 'channel_id');
   const recipientSchema = field(schema, 'recipients');
-  const reportArtifactSchema = field(schema, 'report_artifact');
+  const attachment = typeof value.artifacts === 'string' ? value.artifacts : value.report_artifact;
+  const attachmentReferences = references.filter((reference) => {
+    const collection = reference.type === 'array';
+    if (reference.sensitive || (reference.type !== 'object' && !collection)) return false;
+    if (!schema?.properties?.[collection ? 'artifacts' : 'report_artifact']) return false;
+    const fileSchema = collection ? reference.schema?.items : reference.schema;
+    return reference.value === attachment || Boolean(fileSchema?.properties?.id && fileSchema.properties.filename);
+  });
+  const setAttachment = (expression: unknown) => {
+    const inputs = { ...value };
+    delete inputs.artifacts;
+    delete inputs.report_artifact;
+    const reference = attachmentReferences.find((item) => item.value === expression);
+    if (reference) inputs[reference.type === 'array' ? 'artifacts' : 'report_artifact'] = reference.value;
+    onChange(inputs);
+  };
   const notificationType = String(value.notification_type || typeSchema.default || 'EMAIL');
   const typeOptions = (typeSchema.enum || ['EMAIL', 'WECOM_BOT', 'FEISHU_BOT', 'DINGTALK_BOT', 'CUSTOM_WEBHOOK']).map((item) => {
     const code = String(item);
@@ -382,19 +397,21 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
         <SchemaNodeField schema={{ ...field(schema, 'title'), 'x-text-surface': 'coerce' }} value={value.title} references={references} disabled={readOnly} onChange={(next) => setField('title', next)} />
       </Form.Item>
     ) : null}
-    {notificationType === 'EMAIL' && schema?.properties?.report_artifact ? (
+    {schema?.properties?.artifacts || schema?.properties?.report_artifact ? (
       <Form.Item
         className="mb-0"
         label={t('workflowOrchestration.editor.notificationAttachment', '附件')}
-        tooltip={t('workflowOrchestration.editor.notificationAttachmentHint', '可选，拖入上游报告产物')}
+        tooltip={notificationType === 'WECOM_BOT'
+          ? t('workflowOrchestration.editor.wecomNotificationAttachmentHint', '选择或拖入上游生成的附件，企微群会收到下载链接和文件')
+          : t('workflowOrchestration.editor.notificationAttachmentHint', '选择或拖入上游生成的附件，通知中将附上下载链接')}
       >
         <SchemaNodeField
-          schema={reportArtifactSchema}
-          value={value.report_artifact}
-          references={references}
+          schema={{}}
+          value={attachment}
+          references={attachmentReferences}
           referenceOnly
           disabled={readOnly}
-          onChange={(next) => setField('report_artifact', next)}
+          onChange={setAttachment}
         />
       </Form.Item>
     ) : null}

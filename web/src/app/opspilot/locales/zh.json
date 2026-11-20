@@ -2435,6 +2435,7 @@
       "apiBase": "API 地址",
       "apiBaseRequired": "请填写 API 地址",
       "apiBasePlaceholder": "请输入 API 地址",
+      "skipSslVerify": "跳过 SSL 证书校验",
       "apiBaseHelp": "如使用代理或私有部署，请填写对应地址",
       "apiKey": "API Key",
       "apiKeyRequired": "请输入 API Key",

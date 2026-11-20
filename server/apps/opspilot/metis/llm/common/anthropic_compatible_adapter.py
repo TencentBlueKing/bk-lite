@@ -174,7 +174,7 @@ class AnthropicCompatibleAdapter:
     """Adapter for Anthropic-protocol endpoints (native and compatible)."""
 
     @staticmethod
-    def validate_minimal_connection(api_base: str, api_key: str, model: str) -> None:
+    def validate_minimal_connection(api_base: str, api_key: str, model: str, *, skip_ssl_verify: bool = False) -> None:
         """POST a minimal request to verify the endpoint is reachable.
 
         Raises:
@@ -191,6 +191,7 @@ class AnthropicCompatibleAdapter:
                 "messages": [{"role": "user", "content": "hi"}],
             },
             timeout=15,
+            verify=not skip_ssl_verify,
         )
         AnthropicCompatibleAdapter._raise_for_error(response)
 
@@ -214,6 +215,7 @@ class AnthropicCompatibleChatClient(BaseChatModel):
     model: str
     api_key: str
     api_base: str
+    skip_ssl_verify: bool = False
     temperature: float | None = None
     max_tokens: int = 4096
     disable_streaming: bool = False
@@ -249,6 +251,7 @@ class AnthropicCompatibleChatClient(BaseChatModel):
             headers=build_anthropic_headers(self.api_key),
             json=payload,
             timeout=self.timeout,
+            verify=not self.skip_ssl_verify,
         )
         AnthropicCompatibleAdapter._raise_for_error(response)
         ai_message = _build_ai_message(response.json())
