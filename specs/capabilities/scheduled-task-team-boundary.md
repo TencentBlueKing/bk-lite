@@ -15,7 +15,7 @@
 - 创建、更新、立即执行和 Celery Beat 后台执行 SHALL 在数据库事务内锁定任务及全部稳定引用资源，并持锁到任务或执行快照落库，避免校验后的归属竞态。
 - 显式禁用 SHALL 始终可执行，即使存量任务尚未满足新边界，避免无效配置无法止损。
 - 后台执行发现存量任务违反边界时 SHALL 阻止执行并禁用该任务及其 Celery Beat 调度。
-- Celery Beat 的强制边界 SHALL 由默认关闭的 `JOB_SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED` rollout 开关控制；部署后先完成只读审计与治理，再显式开启。开关关闭时 SHALL 保持历史 Beat 执行行为，且其新建 `JobExecution` 的内部边界标记保持 `false`。
+- Celery Beat 的强制边界 SHALL 由默认关闭的 `JOB_SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED` rollout 开关控制；部署后先完成只读审计与治理，再显式开启。开关关闭时，使用系统仓库凭据目标的作业仍必须在派发前执行完整单团队校验，并保存内部边界标记。其他作业保持历史 Beat 执行行为。
 - 启用任务与后台自动禁用 SHALL 原子同步业务任务和 Celery Beat 状态；显式禁用 SHALL 优先保存业务任务的禁用状态，残留 Beat 触发只能重试同步且不得创建执行。
 - 定时文件分发在存在可按稳定 ID 复核归属的永久团队制品前 SHALL NOT 接受临时文件快照。
 
