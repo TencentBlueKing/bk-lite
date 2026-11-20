@@ -12,10 +12,8 @@ from apps.monitor.utils.plugin_controller import Controller
 
 SCRIPT_COLLECT_TYPE = "script"
 SCRIPT_CONFIG_TYPE = "script"
-# 脚本采集模板只允许绑在「操作系统」分类（id 在库内为 os / OS）。
-SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID = "os"
-SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES = frozenset({"操作系统", "os", "operating system"})
-SCRIPT_COLLECT_OBJECT_TYPE_ERROR = "脚本采集模板仅允许绑定「操作系统」监控对象"
+# 本期脚本采集只挂单键 instance_id 对象，不再限定操作系统分类。
+SCRIPT_COLLECT_OBJECT_TYPE_ERROR = "这类对象暂不支持添加脚本采集。"
 
 
 def is_script_collect_type(collect_type) -> bool:
@@ -23,13 +21,10 @@ def is_script_collect_type(collect_type) -> bool:
 
 
 def is_script_collect_allowed_object(monitor_object) -> bool:
-    """创建脚本采集模板时，绑定对象必须属于操作系统分类。"""
-    type_id = str(getattr(monitor_object, "type_id", None) or "").strip().casefold()
-    if type_id == SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID:
-        return True
-    obj_type = getattr(monitor_object, "type", None)
-    type_name = str(getattr(obj_type, "name", None) or "").strip().casefold()
-    return type_name in SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES
+    """创建脚本采集模板时，只允许单键 instance_id 对象。"""
+    from apps.monitor.services.script_attach import is_single_key_instance_object
+
+    return is_single_key_instance_object(monitor_object)
 
 
 # 平台保留标签。stdout / [inputs.bklite_script.tags] 不得作为最终来源。
@@ -201,7 +196,7 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
     "config_type": [SCRIPT_CONFIG_TYPE],
     "collector": "Telegraf",
     "support_collect_detect": True,
-    "instance_id": "{{cloud_region}}_{{instance_type}}_script_{{instance_name}}",
+    "instance_id": "",
     "form_fields": [
         {
             "name": "script_os",
@@ -251,11 +246,7 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "required": False,
             "description": "填写采集端已有用户。",
             "description_en": "Enter an existing user on the collector.",
-            "tooltip": (
-                "留空则跟随采集进程的用户运行，一般为 root。"
-                "填写后按采集端已有用户运行，平台不会创建账号。"
-                "用户不存在或没有权限时，仅这条脚本失败。"
-            ),
+            "tooltip": ("留空则跟随采集进程的用户运行，一般为 root。" "填写后按采集端已有用户运行，平台不会创建账号。" "用户不存在或没有权限时，仅这条脚本失败。"),
             "tooltip_en": (
                 "Leave empty to run as the collector process user, typically root. "
                 "A specified value runs as that existing user on the collector. "
@@ -358,21 +349,18 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "enable_row_filter": False,
         },
         {
-            "name": "instance_name",
-            "label": "实例名称",
-            "label_en": "Instance Name",
-            "type": "input",
+            "name": "attach_instance_id",
+            "label": "选择实例",
+            "label_en": "Instance",
+            "type": "select",
             "required": True,
-            "widget_props": {"placeholder": "请输入实例名称", "placeholder_en": "Enter instance name"},
-            "is_only": True,
-        },
-        {
-            "name": "group_ids",
-            "label": "组",
-            "label_en": "Group",
-            "type": "group_select",
-            "required": False,
-            "widget_props": {"placeholder": "请选择组", "placeholder_en": "Select group"},
+            "options_key": "attach_instance_option",
+            "description": "脚本会添加到所选实例上，不会另外新建实例。",
+            "description_en": "The script is added to the selected instance. A new instance is not created.",
+            "tooltip": "脚本挂在已有实例上，作为该实例的一种采集。",
+            "tooltip_en": "The script is one of the collections on an existing instance.",
+            "widget_props": {"placeholder": "请选择实例", "placeholder_en": "Select an instance"},
+            "change_handler": {"type": "script_attach", "target_field": "instance_id"},
         },
     ],
     "extra_edit_fields": {},

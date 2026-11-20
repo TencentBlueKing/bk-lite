@@ -174,7 +174,11 @@ def _query_plugin_reports(plugin, instance_id_keys: tuple[str, ...], vm_api) -> 
     if not query or not instance_id_keys:
         return {}
     try:
-        payload = vm_api.query(last_sample_timestamp_query(query), step="20m")
+        from apps.monitor.services.script_attach import is_script_plugin
+        from apps.monitor.utils.script_series_isolation import isolate_status_timestamp_query
+
+        prepared = last_sample_timestamp_query(query) if is_script_plugin(plugin) else isolate_status_timestamp_query(query)
+        payload = vm_api.query(prepared, step="20m")
     except Exception as exc:
         logger.exception(
             "event=collection_plugin_status_failed plugin_id=%s error_type=%s",
