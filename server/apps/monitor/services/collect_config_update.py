@@ -206,11 +206,13 @@ class CollectConfigUpdateService:
             return counts
 
         field = MonitorPlugin._meta.get_field("monitor_object")
+        # fmt: off
         object_ids = set(
-            field.remote_field.through.objects.filter(**{f"{field.m2m_column_name()}__in": plugin_fps}).values_list(
-                field.m2m_reverse_name(), flat=True
-            )
+            field.remote_field.through.objects.filter(
+                **{f"{field.m2m_column_name()}__in": plugin_fps}
+            ).values_list(field.m2m_reverse_name(), flat=True)
         )
+        # fmt: on
 
         authorized_ids: set[str] = set()
         for object_id in object_ids:
