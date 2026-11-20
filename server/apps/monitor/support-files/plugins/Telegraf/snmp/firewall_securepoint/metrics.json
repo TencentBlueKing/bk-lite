@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Securepoint UTM firewall. It reports uptime, CPU utilization, memory utilization, current connection-tracking entries, and interface traffic via Net-SNMP UCD-SNMP-MIB (enterprise PEN 2021) and the Securepoint enterprise tree (PEN 28553).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_securepoint'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",

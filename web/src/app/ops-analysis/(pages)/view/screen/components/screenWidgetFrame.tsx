@@ -3,6 +3,7 @@
 import React from 'react';
 import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import InteractionTitleIcon from '@/app/ops-analysis/components/interactionTitleIcon';
+import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { ScreenWidgetFrame } from '@/app/ops-analysis/types/dashBoard';
 import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
@@ -66,37 +67,42 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   const isBare = frame === 'bare';
 
   return (
-    <section
-      className={`relative ${getScreenWidgetFrameClassName(item, {
-        selected,
-        editMode,
-        frame,
-      })}`}
-      style={{
-        '--screen-widget-scale': screenDensity,
-        '--screen-widget-ui-scale': screenUiScale,
-      } as React.CSSProperties}
-    >
-      {!isBare && (
-        <header
-          key="header"
-          className="screen-widget-frame__header screen-widget-frame__drag-handle"
+    <WidgetHeaderRuntimeSlotProvider>
+      {(setRuntimeSlot) => (
+        <section
+          className={`relative ${getScreenWidgetFrameClassName(item, {
+            selected,
+            editMode,
+            frame,
+          })}`}
+          style={{
+            '--screen-widget-scale': screenDensity,
+            '--screen-widget-ui-scale': screenUiScale,
+          } as React.CSSProperties}
         >
-          <span {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title-row')}>
-            <span className="screen-widget-frame__title">{title || item.chartType}</span>
-            <InteractionTitleIcon config={item.valueConfig} variant="screen" />
-          </span>
-        </header>
+          {!isBare && (
+            <header
+              key="header"
+              className="screen-widget-frame__header screen-widget-frame__drag-handle"
+            >
+              <span {...screenUniformTextProps(undefined, undefined, 'screen-widget-frame__title-row')}>
+                <span className="screen-widget-frame__title">{title || item.chartType}</span>
+                <span ref={setRuntimeSlot} className="no-drag min-w-0 flex-1 overflow-x-auto overflow-y-hidden" />
+                <InteractionTitleIcon config={item.valueConfig} variant="screen" />
+              </span>
+            </header>
+          )}
+          {isBare && editMode && (
+            <div
+              key="drag-surface"
+              className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
+              aria-hidden="true"
+            />
+          )}
+          <div key="body" className="screen-widget-frame__body">{children}</div>
+        </section>
       )}
-      {isBare && editMode && (
-        <div
-          key="drag-surface"
-          className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
-          aria-hidden="true"
-        />
-      )}
-      <div key="body" className="screen-widget-frame__body">{children}</div>
-    </section>
+    </WidgetHeaderRuntimeSlotProvider>
   );
 };
 

@@ -10,6 +10,7 @@ import type {
   ReportFileDownload,
   SkillViewItem,
   WikiCitation,
+  WikiMaterialWrite,
 } from "./types";
 import { normalizeUserChoiceOptions } from "./userChoiceOptions";
 
@@ -25,6 +26,7 @@ export interface ChatContentState {
   repairCommands?: RepairCommands[];
   skillViews?: SkillViewItem[];
   wikiCitations?: WikiCitation[];
+  wikiMaterialWrites?: WikiMaterialWrite[];
 }
 const names = new Set([
   "agent_step_progress",
@@ -41,6 +43,7 @@ const names = new Set([
   "repair_commands",
   "skill_view",
   "wiki_citations",
+  "wiki_material_write",
 ]);
 export const isChatContentEvent = (name: string) => names.has(name);
 const record = (value: unknown): Record<string, any> | null => {
@@ -253,6 +256,22 @@ export function applyChatContentEvent(
           (item) => item && typeof item.name === "string",
         ),
       };
+    case "wiki_material_write": {
+      const materialId = Number(value.material_id);
+      const phases = ["writing", "published", "needs_decision", "failed"];
+      if (!Number.isInteger(materialId) || materialId <= 0) return state;
+      const phase = phases.includes(value.phase) ? value.phase : "writing";
+      const item = {
+        material_id: materialId,
+        phase,
+        summary: typeof value.summary === "string" ? value.summary : "",
+        received_at: timed.received_at,
+      } as WikiMaterialWrite;
+      return {
+        ...state,
+        wikiMaterialWrites: upsert(state.wikiMaterialWrites, item, "material_id"),
+      };
+    }
     case "wiki_citations": {
       let citations = state.wikiCitations || [];
       for (const item of Array.isArray(value.citations)

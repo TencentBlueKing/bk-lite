@@ -282,7 +282,7 @@ def test_monitor_without_snapshot_reports_unsupported_trigger_and_never_starts_r
     )
 
     assert result["success"] is False
-    assert "监控工具仅支持已登录的交互式 HTTP 调用" in result["error"]
+    assert "监控工具需要已验证的执行账号和组织" in result["error"]
     assert "caller_identity" in result["error"]
     assert "无法使用监控工具" in result["error"]
     rpc_cls.assert_not_called()
@@ -291,6 +291,7 @@ def test_monitor_without_snapshot_reports_unsupported_trigger_and_never_starts_r
 @pytest.mark.parametrize(
     ("configurable", "expected_source"),
     [
+        ({"entry_type": "workflow", "trigger_type": "unattended"}, "编排中心无人值守流程"),
         ({"entry_type": "celery", "trigger_type": "unattended"}, "Celery 定时任务"),
         ({"entry_type": "nats", "trigger_type": "third_party"}, "NATS 触发"),
         ({"entry_type": "dingtalk", "trigger_type": "third_party"}, "钉钉"),
@@ -443,13 +444,13 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
 
 
 @pytest.mark.parametrize(
-    "tool_index,tool_input,rpc_method,rpc_kwargs",
+    "tool_name,tool_input,rpc_method,rpc_kwargs",
     [
-        (0, {}, "monitor_objects", {}),
-        (1, {"monitor_obj_id": "host"}, "monitor_object_instances", {"monitor_obj_id": "host"}),
-        (2, {"monitor_obj_id": "host"}, "monitor_metrics", {"monitor_obj_id": "host"}),
+        ("monitor_list_objects", {}, "monitor_objects", {}),
+        ("monitor_list_object_instances", {"monitor_obj_id": "host"}, "monitor_object_instances", {"monitor_obj_id": "host"}),
+        ("monitor_list_object_metrics", {"monitor_obj_id": "host"}, "monitor_metrics", {"monitor_obj_id": "host"}),
         (
-            3,
+            "monitor_list_instance_metrics",
             {
                 "monitor_obj_id": "host",
                 "instance_id": "host-1",
@@ -471,7 +472,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             },
         ),
         (
-            4,
+            "monitor_query_metric_data",
             {
                 "monitor_obj_id": "host",
                 "metric": "cpu_usage",
@@ -495,7 +496,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             },
         ),
         (
-            5,
+            "monitor_list_active_alerts",
             {
                 "monitor_obj_id": "12",
                 "limit": 20,
@@ -515,7 +516,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             },
         ),
         (
-            6,
+            "monitor_query_alert_segments",
             {
                 "monitor_obj_id": "host",
                 "start": 100,
@@ -543,7 +544,7 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
             },
         ),
         (
-            7,
+            "monitor_get_host_resource_snapshot",
             {"instance_ids": ["host-1", "host-2"]},
             "get_host_resource_snapshot",
             {"instance_ids": ["host-1", "host-2"]},
@@ -562,11 +563,12 @@ def test_monitor_list_objects_choice_hint_keeps_single_select_for_many_types(moc
 )
 def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
     mocker,
-    tool_index,
+    tool_name,
     tool_input,
     rpc_method,
     rpc_kwargs,
 ):
+    from apps.opspilot.metis.llm.tools import monitor
     from apps.opspilot.metis.llm.tools.monitor import utils
 
     rpc = mocker.Mock()
@@ -579,7 +581,7 @@ def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
     getattr(rpc, rpc_method).return_value = {"result": True, "data": rpc_data}
     mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
 
-    result = _monitor_tools()[tool_index].invoke(tool_input, config=_runtime_config())
+    result = getattr(monitor, tool_name).invoke(tool_input, config=_runtime_config())
 
     if rpc_method == "monitor_object_instances":
         assert result["success"] is True
@@ -880,22 +882,24 @@ def test_monitor_call_rpc_wraps_rpc_exception(mocker):
 
 
 @pytest.mark.parametrize(
-    "tool_index,tool_input,error",
+    "tool_name,tool_input,error",
     [
-        (1, {"monitor_obj_id": ""}, "monitor_obj_id is required"),
-        (2, {"monitor_obj_id": ""}, "monitor_obj_id is required"),
-        (3, {"monitor_obj_id": "", "instance_id": "host-1"}, "monitor_obj_id is required"),
-        (3, {"monitor_obj_id": "host", "instance_id": ""}, "instance_id is required"),
-        (4, {"metric": "cpu", "start": 100, "end": 200}, "monitor_obj_id is required"),
-        (4, {"monitor_obj_id": "host", "start": 100, "end": 200}, "metric is required"),
-        (6, {"start": 100, "end": 200}, "monitor_obj_id is required"),
-        (6, {"monitor_obj_id": "host", "end": 200}, "start is required"),
-        (6, {"monitor_obj_id": "host", "start": 100}, "end is required"),
-        (7, {}, "instance_ids is required"),
+        ("monitor_list_object_instances", {"monitor_obj_id": ""}, "monitor_obj_id is required"),
+        ("monitor_list_object_metrics", {"monitor_obj_id": ""}, "monitor_obj_id is required"),
+        ("monitor_list_instance_metrics", {"monitor_obj_id": "", "instance_id": "host-1"}, "monitor_obj_id is required"),
+        ("monitor_list_instance_metrics", {"monitor_obj_id": "host", "instance_id": ""}, "instance_id is required"),
+        ("monitor_query_metric_data", {"metric": "cpu", "start": 100, "end": 200}, "monitor_obj_id is required"),
+        ("monitor_query_metric_data", {"monitor_obj_id": "host", "start": 100, "end": 200}, "metric is required"),
+        ("monitor_query_alert_segments", {"start": 100, "end": 200}, "monitor_obj_id is required"),
+        ("monitor_query_alert_segments", {"monitor_obj_id": "host", "end": 200}, "start is required"),
+        ("monitor_query_alert_segments", {"monitor_obj_id": "host", "start": 100}, "end is required"),
+        ("monitor_get_host_resource_snapshot", {}, "instance_ids is required"),
     ],
 )
-def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_index, tool_input, error):
-    tool = _monitor_tools()[tool_index]
+def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_name, tool_input, error):
+    from apps.opspilot.metis.llm.tools import monitor
+
+    tool = getattr(monitor, tool_name)
     rpc_call = mocker.patch(f"{tool.func.__module__}.call_monitor_rpc")
 
     result = tool.invoke(tool_input, config=_runtime_config())
@@ -1016,6 +1020,44 @@ def test_monitor_list_object_metrics_single_hit_queries_directly(mocker):
     assert "choices" not in result
     assert "mem_used_percent" in result["_next_step_hint"]
     assert "不要 request_user_choice" in result["_next_step_hint"]
+
+
+def test_monitor_list_object_metrics_ignores_status_and_time_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_object_metrics
+
+    rpc = mocker.Mock()
+    rpc.monitor_metrics.return_value = {
+        "result": True,
+        "data": [
+            {"name": "cpu_usage_total", "display_name": "CPU Usage", "unit": "percent"},
+            {"name": "mem_used_percent", "display_name": "Memory Usage", "unit": "percent"},
+        ],
+    }
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_metrics.invoke(
+        {"monitor_obj_id": "12", "keyword": "最近一小时"},
+        config=_runtime_config(user_message="查询最近一小时的活动告警"),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["cpu_usage_total", "mem_used_percent"]
+
+
+def test_monitor_list_object_instances_ignores_status_keyword(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
+
+    rpc = mocker.Mock()
+    rpc.monitor_object_instances.return_value = {"result": True, "data": _instance_rpc_rows()}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = monitor_list_object_instances.invoke(
+        {"monitor_obj_id": "host", "keyword": "活动"},
+        config=_runtime_config(user_message="查询活动告警"),
+    )
+
+    assert [item["name"] for item in result["data"]] == ["web-01", "local", "db-01"]
 
 
 def test_monitor_list_object_metrics_empty_keyword_keeps_catalog_hint(mocker):

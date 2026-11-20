@@ -15,14 +15,18 @@ from email.mime.text import MIMEText
 from urllib.parse import urlparse
 
 import requests
+from django.conf import settings
 from wechatpy import WeChatClientException
 from wechatpy.enterprise import WeChatClient
 
 import nats_client
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.internal_event_auth import sign_internal_event
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.rpc.workflow import MANAGED_NATS_ACTOR, MANAGED_NATS_TRIGGER_SCOPE
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
+from apps.workflow.services.nats_contracts import build_nats_trigger_subject
 
 try:
     from apps.system_mgmt.enterprise import nats_notifications
@@ -360,6 +364,15 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
             return {"result": False, "message": "NATS content.team must be a single integer team id"}
         if team not in channel_teams:
             return {"result": False, "message": "NATS content.team is outside the channel organization scope"}
+        expected_namespace = settings.NATS_NAMESPACE or "bklite"
+        expected_subject = build_nats_trigger_subject(config.get("workflow_id"), config.get("node_key"))
+        if (
+            not getattr(channel_obj, "pk", None)
+            or config.get("source") != "workflow"
+            or namespace != expected_namespace
+            or subject != expected_subject
+        ):
+            return {"result": False, "message": "Invalid managed workflow channel"}
         event_id = str(payload.get("event_id") or f"notification-{uuid.uuid4().hex}").strip()
         occurred_at = str(payload.get("occurred_at") or datetime.now(timezone.utc).isoformat()).strip()
         producer = str(payload.get("producer") or "system-mgmt").strip()
@@ -386,11 +399,13 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
                 },
             },
             "actor_context": {
-                "authorized_team_ids": sorted(channel_teams),
-                "username": "managed-nats-channel",
+                "managed_channel_id": channel_obj.pk,
+                "authorized_team_ids": [team],
+                "username": MANAGED_NATS_ACTOR,
                 "domain": "domain.com",
             },
         }
+        payload["internal_auth"] = sign_internal_event(MANAGED_NATS_TRIGGER_SCOPE, payload, caller="workflow")
 
     try:
         result = nats_client.request_sync(namespace, method_name, _timeout=timeout, **payload)

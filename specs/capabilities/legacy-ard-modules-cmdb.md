@@ -105,7 +105,7 @@
 - **RPC 客户端**（`apps/rpc/cmdb.py:44-94`）：为上述第五类 NATS handler 中的 8 个新增 RPC 包装方法供跨模块调用：`list_instances`、`search_model_attrs`、`search_models`、`search_classifications`、`search_model_associations`、`search_instance_associations`、`create_instance_association`、`delete_instance_association`；`search_instances`/`search_instances_batch` 为原有包装方法。注意：第五类 NATS handler 中的 `create_instance`、`delete_instance` 暂无对应 RPC 包装方法，仅可经 NATS 主题直接调用【已实现/已存在】。
 - Celery：`tasks/celery_tasks.py` 注册 14 个 `@shared_task`，详见 §5。
 
-**主机跨模块联动**【已实现】：CMDB、监控与节点管理以包含三方关联标识的联动信封进行双向接入。CMDB 接收端优先按节点标识更新，未命中时才认领或新建，并拒绝在存量认领时用另一节点标识覆盖既有关联；监控接收端分别按节点和 CMDB 标识匹配，两类标识命中不同实例时返回冲突。CMDB 主机创建后以尽力而为方式通知节点管理和监控并回填已建立的关联；其它已纳入监控关联名单的模型（网络设备、库、中间件、Docker 等）创建时同样无凭据探测监控，命中则回填 `monitor_id`，未命中或冲突则跳过且不阻断创建、不向用户报错。用户亦可在具备资产编辑权限时显式将单个资产推送至监控。资产列表可对勾选实例批量走同一无凭据推送（已关联跳过、整批不回滚、上限 100）；详情可按监控实例名手绑 / 解绑，占用则拒绝并提示占用方，不删监控资产、不动 `node_id`。CMDB 主机删除或监控实例删除时，CMDB 侧仅清理相应关联标识；节点退役时，CMDB 侧解除关联，而监控侧会停用并软删除关联监控实例。携带来源链路的回传被抑制，避免循环通知。相关模块：[[legacy-ard-modules-monitor.md#5. 数据流【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]。
+**主机跨模块联动**【已实现】：CMDB、监控与节点管理以包含三方关联标识的联动信封进行双向接入。CMDB 接收端优先按节点标识更新，未命中时才认领或新建，并拒绝在存量认领时用另一节点标识覆盖既有关联；监控接收端分别按节点和 CMDB 标识匹配，两类标识命中不同实例时返回冲突。CMDB 主机创建后以尽力而为方式通知节点管理和监控并回填已建立的关联；其它已纳入监控关联名单的模型（网络设备、库、中间件、Docker 等）创建时同样无凭据探测监控，命中则回填 `monitor_id`，未命中或冲突则跳过且不阻断创建、不向用户报错。用户亦可在具备资产编辑权限时显式将单个资产推送至监控。资产列表可对勾选实例批量走同一无凭据推送（已关联跳过、整批不回滚、上限 100）；详情可按监控实例名手绑 / 解绑，占用则拒绝并提示占用方，不删监控资产、不动 `node_id`。CMDB 主机删除或监控实例删除时，CMDB 侧仅清理相应关联标识；节点退役时，CMDB 侧解除关联，监控侧不软删关联主机：只清 `node_id`，采集配置标 `executor_node_removed`（停采待处理）。携带来源链路的回传被抑制，避免循环通知。相关模块：[[legacy-ard-modules-monitor.md#5. 数据流【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]。
 
 > 证据来源：server/apps/cmdb/services/module_ingest.py:254-400，server/apps/cmdb/services/module_ingest.py:403-494，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/module_push.py:349-437，server/apps/cmdb/views/instance.py:335-369　|　同步基线：d2769559　|　【已实现】
 
@@ -187,7 +187,8 @@
 
 ## 2026-11-09 事故影响拓扑
 
-- `[cmdb#20261109-001]` 新增 NATS `incident_impact_topology`：入参种子 UUID 与 `user_info`。只批量查询 `run` / `connect`，按应用拓扑层级决定上一跳；至少两个种子共用的上一跳作为桥接返回。超过 200 个去重种子不查图。看不见的实例不返回名称。查询失败返回 `{result: False}`，不把图库异常正文带回。RPC：`CMDB.incident_impact_topology`。消费方为告警事故详情。契约见 `specs/changes/incident-impact-topology/spec.md`。
+- `[cmdb#20261109-001]` 新增 NATS `incident_impact_topology`：入参种子 UUID 与 `user_info`。基础图只批量查询 `run` / `connect`，按应用拓扑层级决定上一跳；至少两个种子共用的上一跳作为桥接返回。超过 200 个去重种子不查图。看不见的实例不返回名称。查询失败返回 `{result: False}`，不把图库异常正文带回。RPC：`CMDB.incident_impact_topology`。消费方为告警事故详情。契约见 `specs/changes/incident-impact-topology/spec.md`。
+- `[cmdb#20261117-001]` 同一个 NATS 方法追加一层候选和应用归属。种子模型在 `model_association` 里的全部关系都参与，模型可以是源或目标，只展开直接相连的实例，含基础设施。候选最多 300。`ci_context` 在 CMDB 进程内按调用者组织点查，返回应用、系统和成员 UUID；组织为空则不返回应用层。模型关系目录失败时整次查询失败，不退回成只查 `run` / `connect`。上下文失败时基础图仍返回，`context_status=unavailable`。不新增第二个 RPC。契约见 `specs/changes/incident-impact-topology-related-alerts/design.md`。
 
 ## 2026-09-21 Code-ARD 校准
 - `[cmdb#20261012-001]` NATS `get_room_list` 重新作为运营分析内置选项源「CMDB 机房列表（选项）」暴露，`valueField=inst_uuid`、`labelField=inst_name`。`get_room3d_layout` 仍不作为用户可选出图数据源。NATS handler 本身不变。

@@ -632,7 +632,9 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         normalized_ids = _ensure_operate_instances(request, [instance_id], actor_context)
         if not normalized_ids:
             raise BaseAppException("instance_id 不能为空")
-        MonitorCollectorNodeExit.reassign(normalized_ids[0], request.data.get("node_id"))
+        permission_data = InstanceConfigService._build_permission_data(actor_context)
+        permission_data["is_superuser"] = bool(actor_context.get("is_superuser", False))
+        MonitorCollectorNodeExit.reassign(normalized_ids[0], request.data.get("node_id"), permission_data)
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="unbind_monitor_plugin")

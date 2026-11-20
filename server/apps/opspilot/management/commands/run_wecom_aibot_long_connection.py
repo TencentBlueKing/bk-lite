@@ -16,8 +16,11 @@ from apps.opspilot.services.skill_channel_aibot_long_connection import (
 )
 from apps.opspilot.services.skill_channel_aibot_long_connection_agent import run_long_connection_answer
 from apps.opspilot.services.skill_channel_aibot_long_connection_sdk import open_wecom_sdk_transport
+from apps.opspilot.services.skill_channel_long_connection_poll import poll_long_connection_once
 
 POLL_SECONDS = 1
+LOOP_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_loop_failed failed_stage=%s error_type=%s"
+DB_CLEANUP_FAILED_LOG_TEMPLATE = "event=wecom_aibot_long_connection_db_cleanup_failed failed_stage=db_cleanup error_type=%s"
 
 
 class Command(BaseCommand):
@@ -34,15 +37,11 @@ class Command(BaseCommand):
         )
         logger.info("event=wecom_aibot_long_connection_process_started")
         while True:
-            try:
-                leader.reconcile(load_long_connection_channels())
-                leader.pump()
-            except Exception as exc:
-                proxy = RuntimeError(type(exc).__name__)
-                proxy.__traceback__ = exc.__traceback__
-                logger.error(
-                    "event=wecom_aibot_long_connection_loop_failed failed_stage=reconcile error_type=%s",
-                    type(exc).__name__,
-                    exc_info=(type(proxy), proxy, proxy.__traceback__),
-                )
+            poll_long_connection_once(
+                load_long_connection_channels,
+                leader.reconcile,
+                leader.pump,
+                loop_failed_template=LOOP_FAILED_LOG_TEMPLATE,
+                cleanup_failed_template=DB_CLEANUP_FAILED_LOG_TEMPLATE,
+            )
             time.sleep(POLL_SECONDS)

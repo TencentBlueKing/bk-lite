@@ -15,8 +15,11 @@ vi.mock('@/context/userInfo', () => ({
     userId: '1',
     username: 'admin',
     selectedGroup: { id: '7', name: '当前组织' },
-    flatGroups: [{ id: '7', name: '当前组织' }],
-    groupTree: [],
+    flatGroups: [{ id: '7', name: '当前组织' }, { id: '8', name: '运维二组' }],
+    groupTree: [
+      { id: '7', name: '当前组织', hasAuth: true },
+      { id: '8', name: '运维二组', hasAuth: true },
+    ],
   }),
 }));
 

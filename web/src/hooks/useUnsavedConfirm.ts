@@ -4,6 +4,13 @@ import { useTranslation } from '@/utils/i18n';
 
 type Dirty = boolean | (() => boolean);
 
+export interface UnsavedConfirmCopy {
+  title?: string;
+  content?: string;
+  okText?: string;
+  cancelText?: string;
+}
+
 /**
  * 表单弹框「未保存二次确认」复用 hook。
  *
@@ -25,17 +32,17 @@ export const useUnsavedConfirm = () => {
   const { t } = useTranslation();
 
   return useCallback(
-    (isDirty: Dirty, onConfirm: () => void) => {
+    (isDirty: Dirty, onConfirm: () => void, copy?: UnsavedConfirmCopy) => {
       const dirty = typeof isDirty === 'function' ? isDirty() : isDirty;
       if (!dirty) {
         onConfirm();
         return;
       }
       Modal.confirm({
-        title: t('common.unsavedTitle'),
-        content: t('common.unsavedContent'),
-        okText: t('common.discardChanges'),
-        cancelText: t('common.continueEditing'),
+        title: copy?.title ?? t('common.unsavedTitle'),
+        content: copy?.content ?? t('common.unsavedContent'),
+        okText: copy?.okText ?? t('common.discardChanges'),
+        cancelText: copy?.cancelText ?? t('common.continueEditing'),
         okButtonProps: { danger: true },
         centered: true,
         onOk: onConfirm,

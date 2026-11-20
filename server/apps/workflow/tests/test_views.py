@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 import httpx
@@ -8,6 +9,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.system_mgmt.models import Channel, ChannelChoices, Group, User
 from apps.system_mgmt.models.operation_log import OperationLog
 from apps.workflow.models import AtomDefinition, ExecutionArtifact, Workflow, WorkflowExecution, WorkflowInteraction, WorkflowTrigger, WorkflowVersion
 from apps.workflow.services.atom_registry import ensure_platform_atom
@@ -1373,6 +1375,117 @@ def test_historical_version_restores_only_draft_without_changing_live_version(su
     assert workflow.canvas_metadata["positions"]["v1"] == {"x": 1, "y": 2}
     assert workflow.current_version == 2
     assert workflow.status == Workflow.Status.PUBLISHED
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("connected_case", ["true", "false"])
+def test_publish_keeps_single_exit_notification_in_its_condition_case(superuser, mocker, connected_case):
+    _enable_notification()
+    workflow = Workflow.objects.create(
+        name="单出口条件通知",
+        team=[7],
+        definition={
+            "tasks": [
+                {
+                    "name": "condition",
+                    "taskReferenceName": "condition",
+                    "type": "SWITCH",
+                    "inputParameters": {"left_0": "${workflow.input.matches}", "right_0": True},
+                    "evaluatorType": "javascript",
+                    "expression": "($.left_0 == $.right_0) ? 'true' : 'false'",
+                    "decisionCases": {"true": [], "false": []},
+                    "defaultCase": [],
+                },
+                _notification_task("notify"),
+            ]
+        },
+        canvas_metadata={
+            "control_flow_mode": "EDGES",
+            "trigger_nodes": [
+                {
+                    "id": "trigger_form",
+                    "name": "开始",
+                    "trigger_type": "FORM",
+                    "input_schema": {"type": "object", "properties": {"matches": {"type": "boolean"}}},
+                    "config": {},
+                }
+            ],
+            "edges": [
+                {"source": "trigger_form", "target": "condition"},
+                {"source": "condition", "sourceHandle": connected_case, "target": "notify"},
+            ],
+        },
+    )
+    client = mocker.patch("apps.workflow.views.ConductorClient").return_value
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(_request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser), pk=workflow.id)
+
+    assert response.status_code == 200, response.data
+    registered = client.register_workflow.call_args.args[0]
+    version = WorkflowVersion.objects.get(workflow=workflow)
+    assert version.definition == registered
+    assert [task["taskReferenceName"] for task in registered["tasks"]] == ["condition"]
+    cases = registered["tasks"][0]["decisionCases"]
+    assert [task["taskReferenceName"] for task in cases[connected_case]] == ["notify"]
+    assert cases["false" if connected_case == "true" else "true"] == []
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("keep_original", [False, True])
+def test_publish_reassigns_form_trigger_name_without_changing_existing_endpoint(superuser, mocker, keep_original):
+    _enable_notification()
+    Group.objects.create(id=7, name="运维组")
+    recipient = User.objects.create(username="recipient", domain=superuser.domain, group_list=[7])
+    channel = Channel.objects.create(name="通知", channel_type=ChannelChoices.EMAIL, config={}, team=[7])
+    task = _notification_task("notify")
+    task["inputParameters"].update(channel_id=channel.pk, recipients=[str(recipient.pk)])
+    workflow = Workflow.objects.create(name="替换表单入口", team=[7], definition={"tasks": [task]}, current_version=3)
+    original, retained = [
+        WorkflowTrigger.objects.create(workflow=workflow, node_key=key, name=name, trigger_type="FORM")
+        for key, name in [("form", "表单触发器"), ("form_2", "表单触发器（2）")]
+    ]
+    nodes = [{"id": "form_2", "name": "表单触发器", "trigger_type": "FORM", "config": {}, "input_schema": {"type": "object", "properties": {}}}]
+    if keep_original:
+        nodes.append({**nodes[0], "id": "form"})
+    nodes.append({**nodes[0], "id": "webhook", "name": "Webhook 触发器", "trigger_type": "WEBHOOK"})
+    nodes.append({**nodes[0], "id": "clock", "name": "定时触发器", "trigger_type": "SCHEDULE", "config": {"expression": "0 8 * * *"}})
+    workflow.canvas_metadata = {
+        "trigger_nodes": nodes,
+        "edges": [{"source": node["id"], "target": "notify"} for node in nodes],
+        "node_titles": {"notify": "流程通知"},
+    }
+    workflow.save()
+    existing = {}
+
+    def engine(request):
+        if request.url.path == "/api/metadata/taskdefs":
+            return httpx.Response(204)
+        if request.method == "POST":
+            existing.update(json.loads(request.content))
+            assert existing["version"] == 4
+            existing.update({"timeoutPolicy": "ALERT_ONLY", "timeoutSeconds": 0, "enforceSchema": True})
+            existing["tasks"][0]["optional"] = False
+            return httpx.Response(409)
+        assert request.method == "GET" and request.url.params["version"] == "4"
+        return httpx.Response(200, json=existing)
+
+    client = ConductorClient("http://conductor:8080/api", transport=httpx.MockTransport(engine))
+    mocker.patch("apps.workflow.views.ConductorClient", return_value=client)
+    response = WorkflowViewSet.as_view({"post": "publish"})(_request(APIRequestFactory(), "post", "/", superuser), pk=workflow.pk)
+
+    assert response.status_code == 200, response.data
+    assert response.data["current_version"] == 4
+    assert workflow.versions.get(version=4).definition["version"] == 4
+    retained.refresh_from_db()
+    assert retained.name == "表单触发器"
+    if keep_original:
+        original.refresh_from_db()
+        assert original.name == "表单触发器（2）"
+    else:
+        assert not workflow.triggers.filter(pk=original.pk).exists()
+    assert workflow.triggers.get(node_key="webhook").enabled
+    assert workflow.triggers.get(node_key="clock").next_run_at is not None
 
 
 @pytest.mark.django_db

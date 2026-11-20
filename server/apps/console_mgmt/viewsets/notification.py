@@ -7,6 +7,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.console_mgmt.i18n import console_message
 from apps.console_mgmt.models import Notification, NotificationRead
 from apps.console_mgmt.serializers import MarkBatchAsReadSerializer, NotificationSerializer
 from apps.core.utils.viewset_utils import build_json_membership_query
@@ -68,15 +69,24 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """禁用创建接口，通过 RPC 创建"""
-        return Response({"detail": "请使用 RPC 接口创建通知"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response(
+            {"detail": console_message(request, "error.use_rpc_create_notification", "请使用 RPC 接口创建通知")},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     def update(self, request, *args, **kwargs):
         """禁用完整更新"""
-        return Response({"detail": "不支持完整更新"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response(
+            {"detail": console_message(request, "error.full_update_unsupported", "不支持完整更新")},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     def partial_update(self, request, *args, **kwargs):
         """禁用部分更新，使用自定义的 mark_as_read 接口"""
-        return Response({"detail": "请使用 mark_as_read 接口标记已读"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response(
+            {"detail": console_message(request, "error.use_mark_as_read", "请使用 mark_as_read 接口标记已读")},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     def destroy(self, request, *args, **kwargs):
         """软删除：仅标记当前用户已删除，不影响其他用户"""
@@ -86,7 +96,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
             user=request.user,
             defaults={"is_deleted": True},
         )
-        return JsonResponse({"result": True, "message": "删除成功"})
+        return JsonResponse({"result": True, "message": console_message(request, "error.notification_deleted", "删除成功")})
 
     @action(methods=["post"], detail=True)
     def mark_as_read(self, request, pk=None):
@@ -102,7 +112,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
             read_state.read_at = timezone.now()
             read_state.save(update_fields=["is_read", "read_at"])
 
-        return JsonResponse({"result": True, "message": "标记已读成功"})
+        return JsonResponse({"result": True, "message": console_message(request, "error.notification_marked_read", "标记已读成功")})
 
     @action(methods=["post"], detail=False)
     def mark_all_as_read(self, request):
@@ -145,7 +155,12 @@ class NotificationViewSet(viewsets.ModelViewSet):
             created_count += len(batch)
 
         total = updated_count + created_count
-        return JsonResponse({"result": True, "message": f"已标记 {total} 条通知为已读"})
+        return JsonResponse(
+            {
+                "result": True,
+                "message": console_message(request, "error.notification_marked_count", "已标记 {count} 条通知为已读", count=total),
+            }
+        )
 
     @action(methods=["post"], detail=False)
     def mark_batch_as_read(self, request):
@@ -153,7 +168,11 @@ class NotificationViewSet(viewsets.ModelViewSet):
         serializer = MarkBatchAsReadSerializer(data=request.data)
         if not serializer.is_valid():
             return JsonResponse(
-                {"result": False, "message": "通知ID列表格式不正确", "errors": serializer.errors},
+                {
+                "result": False,
+                "message": console_message(request, "error.notification_id_list_invalid", "通知ID列表格式不正确"),
+                "errors": serializer.errors,
+            },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -163,7 +182,13 @@ class NotificationViewSet(viewsets.ModelViewSet):
         valid_ids = set(self._visible_notifications(Notification.objects.filter(id__in=ids)).values_list("id", flat=True))
         skipped_ids = [nid for nid in ids if nid not in valid_ids]
         if not valid_ids:
-            return JsonResponse({"result": True, "message": "已标记 0 条通知为已读", "data": {"skipped_ids": skipped_ids}})
+            return JsonResponse(
+            {
+                "result": True,
+                "message": console_message(request, "error.notification_marked_count", "已标记 {count} 条通知为已读", count=0),
+                "data": {"skipped_ids": skipped_ids},
+            }
+        )
 
         existing = set(NotificationRead.objects.filter(user=user, notification_id__in=valid_ids).values_list("notification_id", flat=True))
         if existing:
@@ -178,7 +203,18 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 [NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now) for nid in new_ids], ignore_conflicts=True
             )
 
-        return JsonResponse({"result": True, "message": f"已标记 {len(valid_ids)} 条通知为已读", "data": {"skipped_ids": skipped_ids}})
+        return JsonResponse(
+            {
+                "result": True,
+                "message": console_message(
+                    request,
+                    "error.notification_marked_count",
+                    "已标记 {count} 条通知为已读",
+                    count=len(valid_ids),
+                ),
+                "data": {"skipped_ids": skipped_ids},
+            }
+        )
 
     @action(methods=["get"], detail=False)
     def unread_count(self, request):

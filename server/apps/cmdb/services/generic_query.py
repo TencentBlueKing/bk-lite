@@ -9,7 +9,14 @@ from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFI
 from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.generic_query_columns import public_instance, sensitive_hidden_keys
 from apps.cmdb.services.generic_query_graph import GenericQueryGraphError, aggregate_numeric, count_by_attr
-from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, MODEL_LIST_MAX, NATS_MESSAGE_MAX_BYTES, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
+from apps.cmdb.services.generic_query_limits import (
+    DETAIL_PAGE_SIZE_MAX,
+    INSTANCE_DETAIL_MAX,
+    MODEL_LIST_MAX,
+    NATS_MESSAGE_MAX_BYTES,
+    SCAN_INSTANCE_MAX,
+    STAT_GROUP_MAX,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.condition_group import ConditionGroupError, parse_condition_group
@@ -56,7 +63,7 @@ def _reject_unused(mode: str, checks: list[tuple[Any, str, tuple[str, ...]]]) ->
 def ensure_payload_limit(data: Any) -> None:
     encoded = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     if len(encoded) > NATS_MESSAGE_MAX_BYTES:
-        raise GenericQueryError("结果超过 NATS 消息上限 1MB")
+        raise GenericQueryError("结果过大，请缩小范围或减小每页条数")
 
 
 def query_models(
@@ -70,8 +77,8 @@ def query_models(
 ):
     """模型列表。分类和模型只缩小范围，零实例模型保留。
 
-    按分类、名称、标识排序。页码和每页条数都空时返回数组；两个都填则分页。
-    只填一边失败。不分页超过上限直接失败。
+    按实例数从多到少排序，相同再按分类、名称、标识。页码和每页条数都空时返回数组；
+    两个都填则分页。只填一边失败。不分页超过上限直接失败。
     """
     public = _public_model_rows(models, instance_counts, classification_id, model_ids)
     window = _model_page(page, page_size)
@@ -136,7 +143,6 @@ def query_instances(
     base_params = [{"field": "model_id", "type": "str=", "value": str(model_id)}]
     logic, condition_params = _attribute_filters(attr_types, filters)
     if mode == "detail":
-        page_no, size = _parse_page(page, page_size, enabled=True)
         field, desc = _resolve_sort(
             order_by,
             order_dir,
@@ -145,17 +151,43 @@ def query_instances(
         )
         _validate_sort_field(field)
         order_text = f"-{field}" if desc else field
-        items, count = InstanceManage.instance_list(
-            model_id=str(model_id),
-            params=[],
+        hidden = sensitive_hidden_keys(attr_types)
+        window = _model_page(page, page_size)
+        if window is None:
+            _probe, total = _instance_page(
+                model_id,
+                order_text,
+                permission_map,
+                condition_params,
+                logic,
+                page=1,
+                page_size=1,
+            )
+            total = int(total or 0)
+            if total > INSTANCE_DETAIL_MAX:
+                raise GenericQueryError(f"实例超过 {INSTANCE_DETAIL_MAX} 条，请缩小范围或填写分页")
+            if total == 0:
+                return []
+            items, _total = _instance_page(
+                model_id,
+                order_text,
+                permission_map,
+                condition_params,
+                logic,
+                page=1,
+                page_size=total,
+            )
+            return [_present_display_fields(_public_instance(item, hidden), attr_types) for item in items or []]
+        page_no, size = window
+        items, count = _instance_page(
+            model_id,
+            order_text,
+            permission_map,
+            condition_params,
+            logic,
             page=page_no,
             page_size=size,
-            order=order_text,
-            permission_map=permission_map,
-            condition_params=condition_params,
-            condition_logic=logic,
         )
-        hidden = sensitive_hidden_keys(attr_types)
         rows = [_present_display_fields(_public_instance(item, hidden), attr_types) for item in items or []]
         return _page_payload(rows, page_no, size, count=int(count or 0))
 
@@ -196,7 +228,8 @@ def query_instances(
     if mode == "count":
         return _value_payload(scanned, field="instance_count")
     items = _distribution_items(group_field, grouped_counts, group_labels)
-    _ensure_groups(len(items))
+    if distribution_limit is None:
+        _ensure_groups(len(items))
     field, desc = _resolve_sort(
         order_by,
         order_dir,
@@ -208,6 +241,45 @@ def query_instances(
     return _category_payload(shown)
 
 
+def query_instance_value(
+    *,
+    model_id: str,
+    attr_types: dict[str, str],
+    permission_map: dict,
+    filters=None,
+    aggregate_field: str | None = None,
+    aggregate_op: str | None = None,
+    group_by: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page=None,
+    page_size=None,
+) -> dict:
+    """一个数。聚合属性和聚合方式都空时是实例数，两个都填时是聚合值，只填一个失败。"""
+    if _filled(group_by):
+        raise GenericQueryError("当前查询不支持分布属性")
+    if _filled(order_by) or _filled(order_dir):
+        raise GenericQueryError("当前查询不支持排序")
+    if page not in (None, "") or page_size not in (None, ""):
+        raise GenericQueryError("当前查询不支持分页")
+    field = "" if aggregate_field in (None, "") else str(aggregate_field).strip()
+    operation = "" if aggregate_op in (None, "") else str(aggregate_op).strip()
+    if bool(field) != bool(operation):
+        raise GenericQueryError("聚合属性和聚合方式必须同时填写")
+    payload = query_instances(
+        model_id=model_id,
+        analysis_mode="aggregate" if field else "count",
+        attr_types=attr_types,
+        permission_map=permission_map,
+        filters=filters,
+        aggregate_field=field or None,
+        aggregate_op=operation or None,
+    )
+    if field:
+        return {"value": payload["aggregate_value"]}
+    return {"value": payload["instance_count"]}
+
+
 def one_hop_query_plan(analysis_mode: str | None, page, page_size) -> dict:
     """定下图查询要取的那一块。明细按起点、终点名称翻页，分布按关联数取前几名。"""
     mode = _mode(analysis_mode, ONE_HOP_MODES)
@@ -216,7 +288,10 @@ def one_hop_query_plan(analysis_mode: str | None, page, page_size) -> dict:
         return {"part": "count"}
     if mode == "distribution":
         return {"part": "distribution", "limit": _distribution_window(mode, page, page_size)}
-    page_no, size = _parse_page(page, page_size, enabled=True)
+    window = _model_page(page, page_size)
+    if window is None:
+        return {"part": "detail", "skip": 0, "limit": None}
+    page_no, size = window
     return {"part": "detail", "skip": (page_no - 1) * size, "limit": size}
 
 
@@ -226,8 +301,7 @@ def query_one_hop_relations(
     graph_result: dict,
     page=None,
     page_size=None,
-    association_name: str = "",
-    association_id: str = "",
+    association_names: dict | None = None,
 ) -> dict:
     """一跳关联：计数是对应关系条数，分布是每个起点的关联数量。"""
     mode = _mode(analysis_mode, ONE_HOP_MODES)
@@ -248,23 +322,15 @@ def query_one_hop_relations(
             for item in graph_result.get("groups") or []
         ]
         total = int(graph_result["group_count"]) if "group_count" in graph_result else len(items)
-        _ensure_groups(total)
+        if distribution_limit is None:
+            _ensure_groups(total)
         items.sort(key=lambda item: (-(item.get("relation_count") or 0), item.get("start_uuid") or ""))
         shown = items if "group_count" in graph_result else _slice_distribution(items, distribution_limit)
         return _category_payload(shown)
-    relation_name = str(association_name or "")
-    relation_id = str(association_id or "")
-    rows = [
-        {
-            "start_uuid": item.get("start_uuid") or "",
-            "start_name": item.get("start_name") or "",
-            "end_uuid": item.get("end_uuid") or "",
-            "end_name": item.get("end_name") or "",
-            "asst_name": relation_name,
-            "model_asst_id": relation_id,
-        }
-        for item in graph_result.get("pairs") or []
-    ]
+    labels = {str(key): str(value or "") for key, value in (association_names or {}).items()}
+    rows = [_one_hop_detail_row(item, labels) for item in graph_result.get("pairs") or []]
+    if mode == "detail" and page in (None, "") and page_size in (None, ""):
+        return rows
     if graph_result.get("paged"):
         return _page_payload(rows, page, page_size, count=pair_count)
     rows.sort(
@@ -273,9 +339,36 @@ def query_one_hop_relations(
             item.get("end_name") or "",
             item.get("start_uuid") or "",
             item.get("end_uuid") or "",
+            item.get("model_asst_id") or "",
         )
     )
     return _page_payload(rows, page, page_size)
+
+
+def _one_hop_detail_row(item: dict, association_names: dict[str, str]) -> dict:
+    relation_id = str(item.get("model_asst_id") or "")
+    return {
+        "start_uuid": item.get("start_uuid") or "",
+        "start_name": item.get("start_name") or "",
+        "end_uuid": item.get("end_uuid") or "",
+        "end_name": item.get("end_name") or "",
+        "asst_name": association_names.get(relation_id, ""),
+        "model_asst_id": relation_id,
+    }
+
+
+def _tag_membership_values(value) -> list[str]:
+    """标签按整段比较。逗号属于标签内容，不拆成多项。"""
+    if isinstance(value, list):
+        selected = [str(item).strip() for item in value if str(item).strip()]
+    elif value in (None, ""):
+        selected = []
+    else:
+        text = str(value).strip()
+        selected = [text] if text else []
+    if not selected:
+        raise GenericQueryError("属性过滤必须给出值")
+    return list(dict.fromkeys(selected))
 
 
 def _enum_membership_values(value, *, split_commas: bool) -> list[str]:
@@ -306,6 +399,18 @@ def build_attribute_filter(attr_types: dict[str, str], field: str | None, op: st
             "field": field,
             "type": "list_none[]" if op == "ne" else "list_any[]",
             "value": selected,
+        }
+    if kind == "tag":
+        if op in {"empty"}:
+            return {"field": field, "type": "empty"}
+        if op in {"notEmpty", "not_empty"}:
+            return {"field": field, "type": "not_empty"}
+        if op not in {"eq", "ne", "in", "notIn"}:
+            raise GenericQueryError("属性过滤运算符不受支持")
+        return {
+            "field": field,
+            "type": "list_none[]" if op in {"ne", "notIn"} else "list_any[]",
+            "value": _tag_membership_values(value),
         }
     mapped = _FILTER_TYPES.get((kind, op))
     if mapped is None:
@@ -375,6 +480,7 @@ def _select_model_rows(models, instance_counts, classification_id, model_ids) ->
         rows = [row for row in rows if row["model_id"] in selected]
     rows.sort(
         key=lambda item: (
+            -int(item.get("instance_count") or 0),
             str(item.get("classification_name") or ""),
             str(item.get("model_name") or ""),
             str(item.get("model_id") or ""),
@@ -449,6 +555,8 @@ def _attr_kind(attr_types: dict[str, str], field: str) -> str:
     if field not in attr_types:
         raise GenericQueryError(f"属性不存在或无权使用: {field}")
     raw = str(attr_types.get(field) or "string").lower()
+    if raw == "tag":
+        return "tag"
     if raw in _ENUM_ATTR_TYPES:
         return "enum"
     if raw in _NUMBER_ATTR_TYPES:
@@ -518,6 +626,19 @@ def _distribution_return_limit(page_size) -> int | None:
     if size < 1 or size > DETAIL_PAGE_SIZE_MAX:
         raise GenericQueryError(f"每页最多 {DETAIL_PAGE_SIZE_MAX} 条")
     return size
+
+
+def _instance_page(model_id, order_text, permission_map, condition_params, logic, *, page, page_size):
+    return InstanceManage.instance_list(
+        model_id=str(model_id),
+        params=[],
+        page=page,
+        page_size=page_size,
+        order=order_text,
+        permission_map=permission_map,
+        condition_params=condition_params,
+        condition_logic=logic,
+    )
 
 
 def _model_page(page, page_size) -> tuple[int, int] | None:

@@ -38,16 +38,6 @@
           ]
         },
         {
-          "id": "user_fields",
-          "name": "User Fields",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
           "id": "user_sync",
           "name": "User Sync",
           "operation": [
@@ -57,6 +47,21 @@
             "Delete"
           ]
         },
+        {
+          "id": "user_fields",
+          "name": "User Fields",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security",
+      "children": [
         {
           "id": "security_settings",
           "name": "Security Settings",
@@ -73,6 +78,16 @@
           "operation": [
             "View",
             "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "network_white_list",
+          "name": "Network Whitelist",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
             "Delete"
           ]
         }
@@ -209,16 +224,6 @@
           "name": "Error Logs",
           "operation": [
             "View"
-          ]
-        },
-        {
-          "id": "network_white_list",
-          "name": "Network Whitelist",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
           ]
         },
         {

@@ -3,11 +3,21 @@
 import json
 from typing import Optional
 
+from django.utils import timezone as dj_timezone
 from django_celery_beat.models import ClockedSchedule, CrontabSchedule, PeriodicTask
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.config import JOB_CELERY_QUEUE
 from apps.job_mgmt.constants import ScheduleType
+
+
+def _job_crontab_timezone():
+    """作业 Cron 使用的时区。
+
+    与 crontab 预览以及 OpsPilot 等用户侧 Beat 调度一致，取当前 Django 时区。
+    已登录请求会激活用户时区；未激活时为 TIME_ZONE，亦即 CELERY_TIMEZONE。
+    """
+    return dj_timezone.get_current_timezone()
 
 
 class ScheduledTaskService:
@@ -64,13 +74,15 @@ class ScheduledTaskService:
 
             minute, hour, day_of_month, month_of_year, day_of_week = parts
 
-            # 获取或创建 CrontabSchedule
+            # 时区必须进入查找条件。同一五段表达式可能同时存在 UTC 与
+            # Asia/Shanghai 等系统调度行，缺时区时 get_or_create 会 MultipleObjectsReturned。
             schedule, _ = CrontabSchedule.objects.get_or_create(
                 minute=minute,
                 hour=hour,
                 day_of_month=day_of_month,
                 month_of_year=month_of_year,
                 day_of_week=day_of_week,
+                timezone=_job_crontab_timezone(),
             )
 
             # 创建或更新 PeriodicTask
@@ -95,7 +107,7 @@ class ScheduledTaskService:
 
         except Exception as e:
             logger.exception(f"创建 Cron 任务失败: {e}")
-            return None
+            raise
 
     @classmethod
     def _create_once_task(cls, scheduled_task, task_name: str) -> Optional[PeriodicTask]:
@@ -133,7 +145,7 @@ class ScheduledTaskService:
 
         except Exception as e:
             logger.exception(f"创建单次执行任务失败: {e}")
-            return None
+            raise
 
     @classmethod
     def update_periodic_task(cls, scheduled_task) -> Optional[PeriodicTask]:

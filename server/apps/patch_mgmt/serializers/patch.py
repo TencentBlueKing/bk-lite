@@ -194,7 +194,16 @@ class PatchListSerializer(PatchPermissionSerializer):
             # 新建补丁和原本完整的补丁必须保持元数据完整；历史不完整记录允许
             # 继续编辑，评估时会安全归为 unknown，避免升级后突然无法维护旧数据。
             if missing and (self.instance is None or existing is None or existing_complete):
-                raise serializers.ValidationError({"linux_detail": f"Linux 补丁元数据缺少：{', '.join(missing)}"})
+                raise serializers.ValidationError(
+                    {
+                        "linux_detail": serializer_message(
+                            self,
+                            "error.linux_metadata_missing",
+                            "Linux 补丁元数据缺少：{fields}",
+                            fields=", ".join(missing),
+                        )
+                    }
+                )
         windows_detail = attrs.get("windows_detail")
         if os_type != "windows" or windows_detail is None:
             return attrs

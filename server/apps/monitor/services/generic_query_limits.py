@@ -22,6 +22,9 @@ METRIC_SERIES_MAX = 20
 # floor(时间范围秒 / 步长) + 1。请求校验与 VictoriaMetrics 实际返回用同一公式。
 METRIC_POINTS_MAX = 1000
 
+# 从 CMDB 资源做告警分布时，单次最多接受 2000 个 uuid。
+CMDB_ALERT_UUID_MAX = 2000
+
 # 监控告警时间范围最长 90 天。
 ALERT_RANGE_MAX_DAYS = 90
 ALERT_RANGE_MAX_SECONDS = 90 * 24 * 60 * 60

@@ -100,7 +100,6 @@ def test_platform_executable_atoms_share_the_standard_package_contract():
         "agent_id",
         "knowledge_files",
         "message",
-        "prompt",
         "memory_context",
     }
     assert set(catalog["bklite_intent_classification"]["input_schema"]["properties"]) == {

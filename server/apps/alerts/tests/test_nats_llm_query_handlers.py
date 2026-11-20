@@ -51,6 +51,30 @@ def test_list_alerts_returns_authorized_rows(mocker):
     assert result["data"]["items"][0]["alert_id"] == "ALERT-LLM-1"
 
 
+def test_list_alerts_pages_have_stable_order_when_creation_times_match(mocker):
+    mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
+    rows = [
+        Alert.objects.create(
+            alert_id=f"ALERT-TIED-{index}",
+            title="cpu high",
+            content="c",
+            status=AlertStatus.PENDING,
+            level="critical",
+            fingerprint=f"tied-{index}",
+            team=[1],
+            session_status=SessionStatus.CONFIRMED,
+        )
+        for index in range(3)
+    ]
+    Alert.objects.filter(pk__in=[row.pk for row in rows]).update(created_at=rows[0].created_at)
+    ids = []
+    for page in (1, 2, 3):
+        result = alerts_nats.list_alerts(query_data={"page": page, "page_size": 1}, user_info=_user_info())
+        assert result["data"]["count"] == 3
+        ids.extend(item["alert_id"] for item in result["data"]["items"])
+    assert ids == [row.alert_id for row in reversed(rows)]
+
+
 def test_list_alerts_matches_content_and_any_keyword(mocker):
     mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
     Alert.objects.create(
@@ -104,6 +128,61 @@ def test_list_alerts_active_status_matches_open_alerts_only(mocker):
     result = alerts_nats.list_alerts(query_data={"status": "active"}, user_info=_user_info())
     assert result["result"] is True
     assert [item["alert_id"] for item in result["data"]["items"]] == ["ALERT-LLM-OPEN"]
+
+
+def test_list_alerts_filters_created_at_when_start_or_end_is_set(mocker):
+    mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
+    early = Alert.objects.create(
+        alert_id="ALERT-LLM-EARLY",
+        title="十月告警",
+        content="c",
+        status=AlertStatus.CLOSED,
+        level="warning",
+        fingerprint="fp-early",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    late = Alert.objects.create(
+        alert_id="ALERT-LLM-LATE",
+        title="十一月告警",
+        content="c",
+        status=AlertStatus.RESOLVED,
+        level="warning",
+        fingerprint="fp-late",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.filter(pk=early.pk).update(created_at=datetime.datetime(2026, 10, 14, 7, 44, tzinfo=datetime.timezone.utc))
+    Alert.objects.filter(pk=late.pk).update(created_at=datetime.datetime(2026, 11, 2, 2, 0, tzinfo=datetime.timezone.utc))
+
+    unfiltered = alerts_nats.list_alerts(query_data={}, user_info=_user_info())
+    assert {item["alert_id"] for item in unfiltered["data"]["items"]} == {"ALERT-LLM-EARLY", "ALERT-LLM-LATE"}
+
+    window = alerts_nats.list_alerts(
+        query_data={"start": "2026-10-17T00:00:00Z", "end": "2026-11-17T10:41:15Z"},
+        user_info=_user_info(),
+    )
+    assert [item["alert_id"] for item in window["data"]["items"]] == ["ALERT-LLM-LATE"]
+
+    start_only = alerts_nats.list_alerts(query_data={"start": "2026-11-01T00:00:00Z"}, user_info=_user_info())
+    assert [item["alert_id"] for item in start_only["data"]["items"]] == ["ALERT-LLM-LATE"]
+
+    end_only = alerts_nats.list_alerts(query_data={"end": "2026-10-31T00:00:00Z"}, user_info=_user_info())
+    assert [item["alert_id"] for item in end_only["data"]["items"]] == ["ALERT-LLM-EARLY"]
+
+    blank = alerts_nats.list_alerts(query_data={"start": "  ", "end": ""}, user_info=_user_info())
+    assert blank["data"]["count"] == 2
+
+    invalid = alerts_nats.list_alerts(query_data={"start": "2026-10-14 15:44:00"}, user_info=_user_info())
+    assert invalid["result"] is False
+    assert "start" in invalid["message"]
+
+    reversed_range = alerts_nats.list_alerts(
+        query_data={"start": "2026-11-17T00:00:00Z", "end": "2026-10-17T00:00:00Z"},
+        user_info=_user_info(),
+    )
+    assert reversed_range["result"] is False
+    assert "start" in reversed_range["message"]
 
 
 def test_list_alerts_includes_alerts_assigned_to_caller_outside_current_team(mocker):
@@ -298,16 +377,12 @@ def test_list_pages_lookup_caller_timezone_once(mocker):
     event_pages = {}
     for page_size in (2, 20):
         alert_counts[page_size], alert_pages[page_size] = _capture_timezone_lookups(lambda page_size=page_size: _alerts(page_size))
-        event_counts[page_size], event_pages[page_size] = _capture_timezone_lookups(
-            lambda page_size=page_size: _events(event_alert_id, page_size)
-        )
+        event_counts[page_size], event_pages[page_size] = _capture_timezone_lookups(lambda page_size=page_size: _events(event_alert_id, page_size))
 
     empty_alert_count, empty_alerts = _capture_timezone_lookups(lambda: _alerts(20, team=2))
     empty_event_count, empty_events = _capture_timezone_lookups(lambda: _events(empty_event_alert_id, 20))
     explicit_alert_count, explicit_alerts = _capture_timezone_lookups(lambda: _alerts(2, timezone=_EXPLICIT_TIMEZONE))
-    explicit_event_count, explicit_events = _capture_timezone_lookups(
-        lambda: _events(event_alert_id, 2, timezone=_EXPLICIT_TIMEZONE)
-    )
+    explicit_event_count, explicit_events = _capture_timezone_lookups(lambda: _events(event_alert_id, 2, timezone=_EXPLICIT_TIMEZONE))
 
     observed = {
         "list_alerts": alert_counts,

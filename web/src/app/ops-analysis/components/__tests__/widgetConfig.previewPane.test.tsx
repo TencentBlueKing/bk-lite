@@ -89,14 +89,11 @@ describe('WidgetConfigPreview pane', () => {
     expect(screen.queryByTestId('mock-preview-renderer')).toBeNull();
   });
 
-  it('renders the chart with a distinct preview widget id and live title', async () => {
-    renderPreview({
-      liveName: '草稿名',
-      liveDescription: '草稿描述',
-    });
+  it('renders the chart with a distinct preview widget id', async () => {
+    renderPreview();
 
-    expect(screen.getByText('草稿名')).toBeTruthy();
-    expect(screen.getByText('草稿描述')).toBeTruthy();
+    expect(screen.queryByText('CPU')).toBeNull();
+    expect(screen.queryByText('saved desc')).toBeNull();
 
     await waitFor(() => {
       expect(screen.getByTestId('mock-preview-renderer').getAttribute('data-widget-id')).toBe(
@@ -124,8 +121,6 @@ describe('WidgetConfigPreview pane', () => {
     expect(chartCard?.className).toContain('flex-1');
     expect(chartCard?.className).toContain('min-h-0');
     expect(chartCard?.className).toContain('overflow-hidden');
-    expect(screen.getByText('草稿名').className).toContain('truncate');
-    expect(screen.getByText('草稿描述').className).toContain('line-clamp-2');
   });
 
   it('hides room3D view-mode chrome in the config preview', async () => {

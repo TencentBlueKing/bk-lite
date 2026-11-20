@@ -3,7 +3,7 @@
     "id": "k8s",
     "name": "Kubernetes 助手",
     "format_skill_name": "Kubernetes 数据汇总",
-    "description": "Kubernetes 助手",
+    "description": "巡检节点、Pod、工作负载、存储与近期告警事件，汇总集群状态和异常资源，便于快速掌握运行情况。",
     "tools": [
       "kubernetes"
     ],
@@ -14,7 +14,7 @@
     "id": "pgsql",
     "name": "Postgres DB 助手",
     "format_skill_name": "Postgres DB 数据汇总",
-    "description": "Postgres DB 助手",
+    "description": "检查 PostgreSQL 连接、慢 SQL、长事务、锁等待、存储空间及复制状态，汇总关键指标与异常项。",
     "tools": [
       "postgres"
     ],
@@ -25,7 +25,7 @@
     "id": "web_check",
     "name": "Web 应用巡检助手",
     "format_skill_name": "Web 应用数据汇总",
-    "description": "Web 应用巡检助手",
+    "description": "按预设流程检查 Web 应用登录及菜单页面，汇总正常、异常与成功率。使用前需配置巡检目标、登录方式及执行工具。",
     "tools": [
       "jenkins"
     ],

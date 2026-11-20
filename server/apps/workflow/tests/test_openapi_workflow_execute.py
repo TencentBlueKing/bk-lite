@@ -86,11 +86,11 @@ def test_workflow_list_forged_team_is_rejected(teams):
 def test_api_tenant_can_execute_own_workflow_async(teams):
     own_team, other_team = teams
     own, _foreign = _create_workflows(own_team.id, other_team.id)
-    execution = WorkflowExecution(id="11111111-1111-1111-1111-111111111111", workflow=own, workflow_version=1, team=[own_team.id])
     with patch("apps.workflow.openapi_api.SSRFValidator.validate_callback"), patch(
         "apps.workflow.permissions.get_permission_rules",
         return_value={"team": [own_team.id], "instance": []},
-    ), patch("apps.workflow.openapi_api.start_execution", return_value=execution) as start:
+    ), patch("apps.workflow.openapi_api.ConductorClient") as conductor:
+        conductor.return_value.start_workflow.return_value = "gateway-async-run"
         result = openapi_workflow_execute_async(
             str(own.id),
             _callback_context(),
@@ -98,10 +98,20 @@ def test_api_tenant_can_execute_own_workflow_async(teams):
             user_info={"user": "alice", "domain": "a.test.com"},
         )
 
-    assert result["accepted"] is True
-    assert result["execution_id"] == str(execution.id)
-    assert start.call_args.kwargs["async_callback_context"]["callback_token"] == "tok-wf-async-1"
-    assert start.call_args.kwargs["async_callback_key"]
+        replay = openapi_workflow_execute_async(
+            str(own.id), _callback_context(), team=[own_team.id], user_info={"user": "alice", "domain": "a.test.com"}
+        )
+        another_actor = openapi_workflow_execute_async(
+            str(own.id), _callback_context(), team=[own_team.id], user_info={"user": "bob", "domain": "a.test.com"}
+        )
+    assert result["accepted"] is True and replay == result
+    assert another_actor["result"] is False
+    assert conductor.return_value.start_workflow.call_count == 1
+    execution = WorkflowExecution.objects.get(pk=result["execution_id"])
+    assert execution.async_callback_context["callback_token"] == "tok-wf-async-1"
+    assert execution.async_callback_key
+    assert execution.caller_identity == {"username": "alice", "domain": "a.test.com", "team_id": own_team.id, "include_children": False}
+    assert (execution.started_by, execution.domain) == ("alice", "a.test.com")
 
 
 def test_api_tenant_cannot_replay_other_org_callback_token(teams):

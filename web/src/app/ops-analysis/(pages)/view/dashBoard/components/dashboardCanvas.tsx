@@ -229,7 +229,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
                 </h4>
                 <div
                   ref={runtimeSlotRef}
-                  className="no-drag min-w-0 flex-1 overflow-x-auto"
+                  className="no-drag min-w-0 flex-1 overflow-x-auto overflow-y-hidden py-px"
                 />
               </div>
               {item.description?.trim() && (

@@ -301,3 +301,196 @@ def test_local_host_onboarding_persists_selected_node_ip_as_instance_fact(mocker
     assert instance.summary_facts["asset.ip"] == "10.0.41.149"
     assert instance.summary_facts["_sources"]["asset.ip"] == {"Host Fact Contract": "10.0.41.149"}
     release.assert_called_once_with(["node-1"])
+
+
+def _allow_node_org(monkeypatch, org_ids=(1,)):
+    class _SystemMgmt:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"result": True, "data": list(org_ids)}
+
+    monkeypatch.setattr("apps.node_mgmt.services.node.SystemMgmt", _SystemMgmt)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.node.get_permission_rules",
+        lambda *args, **kwargs: {"team": list(org_ids), "instance": []},
+    )
+
+
+def _local_node_mgmt(monkeypatch):
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    class _LocalNodeMgmt(NodeMgmt):
+        def __init__(self, is_local_client=False):
+            super().__init__(is_local_client=True)
+
+    monkeypatch.setattr("apps.monitor.services.node_mgmt.NodeMgmt", _LocalNodeMgmt)
+
+
+def _onboarding_actor(org_id=1):
+    return {
+        "username": "admin",
+        "domain": "domain.com",
+        "current_team": org_id,
+        "include_children": False,
+        "is_superuser": True,
+        "data_team_ids": [org_id],
+    }
+
+
+def _mock_host_deployment_gate(mocker):
+    mocker.patch(
+        "apps.monitor.services.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+        return_value=set(),
+    )
+    mocker.patch(
+        "apps.monitor.services.node_mgmt.HostDeploymentStatus.release_unbound_child_configs",
+        return_value=[],
+    )
+
+
+@pytest.mark.django_db
+def test_host_onboarding_reattaches_same_ip_when_host_configs_are_removed(monkeypatch, mocker):
+    from apps.node_mgmt.models import Node, NodeOrganization
+    from apps.node_mgmt.models.sidecar import NodeCollectorConfiguration
+
+    host = MonitorObject.objects.create(name="Host", level="base")
+    old_node, child_id = _create_host_topology(child_id="parked-host-cpu")
+    target = Node.objects.create(
+        id="host-parked-target",
+        name="host-parked-target",
+        ip="10.0.0.2",
+        operating_system="linux",
+        collector_configuration_directory="/etc/telegraf",
+        cloud_region=old_node.cloud_region,
+    )
+    NodeOrganization.objects.create(node=target, organization=1)
+    instance = _create_live_collect_config(child_id, instance_id="('host-parked',)")
+    CollectConfig.objects.filter(id=child_id).update(
+        executor_node_removed=True,
+        executor_node_id="old-node",
+        executor_node_name="old-node",
+    )
+    _allow_node_org(monkeypatch)
+    _local_node_mgmt(monkeypatch)
+    _mock_host_deployment_gate(mocker)
+
+    result = InstanceConfigService.create_monitor_instance_by_node_mgmt(
+        {
+            "monitor_object_id": host.id,
+            "collector": "Telegraf",
+            "collect_type": "host",
+            "configs": [{"type": "cpu"}],
+            "instances": [
+                {
+                    "instance_id": "host-parked",
+                    "instance_name": "host-parked",
+                    "node_ids": [target.id],
+                    "group_ids": [1],
+                }
+            ],
+        },
+        actor_context=_onboarding_actor(),
+    )
+
+    instance.refresh_from_db()
+    config = CollectConfig.objects.get(id=child_id)
+    assert list(result) == ["('host-parked',)"]
+    assert MonitorInstance.objects.filter(id=instance.id).count() == 1
+    assert instance.is_deleted is False
+    assert instance.node_id == target.id
+    assert config.executor_node_removed is False
+    assert config.executor_node_id == ""
+    assert config.executor_node_name == ""
+    assert NodeCollectorConfiguration.objects.filter(
+        node_id=target.id,
+        collector_config__childconfig__id=child_id,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_host_onboarding_rejects_removed_host_on_node_outside_org(monkeypatch, mocker):
+    from apps.node_mgmt.models import NodeOrganization
+
+    host = MonitorObject.objects.create(name="Host", level="base")
+    node, child_id = _create_host_topology(child_id="outside-host-cpu")
+    NodeOrganization.objects.create(node=node, organization=2)
+    instance = _create_live_collect_config(child_id, instance_id="('host-outside',)")
+    CollectConfig.objects.filter(id=child_id).update(executor_node_removed=True, executor_node_id="old-node")
+    _allow_node_org(monkeypatch, (1,))
+    _local_node_mgmt(monkeypatch)
+    _mock_host_deployment_gate(mocker)
+
+    with pytest.raises(BaseAppException, match="无权限|采集节点不存在"):
+        InstanceConfigService.create_monitor_instance_by_node_mgmt(
+            {
+                "monitor_object_id": host.id,
+                "collector": "Telegraf",
+                "collect_type": "host",
+                "configs": [{"type": "cpu"}],
+                "instances": [
+                    {
+                        "instance_id": "host-outside",
+                        "instance_name": "host-outside",
+                        "node_ids": [node.id],
+                        "group_ids": [1],
+                    }
+                ],
+            },
+            actor_context=_onboarding_actor(1),
+        )
+
+    instance.refresh_from_db()
+    config = CollectConfig.objects.get(id=child_id)
+    assert instance.is_deleted is False
+    assert config.executor_node_removed is True
+    assert CollectConfig.objects.filter(id=child_id).count() == 1
+
+
+@pytest.mark.django_db
+def test_host_onboarding_still_rejects_when_only_some_host_configs_are_removed(mocker):
+    host = MonitorObject.objects.create(name="Host", level="base")
+    instance = MonitorInstance.objects.create(id="('host-partial',)", name="host-partial", monitor_object=host)
+    CollectConfig.objects.create(
+        id="partial-cpu",
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="cpu",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=True,
+    )
+    CollectConfig.objects.create(
+        id="partial-mem",
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="mem",
+        file_type="toml",
+        is_child=True,
+        executor_node_removed=False,
+    )
+    _mock_host_deployment_gate(mocker)
+
+    with pytest.raises(BaseAppException, match="已存在主机监控配置"):
+        InstanceConfigService.create_monitor_instance_by_node_mgmt(
+            {
+                "monitor_object_id": host.id,
+                "collector": "Telegraf",
+                "collect_type": "host",
+                "configs": [{"type": "gpu"}],
+                "instances": [
+                    {
+                        "instance_id": "host-partial",
+                        "instance_name": "host-partial",
+                        "node_ids": ["node-1"],
+                        "group_ids": [1],
+                    }
+                ],
+            }
+        )
+
+    assert MonitorInstance.objects.filter(id=instance.id, is_deleted=False).exists()
+    assert CollectConfig.objects.filter(id__in=["partial-cpu", "partial-mem"]).count() == 2

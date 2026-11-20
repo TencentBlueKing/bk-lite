@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import styles from './index.module.scss';
@@ -41,11 +41,17 @@ export default function GanttChart({
 
   const times = useMemo(() => {
     const starts = alarmData.map((d) => dayjs(d.first_event_time));
-    const ends = alarmData.map((d) => dayjs(d.last_event_time));
-    const min = dayjs.min(...starts) || dayjs();
-    const max = dayjs.max(...ends) || dayjs();
-    const total = max.diff(min);
-    return { min, max, total };
+    const ends = alarmData.map((d) => dayjs(d.last_event_time || d.first_event_time));
+    let min = dayjs.min(...starts) || dayjs();
+    let max = dayjs.max(...ends) || dayjs();
+    if (!min.isValid()) min = dayjs();
+    if (!max.isValid() || max.isBefore(min)) max = min;
+    // 同一时刻的告警没有跨度，时间轴会叠成一个点，左右各留半小时才能拉开。
+    if (max.diff(min) < 60 * 1000) {
+      min = min.subtract(30, 'minute');
+      max = max.add(30, 'minute');
+    }
+    return { min, max, total: Math.max(max.diff(min), 1) };
   }, [alarmData]);
 
   const ticks = useMemo(() => {
@@ -81,48 +87,56 @@ export default function GanttChart({
   return (
     <>
       <div className={styles.chartWrapper}>
-        <Spin spinning={loading}>
+        <Spin spinning={loading} wrapperClassName={styles.spin}>
           {!sortedData?.length ? (
             <CompactEmptyState description={t('common.noData')} />
           ) : (
             <div className={styles.chartGrid}>
-              <div className={styles.emptyHeader} />
-              <div className={styles.axis}>
-                {ticks.map((t, idx) => (
-                  <React.Fragment key={idx}>
+              <div className={styles.axisRow}>
+                <div className={styles.gutter} />
+                <div className={styles.axis}>
+                  {ticks.map((tick, idx) => (
                     <span
+                      key={idx}
                       className={styles.axisTick}
-                      style={{ left: `${t.left}%` }}
+                      style={{
+                        left: `${tick.left}%`,
+                        transform: tick.left < 8
+                          ? 'translateX(0)'
+                          : tick.left > 92
+                            ? 'translateX(-100%)'
+                            : 'translateX(-50%)',
+                      }}
                     >
-                      {t.label}
+                      {tick.label}
                     </span>
-                  </React.Fragment>
-                ))}
-              </div>
-              <div>
-                {ticks.map((t, idx) => (
-                  <div
-                    key={`full-line-${idx}`}
-                    className={styles.axisLine}
-                    style={{ left: `${t.left}%` }}
-                  />
-                ))}
+                  ))}
+                </div>
               </div>
               <div className={styles.chartContent}>
+                <div className={styles.lines} aria-hidden="true">
+                  {ticks.map((tick, idx) => (
+                    <div
+                      key={`full-line-${idx}`}
+                      className={styles.axisLine}
+                      style={{ left: `${tick.left}%` }}
+                    />
+                  ))}
+                </div>
                 {sortedData.map((d) => {
                   const s = dayjs(d.first_event_time).diff(times.min);
-                  const w = dayjs(d.last_event_time).diff(
+                  const w = dayjs(d.last_event_time || d.first_event_time).diff(
                     dayjs(d.first_event_time)
                   );
-                  // 防止 total 为 0 并限制 0–100%
-                  const rawLeft = times.total > 0 ? (s / times.total) * 100 : 0;
+                  const rawLeft = (s / times.total) * 100;
                   const clampedLeft = Math.min(Math.max(rawLeft, 0), 100);
-                  const rawWidth =
-                    times.total > 0 ? (w / times.total) * 100 : 0;
+                  const rawWidth = (w / times.total) * 100;
                   const clampedWidth = Math.min(
                     Math.max(rawWidth, 0),
                     100 - clampedLeft
                   );
+                  const wideBar = clampedWidth >= 12;
+                  const titleOnRight = clampedLeft + clampedWidth < 65;
 
                   return (
                     <div key={d.id} className={styles.alarmRow}>
@@ -131,7 +145,7 @@ export default function GanttChart({
                         checked={selectedTasks.includes(d.id)}
                         onChange={() => toggleTask(d.id)}
                       />
-                      <div className={styles.barContainer}>
+                      <div className={styles.plot}>
                         <Tooltip
                           placement={
                             clampedLeft > 60
@@ -172,10 +186,11 @@ export default function GanttChart({
                           >
                             <div
                               className={styles.title}
-                              style={{
-                                [clampedLeft < 50 ? 'left' : 'right']:
-                                  clampedLeft < 50 ? '8px' : 'calc(100% + 2px)',
-                              }}
+                              style={wideBar
+                                ? { left: '8px' }
+                                : titleOnRight
+                                  ? { left: 'calc(100% + 8px)' }
+                                  : { right: 'calc(100% + 8px)' }}
                             >
                               {d.title}
                             </div>

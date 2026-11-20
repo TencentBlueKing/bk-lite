@@ -37,7 +37,6 @@ interface NodeGraphProps {
   loading?: boolean;
   config?: ValueConfig;
   onReady?: (ready: boolean) => void;
-  componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
   screenRenderContext?: ScreenRenderContext;
 }
@@ -73,7 +72,6 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
   loading = false,
   config,
   onReady,
-  componentSwitchControl,
   errorMessage,
 }) => {
   const { t } = useTranslation();
@@ -440,11 +438,6 @@ const NodeGraph: React.FC<NodeGraphProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {componentSwitchControl ? (
-        <div className="shrink-0 overflow-x-auto px-3 pt-2">
-          {componentSwitchControl}
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1">{content}</div>
     </div>
   );

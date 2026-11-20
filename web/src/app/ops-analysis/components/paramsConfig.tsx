@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
 import { isFreeTextOptionsParam } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import TimeSelector from '@/components/time-selector';
-import { Form, Input, Select, DatePicker, InputNumber, Button, Tooltip } from 'antd';
+import { Form, Input, Select, DatePicker, InputNumber, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type {
   FilterBindings,
@@ -21,6 +21,13 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
+import { useDataVariableRuntime } from '@/app/ops-analysis/context/dataVariableRuntime';
+import {
+  isDataVariableRef,
+  substituteDataVariableUpstream,
+  type ColumnResult,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 import { readComponentOptionsQueryUpstream } from '@/app/ops-analysis/utils/optionsQueryCandidates';
 import {
   dynamicQueryParamsOf,
@@ -107,7 +114,24 @@ interface DataSourceParamsConfigProps {
   globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
+  /** 用来回显「数据变量 · 名称」。引用本身在参数输入设置里选。 */
+  dataVariables?: DataVariable[];
 }
+
+const DataVariableEcho: React.FC<{
+  value?: unknown;
+  variables?: DataVariable[];
+}> = ({ value, variables }) => {
+  const { t } = useTranslation();
+  const id = isDataVariableRef(value) ? value.dataVariableId : '';
+  const name = variables?.find((item) => item.id === id)?.name || id;
+  return (
+    <Input
+      disabled
+      value={t('dataVariable.referenceLabel', '数据变量 · {name}', { name })}
+    />
+  );
+};
 
 const formParamValue = (
   formParams: Record<string, unknown> | undefined,
@@ -127,6 +151,7 @@ const resolveParamOptionsQuery = ({
   globalFilters,
   filterBindings,
   globalFilterValues,
+  dataVariableColumns,
 }: {
   inputConfig?: InputControlConfig;
   enabled: boolean;
@@ -135,11 +160,12 @@ const resolveParamOptionsQuery = ({
   globalFilters?: UnifiedFilterDefinition[];
   filterBindings?: FilterBindings | null;
   globalFilterValues?: Record<string, FilterValue>;
+  dataVariableColumns?: Record<string, ColumnResult>;
 }): { resolution: ResolvedOptionsQuery; signature: string } | undefined => {
   if (!enabled) return undefined;
   const resolution = resolveOptionsQueryParams(
     dynamicQueryParamsOf(inputConfig),
-    (ref) => readComponentOptionsQueryUpstream({
+    (ref) => substituteDataVariableUpstream(readComponentOptionsQueryUpstream({
       ref,
       componentParams: sourceParams.map((param) => ({
         name: param.name,
@@ -156,7 +182,7 @@ const resolveParamOptionsQuery = ({
           ? globalFilterValues[id]
           : undefined
       ),
-    }),
+    }), dataVariableColumns),
   );
   return {
     resolution,
@@ -179,9 +205,11 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
+  dataVariables,
 }) => {
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
+  const dataVariableColumns = useDataVariableRuntime()?.columns;
   const form = Form.useFormInstance();
   // useWatch 负责在未注册字段变化时重渲染；当次渲染读 store，避免订阅值晚一拍。
   const watchedParams = Form.useWatch(fieldPrefix, { form, preserve: true }) as Record<string, unknown> | undefined;
@@ -204,9 +232,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   // 表单控件仍读 form 的即时值。选项查询只吃防抖后的文本/数字。
   const optionsQueryFormParams = useDebouncedOptionsQueryValues(formParams ?? {}, typedParamNames);
   const configParams = sourceParams.filter(
-    (param: ParamItem) =>
-      !param.hidden
-      && includeFilterTypes.includes(param.filterType || 'fixed'),
+    (param: ParamItem) => includeFilterTypes.includes(param.filterType || 'fixed'),
   );
 
   if (configParams.length === 0) {
@@ -296,6 +322,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           globalFilters,
           filterBindings,
           globalFilterValues,
+          dataVariableColumns,
         })
         : undefined;
       return (
@@ -329,6 +356,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
       globalFilters,
       filterBindings,
       globalFilterValues,
+      dataVariableColumns,
     });
 
     return (
@@ -354,7 +382,6 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         const fieldName = [fieldPrefix, param.name];
         const initialValue = getDataSourceFormParamInitialValue(param);
         const labelText = param.alias_name || param.name;
-        const isLongText = labelText.length > 18;
         const isVeryLongText = labelText.length > 30;
         const isConditionFilter = param.type === 'conditionFilter'
           || param.inputConfig?.control === 'conditionFilter';
@@ -363,95 +390,58 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           ((param.type || 'string') === 'string' || isConditionFilter) &&
           param.filterType !== 'fixed' &&
           !readonly;
-
-        const getLabelStyle = (): React.CSSProperties => {
-          const baseStyle = {
-            lineHeight: '1.4',
-            width: '100%',
-          };
-
-          if (isVeryLongText) {
-            return {
-              ...baseStyle,
-              whiteSpace: 'normal',
-              wordBreak: 'break-word',
-              textAlign: 'left',
-            };
-          }
-          if (isLongText) {
-            return {
-              ...baseStyle,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              textAlign: 'left',
-            };
-          }
-          return {
-            ...baseStyle,
-            whiteSpace: 'nowrap',
-            overflow: 'visible',
-            textAlign: 'left',
-          };
-        };
+        const variableValue = isDataVariableRef(formParams?.[param.name]);
 
         return (
           <Form.Item
             key={`${selectedDataSource?.id || 'default'}-${param.name}`}
+            className="[&_.ant-form-item-label>label]:flex [&_.ant-form-item-label>label]:h-auto [&_.ant-form-item-label>label]:w-full"
             label={
-              <div className="flex items-center justify-start gap-1">
-                <div style={getLabelStyle()} title={labelText}>
-                  {labelText}
-                </div>
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1">
+                  <span
+                    className={isVeryLongText
+                      ? 'min-w-0 whitespace-normal break-words text-left leading-snug'
+                      : 'min-w-0 truncate text-left leading-snug'}
+                    title={labelText}
+                  >
+                    {labelText}
+                  </span>
+                  {param.desc ? (
+                    <Tooltip title={param.desc}>
+                      <QuestionCircleOutlined className="shrink-0 cursor-help text-sm text-(--color-text-3)" />
+                    </Tooltip>
+                  ) : null}
+                </span>
                 {showInputConfigButton && (
-                  <Tooltip title={t('paramInput.editButton')}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditInputConfig!(param);
-                      }}
-                      className="shrink-0 text-[var(--color-text-2)] hover:text-[var(--color-primary)]"
-                    />
-                  </Tooltip>
+                  <button
+                    type="button"
+                    className="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-sm leading-5 text-(--color-primary)"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onEditInputConfig!(param);
+                    }}
+                  >
+                    {t('paramInput.editButton')}
+                  </button>
                 )}
               </div>
             }
             name={fieldName}
             preserve
             initialValue={!preserveValues && mounted ? initialValue : undefined}
-            tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
-            required={Boolean(param.required || param.integer)}
-            rules={param.integer
-              ? [
-                {
-                  validator: async (_rule, value) => {
-                    const max = typeof param.maximum === 'number' ? param.maximum : undefined;
-                    const withinMax = max === undefined || (typeof value === 'number' && value <= max);
-                    if (
-                      typeof value === 'number'
-                      && Number.isInteger(value)
-                      && value >= 1
-                      && withinMax
-                    ) {
-                      return;
-                    }
-                    throw new Error(t(
-                      'dataSource.positiveIntegerRange',
-                      '{label}必须是 1 到 {max} 的正整数',
-                      { label: labelText, max: max ?? '' },
-                    ));
-                  },
-                },
-              ]
+            required={Boolean(param.required)}
+            rules={variableValue
+              ? []
               : [
                 { required: param.required, message: t('dataSource.paramRequired', '请配置{label}', { label: labelText }) },
               ]}
           >
-            {renderParamInput(param)}
+            {variableValue ? (
+              <DataVariableEcho variables={dataVariables} />
+            ) : renderParamInput(param)}
           </Form.Item>
         );
       })}

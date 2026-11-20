@@ -156,6 +156,46 @@ test('adding a report table enables matching unified filters and component bindi
   });
 });
 
+test('report open keeps the first component switch and drops another', () => {
+  const param = (name: string) => ({
+    name,
+    alias_name: name,
+    type: 'string',
+    filterType: 'params',
+    value: 'a',
+    inputConfig: {
+      control: 'select',
+      multiple: true,
+      componentSwitch: true,
+      optionsSource: {
+        type: 'dynamic',
+        sourceId: 1,
+        valueField: 'id',
+        labelField: 'name',
+        queryParams: { room_id: { ref: 'site_id' } },
+      },
+    },
+  });
+  const normalized = normalizeReportViewSets({
+    sections: [{
+      id: 'table-1',
+      valueConfig: {
+        chartType: 'table',
+        name: '表',
+        dataSourceParams: [param('first'), param('second')],
+      },
+    }],
+  });
+  const params = normalized.sections[0]?.valueConfig.dataSourceParams as Array<{
+    inputConfig?: { componentSwitch?: boolean; multiple?: boolean; optionsSource?: { queryParams?: unknown } };
+  }>;
+  assert.equal(params[0]?.inputConfig?.componentSwitch, true);
+  assert.equal(params[0]?.inputConfig?.multiple, true);
+  assert.deepEqual(params[0]?.inputConfig?.optionsSource?.queryParams, { room_id: { ref: 'site_id' } });
+  assert.equal(params[1]?.inputConfig && 'componentSwitch' in params[1].inputConfig, false);
+  assert.equal(params[1]?.inputConfig?.multiple, true);
+});
+
 test('existing disabled report filter stays disabled when another matching table is added', () => {
   const dataSources = [
     {

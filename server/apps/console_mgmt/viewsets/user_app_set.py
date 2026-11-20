@@ -6,6 +6,7 @@ from apps.console_mgmt.models import UserAppSet
 from apps.console_mgmt.serializers import UserAppSetSerializer
 from apps.console_mgmt.serializers.user_app_set import AppConfigItemSerializer
 from apps.core.utils.builtin_app_i18n import translate_builtin_app_display_name
+from apps.console_mgmt.i18n import console_message
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import App
 
@@ -22,7 +23,7 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
         return JsonResponse(
             {
                 "result": False,
-                "message": "请使用 current_user_apps 接口获取用户应用配置",
+                "message": console_message(request, "error.use_current_user_apps", "请使用 current_user_apps 接口获取用户应用配置"),
             },
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
@@ -30,7 +31,7 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """禁用创建接口"""
         return JsonResponse(
-            {"result": False, "message": "请使用 configure_user_apps 接口配置用户应用"},
+            {"result": False, "message": console_message(request, "error.use_configure_user_apps", "请使用 configure_user_apps 接口配置用户应用")},
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
@@ -39,7 +40,7 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
         return JsonResponse(
             {
                 "result": False,
-                "message": "请使用 current_user_apps 接口获取用户应用配置",
+                "message": console_message(request, "error.use_current_user_apps", "请使用 current_user_apps 接口获取用户应用配置"),
             },
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
@@ -47,21 +48,21 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """禁用完整更新接口"""
         return JsonResponse(
-            {"result": False, "message": "请使用 configure_user_apps 接口配置用户应用"},
+            {"result": False, "message": console_message(request, "error.use_configure_user_apps", "请使用 configure_user_apps 接口配置用户应用")},
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
     def partial_update(self, request, *args, **kwargs):
         """禁用部分更新接口"""
         return JsonResponse(
-            {"result": False, "message": "请使用 configure_user_apps 接口配置用户应用"},
+            {"result": False, "message": console_message(request, "error.use_configure_user_apps", "请使用 configure_user_apps 接口配置用户应用")},
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
     def destroy(self, request, *args, **kwargs):
         """禁用删除接口"""
         return JsonResponse(
-            {"result": False, "message": "不支持删除用户应用配置"},
+            {"result": False, "message": console_message(request, "error.delete_user_apps_unsupported", "不支持删除用户应用配置")},
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 

@@ -5,19 +5,23 @@ import uuid
 
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
+from apps.core.logger import safe_exception_info
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import OSType, SSHCredentialType, WinRMTransport
+from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
 from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.target_vault import request_credential_actor
 from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.node_mgmt.models import CloudRegion
@@ -303,102 +307,92 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         return self.perform_batch_delete(request)
 
     @action(detail=False, methods=["post"])
-    @HasPermission("target-View")
+    @HasPermission("target-Add")
     def test_connection(self, request):
-        """
-        测试连接（仅支持 Linux SSH）
-
-        通过 nats-executor 执行 echo success 命令测试 SSH 连接。
-
-        请求体:
-        {
-            "ip": "192.168.1.100",
-            "os_type": "linux",  // 目前仅支持 linux
-            "cloud_region_id": 1,
-            "ssh_port": 22,
-            "ssh_user": "root",
-            "ssh_credential_type": "password",  // password 或 key
-            "ssh_password": "xxx",  // 密码方式必填
-            "ssh_key_file": <file>  // 密钥方式必填
-        }
-
-        返回:
-        {
-            "success": true,
-            "message": "连接成功"
-        }
-        """
-        serializer = TargetTestConnectionSerializer(data=request.data)
+        """使用新目标的草稿配置测试连接。"""
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        return self._perform_connection_test(serializer.validated_data)
+        return self._perform_connection_test(serializer.validated_data, actor=request_credential_actor(request))
 
     @action(detail=True, methods=["post"], url_path="test_connection")
-    @HasPermission("target-View")
+    @HasPermission("target-View,target-Edit")
     def test_saved_connection(self, request, pk=None):
-        """使用已保存凭据测试编辑中的目标，表单中的非敏感连接参数可覆盖原值。"""
         target = self.get_object()
-        serializer = TargetTestConnectionSerializer(
-            data=request.data,
-            context={"saved_target": target},
-            partial=True,
-        )
+        user = request.user
+        team = self._validate_current_team_permission(request)
+        if not has_unrestricted_org_scope(user):
+            include_children = request.COOKIES.get("include_children") == "1"
+            if not self.get_has_permission(user, target, team, is_check=True, include_children=include_children):
+                raise PermissionDenied()
+
+        serializer = TargetTestConnectionSerializer(data=request.data, context={"saved_target": target, "request": request}, partial=True)
         serializer.is_valid(raise_exception=True)
-        return self._perform_connection_test(serializer.validated_data, saved_target=target)
+        draft = serializer.validated_data
+        if serializer.changes_connection(target):
+            return self._test_edited_connection(request, draft, target)
+        return self._perform_connection_test(draft, saved_target=target, actor=request_credential_actor(request))
+
+    @HasPermission("target-Edit")
+    def _test_edited_connection(self, request, draft, target):
+        access_error = self._validate_update_access(request, target, {})
+        if access_error is not None:
+            raise PermissionDenied()
+        return self._perform_connection_test(draft, saved_target=target, actor=request_credential_actor(request))
 
     @staticmethod
-    def _perform_connection_test(validated_data, saved_target=None):
-        """执行连接测试；详情接口缺少明文凭据时，仅在进程内解密已保存值。"""
-
-        ip = validated_data.get("ip")
-        os_type = validated_data.get("os_type", OSType.LINUX)
-        cloud_region_id = validated_data.get("cloud_region_id")
+    def _perform_connection_test(validated_data, saved_target=None, *, actor):
+        """始终按当前草稿组装连接，按来源选择认证材料。"""
+        draft = validated_data
+        ip = draft["ip"]
+        os_type = draft.get("os_type", OSType.LINUX)
+        cloud_region_id = draft["cloud_region_id"]
+        vault = draft.get("credential_source") == CredentialSource.CREDENTIAL
+        stored = {}
+        if vault:
+            target = Target(credential_source=CredentialSource.CREDENTIAL, credential_id=draft["credential_id"], os_type=os_type, ip=ip)
+            # WinRM / SSH 端口和传输选项由下方草稿提供。
+            try:
+                stored = ExecutionTaskBaseService._build_host_credentials([target], actor=actor)[0]
+            except ValueError as exc:
+                return Response({"success": False, "message": str(exc)})
+        elif saved_target is not None and saved_target.is_manual_credential and saved_target.os_type == os_type:
+            secret_key = "winrm_password"
+            if os_type == OSType.LINUX:
+                secret_key = "ssh_password" if draft["ssh_credential_type"] == SSHCredentialType.PASSWORD else "ssh_key_file"
+            if not draft.get(secret_key):
+                credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
+                if not credentials:
+                    return Response(
+                        {"success": False, "message": job_message(None, "error.target_credentials_missing", "Target has no usable credentials")}
+                    )
+                stored = credentials[0]
 
         if os_type == OSType.WINDOWS:
-            return TargetViewSet._perform_windows_connection_test(
-                validated_data,
-                saved_target=saved_target,
-            )
+            return TargetViewSet._perform_windows_connection_test(draft, stored, vault)
 
-        # 获取执行节点
         try:
             node_id = _get_executor_node(cloud_region_id)
-        except ValueError as e:
-            logger.warning(f"[test_connection] 获取执行节点失败: {e}")
-            return Response({"success": False, "message": str(e)})
+        except ValueError as exc:
+            return Response({"success": False, "message": str(exc)})
 
-        # 构建 SSH 凭据
-        ssh_user = validated_data.get("ssh_user", "")
-        ssh_port = validated_data.get("ssh_port", 22)
-        ssh_credential_type = validated_data.get("ssh_credential_type", SSHCredentialType.PASSWORD)
-
-        stored_credential = {}
-        if saved_target is not None:
-            credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
-            if not credentials:
-                return Response(
-                    {
-                        "success": False,
-                        "message": job_message(None, "error.target_credentials_missing", "Target has no usable credentials"),
-                    }
-                )
-            stored_credential = credentials[0]
-
-        password = None
-        private_key = None
-
-        if ssh_credential_type == SSHCredentialType.PASSWORD:
-            password = validated_data.get("ssh_password") or stored_credential.get("password")
+        ssh_port = draft.get("ssh_port", 22)
+        if vault:
+            ssh_user = stored["user"]
+            password = stored.get("password")
+            private_key = stored.get("private_key_content")
+            passphrase = stored.get("private_key_passphrase")
         else:
-            # 密钥方式：读取上传的文件内容
-            ssh_key_file = validated_data.get("ssh_key_file")
-            if ssh_key_file:
-                private_key = ssh_key_file.read().decode("utf-8")
+            ssh_user = draft.get("ssh_user", "")
+            password = private_key = passphrase = None
+            if draft.get("ssh_credential_type", SSHCredentialType.PASSWORD) == SSHCredentialType.PASSWORD:
+                password = draft.get("ssh_password") or stored.get("password")
             else:
-                private_key = stored_credential.get("private_key_content")
+                key_file = draft.get("ssh_key_file")
+                private_key = key_file.read().decode("utf-8") if key_file else stored.get("private_key_content")
+                passphrase = draft.get("ssh_key_passphrase") or stored.get("private_key_passphrase")
 
         # 执行测试命令
         try:
-            logger.info(f"[test_connection] Testing SSH: {ssh_user}@{ip}:{ssh_port} via node {node_id}")
             executor = Executor(node_id)
             result = executor.execute_ssh(
                 command="echo success",
@@ -406,15 +400,15 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                 username=ssh_user,
                 password=password,
                 private_key=private_key,
+                passphrase=passphrase,
                 timeout=30,
                 port=ssh_port,
                 connection_test=True,
             )
             # 解析结果（兼容字符串与字典）
-            success, stdout, error, result_detail = _parse_ssh_test_result(result)
+            success, stdout, _, result_detail = _parse_ssh_test_result(result)
 
             if success and "success" in stdout:
-                logger.info(f"[test_connection] SSH connection test passed: {ssh_user}@{ip}:{ssh_port}")
                 return Response(
                     {
                         "success": True,
@@ -422,8 +416,8 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                     }
                 )
             else:
-                error_msg = _build_ssh_test_failure_message(result_detail, error, stdout)
-                logger.warning(f"[test_connection] SSH connection test failed: {ssh_user}@{ip}:{ssh_port}, error: {error_msg}")
+                classification = {key: result_detail.get(key) for key in ("code", "stage", "category")}
+                error_msg = _build_ssh_test_failure_message(classification, "", "")
                 return Response(
                     {
                         "success": False,
@@ -437,7 +431,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                 )
 
         except Exception as e:
-            logger.exception(f"[test_connection] SSH connection test error: {ssh_user}@{ip}:{ssh_port}, error: {e}")
+            logger.error(
+                "event=job_connection_test_failed region_id=%s failed_stage=ssh error_type=%s",
+                cloud_region_id,
+                type(e).__name__,
+                exc_info=safe_exception_info(e),
+            )
             return Response(
                 {
                     "success": False,
@@ -450,7 +449,7 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
             )
 
     @staticmethod
-    def _perform_windows_connection_test(validated_data, saved_target=None):
+    def _perform_windows_connection_test(validated_data, stored, vault):
         """通过区域内 Ansible Executor 执行一次有边界的 WinRM win_ping。"""
         cloud_region_id = validated_data.get("cloud_region_id")
         try:
@@ -458,35 +457,16 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         except ValueError as e:
             return Response({"success": False, "message": str(e)})
 
-        if saved_target is not None:
-            credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
-            if not credentials:
-                return Response(
-                    {
-                        "success": False,
-                        "message": job_message(None, "error.target_credentials_missing", "Target has no usable credentials"),
-                    }
-                )
-            credential = credentials[0]
-        else:
-            credential = {
-                "connection": "winrm",
-                "password": validated_data.get("winrm_password"),
-            }
-
-        credential.update(
-            {
-                "host": str(validated_data.get("ip")),
-                "port": validated_data.get("winrm_port", 5986),
-                "user": validated_data.get("winrm_user", ""),
-                "connection": "winrm",
-                "winrm_scheme": validated_data.get("winrm_scheme", "https"),
-                "winrm_transport": validated_data.get("winrm_transport", WinRMTransport.NTLM),
-                "winrm_cert_validation": validated_data.get("winrm_cert_validation", True),
-            }
-        )
-        if validated_data.get("winrm_password"):
-            credential["password"] = validated_data["winrm_password"]
+        credential = {
+            "host": str(validated_data["ip"]),
+            "port": validated_data.get("winrm_port", 5986),
+            "user": stored["user"] if vault else validated_data.get("winrm_user", ""),
+            "password": stored.get("password") if vault else validated_data.get("winrm_password") or stored.get("password"),
+            "connection": "winrm",
+            "winrm_scheme": validated_data.get("winrm_scheme", "https"),
+            "winrm_transport": validated_data.get("winrm_transport", WinRMTransport.NTLM),
+            "winrm_cert_validation": validated_data.get("winrm_cert_validation", True),
+        }
 
         task_id = f"target-connectivity-{uuid.uuid4().hex}"
         executor = AnsibleExecutor(node_id)
@@ -535,7 +515,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                 }
             )
         except Exception as e:
-            logger.exception("[test_connection] WinRM connection test error: target=%s, error=%s", credential["host"], e)
+            logger.error(
+                "event=job_connection_test_failed region_id=%s failed_stage=winrm error_type=%s",
+                cloud_region_id,
+                type(e).__name__,
+                exc_info=safe_exception_info(e),
+            )
             return Response(
                 {
                     "success": False,

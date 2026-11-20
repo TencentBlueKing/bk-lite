@@ -270,7 +270,7 @@ class OpenJobListView(TeamResolveMixin, APIView):
             }
         )
         if not result.get("result"):
-            return Response({"detail": result.get("message") or "查询失败"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": result.get("message") or job_message(request, "error.query_failed", "查询失败")}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result.get("data") or {}, status=status.HTTP_200_OK)
 
 
@@ -296,7 +296,7 @@ class OpenScriptExecuteView(TeamResolveMixin, APIView):
             message = result.get("message") or "脚本执行失败"
             http_status = status.HTTP_503_SERVICE_UNAVAILABLE if "调度服务" in message else status.HTTP_400_BAD_REQUEST
             logger.warning("Open script execute failed: team=%s, message=%s", user_team, message)
-            return Response({"detail": "脚本执行失败"}, status=http_status)
+            return Response({"detail": job_message(request, "error.script_execute_failed", "脚本执行失败")}, status=http_status)
         return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
 
 
@@ -318,13 +318,13 @@ class OpenJobStatusView(TeamResolveMixin, APIView):
 
         task_ids = request.data.get("task_ids") or []
         if not isinstance(task_ids, list) or not task_ids:
-            return Response({"detail": "task_ids 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": job_message(request, "error.task_ids_required", "task_ids 不能为空")}, status=status.HTTP_400_BAD_REQUEST)
         if len(task_ids) > 100:
-            return Response({"detail": "task_ids 最多 100 个"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": job_message(request, "error.task_ids_limit", "task_ids 最多 100 个")}, status=status.HTTP_400_BAD_REQUEST)
 
         result = job_status_batch_query({"task_ids": task_ids})
         if not result.get("result"):
-            return Response({"detail": result.get("message") or "查询失败"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": result.get("message") or job_message(request, "error.query_failed", "查询失败")}, status=status.HTTP_400_BAD_REQUEST)
 
         owned_ids = {execution.id for execution in JobExecution.objects.filter(id__in=task_ids) if is_team_authorized(execution.team, {user_team})}
         items = []

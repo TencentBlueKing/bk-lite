@@ -139,7 +139,7 @@ export interface ConditionFilterValue {
   items?: ConditionFilterItem[];
 }
 
-export type ConditionFieldValueType = 'string' | 'number' | 'enum';
+export type ConditionFieldValueType = 'string' | 'number' | 'enum' | 'tag';
 
 export interface ConditionFieldOption {
   value: string;
@@ -214,14 +214,17 @@ export type InputControlConfig =
   | {
     control: 'conditionFilter';
     fields: ConditionFieldSource;
+  }
+  | {
+    /** 这个参数的提交值是某个数据变量的取值列，不再渲染输入控件。 */
+    control: 'dataVariable';
+    dataVariableId: string;
   };
 
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | ConditionFilterValue | null | undefined;
-  /** 种子里保留、界面不展示。旧组件仍可提交。 */
-  hidden?: boolean;
+  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | ConditionFilterValue | { dataVariableId: string } | null | undefined;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;
@@ -240,8 +243,4 @@ export interface ParamItem {
    * 兼容只读：旧组织筛旁路字段。读取时归一为 inputConfig.control=organization。
    */
   inputMode?: string;
-  /** 正整数。配合 maximum 给出范围提示。 */
-  integer?: boolean;
-  /** 与后端统计分组上限一致的最大值。 */
-  maximum?: number;
 }

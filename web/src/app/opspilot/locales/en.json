@@ -808,6 +808,13 @@
     },
     "pageTitle": "Workbench",
     "pageDescription": "Manage bot apps, channel publishing, and conversation capabilities",
+    "retirementNotice": {
+      "title": "Workbench is scheduled for retirement in January 2027",
+      "description": "The Workflow Center now supports all Workbench capabilities. Please migrate your AI workflows to the Workflow Center as soon as possible and verify the results.",
+      "openWorkflow": "Go to Workflow Center",
+      "muteInBrowser": "Don't remind me again",
+      "acknowledge": "I understand"
+    },
     "settings": {
       "selectSkills": "Select Skills",
       "enableSsl": "enable SSL",
@@ -1794,6 +1801,7 @@
       "groupIm": "Messaging",
       "groupImDesc": "WeCom / DingTalk / Feishu / Official Account (org check skipped)",
       "accountAssociation": "Account association",
+      "accountAssociationTooltip": "When a message is received, use this account association's matching rules and the sender's IM account to determine the corresponding platform user.",
       "accountAssociationPlaceholder": "Select an account association",
       "manageAccountAssociation": "Manage account associations",
       "fields": {
@@ -1996,7 +2004,14 @@
       "introEnd": " top YAML frontmatter, or derives basics from the title and directory name.",
       "uploadText": "Click or drop a ZIP skill package here",
       "uploadHint": "This version accepts a local ZIP. Public Git import will use the same importer."
-    }
+    },
+    "templatesTitle": "Templates",
+    "templatesDescription": "Create your own agent from a built-in template, then select a model and finish configuration.",
+    "searchTemplates": "Search templates",
+    "templatesLoadFailed": "Unable to load templates. Please try again.",
+    "templateCreateFailed": "Unable to create the agent. Please try again.",
+    "noMatchingTemplates": "No matching templates",
+    "noTemplates": "No templates available"
   },
   "chatflow": {
     "lock": "Lock canvas",
@@ -2651,5 +2666,8 @@
   },
   "vendorGrid": {
     "modelCount": "{count} models"
+  },
+  "modelOption": {
+    "unavailable": "Disabled"
   }
 }

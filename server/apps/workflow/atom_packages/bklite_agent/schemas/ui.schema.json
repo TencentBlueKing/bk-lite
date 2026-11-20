@@ -1,5 +1,4 @@
 {
   "agent_id": {"ui:binding": "literal-only"},
-  "knowledge_files": {"ui:widget": "agent-knowledge-upload"},
-  "memory_context": {"ui:advanced": true}
+  "knowledge_files": {"ui:widget": "agent-knowledge-upload"}
 }

@@ -92,7 +92,7 @@ const FOCUS_SPECS = [
     key: 'queued-writes',
     label: '排队写操作',
     unit: 'counts' as const,
-    unitLabel: '个',
+    unitLabel: '',
     color: MONGODB_PALETTE.orange,
     cta: '查看活跃与排队',
     body: '等待执行的写操作数量。持续抬升说明写路径开始堆积。'

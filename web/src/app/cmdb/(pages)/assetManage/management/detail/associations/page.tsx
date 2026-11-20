@@ -21,6 +21,7 @@ import { deepClone } from '@/app/cmdb/utils/common';
 import PermissionWrapper from '@/components/permission';
 import { useModelDetail } from '../context';
 import { useCommon } from '@/app/cmdb/context/common';
+import { isQuickFilterOn } from '@/app/cmdb/(pages)/assetData/list/relationQuickFilter';
 
 const { confirm } = Modal;
 
@@ -32,6 +33,7 @@ const Associations: React.FC = () => {
     getModelAssociationTypes,
     setModelAssociationRequired,
     setAssociationContextLink,
+    setAssociationQuickFilter,
     getModelIslandCounts,
   } = useModelApi();
   const { getClassificationList } = useClassificationApi();
@@ -103,6 +105,24 @@ const Associations: React.FC = () => {
       key: 'mapping',
       render: (_, { mapping }) => (
         <>{CONSTRAINT_List.find((item) => item.id === mapping)?.name || '--'}</>
+      ),
+    },
+    {
+      title: (
+        <Tooltip title={t('Model.quickFilterHint')}>
+          <span>{t('Model.quickFilter')}</span>
+        </Tooltip>
+      ),
+      dataIndex: 'quick_filter',
+      key: 'quick_filter',
+      width: 110,
+      render: (_, record) => (
+        <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
+          <Switch
+            checked={isQuickFilterOn(record.quick_filter)}
+            onChange={(checked) => updateQuickFilter(record, checked)}
+          />
+        </PermissionWrapper>
       ),
     },
     {
@@ -357,6 +377,18 @@ const Associations: React.FC = () => {
       await fetchData();
     } catch {
       // 请求层已提示失败
+    }
+  };
+
+  const updateQuickFilter = async (record: { model_asst_id: string }, quickFilter: boolean) => {
+    const previous = tableData;
+    setTableData((rows) => rows.map((row) => (
+      row.model_asst_id === record.model_asst_id ? { ...row, quick_filter: quickFilter } : row
+    )));
+    try {
+      await setAssociationQuickFilter(record.model_asst_id, quickFilter);
+    } catch {
+      setTableData(previous);
     }
   };
 

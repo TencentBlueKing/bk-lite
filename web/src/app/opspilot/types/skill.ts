@@ -176,6 +176,7 @@ export interface LlmModel {
   provider?: string;
   llm_model_type?: string;
   vendor_name?: string;
+  vendor_enabled?: boolean;
 }
 
 export interface SkillDetailPayload {
@@ -223,22 +224,36 @@ export interface SkillTool {
   params: SkillToolParams;
 }
 
-export interface SkillTemplate {
+export type SkillTemplateSettings = Pick<SkillDetail,
+  | 'skill_prompt'
+  | 'guide'
+  | 'enable_conversation_history'
+  | 'conversation_window_size'
+  | 'run_model_call_limit'
+  | 'temperature'
+  | 'show_think'
+  | 'enable_suggest'
+  | 'enable_query_rewrite'
+  | 'force_wiki_grounded'
+  | 'allow_wiki_material_write'
+  | 'memory_write_rounds'
+>;
+
+export interface SkillTemplate extends SkillTemplateSettings {
   id: number;
   name: string;
   introduction: string;
   skill_type: number;
-  skill_prompt?: string;
   tools?: { name: string }[];
+  is_builtin?: boolean;
 }
 
-export interface CreateSkillPayload {
+export interface CreateSkillPayload extends SkillTemplateSettings {
   name: string;
   introduction: string;
   team?: number[] | string[];
   usage_team?: number[] | string[];
   skill_type: number;
-  skill_prompt?: string;
   tools?: { id?: number; name: string; icon?: string; kwargs: [] }[];
 }
 

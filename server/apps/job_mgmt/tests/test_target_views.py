@@ -444,3 +444,232 @@ class TestTestConnection:
             )
         assert resp.status_code == 200
         assert resp.data["success"] is False
+
+
+@pytest.mark.integration
+def test_job_vault_refs_count_only_direct_bindings():
+    from apps.job_mgmt.nats_api import job_count_credential_refs
+
+    for name, source in (("a", "credential"), ("b", "credential"), ("c", "manual")):
+        Target.objects.create(name=name, ip="10.0.0.1", credential_id="crd-a", credential_source=source)
+    assert job_count_credential_refs(["crd-a", "crd-a", "crd-b"]) == {"result": True, "data": {"counts": {"crd-a": 2, "crd-b": 0}}}
+    assert job_count_credential_refs([]) == {"result": True, "data": {"counts": {}}}
+    assert job_count_credential_refs(["x"] * 101)["result"] is False
+
+
+@pytest.mark.integration
+def test_vault_bind_clears_local_credentials_and_requires_new_secret_on_switch_back(su_client):
+    target = Target.objects.create(
+        name="manual",
+        ip="10.0.0.1",
+        cloud_region_id=1,
+        ssh_user="root",
+        ssh_password="old-cipher",
+        ssh_key_passphrase="old-passphrase",
+        winrm_password="old-winrm",
+        team=[1],
+    )
+    with patch("apps.job_mgmt.serializers.target.describe_target_credential", return_value={"type": "ssh", "name": "主机账号", "disabled": False}):
+        response = su_client.patch(f"{URL}{target.pk}/", {"credential_source": "credential", "credential_id": "crd-ssh-1"}, format="json")
+    assert response.status_code == 200
+    assert response.data["credential_name"] == "主机账号"
+    assert response.data["credential_available"] is True
+    target.refresh_from_db()
+    assert target.credential_id == "crd-ssh-1"
+    assert not any((target.ssh_user, target.ssh_password, target.ssh_key_passphrase, target.ssh_key_file, target.winrm_password, target.winrm_user))
+    response = su_client.patch(f"{URL}{target.pk}/", {"credential_source": "manual", "ssh_user": "root"}, format="json")
+    assert response.status_code == 400
+    response = su_client.patch(
+        f"{URL}{target.pk}/", {"credential_source": "manual", "ssh_user": "root", "ssh_password": "replacement"}, format="json"
+    )
+    assert response.status_code == 200
+    target.refresh_from_db()
+    assert target.credential_id == ""
+    assert target.ssh_password and target.ssh_password != "replacement"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("os_type", ["linux", "windows"])
+def test_saved_vault_probe_uses_new_draft_without_saving(su_client, os_type):
+    target = Target.objects.create(
+        name="old", ip="10.0.0.1", os_type=os_type, cloud_region_id=1, credential_source="credential", credential_id="old", team=[1]
+    )
+    host_credential = {"user": "vault-user", "password": "secret"}
+    with patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value=[host_credential]) as build, patch(
+        "apps.job_mgmt.views.target._get_executor_node", return_value="node"
+    ), patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="ansible"), patch.object(
+        target_views, "Executor"
+    ) as ssh, patch.object(
+        target_views, "AnsibleExecutor"
+    ) as win:
+        ssh.return_value.execute_ssh.return_value = "success"
+        win.return_value.task_query.return_value = {"status": "success"}
+        result = su_client.post(
+            f"{URL}{target.pk}/test_connection/",
+            {"ip": "10.0.0.2", "credential_id": "new", "ssh_password": "ignored", "winrm_password": "ignored", "winrm_user": "ignored"},
+            format="json",
+        )
+    assert result.data["success"] is True
+    draft = build.call_args.args[0][0]
+    assert draft.ip == "10.0.0.2" and draft.credential_id == "new"
+    assert build.call_args.kwargs["actor"]["current_team"] == 1
+    credential = (
+        ssh.return_value.execute_ssh.call_args.kwargs if os_type == "linux" else win.return_value.adhoc.call_args.kwargs["host_credentials"][0]
+    )
+    assert credential["password"] == "secret"
+    assert credential.get("username", credential.get("user")) == "vault-user"
+    target.refresh_from_db()
+    assert target.ip == "10.0.0.1" and target.credential_id == "old"
+    assert "secret" not in str(result.data)
+
+
+@pytest.mark.integration
+def test_saved_connection_viewer_can_only_probe_unchanged_authorized_target(api_client, authenticated_user):
+    target = Target.objects.create(name="saved", ip="10.0.0.1", cloud_region_id=1, ssh_user="host", ssh_password="cipher", team=[1])
+    authenticated_user.is_superuser = False
+    authenticated_user.group_list = [1]
+    authenticated_user.permission = {"job": {"target-View"}}
+    api_client.cookies["current_team"] = "1"
+    url = f"{URL}{target.pk}/test_connection/"
+    with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value={"team": [1], "instance": []}), patch.object(
+        ExecutionTaskBaseService, "_build_host_credentials", return_value=[{"password": "saved"}]
+    ), patch.object(target_views, "_get_executor_node", return_value="node"), patch.object(target_views, "Executor") as executor:
+        executor.return_value.execute_ssh.return_value = "success"
+        assert api_client.post(url, {}, format="json").data["success"] is True
+        for changes in ({"ip": "10.0.0.2"}, {"ssh_password": "alternate"}, {"credential_source": "credential", "credential_id": "crd-ssh-a"}):
+            assert api_client.post(url, changes, format="json").status_code == 403
+        assert api_client.post(f"{URL}test_connection/", {"ip": "10.0.0.2"}, format="json").status_code == 403
+        target.team = [2]
+        target.save()
+        assert api_client.post(url, {}, format="json").status_code == 403
+        assert executor.return_value.execute_ssh.call_count == 1
+
+
+@pytest.mark.integration
+def test_list_fetches_vault_names_once_and_omits_hidden_names():
+    from rest_framework.test import APIRequestFactory
+
+    from apps.job_mgmt.serializers.target import TargetSerializer
+
+    rows = [
+        Target(name=key, ip="10.0.0.1", credential_source="credential", credential_id=key, team=[1])
+        for key in ["active", "active", "disabled", "invisible"]
+    ]
+    request = APIRequestFactory().get(URL)
+    request.user = SimpleNamespace(username="op", domain="test", group_list=[])
+    request.COOKIES["current_team"] = "1"
+    descriptions = {"active": {"name": "active ssh", "type": "ssh", "disabled": False}, "disabled": {"name": "old", "type": "ssh", "disabled": True}}
+    with patch("apps.job_mgmt.serializers.target.describe_target_credentials", return_value=descriptions) as describe:
+        data = TargetSerializer(rows, many=True, context={"request": request}).data
+    assert [(row["credential_name"], row["credential_available"]) for row in data] == [
+        ("active ssh", True),
+        ("active ssh", True),
+        ("old", False),
+        ("", False),
+    ]
+    describe.assert_called_once()
+    assert set(describe.call_args.args[0]) == {"active", "disabled", "invisible"}
+
+
+@pytest.mark.integration
+def test_vault_binding_rejects_disabled_and_invisible_credentials(su_client):
+    payload = TestTargetCrud()._payload(credential_source="credential", credential_id="unusable")
+    with patch("apps.job_mgmt.serializers.target.describe_target_credential", return_value={"name": "old", "disabled": True}):
+        assert su_client.post(URL, payload, format="json").status_code == 400
+    with patch("apps.job_mgmt.serializers.target.describe_target_credential", side_effect=ValueError("credential unavailable")):
+        assert su_client.post(URL, payload, format="json").status_code == 400
+    assert not Target.objects.exists()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("os_type,stage", [("linux", "ssh"), ("windows", "winrm")])
+def test_probe_upstream_exception_omits_secret_from_logs_and_response(su_client, caplog, os_type, stage):
+    sentinel = "sensitive-error-password"
+    with patch.object(target_views, "_get_executor_node", return_value="node"), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="ansible"
+    ), patch.object(target_views, "Executor") as ssh, patch.object(target_views, "AnsibleExecutor") as win:
+        ssh.return_value.execute_ssh.side_effect = RuntimeError(sentinel)
+        win.return_value.adhoc.side_effect = RuntimeError(sentinel)
+        result = su_client.post(
+            f"{URL}test_connection/", TestTargetCrud()._payload(os_type=os_type, winrm_user="usr", winrm_password="pw"), format="json"
+        )
+    assert result.status_code == 200 and result.data["success"] is False
+    assert sentinel not in str(result.data) and sentinel not in caplog.text
+    records = [r for r in caplog.records if "job_connection_test_failed" in r.getMessage()]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == f"event=job_connection_test_failed region_id=%s failed_stage={stage} error_type=%s"
+    assert record.args == (1, "RuntimeError")
+    assert record.getMessage() == f"event=job_connection_test_failed region_id=1 failed_stage={stage} error_type=RuntimeError"
+    assert record.exc_info is not None and record.exc_info[2] is not None
+    assert sum(bool(r.exc_info) for r in caplog.records) == 1
+    assert str(record.exc_info[1]) == "RuntimeError"
+
+
+@pytest.mark.integration
+def test_real_vault_rotation_reaches_http_probe_and_disable_prevents_dispatch(su_client, authenticated_user):
+    from apps.system_mgmt.models import Group, User
+    from apps.system_mgmt.services.credential_service import create_credential, seed_builtin_types, set_disabled, update_credential
+
+    team = Group.objects.create(name="probe-team")
+    su_client.cookies["current_team"] = str(team.pk)
+    User.objects.create(username=authenticated_user.username, domain=authenticated_user.domain, group_list=[team.pk])
+    owner = {"username": authenticated_user.username, "domain": authenticated_user.domain, "current_team": team.pk, "group_list": [team.pk]}
+    seed_builtin_types()
+    credential = create_credential(
+        {"type": "ssh", "name": "Linux 登录", "fields": {"auth_method": "password", "username": "ssh-user", "password": "first"}, "group_id": team.pk},
+        actor=owner,
+    )
+    created = su_client.post(
+        URL, TestTargetCrud()._payload(team=[team.pk], credential_source="credential", credential_id=credential.credential_id), format="json"
+    )
+    assert created.status_code == 201
+    target = Target.objects.get(pk=created.data["id"])
+    assert target.credential_id == credential.credential_id and not target.ssh_password
+    assert created.data["credential_name"] == "Linux 登录"
+    update_credential(credential.credential_id, {"fields": {"password": "second"}}, actor=owner)
+    url = f"{URL}{target.pk}/test_connection/"
+    with patch.object(target_views, "_get_executor_node", return_value="node"), patch.object(target_views, "Executor") as executor:
+        executor.return_value.execute_ssh.return_value = "success"
+        checked = su_client.post(url, {}, format="json")
+        assert checked.data["success"] is True
+        assert executor.return_value.execute_ssh.call_args.kwargs["password"] == "second"
+        assert "second" not in str(checked.data)
+        update_credential(
+            credential.credential_id,
+            {"fields": {"auth_method": "key", "private_key": "private-key-content", "passphrase": "key-passphrase"}},
+            actor=owner,
+        )
+        assert su_client.post(url, {}, format="json").data["success"] is True
+        call = executor.return_value.execute_ssh.call_args.kwargs
+        assert call["private_key"] == "private-key-content" and call["passphrase"] == "key-passphrase" and call["password"] is None
+        set_disabled(credential.credential_id, True, actor=owner)
+        assert su_client.post(url, {}, format="json").data["success"] is False
+        assert executor.return_value.execute_ssh.call_count == 2
+    assert su_client.get(f"{URL}{target.pk}/").data["credential_available"] is False
+
+
+@pytest.mark.integration
+def test_vault_winrm_requires_ansible_for_save_and_test(su_client):
+    payload = TestTargetCrud()._payload(os_type="windows", credential_source="credential", credential_id="winrm-id", driver="sidecar")
+    for url in (URL, f"{URL}test_connection/"):
+        response = su_client.post(url, payload, format="json")
+        assert response.status_code == 400
+        assert "driver" in response.data
+
+
+@pytest.mark.integration
+def test_switch_to_vault_removes_key_after_last_committed_reference(su_client, django_capture_on_commit_callbacks):
+    storage = Target._meta.get_field("ssh_key_file").storage
+    key_name = "ssh_keys/legacy-shared.pem"
+    rows = [Target.objects.create(name=name, ip="10.0.0.1", cloud_region_id=1, ssh_key_file=key_name, team=[1]) for name in ("a", "b")]
+    with patch.object(storage, "delete") as delete, patch(
+        "apps.job_mgmt.serializers.target.describe_target_credential", return_value={"type": "ssh", "name": "host", "disabled": False}
+    ):
+        for target in rows:
+            with django_capture_on_commit_callbacks(execute=True):
+                response = su_client.patch(f"{URL}{target.pk}/", {"credential_source": "credential", "credential_id": "host-login"}, format="json")
+                assert response.status_code == 200
+                assert not Target.objects.get(pk=target.pk).ssh_key_file
+                delete.assert_not_called()
+        delete.assert_called_once_with(key_name)

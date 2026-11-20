@@ -30,6 +30,7 @@ from apps.job_mgmt.services.nats_module_service import get_module_data, get_modu
 from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.services.target_vault import credential_actor, uses_vault_targets
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
@@ -295,6 +296,13 @@ def _prepare_script_async_fields(async_ctx: dict, team: list, actor_name: str, a
     }, None
 
 
+def _trusted_vault_actor(actor, team):
+    teams = normalize_team(team)
+    if len(teams) != 1:
+        return {}
+    return credential_actor(actor.get("user"), actor.get("domain"), next(iter(teams)))
+
+
 def _run_script_execute(data: dict, *, trusted_actor=None):
     """
     脚本执行实现。
@@ -393,6 +401,9 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
     if idempotent_replay is not None:
         return idempotent_replay
 
+    scope = _trusted_vault_actor(actor, team)
+    if not scope and uses_vault_targets(target_source, target_list):
+        return {"result": False, "message": "使用仓库凭据目标需要可信身份和唯一执行组织"}
     # 创建执行记录
 
     create_kwargs = {
@@ -412,6 +423,7 @@ def _run_script_execute(data: dict, *, trusted_actor=None):
         "callback_url": callback_url,
         "callback_subject": callback_subject,
         "executor_user": actor_name,
+        "credential_actor": scope,
         "created_by": actor_name[:32],
         "updated_by": actor_name[:32],
         "domain": actor_domain,
@@ -569,6 +581,9 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     # 构建文件信息
     files_info = [{"name": df.original_name, "file_key": df.file_key} for df in distribution_files]
 
+    scope = _trusted_vault_actor(actor, team)
+    if not scope and uses_vault_targets(target_source, target_list):
+        return {"result": False, "message": "使用仓库凭据目标需要可信身份和唯一执行组织"}
     create_kwargs = {
         "name": name,
         "job_type": JobType.FILE_DISTRIBUTION,
@@ -586,6 +601,7 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
         "callback_url": callback_url,
         "callback_subject": callback_subject,
         "executor_user": actor_name,
+        "credential_actor": scope,
         # 通用 MaintainerInfo 字段历史上限为 32；完整可信身份保存在
         # executor_user + domain，维护人列仅作兼容投影，避免合法长账号落库失败。
         "created_by": actor_name[:32],
@@ -1155,3 +1171,22 @@ def cancel_automation_execution_local(data: dict, actor_context: dict):
 
 # 导入即注册。放在文件末尾，避免和本模块的校验函数形成循环导入。
 from apps.job_mgmt import nats_opspilot as _job_opspilot_nats  # noqa: E402,F401
+
+
+@nats_client.register
+def job_count_credential_refs(credential_ids):
+    """按凭据仓库约定统计直接绑定的目标，不计作业和执行历史。"""
+    from django.db.models import Count
+
+    from apps.job_mgmt.constants import CredentialSource
+
+    if not isinstance(credential_ids, list) or len(credential_ids) > 100 or any(not isinstance(key, str) or not key for key in credential_ids):
+        return {"result": False, "message": "invalid"}
+    counts = dict.fromkeys(credential_ids, 0)
+    rows = (
+        Target.objects.filter(credential_source=CredentialSource.CREDENTIAL, credential_id__in=counts)
+        .values("credential_id")
+        .annotate(total=Count("pk"))
+    )
+    counts.update((row["credential_id"], row["total"]) for row in rows)
+    return {"result": True, "data": {"counts": counts}}

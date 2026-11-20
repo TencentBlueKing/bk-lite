@@ -446,6 +446,13 @@ def _escape_notification_rich_text(value):
     return re.sub(r"([\\`*{}\[\]()#+\-.!|>~_])", r"\\\1", escaped)
 
 
+def _workflow_wecom_markdown(value):
+    """保留企微排版；正文中的标签、提及和命名链接只作文本，真实提及由渠道追加。"""
+    value = re.sub(r"&(?=#|[a-zA-Z][a-zA-Z0-9]*;)", "&amp;", value)
+    value = re.sub(r"<(?=[a-zA-Z/!?@])", "&lt;", value)
+    return re.sub(r"([\\\[\]])", r"\\\1", value)
+
+
 @nats_client.register
 def dispatch_notification(
     delivery_key,
@@ -540,13 +547,20 @@ def dispatch_notification(
             content = f'{content}<br>报告下载（24 小时内有效）：<a href="{href}">下载报告</a>'
         send_title = html.escape(title, quote=False)
         send_recipients = normalized_recipients
-    else:
-        if channel.channel_type in RICH_TEXT_CHANNEL_TYPES:
-            content = _escape_notification_rich_text(body.strip())
-            send_title = _escape_notification_rich_text(title)
+    elif channel.channel_type in RICH_TEXT_CHANNEL_TYPES:
+        if (
+            channel.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT
+            and producer == "workflow"
+            and verify_internal_event("system_mgmt.dispatch_notification", request_payload, internal_auth, caller="workflow")
+        ):
+            content = _workflow_wecom_markdown(body.strip())
         else:
-            content = body.strip()
-            send_title = title
+            content = _escape_notification_rich_text(body.strip())
+        send_title = _escape_notification_rich_text(title)
+        send_recipients = normalized_recipients
+    else:
+        content = body.strip()
+        send_title = title
         send_recipients = normalized_recipients
 
     try:
@@ -867,7 +881,7 @@ def sync_workflow_nats_channels(workflow_id, workflow_name, team, nodes, active,
         incoming_node_keys.add(node_key)
         label = str((node or {}).get("name") or node_key).strip()
         config = {
-            "namespace": OPSPILOT_NATS_NAMESPACE,
+            "namespace": OPSPILOT_NATS_NAMESPACE or "bklite",
             "method_name": WORKFLOW_NATS_METHOD,
             "workflow_id": workflow_id,
             "trigger_id": trigger_id,

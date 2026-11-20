@@ -1,3 +1,7 @@
+import {
+  chartFieldMissingMessage,
+  missingConfiguredField,
+} from '@/app/ops-analysis/utils/chartFieldContract';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import {
   applyValueMapping,
@@ -182,6 +186,8 @@ export interface CardListParseResult {
 }
 
 const INVALID_MESSAGE = 'dashboard.cardListStructureMismatch';
+const FIELD_REQUIRED_MESSAGE = 'dashboard.chartRoleFieldsRequired';
+const FORMAT_MESSAGE = 'dashboard.dataFormatMismatch';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -317,6 +323,39 @@ export const parseCardListItems = (
     };
   }
 
+  const recordRows = rows.filter(isRecord);
+  if (rows.length > 0 && recordRows.length === 0) {
+    return {
+      items: [],
+      total: 0,
+      truncated: false,
+      status: 'invalid',
+      message: INVALID_MESSAGE,
+    };
+  }
+
+  const titleField = config.titleField.trim();
+  if (!titleField) {
+    return {
+      items: [],
+      total: 0,
+      truncated: false,
+      status: 'invalid',
+      message: FIELD_REQUIRED_MESSAGE,
+    };
+  }
+
+  const missingField = missingConfiguredField(rawData, [titleField]);
+  if (missingField) {
+    return {
+      items: [],
+      total: 0,
+      truncated: false,
+      status: 'invalid',
+      message: chartFieldMissingMessage(missingField),
+    };
+  }
+
   const mapped = rows.flatMap((row) => {
     if (!isRecord(row)) {
       return [];
@@ -331,7 +370,7 @@ export const parseCardListItems = (
       total: 0,
       truncated: false,
       status: 'invalid',
-      message: INVALID_MESSAGE,
+      message: FORMAT_MESSAGE,
     };
   }
 

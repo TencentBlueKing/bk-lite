@@ -107,6 +107,7 @@ class IntentClassifierNode(BaseNodeExecutor):
             "enable_suggest": False,
             "enable_query_rewrite": False,
             "locale": flow_input.get("locale", "en"),
+            "omit_reply_language": True,
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
         }

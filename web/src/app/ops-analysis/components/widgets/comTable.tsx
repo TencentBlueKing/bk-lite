@@ -67,6 +67,7 @@ interface ComTableProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onQueryChange?: (params: Record<string, any>) => void;
+  paginationResetKey?: string;
 }
 
 interface TableDataItem {
@@ -81,6 +82,7 @@ const ComTable: React.FC<ComTableProps> = ({
   dataSource,
   screenRenderContext,
   onQueryChange,
+  paginationResetKey = '',
 }) => {
   const { t } = useTranslation();
   const surface = useInteractionSurface();
@@ -109,6 +111,7 @@ const ComTable: React.FC<ComTableProps> = ({
     savedParams: config?.dataSourceParams,
     onQueryChange,
     additionalQuery,
+    paginationResetKey,
   });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);

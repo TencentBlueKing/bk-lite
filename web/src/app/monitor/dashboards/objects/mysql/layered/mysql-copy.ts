@@ -42,7 +42,7 @@ export const MYSQL_CATEGORY_COPY = {
   kpiBufferHit: [textId('mysqlCategoryKpiBufferHit'), '缓冲池命中'],
   kpiReplication: [textId('mysqlCategoryKpiReplication'), '复制'],
   kpiUptime: [textId('mysqlCategoryKpiUptime'), '运行时间'],
-  kpiAlerts: [textId('mysqlCategoryKpiAlerts'), '告警'],
+  kpiAlerts: [textId('mysqlCategoryKpiAlerts'), '告警数量'],
   kpiNoData: [textId('mysqlCategoryKpiNoData'), '暂无数据'],
   connectionSubtitle: [textId('mysqlCategoryConnectionSubtitle'), '上限 {max} · 占用率 {occupancy}%'],
   slowPerSecond: [textId('mysqlCategorySlowPerSecond'), '{value} 次/秒'],

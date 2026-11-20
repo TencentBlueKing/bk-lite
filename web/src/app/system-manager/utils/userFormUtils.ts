@@ -38,6 +38,7 @@ export interface UserFormPayload {
   roles: number[];
   rules?: number[];
   is_superuser: boolean;
+  is_auditor?: boolean;
 }
 
 export interface UserDetailResponse {
@@ -48,6 +49,7 @@ export interface UserDetailResponse {
   timezone?: string;
   locale?: string;
   is_superuser?: boolean;
+  is_auditor?: boolean;
   sync_source?: number | null;
   manager_username?: string;
   employment_status?: string;
@@ -196,6 +198,8 @@ export function buildFormValuesFromUserDetail(
     roles: allRoles,
     groups: groupIds,
     is_superuser: userDetail.is_superuser || false,
+    is_auditor: userDetail.is_auditor || false,
+    user_kind: userDetail.is_superuser ? 'superuser' : userDetail.is_auditor ? 'auditor' : 'normal',
     manager_username: userDetail.manager_username || '',
     employment_status: userDetail.employment_status || 'unspecified',
     job_title: userDetail.job_title || '',
@@ -219,7 +223,8 @@ export function buildUserPayload(
   formData: Record<string, unknown>,
   personalRoleIds: number[],
   groupRules: GroupRules,
-  isSuperuser: boolean
+  isSuperuser: boolean,
+  isAuditor = false
 ): UserFormPayload {
   const { zoneinfo, account_expires_at, custom_fields, manager_username, ...restData } = formData;
   const managerName = typeof manager_username === 'string' ? manager_username.trim() : '';
@@ -242,6 +247,20 @@ export function buildUserPayload(
       timezone: zoneinfo as string,
       manager_username: managerName,
       is_superuser: true,
+      is_auditor: false,
+      account_expires_at: expiry,
+      ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
+    } as UserFormPayload;
+  }
+
+  if (isAuditor) {
+    return {
+      ...restData,
+      roles: [],
+      timezone: zoneinfo as string,
+      manager_username: managerName,
+      is_superuser: false,
+      is_auditor: true,
       account_expires_at: expiry,
       ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
     } as UserFormPayload;
@@ -259,6 +278,7 @@ export function buildUserPayload(
     timezone: zoneinfo as string,
     manager_username: managerName,
     is_superuser: false,
+    is_auditor: false,
     account_expires_at: expiry,
     ...(normalizedCustomFields ? { custom_fields: normalizedCustomFields } : {}),
   } as UserFormPayload;

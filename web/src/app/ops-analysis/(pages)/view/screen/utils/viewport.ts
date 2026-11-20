@@ -8,6 +8,9 @@ import type {
   ScreenViewportConfig,
   ScreenViewSets,
 } from '@/app/ops-analysis/types/screen';
+import { sanitizeComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
+import { readDataVariables } from '@/app/ops-analysis/utils/dataVariable';
+import { logStringParamMigrationWarnings } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   applyRoom3DFilterBindings,
@@ -402,18 +405,28 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
         item.valueConfig?.filterBindings,
         filters,
       );
-      if (bindings === item.valueConfig.filterBindings) return item;
+      const sanitized = sanitizeComponentSwitchParams(
+        item.chartType,
+        item.valueConfig?.dataSourceParams,
+      );
+      if (sanitized.warnings.length) logStringParamMigrationWarnings(sanitized.warnings);
+      const bindingsChanged = bindings !== item.valueConfig.filterBindings;
+      if (!sanitized.changed && !bindingsChanged) return item;
       return {
         ...item,
         valueConfig: {
           ...item.valueConfig,
-          filterBindings: bindings,
+          ...(bindingsChanged ? { filterBindings: bindings } : {}),
+          ...(sanitized.changed ? { dataSourceParams: sanitized.params } : {}),
         },
       };
     }),
     decorations,
     filters,
   };
+  if (Array.isArray(source.dataVariables)) {
+    normalized.dataVariables = readDataVariables(source.dataVariables);
+  }
 
   return migrateLegacyChrome(normalized);
 };

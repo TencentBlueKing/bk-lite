@@ -391,6 +391,49 @@ def test_init_source_api_data_retires_room3d_builtin_datasources(settings, caplo
     assert not _retire_log_records(caplog, _RESTORE_ROOM_LIST_TEMPLATE)
 
 
+_OLD_ALERT_KEY = "监控告警查询::monitor/query_monitor_alerts"
+_ALERT_LIST_KEY = "监控告警通用查询::monitor/query_monitor_alerts"
+
+
+@pytest.mark.django_db
+def test_retire_old_monitor_alert_query_keeps_list_source():
+    from apps.operation_analysis.management.commands.init_source_api_data import Command
+
+    old = DataSourceAPIModel.objects.create(
+        name="监控告警查询",
+        rest_api="monitor/query_monitor_alerts",
+        chart_type=["table", "topN"],
+        is_build_in=True,
+        is_active=True,
+        build_in_key=_OLD_ALERT_KEY,
+        created_by="system",
+        updated_by="system",
+    )
+    current = DataSourceAPIModel.objects.create(
+        name="监控告警列表查询",
+        rest_api="monitor/query_monitor_alerts",
+        chart_type=["table", "multiValue", "cardList"],
+        is_build_in=True,
+        is_active=True,
+        build_in_key=_ALERT_LIST_KEY,
+        created_by="system",
+        updated_by="system",
+    )
+
+    retired = Command().retire_scene_internal_datasources()
+
+    old.refresh_from_db()
+    current.refresh_from_db()
+    assert retired == 1
+    assert old.is_active is False
+    assert old.chart_type == []
+    assert old.build_in_key == _OLD_ALERT_KEY
+    assert current.is_active is True
+    assert current.chart_type == ["table", "multiValue", "cardList"]
+    assert current.build_in_key == _ALERT_LIST_KEY
+    assert current.name == "监控告警列表查询"
+
+
 @pytest.mark.django_db
 def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings):
     settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"

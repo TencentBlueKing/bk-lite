@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, message, Select, Spin } from 'antd';
+import { Button, Divider, Form, message, Select, Spin } from 'antd';
+import { ExportOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
@@ -69,7 +69,7 @@ function AccountAssociationField({
   value,
   onChange,
   options,
-  refreshing,
+  loading,
   onRefresh,
   onManage,
   placeholder,
@@ -78,11 +78,11 @@ function AccountAssociationField({
   value?: number | null;
   onChange?: (value: number | null) => void;
   options: AccountAssociationOption[];
-  refreshing: boolean;
-  onRefresh: () => void;
-  onManage: () => void;
-  placeholder: string;
-  manageLabel: string;
+  loading?: boolean;
+  onRefresh?: () => void;
+  onManage?: () => void;
+  placeholder?: string;
+  manageLabel?: string;
 }) {
   return (
     <div className="flex items-start gap-2">
@@ -96,9 +96,25 @@ function AccountAssociationField({
           label: `${item.name}（${item.integration_instance_name}）`,
         }))}
         onChange={(next) => onChange?.(next ?? null)}
+        dropdownRender={(menu) => (
+          <>
+            {menu}
+            <Divider style={{ margin: '8px 0' }} />
+            <div className="px-2 pb-1">
+              <Button
+                type="link"
+                size="small"
+                icon={<ExportOutlined />}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onManage}
+              >
+                {manageLabel}
+              </Button>
+            </div>
+          </>
+        )}
       />
-      <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
-      <Button onClick={onManage}>{manageLabel}</Button>
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
     </div>
   );
 }
@@ -659,10 +675,14 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: 'account_association',
         type: 'accountAssociation',
         label: t('system.channel.settings.accountAssociation', '账号关联'),
+        tooltip: t(
+          'system.channel.settings.accountAssociationTooltip',
+          '发送时按该账号关联的匹配规则，以平台账号字段确定被提及用户的 IM 账号。',
+        ),
         component: (
           <AccountAssociationField
             options={associationOptions}
-            refreshing={refreshingAssociations}
+            loading={refreshingAssociations}
             onRefresh={refreshAssociationOptions}
             onManage={openAssociationManager}
             placeholder={t('system.channel.settings.accountAssociationPlaceholder', '选择账号关联')}

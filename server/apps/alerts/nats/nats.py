@@ -1679,6 +1679,21 @@ def _alert_statuses_for_query(status):
     return normalized
 
 
+def _list_alerts_error(message):
+    return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": message}
+
+
+def _optional_alert_created_bound(value, name):
+    if value is None:
+        return None, None
+    if isinstance(value, str) and not value.strip():
+        return None, None
+    try:
+        return parse_rfc3339_utc(value), None
+    except (TypeError, ValueError):
+        return None, f"{name} 必须是带时区的 RFC3339 时间"
+
+
 @nats_client.register
 def list_alerts(query_data=None, user_info=None, **kwargs):
     """只读查询告警中心告警列表。"""
@@ -1712,13 +1727,26 @@ def list_alerts(query_data=None, user_info=None, **kwargs):
             matched |= Q(title__icontains=term) | Q(content__icontains=term) | Q(resource_name__icontains=term) | Q(alert_id__icontains=term)
         queryset = queryset.filter(matched)
 
+    start, start_error = _optional_alert_created_bound(query_data.get("start"), "start")
+    if start_error:
+        return _list_alerts_error(start_error)
+    end, end_error = _optional_alert_created_bound(query_data.get("end"), "end")
+    if end_error:
+        return _list_alerts_error(end_error)
+    if start is not None and end is not None and start > end:
+        return _list_alerts_error("start 不能晚于 end")
+    if start is not None:
+        queryset = queryset.filter(created_at__gte=start)
+    if end is not None:
+        queryset = queryset.filter(created_at__lte=end)
+
     try:
         page = max(int(query_data.get("page") or 1), 1)
         page_size = min(max(int(query_data.get("page_size") or 20), 1), 100)
     except (TypeError, ValueError):
         return {"result": False, "data": {"count": 0, "page": 1, "page_size": 20, "items": []}, "message": "page/page_size 必须是正整数"}
 
-    queryset = queryset.order_by("-created_at")
+    queryset = queryset.order_by("-created_at", "-id")
     count, items = _paginate_queryset(queryset, page, page_size)
     timezone_name = _caller_display_timezone(user_info) if items else None
     return {

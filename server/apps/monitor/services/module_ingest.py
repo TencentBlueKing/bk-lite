@@ -227,14 +227,16 @@ class MonitorModuleIngestService:
             ):
                 return IngestResult(id=existing.id, skipped=True).as_dict()
 
-            needs_collect = (
-                source_module == "node_mgmt"
-                and bool(node_id)
-                and not CollectConfig.objects.filter(
+            host_configs = list(
+                CollectConfig.objects.filter(
                     monitor_instance_id=existing.id,
                     collector=HOST_AGENT_COLLECTOR,
                     collect_type=HOST_AGENT_COLLECT_TYPE,
-                ).exists()
+                )
+            )
+            needs_collect = source_module == "node_mgmt" and bool(node_id) and not host_configs
+            reattach_host = (
+                source_module == "node_mgmt" and bool(node_id) and bool(host_configs) and all(config.executor_node_removed for config in host_configs)
             )
             plugin = cls._require_host_agent_plugin() if needs_collect else None
             with transaction.atomic():
@@ -254,6 +256,15 @@ class MonitorModuleIngestService:
                         allowed_org_ids=allowed,
                         plugin=plugin,
                     )
+            # 停采主机挂回会写节点采集配置，必须留在上面的事务外，避免与节点行锁互相等待。
+            if reattach_host:
+                cls._reattach_removed_host_configs(
+                    updated,
+                    host_configs,
+                    node_id=node_id,
+                    raw=raw,
+                    allowed_org_ids=allowed,
+                )
             if source_module == "node_mgmt":
                 updated = cls._notify_host_peers_after_write(
                     updated,
@@ -558,6 +569,31 @@ class MonitorModuleIngestService:
         if not plugin:
             raise ValueError(f"monitor plugin {plugin_name!r} not found")
         return plugin
+
+    @classmethod
+    def _reattach_removed_host_configs(
+        cls,
+        instance: MonitorInstance,
+        host_configs: list[CollectConfig],
+        *,
+        node_id: str,
+        raw: dict[str, Any],
+        allowed_org_ids: list[int],
+    ) -> None:
+        """把已停采的主机 Telegraf 配置挂到推送里的新节点，并清掉已删除标记。"""
+        config_ids = [config.id for config in host_configs]
+        owner_ids = list(CollectConfig.objects.filter(monitor_instance_id=instance.id).values_list("id", flat=True))
+        NodeMgmt(is_local_client=True).move_child_configs_to_node(
+            config_ids,
+            node_id,
+            owner_ids,
+            cls._normalize_org_ids(raw, allowed_org_ids),
+        )
+        CollectConfig.objects.filter(id__in=config_ids).update(
+            executor_node_removed=False,
+            executor_node_id="",
+            executor_node_name="",
+        )
 
     @classmethod
     def _apply_agent_host_collect(
@@ -1075,7 +1111,7 @@ class MonitorModuleIngestService:
     ) -> dict[str, Any]:
         """跨模块删除通知。
 
-        - node_mgmt 退役：软删监控资产（停采/归档，不物理硬删）
+        - node_mgmt：节点退出不再退役监控资产，直接跳过
         - cmdb / 其他：只清关联 ID，不删资产
         """
         action = str((raw or {}).get("action") or "retire").strip().lower()
@@ -1086,6 +1122,15 @@ class MonitorModuleIngestService:
                 monitor_id,
             )
             return IngestResult(id=monitor_id, ignored=True).as_dict()
+
+        # 落到后面的清关联会拆掉仍要保留的监控实例。
+        if source_module == "node_mgmt":
+            logger.info(
+                "[MonitorModuleIngest] lifecycle skipped node_mgmt source monitor_id=%s action=%s",
+                monitor_id,
+                action,
+            )
+            return IngestResult(id=monitor_id, skipped=True).as_dict()
 
         existing = None
         if monitor_id:
@@ -1103,33 +1148,6 @@ class MonitorModuleIngestService:
                 cmdb_id,
             )
             return IngestResult(id=monitor_id, ignored=True).as_dict()
-
-        # 节点删除确认清理：软删监控资产，并清对端 CMDB 指针（不动 CMDB 资产）
-        if source_module == "node_mgmt" and action in ("retire", "archive", "stop", ""):
-            leftover_cmdb_id = cls._normalize_optional_str(existing.cmdb_id)
-            already_retired = existing.is_deleted and not existing.is_active
-            if already_retired and not leftover_cmdb_id:
-                return IngestResult(id=existing.id, ignored=True).as_dict()
-
-            snapshot = cls._lifecycle_unlink_snapshot(existing) if leftover_cmdb_id else None
-            update_fields = ["is_active", "is_deleted", "updated_at"]
-            existing.is_active = False
-            existing.is_deleted = True
-            if leftover_cmdb_id:
-                existing.cmdb_id = None
-                update_fields.append("cmdb_id")
-            if operator:
-                existing.updated_by = operator
-                update_fields.append("updated_by")
-            existing.save(update_fields=update_fields)
-            if snapshot:
-                cls._best_effort_notify_cmdb_unlink(snapshot, operator=operator)
-            logger.info(
-                "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s cmdb_id_cleared=%s",
-                existing.id,
-                bool(leftover_cmdb_id),
-            )
-            return IngestResult(id=existing.id, updated=True).as_dict()
 
         # 其他模块删除：只清关联 ID
         clear_fields: list[str] = []
@@ -1160,42 +1178,6 @@ class MonitorModuleIngestService:
             source_module,
         )
         return IngestResult(id=existing.id, updated=True).as_dict()
-
-    @staticmethod
-    def _lifecycle_unlink_snapshot(instance: MonitorInstance) -> dict[str, Any]:
-        return {
-            "id": str(instance.id),
-            "name": instance.name,
-            "ip": str(instance.ip) if instance.ip else None,
-            "cloud_region_id": instance.cloud_region_id,
-            "node_id": str(instance.node_id or "").strip() or None,
-            "cmdb_id": str(instance.cmdb_id or "").strip() or None,
-            "monitor_object_name": getattr(instance.monitor_object, "name", None),
-            "organization_ids": list(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True)),
-        }
-
-    @staticmethod
-    def _best_effort_notify_cmdb_unlink(snapshot: dict[str, Any], *, operator: str) -> None:
-        try:
-            from apps.monitor.services.module_push import MonitorToCmdbPushService
-
-            MonitorToCmdbPushService.best_effort_notify_on_delete(
-                [snapshot],
-                operator=operator or "",
-                allowed_org_ids=list(snapshot.get("organization_ids") or []),
-            )
-        except Exception as exc:
-            logger.exception(
-                "[MonitorModuleIngest] retire notify cmdb unlink failed monitor_id=%s failed_stage=%s error_type=%s",
-                snapshot.get("id"),
-                "cmdb_unlink_notify",
-                type(exc).__name__,
-            )
-
-    @staticmethod
-    def _retired_by_node_exit(instance: MonitorInstance) -> bool:
-        """节点退出软退役的主机保持原实例 ID，后续推送另建关联。"""
-        return bool(instance.is_deleted and not instance.is_active)
 
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
@@ -1273,8 +1255,6 @@ class MonitorModuleIngestService:
             except ValueError:
                 continue
             by_pk = cls._find_by_pk(storage_key)
-            if by_pk and cls._retired_by_node_exit(by_pk):
-                continue
             if by_pk and by_pk.monitor_object and by_pk.monitor_object.name == object_name and not (active_only and not by_pk.is_active):
                 return by_pk
         ip_cloud = MonitorInstance.objects.filter(
@@ -1552,11 +1532,6 @@ class MonitorModuleIngestService:
         name = cls._extract_name(raw, ip=ip)
         instance_id = cls._new_instance_id(node_id=node_id, raw=raw)
         occupied = MonitorInstance.objects.select_for_update().filter(id=instance_id).select_related("monitor_object").first()
-        if occupied and cls._retired_by_node_exit(occupied):
-            if cmdb_id and MonitorInstance.objects.filter(cmdb_id=cmdb_id).exists():
-                cmdb_id = None
-            occupied = None
-            instance_id = uuid.uuid4().hex
         if occupied:
             if occupied.monitor_object_id != monitor_object.id:
                 raise ValueError("monitor instance id occupied")

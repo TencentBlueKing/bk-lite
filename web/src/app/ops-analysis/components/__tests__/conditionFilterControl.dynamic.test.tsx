@@ -110,6 +110,34 @@ describe('dynamic condition fields', () => {
     });
   });
 
+  it('renders a tag field as a multi-select filled with its options', async () => {
+    render(
+      <ConditionFilterControl
+        source={{
+          kind: 'static',
+          items: [{
+            value: 'tag',
+            label: '标签',
+            valueType: 'tag',
+            options: [{ value: '数据中心:广州', label: '数据中心:广州' }],
+          }],
+        }}
+        value={{ logic: 'AND', items: [{ field: 'tag', op: 'eq', value: [] }] }}
+      />,
+    );
+    const operator = screen.getByTestId('condition-operator');
+    expect(operator.querySelector('.ant-select-selection-item')?.textContent).toBe('dashboard.conditionFilter.eq');
+    fireEvent.mouseDown(operator.querySelector('input') || operator);
+    const operatorOptions = await screen.findAllByText('dashboard.conditionFilter.eq');
+    expect(operatorOptions.length).toBeGreaterThan(0);
+    expect(screen.queryByText('dashboard.conditionFilter.notIn')).toBeNull();
+    const value = screen.getByTestId('condition-value');
+    expect(value.className).toContain('ant-select');
+    expect(value.className).toContain('ant-select-multiple');
+    fireEvent.mouseDown(value.querySelector('input') || value);
+    expect(await screen.findByRole('option', { name: '数据中心:广州' })).toBeTruthy();
+  });
+
   it('renders a static source field as an input', async () => {
     render(
       <ConditionFilterControl

@@ -101,6 +101,8 @@ class ChannelSerializer(UsernameSerializer):
         loader = self._loader()
         if not isinstance(config, dict):
             raise serializers.ValidationError({"config": loader.get("error.nats_config_must_be_object")})
+        if config.get("source") == "workflow" or config.get("method_name") == "trigger_orchestration_workflow_by_nats":
+            raise serializers.ValidationError({"config": loader.get("error.workflow_channel_readonly")})
         if "supports_notify_person" in config and not isinstance(config["supports_notify_person"], bool):
             raise serializers.ValidationError({"config": {"supports_notify_person": loader.get("error.nats_supports_notify_person_boolean")}})
         if nats_notifications is not None and nats_notifications.handles_config(config):

@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from django.db import IntegrityError, transaction
 from django.db.models import F
 from rest_framework.exceptions import ValidationError
 
+from apps.core.utils.time_util import format_rfc3339_utc
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.models import CollectInstance, CollectType, LogExtractor
 from apps.log.models.extractor import TYPE_SCOPED_COLLECT_TYPE_NAMES
@@ -12,6 +15,7 @@ from apps.log.utils.locale_text import log_text
 
 MAX_RULES_PER_INSTANCE = 20
 MAX_RULES_PER_SCOPE = MAX_RULES_PER_INSTANCE
+EXTRACTOR_SAMPLE_WINDOW = timedelta(hours=24)
 
 
 def _actor_fields(user) -> dict:
@@ -79,7 +83,9 @@ def create_rule(instance: CollectInstance, validated_data: dict, user) -> tuple[
             locked_instance = CollectInstance.objects.select_for_update().get(pk=instance.pk)
             count = LogExtractor.objects.filter(collect_instance=locked_instance).count()
             if count >= MAX_RULES_PER_INSTANCE:
-                raise ValidationError({"collect_instance": log_text(getattr(user, "locale", None), "error.instance_rule_limit", count=MAX_RULES_PER_INSTANCE)})
+                raise ValidationError(
+                    {"collect_instance": log_text(getattr(user, "locale", None), "error.instance_rule_limit", count=MAX_RULES_PER_INSTANCE)}
+                )
             rule = LogExtractor.objects.create(
                 **validated_data,
                 collect_instance=locked_instance,
@@ -140,9 +146,9 @@ def delete_rule(rule: LogExtractor) -> int:
         if instance_id:
             LogExtractor.objects.filter(collect_instance_id=instance_id, sort_order__gt=order).update(sort_order=F("sort_order") - 1)
         elif collect_type_id:
-            LogExtractor.objects.filter(
-                collect_type_id=collect_type_id, collect_instance__isnull=True, sort_order__gt=order
-            ).update(sort_order=F("sort_order") - 1)
+            LogExtractor.objects.filter(collect_type_id=collect_type_id, collect_instance__isnull=True, sort_order__gt=order).update(
+                sort_order=F("sort_order") - 1
+            )
         return mark_dirty()
 
 
@@ -174,11 +180,7 @@ def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int], locale
     _require_unique_int_ids(ordered_ids, locale)
     with transaction.atomic():
         CollectType.objects.select_for_update().get(pk=collect_type.pk)
-        rules = list(
-            LogExtractor.objects.select_for_update()
-            .filter(**_type_scope_filter(collect_type))
-            .order_by("sort_order", "id")
-        )
+        rules = list(LogExtractor.objects.select_for_update().filter(**_type_scope_filter(collect_type)).order_by("sort_order", "id"))
         rule_map = {rule.id: rule for rule in rules}
         if set(ordered_ids) != set(rule_map):
             raise ValidationError({"ids": log_text(locale, "error.type_rule_ids_exact")})
@@ -232,19 +234,22 @@ def preview_type_rule(collect_type: CollectType, event: dict, draft: dict, befor
     return _preview(saved, event, draft, before_rule_id, {"collect_type": collect_type.name}, locale)
 
 
+def _extractor_sample_window(now=None):
+    end = now or datetime.now(timezone.utc)
+    return format_rfc3339_utc(end - EXTRACTOR_SAMPLE_WINDOW), format_rfc3339_utc(end)
+
+
 def load_samples(instance: CollectInstance, limit) -> object:
     normalized_limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     escaped_id = str(instance.pk).replace("\\", "\\\\").replace('"', '\\"')
-    payload = SearchService.search_logs(
-        f'instance_id:"{escaped_id}"', "", "", normalized_limit, log_groups=[], resolved_groups=[]
-    )
+    start, end = _extractor_sample_window()
+    payload = SearchService.search_logs(f'instance_id:"{escaped_id}"', start, end, normalized_limit, log_groups=[], resolved_groups=[])
     return _restore_sample_payload(payload)
 
 
 def load_type_samples(collect_type: CollectType, limit) -> object:
     normalized_limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     escaped_name = str(collect_type.name).replace("\\", "\\\\").replace('"', '\\"')
-    payload = SearchService.search_logs(
-        f'collect_type:"{escaped_name}"', "", "", normalized_limit, log_groups=[], resolved_groups=[]
-    )
+    start, end = _extractor_sample_window()
+    payload = SearchService.search_logs(f'collect_type:"{escaped_name}"', start, end, normalized_limit, log_groups=[], resolved_groups=[])
     return _restore_sample_payload(payload)

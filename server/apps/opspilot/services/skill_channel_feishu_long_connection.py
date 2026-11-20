@@ -184,7 +184,7 @@ class FeishuConnection:
                 return
             text = visible
         try:
-            bubble_id = self.gateway.reply_text(event.message_id, PROCESSING_TEXT)
+            bubble_id = self.gateway.reply_markdown(event.message_id, PROCESSING_TEXT)
         except Exception as exc:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "reply", type(exc).__name__)
             return
@@ -314,11 +314,11 @@ class FeishuConnection:
     def _abort_begin(self, event: FeishuInbound, bubble_id: str) -> None:
         self._discard_turn(event.chat_id, event.message_id)
         try:
-            self.gateway.update_text(bubble_id, FAILURE_TEXT)
+            self.gateway.update_markdown(bubble_id, FAILURE_TEXT)
         except Exception as exc:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "update", type(exc).__name__)
             try:
-                self.gateway.reply_text(event.message_id, FAILURE_TEXT)
+                self.gateway.reply_markdown(event.message_id, FAILURE_TEXT)
             except Exception as reply_exc:
                 logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "fallback", type(reply_exc).__name__)
 
@@ -396,13 +396,13 @@ class FeishuConnection:
     def _show(self, turn: Turn, text: str) -> None:
         visible = _feishu_visible_text(text)
         try:
-            self.gateway.update_text(turn.bubble_id, visible)
+            self.gateway.update_markdown(turn.bubble_id, visible)
         except Exception as exc:
             if turn.replaced:
                 logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "update", type(exc).__name__)
                 return
             try:
-                turn.bubble_id = self.gateway.reply_text(turn.user_message_id, visible)
+                turn.bubble_id = self.gateway.reply_markdown(turn.user_message_id, visible)
             except Exception as reply_exc:
                 logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "fallback", type(reply_exc).__name__)
                 return
@@ -412,7 +412,7 @@ class FeishuConnection:
 
     def _reply_unsupported(self, message_id: str) -> None:
         try:
-            self.gateway.reply_text(message_id, UNSUPPORTED_TEXT)
+            self.gateway.reply_markdown(message_id, UNSUPPORTED_TEXT)
         except Exception as exc:
             logger.warning(REPLY_FAILED_LOG_TEMPLATE, self.channel.id, "unsupported", type(exc).__name__)
 
@@ -434,7 +434,7 @@ class FeishuConnection:
             logger.info(IMAGE_SENT_LOG_TEMPLATE, self.channel.id)
         if failed:
             try:
-                self.gateway.reply_text(turn.user_message_id, FEISHU_IMAGE_FAILED_TEXT)
+                self.gateway.reply_markdown(turn.user_message_id, FEISHU_IMAGE_FAILED_TEXT)
             except Exception as exc:
                 logger.warning(IMAGE_FAILED_LOG_TEMPLATE, self.channel.id, "notice", type(exc).__name__)
 
@@ -457,7 +457,7 @@ class FeishuConnection:
 
     def _notify_file_failed(self, turn: Turn) -> None:
         try:
-            self.gateway.reply_text(turn.user_message_id, FILE_FAILED_TEXT)
+            self.gateway.reply_markdown(turn.user_message_id, FILE_FAILED_TEXT)
         except Exception as exc:
             logger.warning(
                 FILE_FAILED_LOG_TEMPLATE,

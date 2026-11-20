@@ -199,6 +199,7 @@ error:
   initial_password_email_channel_absent: 邮件通道不存在或类型不是 email
   no_permission_access_team: 无权访问该团队数据
   builtin_entry_immutable: '内置条目不可修改或删除: {label}'
+  workflow_channel_readonly: 编排中心托管的 NATS 通道由流程发布和启停维护
   opspilot_channel_readonly: OpsPilot 工作流自动创建的通道不可编辑或删除
   email_channel_id_required: 缺少 email_channel_id
   user_email_empty: 用户邮箱为空,无法发送

@@ -5,6 +5,8 @@
   "plugin_desc": "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliances (enterprise PEN 3417). It reports uptime, per-core CPU utilization, memory utilization and usage breakdown, interface traffic, and hardware sensor readings (temperature, voltage, fan speed) with their health state.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wanopt', collect_type='snmp_bluecoat'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Wanopt",
   "icon": "mm-wanopt_WAN优化",
   "type": "Network Device",

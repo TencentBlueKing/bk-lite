@@ -201,19 +201,19 @@ describe('screen title link', () => {
 });
 
 describe('screen title link styles', () => {
-  it('keeps the full-width title unless a link is present, then follows the screen chrome scale', () => {
+  it('lets the title shrink so the header slot and link keep their place', () => {
     const source = readFileSync(
       path.join(process.cwd(), 'src/app/ops-analysis/(pages)/view/screen/components/screenCanvas.tsx'),
       'utf8',
     );
-    expect(source).toContain(`width: 100%;
+    expect(source).toContain(`flex: 0 1 auto;
+          width: auto;
+          max-width: 100%;
           overflow: hidden;`);
     expect(source).toContain(`.screen-widget-frame__title-row {
           display: flex;
           align-items: center;
           gap: calc(6px * var(--screen-widget-ui-scale));`);
-    expect(source).toContain(`width: auto;
-          flex: 1 1 auto;`);
     expect(source).toContain(`.screen-widget-frame__title-link {
           display: inline-flex;
           flex-shrink: 0;

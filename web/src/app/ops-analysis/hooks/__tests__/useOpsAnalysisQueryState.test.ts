@@ -35,6 +35,52 @@ describe('useOpsAnalysisQueryState applyQuery organization seed', () => {
     expect(result.current.appliedFilterValues.organization__string).toBe('8');
   });
 
+  test('查看态用当前工作组织填空筛选，不写入定义默认值', () => {
+    const { result } = renderHook(() => useOpsAnalysisQueryState());
+
+    act(() => {
+      result.current.resetQueryState({
+        definitions: [ORGANIZATION_FILTER],
+        organizationId: 12,
+      });
+    });
+
+    expect(result.current.filterValues.organization__string).toBe('12');
+    expect(result.current.appliedFilterValues.organization__string).toBe('12');
+    expect(result.current.definitions[0]?.defaultValue).toBeUndefined();
+  });
+
+  test('工作组织切换时覆盖已选组织并重新查询', () => {
+    const { result } = renderHook(() => useOpsAnalysisQueryState());
+
+    act(() => {
+      result.current.resetQueryState({
+        definitions: [ORGANIZATION_FILTER],
+        organizationId: 12,
+      });
+    });
+    const searched = result.current.filterSearchVersion;
+
+    act(() => {
+      result.current.applyOrganizationChange(
+        9,
+        { organization__string: '9' },
+        { organization__string: '9' },
+        true,
+      );
+    });
+
+    expect(result.current.filterValues.organization__string).toBe('9');
+    expect(result.current.appliedFilterValues.organization__string).toBe('9');
+    expect(result.current.filterSearchVersion).toBe(searched + 1);
+    expect(result.current.definitions[0]?.defaultValue).toBeUndefined();
+
+    act(() => {
+      result.current.applyQuery({ organization__string: '' }, undefined);
+    });
+    expect(result.current.filterValues.organization__string).toBe('9');
+  });
+
   test('非分享态搜索不回填组织', () => {
     const { result } = renderHook(() => useOpsAnalysisQueryState());
 

@@ -250,3 +250,16 @@ export const readComponentOptionsQueryUpstream = ({
   if (byKey.length === 1) return readFilterValue(byKey[0].id);
   return undefined;
 };
+
+/**
+ * 引用名正好是本卡组件内切换参数时，用这次查看里正在选的值。
+ * 其它引用保持原查找结果。不写回已保存的参数值。
+ */
+export const preferComponentSwitchLiveValue = (
+  ref: string,
+  upstream: unknown,
+  live: { name: string; value: unknown } | undefined,
+): unknown => {
+  if (!live || ref !== live.name) return upstream;
+  return live.value;
+};

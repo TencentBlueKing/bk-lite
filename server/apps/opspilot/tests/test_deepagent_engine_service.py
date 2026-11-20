@@ -339,6 +339,10 @@ def test_build_lightweight_system_prompt_is_short():
 
     prompt = ToolsNodes._build_lightweight_system_prompt("你是运维助手")
     assert "你是运维助手" in prompt
+    assert "直接用中文简洁回答用户" not in prompt
+    english = ToolsNodes._build_lightweight_system_prompt("Reply in English")
+    assert "Reply in English" in english
+    assert "直接用中文简洁回答用户" not in english
     assert "DeepAgent" not in prompt
     assert "write_todos" not in prompt
     assert "read_file" not in prompt
@@ -2515,6 +2519,88 @@ def test_summarize_planned_step_for_limit_continue_stitches_carry_over_on_tool_b
     assert "[OPSPILOT_LIMIT:" not in summary
 
 
+def test_summarize_planned_step_carries_row_fields_not_only_counts():
+    """写文件的下一步只有摘要。列表结果按原字段留下短标量，长正文不进摘要。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    def summary_for(tool_name, payload, prose):
+        messages = [
+            AIMessage(content="", tool_calls=[{"id": "1", "name": tool_name, "args": {}}]),
+            ToolMessage(content=json.dumps(payload, ensure_ascii=False), tool_call_id="1", name=tool_name),
+            AIMessage(content=prose),
+        ]
+        return ToolsNodes._summarize_planned_step_messages(messages)
+
+    logs = summary_for(
+        "logs_search",
+        {"success": True, "data": {"items": [{"message": "连接超时", "host": "web-01", "level": "error", "body": "正文" * 800}]}},
+        "日志共 5 条。",
+    )
+    assert "message=连接超时" in logs
+    assert "host=web-01" in logs
+    assert "level=error" in logs
+    assert "正文" * 100 not in logs
+
+    alerts = summary_for(
+        "alerts_list_alerts",
+        {
+            "success": True,
+            "data": {
+                "count": 5,
+                "items": [
+                    {
+                        "alert_id": "SEED-AC-01",
+                        "title": "CPU过高",
+                        "content": "正文" * 800,
+                        "resource_name": "web-01",
+                        "created_at": "2026-11-18 10:00:00",
+                        "owners": ["张三"],
+                    }
+                ],
+            },
+        },
+        "活动告警共 5 条。",
+    )
+    assert "alert_id=SEED-AC-01" in alerts
+    assert "resource_name=web-01" in alerts
+    assert "created_at=2026-11-18 10:00:00" in alerts
+    assert "owners=张三" in alerts
+    assert "正文" * 100 not in alerts
+    assert "rows_truncated=true" in alerts
+    assert "shown=1" in alerts
+    assert "total=5" in alerts
+
+    long_title = "标" * 80 + "尾"
+    titled = summary_for(
+        "alerts_list_alerts",
+        {
+            "success": True,
+            "data": {
+                "count": 1,
+                "items": [{"title": long_title, "owners": [{"name": "张三"}]}],
+            },
+        },
+        "活动告警共 1 条。",
+    )
+    assert "title=" + ("标" * 80) in titled
+    assert "title=" + long_title not in titled
+    assert "owners=张三" in titled
+    assert "rows_truncated" not in titled
+
+    page = [{"alert_id": f"A-{index}", "title": "cpu"} for index in range(20)]
+    truncated = summary_for(
+        "alerts_list_alerts",
+        {"success": True, "data": {"count": 100, "items": page}},
+        "活动告警共 100 条。",
+    )
+    assert "rows_truncated=true" in truncated
+    assert "shown=20" in truncated
+    assert "total=100" in truncated
+    assert "total=20" not in truncated
+
+
 def test_summarize_planned_step_carries_instance_id_into_next_step():
     """查全部主机时第 3 步要用第 2 步查到的 instance_id，摘要只留正文会把它丢掉。"""
     import json
@@ -2697,7 +2783,7 @@ def test_plan_is_skills_only_and_step_guidance():
 def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     guidance = ToolsNodes._planned_tool_step_guidance()
     assert "【工具执行】" in guidance
-    assert "未计划工具" in guidance
+    assert "当前不可见的工具" in guidance
     assert "空列表" in guidance
     assert "monitor_list_object_instances" in guidance
     assert "禁止猜测" in guidance
@@ -2759,6 +2845,8 @@ def test_planned_tool_step_guidance_alert_rca_keeps_report_template():
         agent_system_prompt="你是 Kubernetes 集群 RCA 助手。\n## 告警怎么读\n## 输出格式\n# RCA 报告\n",
     )
     assert "必须以「# RCA 报告」" in last
+    assert "写完整 Markdown" in last
+    assert "写完整中文 Markdown" not in last
     assert "事件概述" in last
     assert "对象在当前集群不可见" in last
     assert "异常对象清单" in last

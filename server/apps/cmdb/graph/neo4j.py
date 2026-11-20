@@ -9,7 +9,7 @@ from neo4j.graph import Path
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector, apply_node_alias, attr_values_equal, coerce_cloud_id_properties
-from apps.cmdb.graph.validators import CQLValidator
+from apps.cmdb.graph.validators import CQLValidator, group_property_maps
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -646,6 +646,22 @@ class Neo4jClient:
         )
         result = self.session.run(query, property_values=validated_property_values)
         return self.entity_to_list(result)
+
+    def batch_set_node_properties(self, label: str, rows: list[dict]):
+        """一次查询按节点写入各自的属性。属性名相同的节点合并成一条 SET。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_rows = CQLValidator.validate_property_maps(rows)
+        if not validated_rows:
+            return []
+
+        updated = []
+        for fields, group in group_property_maps(validated_rows):
+            assignments = ", ".join(f"n.{field} = row.{field}" for field in fields)
+            payload = [{"id": item["id"], **item["properties"]} for item in group]
+            query = f"UNWIND $rows AS row MATCH (n:{validated_label}) WHERE id(n) = row.id SET {assignments} RETURN n"
+            result = self.session.run(query, rows=payload)
+            updated.extend(self.entity_to_list(result))
+        return updated
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据"""

@@ -298,6 +298,14 @@ class AgentNode(BaseNodeExecutor):
             user_message=final_message,
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
+        if flow_input.get("entry_type") == "workflow" and flow_input.get("reply_channel") == "WECOM_BOT":
+            resolved_prompt += (
+                "\n\n本次是企业微信群的单向通知。整条最终回答就是群消息，群成员不能通过这条消息回复你。"
+                "只写一份正文。若完整查询成功且结果为零，整条消息只写一句话，把查询对象和零项结论写在同一句，然后结束。"
+                "有结果时先给结论，再按用户要求的维度分行汇总，省略内部记录编号、工具参数和查询过程。"
+                "缺失的数据就地注明，查询失败如实说明。可用加粗和引用，避免表格和包裹全文的代码块。"
+                "写完所问内容即结束。仅当用户明确要求时给出处置建议。省略推送示例、邀请回复、请求补充信息和继续服务的尾语。"
+            )
         skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
         params = {
             "llm_model": skill.llm_model_id,
@@ -344,8 +352,7 @@ class AgentNode(BaseNodeExecutor):
             params["entry_type"] = entry_type
         caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
         if caller_identity is not None:
-            # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
-            # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
+            # 仅透传入口已经校验的快照，工具在目标模块按该身份鉴权。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
         params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_chat_flow_input(flow_input)
         if isinstance(flow_input.get("pending_question"), dict):
@@ -487,6 +494,8 @@ class AgentNode(BaseNodeExecutor):
     def _resolve_trigger_type(flow_input: Dict[str, Any]) -> str:
         """根据 entry_type 映射到 trigger_type（用于审批策略判断）"""
         entry_type = flow_input.get("entry_type", "")
+        if entry_type == "workflow" and flow_input.get("unattended") is True:
+            return "unattended"
         if entry_type in ("celery", "test"):
             return "unattended"
         if entry_type in (

@@ -66,7 +66,7 @@ def test_opspilot_init_seeds_workbench_skill_templates(calls):
     names = [name for name, _args, _kwargs in calls]
     assert "init_llm" not in names
     assert names[:2] == ["init_skill_templates", "parse_tools_yml"]
-    assert "init_chatflow" in names
+    assert "init_chatflow" not in names
 
 
 class TestHandleDispatch:
@@ -125,7 +125,7 @@ class TestHandleDispatch:
     def test_monitor_app_runs_plugin_init(self, calls):
         cmd = _make_command()
         cmd.handle(apps="monitor", continue_on_error=False)
-        assert [c[0] for c in calls] == ["plugin_init"]
+        assert [c[0] for c in calls] == ["plugin_init", "init_default_policy_groups"]
 
     def test_patch_mgmt_migrates_settings_before_initializing_builtin_sources(self, calls):
         cmd = _make_command()
@@ -287,6 +287,50 @@ class TestErrorHandlingPolicy:
         rendered = record.getMessage()
         formatted = logging.Formatter().format(record)
         assert rendered == "event=notification_tag_init_failed failed_stage=init_notification_tags error_type=RuntimeError"
+        assert formatted.count("Traceback (most recent call last)") == 1
+        assert secret not in rendered
+        assert secret not in formatted
+        assert secret not in caplog.text
+
+    def test_default_policy_group_init_failure_warns_and_continues(self, monkeypatch, caplog):
+        import logging
+
+        calls = []
+        secret = "policy-group-init-secret"
+        raised = {}
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_default_policy_groups":
+                error = RuntimeError(f"default groups failed {secret}")
+                raised["error"] = error
+                raise error
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        caplog.set_level(logging.WARNING, logger="app")
+        cmd = _make_command()
+
+        cmd.handle(apps="monitor,node_mgmt", continue_on_error=False)
+
+        assert calls == ["plugin_init", "init_default_policy_groups", "node_init"]
+        assert not any(message.startswith("ERR:初始化 monitor") for message in cmd.stdout.messages)
+        assert any("WARN:默认策略组初始化跳过（RuntimeError），可运行 init_default_policy_groups 重试" in message for message in cmd.stdout.messages)
+        assert all(secret not in message for message in cmd.stdout.messages)
+        records = [record for record in caplog.records if record.name == "app" and getattr(record, "exc_info", None)]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == "event=policy_group_default_init_failed failed_stage=init_default_policy_groups error_type=%s"
+        assert record.args == ("RuntimeError",)
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is raised["error"].__traceback__
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        assert rendered == "event=policy_group_default_init_failed failed_stage=init_default_policy_groups error_type=RuntimeError"
         assert formatted.count("Traceback (most recent call last)") == 1
         assert secret not in rendered
         assert secret not in formatted
@@ -462,6 +506,7 @@ class TestErrorHandlingPolicy:
         with pytest.raises(RuntimeError, match="monitor boom"):
             cmd.handle(apps="monitor,log", continue_on_error=False)
         assert "log_init" not in calls
+        assert "init_default_policy_groups" not in calls
         assert any("ERR:" in m and "monitor" in m for m in cmd.stdout.messages)
 
     def test_continue_on_error_runs_remaining_apps_and_reports_failures(self, monkeypatch):
@@ -479,6 +524,7 @@ class TestErrorHandlingPolicy:
         cmd.handle(apps="monitor,node_mgmt", continue_on_error=True)
 
         assert calls == [("plugin_init", (), {}), ("node_init", (), {})]
+        assert "init_default_policy_groups" not in [name for name, _args, _kwargs in calls]
         assert any("ERR:" in m and "初始化 monitor 失败: plugin init failed" in m for m in cmd.stdout.messages)
         assert any("WARN:" in m and "批量初始化完成，失败模块: monitor: plugin init failed" in m for m in cmd.stdout.messages)
 

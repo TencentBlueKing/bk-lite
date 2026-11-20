@@ -107,6 +107,67 @@ def _event_queryset(user_info: dict):
     return base.filter(org_query & permission_query)
 
 
+_CENTER_SPLIT = "当前查询不支持该参数"
+
+
+def _reject_center_mode(analysis_mode) -> None:
+    if str(analysis_mode or "").strip():
+        raise GenericQueryError(_CENTER_SPLIT)
+
+
+def _center_queryset(query_object, user_info):
+    target = str(query_object or "").strip()
+    if target == "alert":
+        queryset, error = _get_authorized_alert_queryset(user_info or {})
+        if error:
+            message = error.get("message") or "无权限"
+            if message == "Insufficient permissions":
+                message = "权限不足"
+            status_name = "forbidden" if message != "查询失败" else "failed"
+            raise GenericQueryError(message, status=status_name)
+        if not (user_info or {}).get("is_superuser"):
+            queryset = queryset.filter(build_json_membership_query(queryset, "team", _scoped_team_ids(user_info or {})))
+        return queryset, target
+    if target == "event":
+        return _event_queryset(user_info or {}), target
+    raise GenericQueryError("查询对象必须是告警或事件")
+
+
+def _run_center(
+    *,
+    queryset,
+    target,
+    analysis_mode,
+    source,
+    level,
+    status,
+    time_field,
+    time_range,
+    group_by,
+    order_by,
+    order_dir,
+    page,
+    page_size,
+):
+    return _ok(
+        run_alert_center_query(
+            queryset,
+            query_object=target,
+            analysis_mode=analysis_mode,
+            source=source,
+            level=level,
+            status=status,
+            time_field=time_field,
+            time_range=time_range,
+            group_by=group_by,
+            order_by=order_by,
+            order_dir=order_dir,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
 @nats_client.register
 @_guard("query_alert_center")
 def query_alert_center(
@@ -126,25 +187,99 @@ def query_alert_center(
     **kwargs,
 ):
     del kwargs
-    target = str(query_object or "").strip()
-    if target == "alert":
-        queryset, error = _get_authorized_alert_queryset(user_info or {})
-        if error:
-            message = error.get("message") or "无权限"
-            if message == "Insufficient permissions":
-                message = "权限不足"
-            status_name = "forbidden" if message != "查询失败" else "failed"
-            raise GenericQueryError(message, status=status_name)
-        if not (user_info or {}).get("is_superuser"):
-            queryset = queryset.filter(build_json_membership_query(queryset, "team", _scoped_team_ids(user_info or {})))
-    elif target == "event":
-        queryset = _event_queryset(user_info or {})
-    else:
-        raise GenericQueryError("查询对象必须是告警或事件")
-    data = run_alert_center_query(
-        queryset,
-        query_object=target,
-        analysis_mode=analysis_mode,
+    queryset, target = _center_queryset(query_object, user_info)
+    _reject_center_mode(analysis_mode)
+    if group_by not in (None, ""):
+        raise GenericQueryError("当前查询不支持分组")
+    return _run_center(
+        queryset=queryset,
+        target=target,
+        analysis_mode="detail",
+        source=source,
+        level=level,
+        status=status,
+        time_field=time_field,
+        time_range=time_range,
+        group_by=None,
+        order_by=order_by,
+        order_dir=order_dir,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@nats_client.register
+@_guard("query_alert_center_counts")
+def query_alert_center_counts(
+    query_object=None,
+    analysis_mode=None,
+    source=None,
+    level=None,
+    status=None,
+    time_field=None,
+    time_range=None,
+    group_by=None,
+    order_by=None,
+    order_dir=None,
+    page=None,
+    page_size=None,
+    user_info=None,
+    **kwargs,
+):
+    del kwargs
+    queryset, target = _center_queryset(query_object, user_info)
+    _reject_center_mode(analysis_mode)
+    if group_by not in (None, ""):
+        raise GenericQueryError("当前查询不支持分组")
+    if order_by not in (None, "") or order_dir not in (None, ""):
+        raise GenericQueryError("当前查询不支持排序")
+    if page not in (None, "") or page_size not in (None, ""):
+        raise GenericQueryError("计数不支持分页")
+    payload = _run_center(
+        queryset=queryset,
+        target=target,
+        analysis_mode="count",
+        source=source,
+        level=level,
+        status=status,
+        time_field=time_field,
+        time_range=time_range,
+        group_by=None,
+        order_by=None,
+        order_dir=None,
+        page=None,
+        page_size=None,
+    )
+    return _ok([payload["data"]])
+
+
+@nats_client.register
+@_guard("query_alert_center_distribution")
+def query_alert_center_distribution(
+    query_object=None,
+    analysis_mode=None,
+    source=None,
+    level=None,
+    status=None,
+    time_field=None,
+    time_range=None,
+    group_by=None,
+    order_by=None,
+    order_dir=None,
+    page=None,
+    page_size=None,
+    user_info=None,
+    **kwargs,
+):
+    del kwargs
+    queryset, target = _center_queryset(query_object, user_info)
+    _reject_center_mode(analysis_mode)
+    if not str(group_by or "").strip():
+        raise GenericQueryError("请选择分组")
+    return _run_center(
+        queryset=queryset,
+        target=target,
+        analysis_mode="distribution",
         source=source,
         level=level,
         status=status,
@@ -156,7 +291,6 @@ def query_alert_center(
         page=page,
         page_size=page_size,
     )
-    return _ok(data)
 
 
 @nats_client.register

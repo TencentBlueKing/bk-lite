@@ -9,6 +9,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
 from apps.opspilot.models.bot_mgmt import BotWebChatSession
 from apps.opspilot.utils.bot_utils import get_user_info
+from apps.opspilot.utils.flow_locale import locale_for_user_ids
 from apps.system_mgmt.models import User as SystemMgmtUser
 
 
@@ -310,6 +311,7 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
         "node_id": normalized_input["node_id"],
         "entry_type": "nats",
         "is_third_party": True,
+        "locale": locale_for_user_ids(normalized_input["user_ids"]),
     }
     if session_id:
         input_data["session_id"] = session_id

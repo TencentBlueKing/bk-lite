@@ -346,7 +346,8 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       session.node?.classList.remove("screen-rnd-node--interacting");
 
       dragSessionRef.current = null;
-      suppressClickRef.current = session.moved;
+      // 紧接着的 click 还会再选一次。未保存时两次都会弹出确认框。
+      suppressClickRef.current = true;
 
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
@@ -842,11 +843,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             "--screen-ui-scale": presentedUiScale,
           } as React.CSSProperties}
         >
-          {editMode && !fullscreen && (
-            <div className="screen-canvas-resolution">
-              {width} × {height}
-            </div>
-          )}
           {viewSets.items.length === 0 ? (
             <div className="screen-canvas-empty" role="status">
               <Empty
@@ -947,23 +943,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         .screen-tech-canvas--editing {
           outline: 2px solid var(--screen-canvas-editing-outline);
           outline-offset: -2px;
-        }
-
-        .screen-canvas-resolution {
-          position: absolute;
-          left: calc(8px * var(--screen-ui-scale));
-          top: calc(8px * var(--screen-ui-scale));
-          z-index: 31;
-          border: 1px solid var(--screen-resolution-border);
-          border-radius: calc(4px * var(--screen-ui-scale));
-          background: var(--screen-resolution-bg);
-          color: var(--screen-resolution-color);
-          padding: calc(4px * var(--screen-ui-scale)) calc(7px * var(--screen-ui-scale));
-          font-size: calc(14px * var(--screen-ui-scale));
-          font-weight: 600;
-          letter-spacing: 0;
-          line-height: 1.2;
-          box-shadow: var(--screen-resolution-shadow);
         }
 
         .screen-canvas-empty {
@@ -1186,7 +1165,9 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame__title {
           min-width: 0;
-          width: 100%;
+          flex: 0 1 auto;
+          width: auto;
+          max-width: 100%;
           overflow: hidden;
           padding-right: 0;
           text-overflow: ellipsis;
@@ -1204,11 +1185,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           gap: calc(6px * var(--screen-widget-ui-scale));
           min-width: 0;
           width: 100%;
-        }
-
-        .screen-widget-frame__header:has(.screen-widget-frame__title-link) .screen-widget-frame__title {
-          width: auto;
-          flex: 1 1 auto;
         }
 
         .screen-widget-frame--editable:hover .screen-widget-frame__header:has(.screen-widget-frame__title-link),

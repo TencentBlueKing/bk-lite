@@ -11,8 +11,10 @@ class CustomProviderSerializer(TeamSerializer):
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
-        vendor_list = ModelVendor.objects.all().values("id", "name", "vendor_type")
-        self.vendor_map = {item["id"]: {"name": item["name"], "vendor_type": item["vendor_type"]} for item in vendor_list}
+        vendor_list = ModelVendor.objects.all().values("id", "name", "vendor_type", "enabled")
+        self.vendor_map = {
+            item["id"]: {"name": item["name"], "vendor_type": item["vendor_type"], "enabled": item["enabled"]} for item in vendor_list
+        }
 
     def get_fields(self):
         return super().get_fields()
@@ -26,6 +28,11 @@ class CustomProviderSerializer(TeamSerializer):
         if getattr(instance, "vendor_id", None):
             return self.vendor_map.get(instance.vendor_id, {}).get("vendor_type", "")
         return ""
+
+    def get_vendor_enabled(self, instance):
+        if getattr(instance, "vendor_id", None):
+            return bool(self.vendor_map.get(instance.vendor_id, {}).get("enabled", False))
+        return False
 
 
 class ModelVendorSerializer(serializers.ModelSerializer):

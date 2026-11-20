@@ -16,6 +16,18 @@ from apps.cmdb.views.instance import InstanceViewSet
 from apps.cmdb.views.k8s_setup import K8sSetupOpenViewSet, K8sSetupViewSet
 from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
+from apps.cmdb.views.owner_handover import (
+    OwnerHandoverCancelView,
+    OwnerHandoverCleanupView,
+    OwnerHandoverFailureView,
+    OwnerHandoverModelView,
+    OwnerHandoverOutcomeView,
+    OwnerHandoverPreviewView,
+    OwnerHandoverTaskCreateView,
+    OwnerHandoverTaskDeleteView,
+    OwnerHandoverTaskDetailView,
+    OwnerHandoverUserView,
+)
 from apps.cmdb.views.port_fingerprint import PortFingerprintViewSet
 from apps.cmdb.views.process_fingerprint import ProcessFingerprintViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
@@ -102,6 +114,16 @@ open_api_patterns = [
 urlpatterns = (
     [
         path("api/change_record_retention/", ChangeRecordRetentionView.as_view()),
+        path("api/owner_handover/models/", OwnerHandoverModelView.as_view()),
+        path("api/owner_handover/users/", OwnerHandoverUserView.as_view()),
+        path("api/owner_handover/preview/", OwnerHandoverPreviewView.as_view()),
+        path("api/owner_handover/tasks/", OwnerHandoverTaskCreateView.as_view()),
+        path("api/owner_handover/tasks/delete/", OwnerHandoverTaskDeleteView.as_view()),
+        path("api/owner_handover/tasks/<uuid:task_id>/", OwnerHandoverTaskDetailView.as_view()),
+        path("api/owner_handover/tasks/<uuid:task_id>/failures/", OwnerHandoverFailureView.as_view()),
+        path("api/owner_handover/tasks/<uuid:task_id>/outcomes/", OwnerHandoverOutcomeView.as_view()),
+        path("api/owner_handover/tasks/<uuid:task_id>/cancel/", OwnerHandoverCancelView.as_view()),
+        path("api/owner_handover/cleanup/", OwnerHandoverCleanupView.as_view()),
     ]
     + open_api_patterns
     + router.urls

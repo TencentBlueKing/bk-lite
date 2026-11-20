@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
-from django.db.models import Q
+from django.db.models import Case, Q, When
 from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -42,6 +42,7 @@ from apps.opspilot.serializers.llm_serializer import (
     LLMSerializer,
     SkillPackageSerializer,
     SkillRequestLogSerializer,
+    SkillTemplateSerializer,
     SkillToolsSerializer,
 )
 from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
@@ -50,6 +51,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
+    BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME,
     BUILTIN_JOB_MGMT_TOOL_NAME,
     BUILTIN_LOG_TOOL_NAME,
     BUILTIN_MLOPS_TOOL_NAME,
@@ -62,6 +64,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_alerts_tool,
     build_builtin_attachment_file_tool,
     build_builtin_cmdb_tool,
+    build_builtin_conversation_skill_package_tool,
     build_builtin_job_mgmt_tool,
     build_builtin_log_tool,
     build_builtin_mlops_tool,
@@ -170,8 +173,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
     def get_template_list(self, request):
-        skill_list = LLMSkill.objects.filter(is_template=True)
-        serializer = self.get_serializer(skill_list, many=True)
+        skill_list = LLMSkill.objects.filter(is_template=True, is_builtin=True).order_by(
+            Case(When(skill_id="builtin:opspilot:ai_assistant", then=0), default=1), "id"
+        )
+        serializer = SkillTemplateSerializer(skill_list, many=True)
         return Response(serializer.data)
 
     @HasPermission("skill_list-View")
@@ -204,7 +209,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        params["enable_conversation_history"] = True
+        params.setdefault("enable_conversation_history", True)
         supplied_prompt = params.get("skill_prompt")
         if not isinstance(supplied_prompt, str) or not supplied_prompt.strip():
             params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
@@ -664,7 +669,9 @@ class ObjFilter(FilterSet):
         if not value:
             return qs
         enabled = value == "1"
-        return qs.filter(enabled=enabled)
+        if enabled:
+            return qs.filter(enabled=True, vendor__enabled=True)
+        return qs.filter(enabled=False)
 
     @action(methods=["POST"], detail=False)
     def fetch_k8s_deployment_yaml(self, request):
@@ -1291,6 +1298,8 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_mlops_tool(loader))
             if not any(item.get("name") == BUILTIN_JOB_MGMT_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_job_mgmt_tool(loader))
+            if not any(item.get("name") == BUILTIN_CONVERSATION_SKILL_PACKAGE_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_conversation_skill_package_tool(loader))
             for item in response.data:
                 if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] < 0:
                     apply_fallback_tool_tags(item)

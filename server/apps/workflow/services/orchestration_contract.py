@@ -138,7 +138,7 @@ def validate_orchestration_metadata(  # noqa: C901
         if trigger_type not in TRIGGER_TYPES:
             raise DefinitionValidationError(f"触发节点 {node_id} 类型非法")
         if trigger_type == "WEBHOOK":
-            item["input_schema"] = webhook_input_schema()
+            item["input_schema"] = webhook_input_schema(item.get("input_schema"))
         item["input_schema"] = _validate_schema(item.get("input_schema", {}), node_id=node_id)
         properties = item["input_schema"].get("properties", {})
         required = item["input_schema"].get("required", [])

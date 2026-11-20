@@ -2,6 +2,17 @@ from typing import Any
 
 from apps.core.utils.loader import LanguageLoader
 
+DEFAULT_EXECUTION_LOCALE = "zh-Hans"
+
+
+def normalize_execution_locale(locale: str | None) -> str:
+    primary = (locale or "").strip().lower().replace("_", "-").partition("-")[0]
+    return "en" if primary == "en" else DEFAULT_EXECUTION_LOCALE
+
+
+def request_execution_locale(request) -> str | None:
+    return request.headers.get("X-BK-Locale") or getattr(request.user, "locale", None)
+
 
 def _normalize_locale(locale: str | None) -> str:
     normalized = (locale or "zh-Hans").lower().replace("_", "-")

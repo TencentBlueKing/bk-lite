@@ -11,10 +11,7 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.models.monitor_policy import (
-    MonitorPolicy,
-    PolicyOrganization,
-)
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 
 pytestmark = pytest.mark.django_db
@@ -148,6 +145,34 @@ class TestFormatCrontab:
         with pytest.raises(BaseAppException):
             _vs().format_crontab({"type": "week", "value": 1})
 
+    def test_reuses_oldest_when_duplicates_exist(self):
+        from django.utils import timezone
+        from django_celery_beat.models import CrontabSchedule
+
+        fields = {
+            "minute": "*/7",
+            "hour": "*",
+            "day_of_month": "*",
+            "month_of_year": "*",
+            "day_of_week": "*",
+            "timezone": timezone.get_current_timezone(),
+        }
+        first = CrontabSchedule.objects.create(**fields)
+        CrontabSchedule.objects.create(**fields)
+
+        cron = _vs().format_crontab({"type": "min", "value": 7})
+
+        assert cron.id == first.id
+        assert CrontabSchedule.objects.filter(minute="*/7").count() == 2
+
+    def test_creates_when_missing(self):
+        from django_celery_beat.models import CrontabSchedule
+
+        cron = _vs().format_crontab({"type": "hour", "value": 3})
+
+        assert (cron.minute, cron.hour) == ("0", "*/3")
+        assert CrontabSchedule.objects.filter(hour="*/3").count() == 1
+
 
 class TestCloseAlerts:
     def test_no_alerts_noop(self, mocker):
@@ -159,11 +184,17 @@ class TestCloseAlerts:
         notifier = mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="CAObj", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[],
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="new",
+            policy_id=policy.id,
+            monitor_instance_id="h1",
+            status="new",
         )
         with django_capture_on_commit_callbacks(execute=True):
             _vs().close_alerts(policy, [alert], "admin", "manual")
@@ -180,11 +211,17 @@ class TestCloseAlerts:
         notifier = mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="CASkipObj", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[],
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
         )
         alert = MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="h1", status="recovered",
+            policy_id=policy.id,
+            monitor_instance_id="h1",
+            status="recovered",
         )
         _vs().close_alerts(policy, [alert], "admin", "manual")
         alert.refresh_from_db()
@@ -203,8 +240,12 @@ class TestHandlePolicyEnableChange:
         mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="HPECObj", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[],
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
         )
         alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id="h1", status="new")
         _vs().handle_policy_enable_change(policy.id, True, False)
@@ -215,8 +256,13 @@ class TestHandlePolicyEnableChange:
     def test_enable_sets_last_run_time(self):
         obj = MonitorObject.objects.create(name="HPECObj2", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[], last_run_time=None,
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
+            last_run_time=None,
         )
         _vs().handle_policy_enable_change(policy.id, False, True)
         policy.refresh_from_db()
@@ -229,8 +275,13 @@ class TestHandlePolicyEnableChange:
         mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="HPECObj3", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[], enable=True,
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
+            enable=True,
         )
         vs = _vs()
         vs.update_or_create_task(policy.id, {"type": "min", "value": 5})
@@ -257,8 +308,13 @@ class TestHandlePolicyEnableChange:
         mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
         obj = MonitorObject.objects.create(name="HPECObj4", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={"type": "instance", "values": []}, group_by=[], enable=False,
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={"type": "instance", "values": []},
+            group_by=[],
+            enable=False,
         )
         vs = _vs()
         vs.update_or_create_task(policy.id, {"type": "min", "value": 5})
@@ -279,6 +335,7 @@ class TestGetBulkPolicyAssets:
 
     def test_returns_assets_with_orgs(self):
         from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization
+
         obj = MonitorObject.objects.create(name="BulkObj2", level="base")
         inst = MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
         MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=7)
@@ -302,12 +359,16 @@ class TestEnrichBulkPolicyTemplates:
     def test_enriches_with_metric_id_and_unit(self):
         from apps.monitor.models.monitor_metrics import Metric, MetricGroup
         from apps.monitor.models.plugin import MonitorPlugin
+
         obj = MonitorObject.objects.create(name="EnrichObj3", level="base")
         plugin = MonitorPlugin.objects.create(name="EnrichPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         metric = Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cpu", unit="percent",
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cpu",
+            unit="percent",
         )
         out = _vs().enrich_bulk_policy_templates(obj.id, [{"metric_name": "cpu"}])
         assert out[0]["metric_id"] == metric.id
@@ -316,12 +377,16 @@ class TestEnrichBulkPolicyTemplates:
     def test_none_unit_normalized_to_empty(self):
         from apps.monitor.models.monitor_metrics import Metric, MetricGroup
         from apps.monitor.models.plugin import MonitorPlugin
+
         obj = MonitorObject.objects.create(name="EnrichObj4", level="base")
         plugin = MonitorPlugin.objects.create(name="EnrichPlugin4")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cnt", unit="none",
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cnt",
+            unit="none",
         )
         out = _vs().enrich_bulk_policy_templates(obj.id, [{"metric_name": "cnt"}])
         assert out[0]["metric_unit"] == ""
@@ -331,13 +396,15 @@ class TestUpdatePolicyOrganizations:
     def test_syncs_org_diff(self):
         obj = MonitorObject.objects.create(name="UPOObj", level="base")
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="p", algorithm="max",
-            query_condition={}, source={}, group_by=[],
+            monitor_object=obj,
+            name="p",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
         )
         PolicyOrganization.objects.create(policy=policy, organization=1)
         PolicyOrganization.objects.create(policy=policy, organization=2)
         _vs().update_policy_organizations(policy.id, [2, 3])
-        orgs = set(
-            PolicyOrganization.objects.filter(policy_id=policy.id).values_list("organization", flat=True)
-        )
+        orgs = set(PolicyOrganization.objects.filter(policy_id=policy.id).values_list("organization", flat=True))
         assert orgs == {2, 3}

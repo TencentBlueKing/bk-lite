@@ -187,14 +187,22 @@ class SystemMgmt(object):
     def get_pilot_permission_by_token(self, token, bot_id, group_list):
         return self.client.run("get_pilot_permission_by_token", token, bot_id, group_list)
 
-    def get_user_menus(self, client_id, roles, username, is_superuser):
+    def get_user_menus(self, client_id, roles, username, is_superuser, is_auditor=False):
         """
         :param client_id: 客户端的ID
         :param roles: 查询用户的角色ID列表
         :param username: 查询用户的用户名
         :param is_superuser: 是否超管
+        :param is_auditor: 是否平台审计员
         """
-        return_data = self.client.run("get_user_menus", client_id=client_id, roles=roles, username=username, is_superuser=is_superuser)
+        return_data = self.client.run(
+            "get_user_menus",
+            client_id=client_id,
+            roles=roles,
+            username=username,
+            is_superuser=is_superuser,
+            is_auditor=is_auditor,
+        )
         return return_data
 
     def get_user_rules(self, group_id, username):

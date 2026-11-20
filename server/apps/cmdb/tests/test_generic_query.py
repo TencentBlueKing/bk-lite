@@ -1,10 +1,15 @@
 """CMDB 通用查询的统计口径、上限和空结果。"""
 
-import re
-
 import pytest
 
-from apps.cmdb.services.generic_query import GenericQueryError, query_instances, query_model_counts, query_models, query_one_hop_relations
+from apps.cmdb.services.generic_query import (
+    GenericQueryError,
+    query_instance_value,
+    query_instances,
+    query_model_counts,
+    query_models,
+    query_one_hop_relations,
+)
 from apps.cmdb.services.generic_query_limits import DETAIL_PAGE_SIZE_MAX, MODEL_LIST_MAX, SCAN_INSTANCE_MAX, STAT_GROUP_MAX
 
 
@@ -62,8 +67,17 @@ def test_model_list_keeps_zero_instance_models():
     )
 
     assert rows["count"] == 3
-    assert [item["model_id"] for item in rows["items"]] == ["room", "host"]
-    assert rows["items"][0]["instance_count"] == 0
+    assert [item["model_id"] for item in rows["items"]] == ["host", "room"]
+    assert rows["items"][0]["instance_count"] == 5
+    ordered = query_models(
+        models=[
+            _model("host", "主机", "compute", "计算"),
+            _model("net", "网络", "compute", "计算"),
+            _model("room", "机房", "space", "空间"),
+        ],
+        instance_counts={"host": 5, "room": 0},
+    )
+    assert [item["model_id"] for item in ordered] == ["host", "room", "net"]
 
 
 def test_model_count_is_the_number_of_models_in_scope():
@@ -87,13 +101,13 @@ def test_model_list_is_a_list_until_page_is_filled(monkeypatch):
         _model("room", "机房", "space", "空间"),
     ]
     rows = query_models(models=models, instance_counts={"host": 5})
-    assert [item["model_id"] for item in rows] == ["room", "host"]
+    assert [item["model_id"] for item in rows] == ["host", "room"]
     assert "items" not in rows[0]
     with pytest.raises(GenericQueryError, match="必须同时填写"):
         query_models(models=models, instance_counts={"host": 5}, page=1)
     paged = query_models(models=models, instance_counts={"host": 5}, page=1, page_size=1)
     assert paged["count"] == 2
-    assert [item["model_id"] for item in paged["items"]] == ["room"]
+    assert [item["model_id"] for item in paged["items"]] == ["host"]
     with pytest.raises(GenericQueryError, match=str(DETAIL_PAGE_SIZE_MAX)):
         query_models(models=models, instance_counts={"host": 5}, page=1, page_size=DETAIL_PAGE_SIZE_MAX + 1)
     monkeypatch.setattr("apps.cmdb.services.generic_query.MODEL_LIST_MAX", 1)
@@ -175,6 +189,15 @@ def test_instance_statistics_fail_over_scan_and_group_limits(monkeypatch):
             permission_map={"1": {}},
             group_by="os_type",
         )
+    limited = query_instances(
+        model_id="host",
+        analysis_mode="distribution",
+        attr_types={"os_type": "string", "inst_name": "string"},
+        permission_map={"1": {}},
+        group_by="os_type",
+        page_size=10,
+    )
+    assert len(limited["items"]) == 10
 
 
 def test_instance_modes_reject_params_they_do_not_use():
@@ -273,6 +296,72 @@ def test_instance_aggregate_distinguishes_zero_from_empty(monkeypatch):
     assert "fields" not in empty
 
 
+def test_instance_value_counts_when_the_aggregate_pair_is_empty(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.services.generic_query.count_by_attr",
+        lambda *args, **kwargs: {"host": 4},
+    )
+    counted = query_instance_value(
+        model_id="host",
+        attr_types={"inst_name": "string"},
+        permission_map={"1": {}},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.generic_query.count_by_attr",
+        lambda *args, **kwargs: {},
+    )
+    empty = query_instance_value(
+        model_id="host",
+        attr_types={"inst_name": "string"},
+        permission_map={"1": {}},
+    )
+
+    assert counted == {"value": 4}
+    assert empty == {"value": 0}
+
+
+def test_instance_value_aggregates_only_when_the_pair_is_complete(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.services.generic_query.aggregate_numeric",
+        lambda field, aggregation, params, permission_map, **_kwargs: {"value": 0, "scanned": 2},
+    )
+    zero = query_instance_value(
+        model_id="host",
+        attr_types={"cpu": "number", "inst_name": "string"},
+        permission_map={"1": {}},
+        aggregate_field="cpu",
+        aggregate_op="sum",
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.generic_query.aggregate_numeric",
+        lambda field, aggregation, params, permission_map, **_kwargs: {"value": None, "scanned": 0},
+    )
+    empty = query_instance_value(
+        model_id="host",
+        attr_types={"cpu": "number", "inst_name": "string"},
+        permission_map={"1": {}},
+        aggregate_field=" cpu ",
+        aggregate_op=" sum ",
+    )
+
+    assert zero == {"value": 0}
+    assert empty == {"value": None}
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_instance_value(
+            model_id="host",
+            attr_types={"cpu": "number"},
+            permission_map={"1": {}},
+            aggregate_field="cpu",
+        )
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_instance_value(
+            model_id="host",
+            attr_types={"cpu": "number"},
+            permission_map={"1": {}},
+            aggregate_op="sum",
+        )
+
+
 def test_one_hop_counts_each_start_without_merging_a_shared_end():
     payload = query_one_hop_relations(
         analysis_mode="distribution",
@@ -323,10 +412,49 @@ def test_one_hop_rank_stops_before_the_heavy_query_when_groups_exceed_the_cap():
         def rollback(self):
             return None
 
-    result = _rank_starts(SimpleNamespace(session=Session()), "(s)-[r]->(t)", "s.model_id = $model", {}, 1)
+    result = _rank_starts(SimpleNamespace(session=Session()), "(s)-[r]->(t)", "s.model_id = $model", {}, None)
     assert result == {"group_count": STAT_GROUP_MAX + 1, "groups": []}
     assert len(queries) == 1
     assert "relation_count" not in queries[0]
+    queries.clear()
+    limited = _rank_starts(SimpleNamespace(session=Session()), "(s)-[r]->(t)", "s.model_id = $model", {}, 10)
+    assert limited["group_count"] == STAT_GROUP_MAX + 1
+    assert len(queries) == 2
+    assert "LIMIT 10" in queries[1]
+
+
+def test_one_hop_detail_stops_before_loading_pairs_over_the_cap():
+    from types import SimpleNamespace
+
+    from apps.cmdb.services.generic_query_graph import GenericQueryGraphError, _page_pairs
+
+    queries = []
+
+    class Record:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def data(self):
+            return self.payload
+
+    class Session:
+        def begin_transaction(self, timeout=None):
+            return self
+
+        def run(self, query, params):
+            queries.append(query)
+            return [Record({"pair_count": 1001})]
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+    with pytest.raises(GenericQueryGraphError, match="对应关系超过 1000 条"):
+        _page_pairs(SimpleNamespace(session=Session()), "(s)-[r]->(t)", "s.model_id = $model", {}, 0, None)
+    assert len(queries) == 1
+    assert "end_name" not in queries[0]
 
 
 def test_numeric_where_rejects_empty_permission_even_with_a_model_filter():
@@ -340,6 +468,22 @@ def test_numeric_where_rejects_empty_permission_even_with_a_model_filter():
 
     with pytest.raises(GenericQueryGraphError, match="权限范围"):
         _where_clause(Client(), [{"field": "model_id", "type": "str=", "value": "host"}], {}, "n")
+
+
+def test_one_hop_detail_without_paging_stops_at_one_thousand_pairs():
+    listed = query_one_hop_relations(
+        analysis_mode="detail",
+        graph_result={
+            "pair_count": 2,
+            "pairs": [
+                {"start_uuid": "s", "start_name": "应用甲", "end_uuid": "e", "end_name": "主机甲"},
+            ],
+        },
+    )
+    assert listed[0]["start_name"] == "应用甲"
+    assert "count" not in listed
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_one_hop_relations(analysis_mode="detail", graph_result={"pair_count": 2, "pairs": []}, page=1)
 
 
 def test_one_hop_count_returns_a_large_total_and_full_ranking_stays_capped():
@@ -372,15 +516,15 @@ def test_one_hop_count_returns_a_large_total_and_full_ranking_stays_capped():
             analysis_mode="distribution",
             graph_result={"group_count": STAT_GROUP_MAX + 1, "groups": []},
         )
-    with pytest.raises(GenericQueryError, match=str(STAT_GROUP_MAX)):
-        query_one_hop_relations(
-            analysis_mode="distribution",
-            graph_result={
-                "group_count": STAT_GROUP_MAX + 1,
-                "groups": [{"start_uuid": "a", "start_name": "A", "relation_count": 9}],
-            },
-            page_size=1,
-        )
+    limited = query_one_hop_relations(
+        analysis_mode="distribution",
+        graph_result={
+            "group_count": STAT_GROUP_MAX + 1,
+            "groups": [{"start_uuid": "a", "start_name": "A", "relation_count": 9}],
+        },
+        page_size=1,
+    )
+    assert [item["start_name"] for item in limited["items"]] == ["A"]
 
 
 def test_specified_model_without_visibility_is_forbidden():
@@ -424,7 +568,7 @@ def test_generic_query_handlers_accept_unknown_kwargs(monkeypatch):
 
     retired = query_cmdb_models(analysis_mode="distribution", user_info={"user": "demo"})
     assert retired["result"] is False
-    assert "列表和数量" in retired["message"]
+    assert "不支持该参数" in retired["message"]
 
 
 def test_one_hop_uses_fixed_order():
@@ -449,6 +593,32 @@ def test_one_hop_uses_fixed_order():
         page=1,
         page_size=10,
     )
+    labeled = query_one_hop_relations(
+        analysis_mode="detail",
+        graph_result={
+            "pairs": [
+                {
+                    "start_uuid": "s1",
+                    "start_name": "主机甲",
+                    "end_uuid": "e1",
+                    "end_name": "应用甲",
+                    "model_asst_id": "host_belong_app",
+                },
+                {
+                    "start_uuid": "s1",
+                    "start_name": "主机甲",
+                    "end_uuid": "e1",
+                    "end_name": "应用甲",
+                    "model_asst_id": "room_hold_host",
+                },
+            ],
+        },
+        association_names={"host_belong_app": "属于", "room_hold_host": "容纳"},
+    )
+    assert [(item["model_asst_id"], item["asst_name"]) for item in labeled] == [
+        ("host_belong_app", "属于"),
+        ("room_hold_host", "容纳"),
+    ]
     assert [item["start_name"] for item in ranked["items"]] == ["A", "B"]
     assert [item["relation_count"] for item in ranked["items"]] == [2, 1]
     assert [(item["start_name"], item["end_name"]) for item in detail["items"]] == [
@@ -553,9 +723,7 @@ def test_one_hop_filters_endpoints_in_graph_and_fails_closed(monkeypatch):
 
     result = query_one_hop(
         start_model_id="host",
-        model_asst_id="host_belong_app",
-        direction="out",
-        end_model_id="app",
+        model_asst_ids=["host_belong_app", "host_run_app"],
         permission_map={1: {"inst_names": ["可见"]}},
         part="detail",
         limit=20,
@@ -565,6 +733,11 @@ def test_one_hop_filters_endpoints_in_graph_and_fails_closed(monkeypatch):
     assert result["paged"] is True
     assert queries
     for query, params in queries:
+        assert "(s)-[e:" in query and "]-(t)" in query
+        assert "e.model_asst_id IN $asst_ids1" in query
+        assert "]->" not in query and "<-[" not in query
+        assert "t.model_id = $end_model_id" not in query
+        assert ["host_belong_app", "host_run_app"] in params.values()
         assert "s.model_id = $start_model_id" in query
         assert "s.inst_name" in query
         assert "t.inst_name" in query
@@ -583,23 +756,20 @@ def test_one_hop_filters_endpoints_in_graph_and_fails_closed(monkeypatch):
     monkeypatch.setattr("apps.cmdb.services.generic_query_graph._run", fake_count)
     total = query_one_hop(
         start_model_id="host",
-        model_asst_id="host_belong_app",
-        direction="out",
-        end_model_id="app",
+        model_asst_ids=["host_belong_app"],
         permission_map={1: {"inst_names": []}},
         part="count",
     )
     assert total == {"pair_count": 10000}
     assert len(counted) == 1
     assert "s.organization" in counted[0] or "s." in counted[0]
+    assert "e.model_asst_id AS model_asst_id" in counted[0]
     assert "organization" in counted[0]
 
     with pytest.raises(GenericQueryGraphError, match="权限范围"):
         query_one_hop(
             start_model_id="host",
-            model_asst_id="host_belong_app",
-            direction="out",
-            end_model_id="app",
+            model_asst_ids=["host_belong_app"],
             permission_map={},
             part="count",
         )
@@ -619,7 +789,6 @@ def test_undeclared_filters_are_dropped_and_a_bad_group_still_fails(monkeypatch)
 
     invalid = query_cmdb_instances(
         model_id="host",
-        analysis_mode="count",
         user_info={"user": "demo"},
         filters="not-a-group",
     )
@@ -669,50 +838,35 @@ def test_attribute_operators_and_or_group_compile():
     assert (empty_logic, empty_items) == ("OR", [])
 
 
-def test_one_hop_or_group_stays_parenthesized_with_permission(monkeypatch):
-    from apps.cmdb.graph.falkordb import FalkorDBClient
-    from apps.cmdb.graph.format_type import ParameterCollector
-    from apps.cmdb.services.generic_query_graph import query_one_hop
+def test_tag_filter_uses_list_membership_and_keeps_the_whole_token():
+    from apps.cmdb.services.generic_query import compile_attribute_conditions
 
-    queries = []
-
-    class Client:
-        ENABLE_PARAMETERIZATION = True
-        _param_collector = ParameterCollector()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def format_search_params(self, *args, **kwargs):
-            return FalkorDBClient.format_search_params(self, *args, **kwargs)
-
-    monkeypatch.setattr("apps.cmdb.services.generic_query_graph.GraphClient", Client)
-    monkeypatch.setattr(
-        "apps.cmdb.services.generic_query_graph._run",
-        lambda _client, query, params: queries.append((query, dict(params))) or [{"pair_count": 0}],
+    types = {"tag": "tag", "inst_name": "string"}
+    logic, conditions = compile_attribute_conditions(
+        types,
+        {
+            "logic": "AND",
+            "items": [
+                {"field": "tag", "op": "eq", "value": "数据中心:广州"},
+                {"field": "tag", "op": "ne", "value": ["机房:A", "机房:A"]},
+                {"field": "tag", "op": "in", "value": ["数据中心:广州,备用"]},
+                {"field": "tag", "op": "notIn", "value": "环境:生产"},
+                {"field": "tag", "op": "empty"},
+                {"field": "tag", "op": "notEmpty"},
+            ],
+        },
     )
-    query_one_hop(
-        start_model_id="host",
-        model_asst_id="host_belong_app",
-        direction="out",
-        end_model_id="app",
-        permission_map={1: {"inst_names": ["可见"]}},
-        end_conditions=[
-            {"field": "inst_name", "type": "str=", "value": "公开"},
-            {"field": "inst_name", "type": "str=", "value": "内部"},
-        ],
-        end_logic="OR",
-        part="count",
-    )
-    query, params = queries[0]
-    assert re.search(r"\(t\.inst_name = \$str\d+ OR t\.inst_name = \$str\d+\)", query)
-    assert "organization" in query
-    assert query.index("organization") < query.index(" OR t.inst_name")
-    assert "公开" in params.values()
-    assert "内部" in params.values()
+    assert logic == "AND"
+    assert conditions == [
+        {"field": "tag", "type": "list_any[]", "value": ["数据中心:广州"]},
+        {"field": "tag", "type": "list_none[]", "value": ["机房:A"]},
+        {"field": "tag", "type": "list_any[]", "value": ["数据中心:广州,备用"]},
+        {"field": "tag", "type": "list_none[]", "value": ["环境:生产"]},
+        {"field": "tag", "type": "empty"},
+        {"field": "tag", "type": "not_empty"},
+    ]
+    with pytest.raises(GenericQueryError, match="运算符不受支持"):
+        compile_attribute_conditions(types, {"logic": "AND", "items": [{"field": "tag", "op": "contains", "value": "广州"}]})
 
 
 def test_one_hop_ranks_starts_in_the_graph(monkeypatch):
@@ -745,9 +899,7 @@ def test_one_hop_ranks_starts_in_the_graph(monkeypatch):
     monkeypatch.setattr("apps.cmdb.services.generic_query_graph._run", fake_run)
     ranked = query_one_hop(
         start_model_id="app",
-        model_asst_id="application_run_host",
-        direction="out",
-        end_model_id="host",
+        model_asst_ids=["application_run_host"],
         permission_map={1: {"inst_names": []}},
         part="distribution",
         limit=1,
@@ -755,13 +907,13 @@ def test_one_hop_ranks_starts_in_the_graph(monkeypatch):
     assert ranked["group_count"] == 2
     assert ranked["groups"][0]["start_uuid"] == "app-a"
     group_query = queries[-1]
-    assert "count(end_uuid) AS relation_count" in group_query
-    assert "WITH start_uuid, start_name, count(end_uuid) AS relation_count" in group_query
+    assert "e.model_asst_id AS model_asst_id" in group_query
+    assert "WITH start_uuid, start_name, count(*) AS relation_count" in group_query
     assert "ORDER BY relation_count DESC, start_uuid ASC" in group_query
     assert "SKIP 0 LIMIT 20" not in group_query
     assert "LIMIT 1" in group_query
     assert "s.model_id = $start_model_id" in group_query
-    assert "t.model_id = $end_model_id" in group_query
+    assert "t.model_id = $end_model_id" not in group_query
 
 
 def _visible_cmdb_models():
@@ -803,7 +955,6 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
     matched = query_cmdb_instances(
         model_id="host",
         classification_id="compute",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert matched["result"] is True
@@ -812,7 +963,6 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
     empty_classification = query_cmdb_instances(
         model_id="host",
         classification_id="",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert empty_classification["result"] is True
@@ -820,7 +970,6 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
     mismatch = query_cmdb_instances(
         model_id="host",
         classification_id="space",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert mismatch["result"] is False
@@ -829,7 +978,6 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
     forbidden = query_cmdb_instances(
         model_id="secret",
         classification_id="compute",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert forbidden["result"] is False
@@ -837,11 +985,10 @@ def test_instance_classification_does_not_replace_model_permission(monkeypatch):
 
 
 def test_one_hop_loads_associations_after_classification_matches(monkeypatch):
-    from apps.cmdb.nats.generic_query import query_cmdb_one_hop
+    from apps.cmdb.nats.generic_query import query_cmdb_one_hop_counts
 
     listed = []
     monkeypatch.setattr("apps.cmdb.nats.generic_query._visible_models", lambda user_info: _visible_cmdb_models())
-    monkeypatch.setattr("apps.cmdb.nats.generic_query._attr_types", lambda model_id, user_info: {"inst_name": "string"})
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.list_model_association_options",
         lambda language, model_id: listed.append(model_id)
@@ -859,23 +1006,21 @@ def test_one_hop_loads_associations_after_classification_matches(monkeypatch):
         lambda **kwargs: {"pair_count": 0, "groups": [], "pairs": []},
     )
 
-    mismatch = query_cmdb_one_hop(
+    mismatch = query_cmdb_one_hop_counts(
         start_model_id="host",
         classification_id="space",
         model_asst_id="host_belong_app",
         direction="out",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert mismatch["result"] is False
     assert listed == []
 
-    loaded = query_cmdb_one_hop(
+    loaded = query_cmdb_one_hop_counts(
         start_model_id="host",
         classification_id="compute",
         model_asst_id="host_belong_app",
         direction="out",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert loaded["result"] is True
@@ -883,11 +1028,10 @@ def test_one_hop_loads_associations_after_classification_matches(monkeypatch):
 
 
 def test_one_hop_direction_follows_the_side_where_the_start_sits(monkeypatch):
-    from apps.cmdb.nats.generic_query import query_cmdb_one_hop
+    from apps.cmdb.nats.generic_query import query_cmdb_one_hop_counts
 
     calls = []
     monkeypatch.setattr("apps.cmdb.nats.generic_query._visible_models", lambda user_info: _visible_cmdb_models())
-    monkeypatch.setattr("apps.cmdb.nats.generic_query._attr_types", lambda model_id, user_info: {"inst_name": "string"})
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.query_one_hop",
         lambda **kwargs: calls.append(kwargs) or {"pair_count": 0, "groups": [], "pairs": []},
@@ -904,17 +1048,21 @@ def test_one_hop_direction_follows_the_side_where_the_start_sits(monkeypatch):
         ]
 
     monkeypatch.setattr("apps.cmdb.nats.generic_query.list_model_association_options", associations)
-    inward = query_cmdb_one_hop(
+    inward = query_cmdb_one_hop_counts(
         start_model_id="host",
         classification_id="compute",
         model_asst_id="application_run_host",
         direction="out",
-        analysis_mode="count",
+        filters={"logic": "AND", "items": [{"field": "cpu", "op": "gt", "value": 1}]},
+        end_filters={"logic": "AND", "items": [{"field": "port", "op": "eq", "value": "80"}]},
         user_info={"user": "demo"},
     )
     assert inward["result"] is True
-    assert calls[-1]["direction"] == "in"
-    assert calls[-1]["end_model_id"] == "app"
+    assert calls[-1]["model_asst_ids"] == ["application_run_host"]
+    assert "direction" not in calls[-1]
+    assert "end_model_id" not in calls[-1]
+    assert "start_conditions" not in calls[-1]
+    assert "end_conditions" not in calls[-1]
 
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.list_model_association_options",
@@ -926,16 +1074,15 @@ def test_one_hop_direction_follows_the_side_where_the_start_sits(monkeypatch):
             }
         ],
     )
-    outward = query_cmdb_one_hop(
+    outward = query_cmdb_one_hop_counts(
         start_model_id="host",
         classification_id="compute",
         model_asst_id="application_run_host",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert outward["result"] is True
-    assert calls[-1]["direction"] == "out"
-    assert calls[-1]["end_model_id"] == "app"
+    assert calls[-1]["model_asst_ids"] == ["application_run_host"]
+    assert "direction" not in calls[-1]
 
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.list_model_association_options",
@@ -947,15 +1094,40 @@ def test_one_hop_direction_follows_the_side_where_the_start_sits(monkeypatch):
             }
         ],
     )
-    same_side = query_cmdb_one_hop(
+    same_side = query_cmdb_one_hop_counts(
         start_model_id="host",
         classification_id="compute",
         model_asst_id="host_link_host",
-        analysis_mode="count",
         user_info={"user": "demo"},
     )
     assert same_side["result"] is False
     assert "两端相同" in same_side["message"]
+
+    monkeypatch.setattr(
+        "apps.cmdb.nats.generic_query.list_model_association_options",
+        lambda language, model_id: [
+            {
+                "model_asst_id": "host_belong_app",
+                "src_model_id": "host",
+                "dst_model_id": "app",
+                "label": "属于",
+            },
+            {
+                "model_asst_id": "room_hold_host",
+                "src_model_id": "room",
+                "dst_model_id": "host",
+                "label": "容纳",
+            },
+        ],
+    )
+    mixed = query_cmdb_one_hop_counts(
+        start_model_id="host",
+        classification_id="compute",
+        model_asst_id=["host_belong_app", "room_hold_host", "host_belong_app"],
+        user_info={"user": "demo"},
+    )
+    assert mixed["result"] is True
+    assert calls[-1]["model_asst_ids"] == ["host_belong_app", "room_hold_host"]
 
 
 def test_instance_detail_hides_password_and_describes_business_columns(monkeypatch):
@@ -1019,18 +1191,33 @@ def test_instance_detail_hides_password_and_describes_business_columns(monkeypat
     assert captured["page_size"] == 20
 
 
-def test_instance_detail_requires_page_and_page_size(monkeypatch):
+def test_instance_detail_returns_all_rows_until_the_cap(monkeypatch):
+    calls = []
+
+    def fake_list(**kwargs):
+        calls.append(kwargs["page_size"])
+        if kwargs["page_size"] == 1:
+            return [{"inst_uuid": "u", "inst_name": "web"}], 2
+        return [{"inst_uuid": "u", "inst_name": "web"}, {"inst_uuid": "v", "inst_name": "db"}], 2
+
+    monkeypatch.setattr("apps.cmdb.services.generic_query.InstanceManage.instance_list", fake_list)
+    common = {
+        "model_id": "host",
+        "analysis_mode": "detail",
+        "attr_types": {"inst_name": "str"},
+        "permission_map": {"1": {"inst_names": []}},
+    }
+    listed = query_instances(**common)
+    assert [item["inst_name"] for item in listed] == ["web", "db"]
+    assert calls == [1, 2]
+    with pytest.raises(GenericQueryError, match="必须同时填写"):
+        query_instances(**common, page=1)
     monkeypatch.setattr(
         "apps.cmdb.services.generic_query.InstanceManage.instance_list",
-        lambda **kwargs: ([], 0),
+        lambda **kwargs: ([], 501),
     )
-    with pytest.raises(GenericQueryError, match="必须同时填写"):
-        query_instances(
-            model_id="host",
-            analysis_mode="detail",
-            attr_types={"inst_name": "str", "status": "enum"},
-            permission_map={"1": {"inst_names": []}},
-        )
+    with pytest.raises(GenericQueryError, match="实例超过 500 条"):
+        query_instances(**common)
 
 
 def test_instance_detail_handler_fills_unset_attrs_and_strips_password(monkeypatch):
@@ -1070,7 +1257,6 @@ def test_instance_detail_handler_fills_unset_attrs_and_strips_password(monkeypat
     loaded = query_cmdb_instances(
         model_id="host",
         classification_id="compute",
-        analysis_mode="detail",
         page=1,
         page_size=20,
         user_info={"user": "demo"},
@@ -1093,7 +1279,6 @@ def test_one_hop_detail_handler_projects_business_columns(monkeypatch):
     from apps.cmdb.nats.generic_query import query_cmdb_one_hop
 
     monkeypatch.setattr("apps.cmdb.nats.generic_query._visible_models", lambda user_info: _visible_cmdb_models())
-    monkeypatch.setattr("apps.cmdb.nats.generic_query._attr_types", lambda model_id, user_info: {"inst_name": "string"})
     monkeypatch.setattr(
         "apps.cmdb.nats.generic_query.list_model_association_options",
         lambda language, model_id: [
@@ -1132,6 +1317,7 @@ def test_one_hop_detail_handler_projects_business_columns(monkeypatch):
                     "end_uuid": "e1",
                     "end_name": "应用甲",
                     "end_model_id": "app",
+                    "model_asst_id": "host_belong_app",
                 }
             ],
         },
@@ -1142,7 +1328,6 @@ def test_one_hop_detail_handler_projects_business_columns(monkeypatch):
         classification_id="compute",
         model_asst_id="host_belong_app",
         direction="out",
-        analysis_mode="detail",
         page=1,
         page_size=20,
         user_info={"user": "demo"},
@@ -1253,7 +1438,7 @@ def test_handler_model_count_uses_full_permission_counts(monkeypatch):
     detail = query_cmdb_models(page=1, page_size=1, user_info={"user": "demo"})
     assert detail["result"] is True
     assert detail["data"]["count"] == 3
-    assert detail["data"]["items"][0]["model_id"] == "router"
+    assert detail["data"]["items"][0]["model_id"] == "host"
     assert list(detail["data"]["items"][0]) == list(DETAIL_COLUMNS)
 
     missing = query_cmdb_model_counts(model_id="secret", user_info={"user": "demo"})
@@ -1266,7 +1451,7 @@ def test_handler_model_count_uses_full_permission_counts(monkeypatch):
 
     listed = query_cmdb_models(user_info={"user": "demo"})
     assert listed["result"] is True
-    assert [item["model_id"] for item in listed["data"]] == ["router", "host", "vm"]
+    assert [item["model_id"] for item in listed["data"]] == ["host", "vm", "router"]
 
 
 def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_params(monkeypatch):
@@ -1302,7 +1487,7 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     assert "page" not in listed
     assert "page_size" not in listed
     assert listed_result["result"] is True
-    assert [item["model_id"] for item in listed_result["data"]] == ["router", "host", "vm"]
+    assert [item["model_id"] for item in listed_result["data"]] == ["host", "vm", "router"]
 
     counted, counted_result = run(count_source, query_cmdb_model_counts, {})
     assert "page" not in counted
@@ -1311,12 +1496,12 @@ def test_http_resolution_reaches_handler_without_hidden_paging_or_cross_chart_pa
     cleared, cleared_result = run(instance, query_cmdb_models, {"page": None, "page_size": ""})
     assert cleared["page"] is None
     assert cleared["page_size"] == ""
-    assert [item["model_id"] for item in cleared_result["data"]] == ["router", "host", "vm"]
+    assert [item["model_id"] for item in cleared_result["data"]] == ["host", "vm", "router"]
 
     paged, paged_result = run(instance, query_cmdb_models, {"page": 1, "page_size": 1})
     assert paged_result["result"] is True
     assert paged_result["data"]["count"] == 3
-    assert paged_result["data"]["items"][0]["model_id"] == "router"
+    assert paged_result["data"]["items"][0]["model_id"] == "host"
 
     paged_count = _resolve_request_params(count_source, {"page": 1, "page_size": 10})
     blocked_result = query_cmdb_model_counts(user_info={"user": "demo"}, **paged_count)
@@ -1390,7 +1575,7 @@ def test_instance_distribution_names_enum_buckets(monkeypatch):
 
 
 def test_instance_distribution_handler_returns_enum_names(monkeypatch):
-    from apps.cmdb.nats.generic_query import query_cmdb_instances
+    from apps.cmdb.nats.generic_query import query_cmdb_instance_distribution, query_cmdb_instances
 
     monkeypatch.setattr("apps.cmdb.nats.generic_query._visible_models", lambda user_info: _visible_cmdb_models())
     monkeypatch.setattr(
@@ -1406,13 +1591,21 @@ def test_instance_distribution_handler_returns_enum_names(monkeypatch):
     )
     monkeypatch.setattr("apps.cmdb.services.generic_query.count_by_attr", lambda *args, **kwargs: {1: 8})
 
-    loaded = query_cmdb_instances(
+    loaded = query_cmdb_instance_distribution(
+        model_id="host",
+        classification_id="compute",
+        group_by="status",
+        user_info={"user": "demo"},
+    )
+    retired = query_cmdb_instances(
         model_id="host",
         classification_id="compute",
         analysis_mode="distribution",
         group_by="status",
         user_info={"user": "demo"},
     )
+    assert retired["result"] is False
+    assert "不支持该参数" in retired["message"]
 
     assert loaded["result"] is True
     assert loaded["data"]["items"] == [{"status": "已上线", "instance_count": 8}]
@@ -1428,6 +1621,34 @@ def test_one_hop_distribution_keeps_blank_start_name():
     )
     assert payload["items"] == [{"start_name": "", "start_uuid": "start-1", "relation_count": 2}]
     assert "fields" not in payload
+
+
+def test_attr_options_expose_tag_membership_choices(monkeypatch):
+    from apps.cmdb.nats.generic_query import list_cmdb_attr_options
+
+    monkeypatch.setattr(
+        "apps.cmdb.nats.generic_query._visible_models",
+        lambda user_info: ([_model("host", "主机", "compute", "计算")], {}, {}),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.nats.generic_query.ModelManage.search_model_attr",
+        lambda model_id, language: [
+            {
+                "attr_id": "tag",
+                "attr_name": "标签",
+                "attr_type": "tag",
+                "option": {"mode": "strict", "options": [{"key": "数据中心", "value": "广州"}]},
+            },
+            {"attr_id": "inst_name", "attr_name": "名称", "attr_type": "str"},
+        ],
+    )
+
+    loaded = list_cmdb_attr_options(model_id="host", user_info={"user": "demo"})
+    assert loaded["result"] is True
+    tag = loaded["data"][0]
+    assert tag["value_type"] == "tag"
+    assert tag["options"] == [{"value": "数据中心:广州", "label": "数据中心:广州"}]
+    assert loaded["data"][1]["value_type"] == "string"
 
 
 def test_attr_options_can_follow_the_other_end_of_an_association(monkeypatch):

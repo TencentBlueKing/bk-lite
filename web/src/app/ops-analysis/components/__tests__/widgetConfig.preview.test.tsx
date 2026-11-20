@@ -349,7 +349,7 @@ describe('ViewConfig screen panel', () => {
     expect(await screen.findByTestId('widget-config-panel')).toBeTruthy();
     expect(screen.getByTestId('widget-config-preview-button')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByText('common.confirm')).toBeTruthy();
+    expect(screen.getByText('opsAnalysis.screen.applyConfig')).toBeTruthy();
   });
 
   it('opens a light dashboard preview into the external host', async () => {
@@ -605,7 +605,7 @@ describe('ViewConfig screen panel', () => {
       expect(screen.getByDisplayValue('在线数')).toBeTruthy();
     });
     await user.click(screen.getByTestId('widget-config-preview-button'));
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -758,6 +758,45 @@ const waitForOpenedWidget = async () => {
 };
 
 describe('ViewConfig interaction validation', () => {
+  it('切换图表类型不触发 circular references，表单仍选中新类型', async () => {
+    const user = userEvent.setup();
+    const source = {
+      ...lineDataSource,
+      chart_type: ['line', 'pie'],
+    } as DatasourceItem;
+    render(
+      <ViewConfig
+        open
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(source) as never}
+      />,
+    );
+    await waitForOpenedWidget();
+
+    const seen: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      const text = args.map((arg) => (typeof arg === 'string' ? arg : '')).join(' ');
+      if (text.includes('circular references')) {
+        seen.push(text);
+        return;
+      }
+      original.apply(console, args as []);
+    };
+    try {
+      await user.click(screen.getByText('dataSource.pieChart'));
+      await user.click(screen.getByText('dataSource.lineChart'));
+    } finally {
+      console.error = original;
+    }
+
+    expect(seen).toEqual([]);
+    expect(
+      screen.getByText('dataSource.lineChart').closest('.ant-radio-button-wrapper')?.className,
+    ).toContain('ant-radio-button-wrapper-checked');
+  });
+
   it('数据页保存时缺 URL，切回交互页并显示错误', async () => {
     const user = userEvent.setup();
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(() => ({}) as never);
@@ -817,7 +856,7 @@ describe('ViewConfig interaction validation', () => {
         surface="screen"
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfigSectionChange).toHaveBeenCalledWith('interaction');
@@ -1035,7 +1074,7 @@ describe('ViewConfig interaction validation', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue('在线数')).toBeTruthy();
     });
-    await user.click(screen.getByRole('button', { name: 'common.confirm' }));
+    await user.click(screen.getByRole('button', { name: 'opsAnalysis.screen.applyConfig' }));
 
     await waitFor(() => {
       expect(onConfigSectionChange).toHaveBeenCalledWith('data');

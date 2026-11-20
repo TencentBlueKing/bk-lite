@@ -136,7 +136,7 @@ describe('buildHydratedDatasourceFormState', () => {
       selectedGroupId: 7,
       createId: () => 'id-1',
     });
-    assert.equal(state.formValues.source_type, SOURCE_TYPE_NATS);
+    assert.equal(state.formValues.source_type, undefined);
     assert.deepEqual(state.formValues.groups, [7]);
     assert.deepEqual(state.params, []);
     assert.deepEqual(state.schemaFields, []);

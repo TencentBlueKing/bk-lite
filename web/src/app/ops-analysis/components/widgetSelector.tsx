@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
+import { Modal, Menu, List, Input, Spin, Empty, Tag, message } from 'antd';
 import { ApartmentOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -21,16 +21,23 @@ import type {
   ChartType,
 } from '@/app/ops-analysis/types/dataSource';
 
+/** 左侧目录的全量项。不是标签 id，请求时不传 tags。 */
+const ALL_DATA_SOURCE_TAG = 'all';
+
+type SelectedDataSourceTag = number | typeof ALL_DATA_SOURCE_TAG;
+
 const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   visible,
   onCancel,
   onOpenConfig,
+  onPickSource,
   surface = 'dashboard',
+  hideSceneWidgets = false,
 }) => {
   const { t } = useTranslation();
   const [searchValue, setSearchValue] = useState('');
   const [searchKey, setSearchKey] = useState('');
-  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [selectedTagId, setSelectedTagId] = useState<SelectedDataSourceTag>(ALL_DATA_SOURCE_TAG);
   const [hoveredDatasourceId, setHoveredDatasourceId] = useState<number | null>(
     null,
   );
@@ -45,7 +52,10 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     SCENE_WIDGETS[0]?.category || '',
   );
   // 当前列表对应的目录和已生效关键字。关闭弹窗只清输入，不会自动重取。
-  const loadedListQueryRef = useRef<{ tagId: number; searchKey: string } | null>(null);
+  const loadedListQueryRef = useRef<{
+    tagId: SelectedDataSourceTag;
+    searchKey: string;
+  } | null>(null);
 
   const { getDataSourceBriefList } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
@@ -128,7 +138,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   }, [getTagList, visible]);
 
   useEffect(() => {
-    if (!visible || !selectedTagId) {
+    if (!visible) {
       return;
     }
 
@@ -143,7 +153,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       try {
         setDataSourcesLoading(true);
         const response = await getDataSourceBriefList({
-          tags: selectedTagId,
+          ...(selectedTagId === ALL_DATA_SOURCE_TAG ? {} : { tags: selectedTagId }),
           search: search || undefined,
           page_size: -1,
         });
@@ -166,18 +176,12 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     };
   }, [getDataSourceBriefList, searchKey, selectedTagId, visible]);
 
-  useEffect(() => {
-    if (visible && tagList.length > 0 && !selectedTagId) {
-      setSelectedTagId(tagList[0].id);
-    }
-  }, [visible, tagList, selectedTagId]);
-
   const applySearch = (value: string) => {
     setSearchValue(value);
     setSearchKey(value.trim());
   };
 
-  const handleTagSelect = (tagItemId: number) => {
+  const handleTagSelect = (tagItemId: SelectedDataSourceTag) => {
     setSelectedTagId(tagItemId);
     applySearch('');
   };
@@ -189,6 +193,14 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   };
 
   const handleConfig = (item: DatasourceItem) => {
+    if (onPickSource) {
+      onPickSource(item);
+      return;
+    }
+    if (!hasSupportedChartTypeForSurface(item.chart_type || [], surface)) {
+      message.warning(t('dashboard.sourceHasNoChart'));
+      return;
+    }
     onOpenConfig?.({
       ...item,
       dataSource: item.id,
@@ -227,20 +239,20 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     [selectedSceneCategory, surface],
   );
 
-  const visibleDataSources = useMemo(
-    () =>
-      currentDataSources.filter((item) =>
-        hasSupportedChartTypeForSurface(item.chart_type || [], surface),
-      ),
-    [currentDataSources, surface],
-  );
+  // 加载态和列表是同一个位置的 div。复用节点时浏览器会把上一次的 scrollTop 恢复回来，所以分类一变就换新节点。
+  const listScrollKey = selectorMode === 'sceneWidget'
+    ? `scene:${selectedSceneCategory}`
+    : `source:${selectedTagId}`;
 
   const menuItems = selectorMode === 'sceneWidget'
     ? sceneCategories
-    : tagList.map((tag) => ({
-      key: tag.id,
-      label: tag.name,
-    }));
+    : [
+      { key: ALL_DATA_SOURCE_TAG, label: t('dashboard.allDataSources') },
+      ...tagList.map((tag) => ({
+        key: tag.id,
+        label: tag.name,
+      })),
+    ];
 
   return (
     <Modal
@@ -253,7 +265,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       styles={{ body: { height: '56vh', overflow: 'hidden' } }}
     >
       <div className={styles.selector}>
-        {surface !== 'report' && (
+        {surface !== 'report' && !hideSceneWidgets && (
           <div className={styles.modeBar}>
             <button
               type="button"
@@ -275,12 +287,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
         )}
 
         <div className={styles.content}>
-          <div className={styles.categoryPane}>
-            <div className={styles.categoryTitle}>
-              {selectorMode === 'sceneWidget'
-                ? t('dashboard.sceneComponents')
-                : t('dashboard.dataSource')}
-            </div>
+          <div className={styles.categoryPane} key={selectorMode}>
             {tagsLoading && selectorMode === 'dataSource' ? (
               <div className={styles.loadingBox}>
                 <Spin size="small" />
@@ -291,7 +298,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 selectedKeys={
                   selectorMode === 'sceneWidget'
                     ? [selectedSceneCategory]
-                    : selectedTagId ? [selectedTagId.toString()] : []
+                    : [String(selectedTagId)]
                 }
                 items={menuItems}
                 onSelect={({ key }) => {
@@ -299,7 +306,11 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                     setSelectedSceneCategory(String(key));
                     return;
                   }
-                  handleTagSelect(Number(key));
+                  handleTagSelect(
+                    String(key) === ALL_DATA_SOURCE_TAG
+                      ? ALL_DATA_SOURCE_TAG
+                      : Number(key),
+                  );
                 }}
                 className="border-none [&_.ant-menu-item]:h-8 [&_.ant-menu-item]:leading-8 [&_.ant-menu-item]:mb-1 [&.ant-menu]:border-r-0"
                 style={{
@@ -331,6 +342,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
 
             {selectorMode === 'sceneWidget' ? (
               <List
+                key={listScrollKey}
                 size="small"
                 className={styles.cardList}
                 dataSource={filteredSceneWidgets}
@@ -361,14 +373,14 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 )}
               />
             ) : dataSourcesLoading ? (
-              <div className={styles.loadingBox}>
+              <div key={listScrollKey} className={styles.loadingBox}>
                 <Spin size="default" />
               </div>
             ) : (
-              <div className={styles.cardList}>
+              <div key={listScrollKey} className={styles.cardList}>
                 <List
                   size="small"
-                  dataSource={visibleDataSources}
+                  dataSource={currentDataSources}
                   locale={{
                     emptyText: (
                       <Empty

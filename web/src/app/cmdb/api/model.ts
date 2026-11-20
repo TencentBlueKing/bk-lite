@@ -88,6 +88,10 @@ export const useModelApi = () => {
   const setAssociationContextLink = (modelAsstId: string, contextLink: 'follow' | 'include' | 'exclude') =>
     put(`/cmdb/api/model/association/${modelAsstId}/context_link/`, { context_link: contextLink });
 
+  const setAssociationQuickFilter = (modelAsstId: string, quickFilter: boolean) =>
+    put(`/cmdb/api/model/association/${modelAsstId}/quick_filter/`, { quick_filter: quickFilter });
+
+
   const getModelIslandCounts = (modelId: string) =>
     get(`/cmdb/api/model/${modelId}/island_counts/`);
 
@@ -282,6 +286,7 @@ export const useModelApi = () => {
     deleteModelDuplicateRule,
     setModelAssociationRequired,
     setAssociationContextLink,
+    setAssociationQuickFilter,
     getModelIslandCounts,
     getModelAutoAssociationRules,
     createModelAutoAssociationRule,

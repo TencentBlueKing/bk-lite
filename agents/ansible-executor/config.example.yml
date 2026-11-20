@@ -38,7 +38,7 @@ jetstream:
   ack_wait: 300
   # 注意：配置 backoff 后，JetStream 的实际 ack deadline 取 backoff[0]
   backoff: [5, 15, 30, 60]
-  dlq_subject: bk.ans_exec.tasks.dlq
+  dlq_subject: bk.ans_exec.dlq
 
 # Optional:
 # - You can still inject secrets from sidecar environment variables.

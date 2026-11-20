@@ -52,11 +52,11 @@ def test_rows_dedupe_and_keep_zero_models():
         model_names={"host": "主机", "mysql": "MySQL", "redis": "Redis", "room": "机房", "oracle": "Oracle"},
     )
 
-    assert [(row["model_id"], row["value"]) for row in rows] == [
-        ("mysql", 3),
-        ("redis", 0),
-        ("room", 1),
-        ("host", 2),
+    assert [(row["model_id"], row["value"], row["inst_uuids"]) for row in rows] == [
+        ("mysql", 3, ["db-free", "db-shared", "db1"]),
+        ("redis", 0, []),
+        ("room", 1, ["room-1"]),
+        ("host", 2, ["h1", "h2"]),
     ]
     assert rows[0]["label"] == "MySQL"
 
@@ -187,11 +187,11 @@ def test_resource_counts_follow_association_then_tag_then_host():
             visible_models=MODELS + [{"model_id": "room", "model_name": "机房"}],
         )
 
-    assert [(row["model_id"], row["value"]) for row in rows] == [
-        ("mysql", 2),
-        ("redis", 0),
-        ("room", 1),
-        ("host", 1),
+    assert [(row["model_id"], row["value"], row["inst_uuids"]) for row in rows] == [
+        ("mysql", 2, ["db-free", "db1"]),
+        ("redis", 0, []),
+        ("room", 1, ["room-1"]),
+        ("host", 1, ["h1"]),
     ]
     assert graph.entity_params[0][1] == {"field": "cloud", "type": "int[]", "value": [7]}
 
@@ -215,7 +215,11 @@ def test_empty_hosts_keep_zero_rows_and_do_not_scan_associations():
             visible_models=MODELS + [{"model_id": "room", "model_name": "机房"}],
         )
     edges.assert_not_called()
-    assert [(row["model_id"], row["value"]) for row in rows] == [("mysql", 0), ("room", 1), ("host", 0)]
+    assert [(row["model_id"], row["value"], row["inst_uuids"]) for row in rows] == [
+        ("mysql", 0, []),
+        ("room", 1, ["room-1"]),
+        ("host", 0, []),
+    ]
     assert graph.entity_params[0] == [
         {"field": "model_id", "type": "str=", "value": "host"},
         {"field": "cloud", "type": "int[]", "value": [7]},
@@ -265,7 +269,10 @@ def test_one_database_on_two_hosts_counts_once():
             instance_permission_map={1: {"inst_names": []}},
             visible_models=MODELS,
         )
-    assert [(row["model_id"], row["value"]) for row in rows] == [("mysql", 1), ("host", 2)]
+    assert [(row["model_id"], row["value"], row["inst_uuids"]) for row in rows] == [
+        ("mysql", 1, ["db1"]),
+        ("host", 2, ["h1", "h2"]),
+    ]
 
 
 USER_INFO = {"team": 1, "user": "alice", "language": "zh-CN"}

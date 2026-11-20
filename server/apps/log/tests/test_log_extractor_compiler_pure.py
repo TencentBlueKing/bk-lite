@@ -10,8 +10,8 @@ from apps.log.services.log_extractor.compiler import compile_system_vector_confi
 def test_complete_config_declares_platform_contract_version():
     content = compile_system_vector_config([])
 
-    assert content.startswith("# bk-lite-system-vector-contract-version: 1\n")
-    assert get_system_vector_config_contract_version(content) == 1
+    assert content.startswith("# bk-lite-system-vector-contract-version: 2\n")
+    assert get_system_vector_config_contract_version(content) == 2
 
 
 @pytest.mark.unit
@@ -152,8 +152,8 @@ def test_type_scoped_rules_match_collect_type_not_instance_id():
     assert '.collect_type == "syslog"' in content
     assert '.collect_type == "snmp_trap"' in content
     assert 'instance_id == "nginx-1"' in content
-    assert "instance_id == \"None\"" not in content
-    assert ".instance_id == \"base\"" not in content
+    assert 'instance_id == "None"' not in content
+    assert '.instance_id == "base"' not in content
 
 
 @pytest.mark.unit
@@ -196,6 +196,7 @@ def test_unmapped_regex_assigns_each_named_group():
     assert 'get(_parsed, ["command"])' in content
     assert ".command = _value" in content
     assert "merge(" not in content
+    assert "bk_whole" not in content
 
 
 @pytest.mark.unit
@@ -218,3 +219,29 @@ def test_dynamic_root_merge_is_a_fallible_assignment():
     assert "., _merge_err = merge(., _parsed)" in content
     assert ". = merge(., _parsed)" not in content
     assert "if _merge_err == null" in content
+
+
+@pytest.mark.unit
+def test_grok_compiles_to_parse_regex_and_stays_byte_stable():
+    rule = SimpleNamespace(
+        id=1,
+        collect_instance_id="nginx-1",
+        extractor_type="grok",
+        source_field="message",
+        target_field=None,
+        condition={},
+        config={"pattern": "%{IP:client} %{WORD:http.request.method}"},
+        delete_source=False,
+        sort_order=0,
+    )
+
+    first = compile_system_vector_config([rule])
+    second = compile_system_vector_config([rule])
+
+    assert first == second
+    assert "parse_regex(" in first
+    assert "parse_grok" not in first
+    assert "(?P<bk_whole>" in first
+    assert 'get(_parsed, ["bk_whole"])' in first
+    assert ".client = _value" in first
+    assert ".http.request.method = _value" in first

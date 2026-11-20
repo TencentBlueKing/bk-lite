@@ -13,7 +13,7 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 0
-    screens: 4
+    screens: 6
     reports: 0
     architectures: 0
     datasources: 19
@@ -3571,7 +3571,6 @@ screens:
       type: string
       order: 0
       enabled: true
-      inputMode: select
       inputConfig:
         control: select
         optionsSource:
@@ -3732,7 +3731,6 @@ screens:
             value: cmdb/list_application_systems
           type: dynamic
           valueField: inst_uuid
-      inputMode: select
       key: application_system_id
       name: 应用系统
       order: 0
@@ -3755,7 +3753,6 @@ screens:
           - label: '5'
             value: '5'
           type: static
-      inputMode: select
       key: application_topology_depth
       name: 展开层级
       order: 1
@@ -3764,6 +3761,3246 @@ screens:
     datasource_keys:
     - 应用系统::cmdb/list_application_systems
     namespace_keys: []
+- key: screen::监控值班总览_内置
+  name: 监控概况大屏
+  desc: 基于当前监控数据快照，展示监控对象、运行规模、采集失败情况和当前未关闭的监控告警。
+  view_sets:
+    viewport:
+      theme: screen-light
+      width: 1920
+      height: 1080
+      adapter: fill
+      background:
+        type: color
+        color: '#f4f8fc'
+    items:
+    - h: 46
+      w: 760
+      x: 28
+      y: 14
+      id: 0d3674fb-3b85-4cb6-8b21-456d321b4ba8
+      kind: text
+      zIndex: 6
+      content: 监控概况大屏
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 30
+        fontWeight: 700
+    - h: 28
+      w: 1460
+      x: 28
+      y: 62
+      id: bc006bd8-8f6f-4829-b1bf-6988a1193fad
+      kind: text
+      zIndex: 6
+      content: 基于当前监控数据快照，展示监控对象、运行规模、采集失败情况和当前未关闭的监控告警。
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 15
+        fontWeight: 400
+    - h: 59
+      w: 237
+      x: 1653
+      y: 21
+      id: 6c32d6b6-7558-46ea-99d3-7e882ef88422
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 6
+      textStyle:
+        color: '#8b9aaf'
+        fontSize: 17
+        fontWeight: 400
+    - h: 148
+      w: 298
+      x: 25
+      y: 100
+      id: 7c1a0e44-6b2d-4f8a-9c31-0a6e5d84b217
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 45
+      y: 112
+      id: 8d2b1f55-7c3e-4a9b-8d42-1b7f6e95c328
+      kind: text
+      zIndex: 6
+      content: 监控对象总数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 41
+      y: 142
+      id: 9e3c2066-8d4f-4b0c-9e53-2c806fa6d439
+      kind: widget
+      type: widget
+      title: 监控对象总数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 监控对象总数
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+        description: 系统已定义的全部监控对象。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IiB2aWV3Qm94PSIwIDAgNDAgNDAiIGZpbGw9Im5vbmUiIHNoYXBlLXJlbmRlcmluZz0iZ2VvbWV0cmljUHJlY2lzaW9uIj4KICA8Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIyMCIgZmlsbD0iI0U3RjZGMyIvPgogIDxnPgogICAgPHJlY3QgeD0iMTEuMiIgeT0iMTEuNiIgd2lkdGg9IjcuNCIgaGVpZ2h0PSI3LjQiIHJ4PSIxLjciIGZpbGw9IiMwRjc2NkUiLz4KICAgIDxyZWN0IHg9IjIxLjQiIHk9IjExLjYiIHdpZHRoPSI3LjQiIGhlaWdodD0iNy40IiByeD0iMS43IiBmaWxsPSIjMTRCOEE2Ii8+CiAgICA8cmVjdCB4PSIxMS4yIiB5PSIyMS44IiB3aWR0aD0iNy40IiBoZWlnaHQ9IjcuNCIgcng9IjEuNyIgZmlsbD0iIzE0QjhBNiIvPgogICAgPHJlY3QgeD0iMjEuNCIgeT0iMjEuOCIgd2lkdGg9IjcuNCIgaGVpZ2h0PSI3LjQiIHJ4PSIxLjciIGZpbGw9IiMwRjc2NkUiLz4KICA8L2c+Cjwvc3ZnPgo=
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - monitor_object_total
+        thresholdColors:
+        - color: '#0f766e'
+          value: '0'
+        dataSourceParams:
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 339
+      y: 100
+      id: 9b8c616a-15fe-40a8-8460-470d991aa451
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 359
+      y: 112
+      id: 03bc4697-6865-4111-a863-3a6a0275bc69
+      kind: text
+      zIndex: 6
+      content: 监控实例总数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 355
+      y: 142
+      id: ede73ed2-8410-488b-8b42-08146dbf5e2f
+      kind: widget
+      type: widget
+      title: 监控实例总数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 监控实例总数
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控实例数量统计::monitor/query_monitor_instance_counts
+        description: 当前组织内未删除的监控实例。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNFMEVGRkQiLz4KICA8Zz4KICAgIDxwYXRoIGQ9Ik0gMjAuMDAwLDExLjk0OCBMIDI2LjI1MywxNS4wNzUgTCAyMC4wMDAsMTguMjAyIEwgMTMuNzQ3LDE1LjA3NSBaIiBmaWxsPSIjMDE2RUY4Ii8+CiAgICA8cGF0aCBkPSJNIDEzLjAzMCwxNi4wMTMgTCAxOS40MjAsMTkuMjA4IEwgMTkuNDIwLDI3LjA2MiBMIDEzLjAzMCwyMy44NjcgWiIgZmlsbD0iIzAxNkVGOCIvPgogICAgPHBhdGggZD0iTSAyNi45NzAsMTYuMDEzIEwgMjYuOTcwLDIzLjg2NyBMIDIwLjU4MCwyNy4wNjIgTCAyMC41ODAsMTkuMjA4IFoiIGZpbGw9IiMwMTZFRjgiLz4KICA8L2c+Cjwvc3ZnPgo=
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - instance_count
+        thresholdColors:
+        - color: '#2563eb'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 653
+      y: 100
+      id: 3ce106ff-284b-450a-bdad-14ed24774fa9
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 673
+      y: 112
+      id: 2f5a3f6a-79c2-4b1b-8530-474f07a64674
+      kind: text
+      zIndex: 6
+      content: 启用实例
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 669
+      y: 142
+      id: 1b233abe-d3c3-405b-8cf4-e927dcb5b55f
+      kind: widget
+      type: widget
+      title: 启用实例
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 启用实例
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控实例数量统计::monitor/query_monitor_instance_counts
+        description: 状态为启用的监控实例。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNERkY3RUQiLz4KICA8Zz4KICAgIDxwb2x5Z29uIHBvaW50cz0iMTQuNTc1LDEzLjc5MCAyNS4wNDUsMjAuMDUwIDE0LjU3NSwyNi4yMTAiIGZpbGw9IiMwMEMwNkUiIHN0cm9rZT0iIzAwQzA2RSIgc3Ryb2tlLXdpZHRoPSIyLjE1IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPC9nPgo8L3N2Zz4K
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - instance_count
+        thresholdColors:
+        - color: '#16a34a'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: active
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 967
+      y: 100
+      id: 1c856527-5924-46ef-a4c0-1a6a820f1da9
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 987
+      y: 112
+      id: c24512f6-8be0-40ca-a0f7-c9d7f849be58
+      kind: text
+      zIndex: 6
+      content: 停用实例
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 983
+      y: 142
+      id: 7810c95b-8307-4e96-bfe0-cf94e3bdf0d1
+      kind: widget
+      type: widget
+      title: 停用实例
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 停用实例
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控实例数量统计::monitor/query_monitor_instance_counts
+        description: 状态为停用的监控实例。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRUYwRTUiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjEzLjQ3NSIgeT0iMTMuODc1IiB3aWR0aD0iNS4wNSIgaGVpZ2h0PSIxMi41NSIgcng9IjEuMjIiIGZpbGw9IiNGRjk5MkUiLz4KPHJlY3QgeD0iMjEuNDc1IiB5PSIxMy44NzUiIHdpZHRoPSI1LjA1IiBoZWlnaHQ9IjEyLjU1IiByeD0iMS4yMiIgZmlsbD0iI0ZGOTkyRSIvPgogIDwvZz4KPC9zdmc+Cg==
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - instance_count
+        thresholdColors:
+        - color: '#d97706'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: inactive
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 1281
+      y: 100
+      id: 88fc07fd-2267-4f35-b7ea-3f4969c7023d
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 1301
+      y: 112
+      id: 12ab26b6-6ef0-4798-acd1-83786d5d123a
+      kind: text
+      zIndex: 6
+      content: 当前未关闭告警
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 1297
+      y: 142
+      id: d34d3bf4-c98d-4fa6-8d29-e698601b1202
+      kind: widget
+      type: widget
+      title: 当前未关闭告警
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 当前未关闭告警
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控告警计数::monitor/query_monitor_alert_counts
+        description: 状态为未恢复的告警。没有认领人或处理人这个过滤。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkU1RTUiLz4KICA8Zz4KICAgIDxjaXJjbGUgY3g9IjIwLjAwMCIgY3k9IjguNTUwIiByPSIxLjE4MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiLz4KICAgIDxwYXRoIGQ9Ik0gMTQuODUwLDE1LjE1MCBDIDE0Ljg1MCwxMi4wNTAgMTYuODUwLDEwLjE1MCAyMC4wMDAsMTAuMTUwIEMgMjMuMTUwLDEwLjE1MCAyNS4xNTAsMTIuMDUwIDI1LjE1MCwxNS4xNTAgQyAyNS4xNTAsMTguODUwIDI4LjE1MCwyMy44NTAgMjguMTUwLDIzLjg1MCBMIDExLjg1MCwyMy44NTAgQyAxMS44NTAsMjMuODUwIDE0Ljg1MCwxOC44NTAgMTQuODUwLDE1LjE1MCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiNGRjNCNDIiIHN0cm9rZS13aWR0aD0iMS44NSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNIDE3Ljg1MCwyNi4yMDAgQSAyLjE1LDEuNDUgMCAwIDAgMjIuMTUwLDI2LjIwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDwvZz4KPC9zdmc+Cg==
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - alert_count
+        thresholdColors:
+        - color: '#dc2626'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: level
+          type: string
+          value: []
+          alias_name: 级别
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 警告
+                value: warning
+              - label: 错误
+                value: error
+              - label: 严重
+                value: critical
+              - label: 无数据
+                value: no_data
+        - desc: 不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。
+          name: status
+          type: string
+          value:
+          - new
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 未恢复
+                value: new
+              - label: 已恢复
+                value: recovered
+              - label: 已关闭
+                value: closed
+        - name: alert_type
+          type: string
+          value: []
+          alias_name: 告警类型
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 阈值告警
+                value: alert
+              - label: 无数据告警
+                value: no_data
+        - desc: 和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。
+          name: time_field
+          type: string
+          value: ''
+          alias_name: 时间字段
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+        - desc: 和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。
+          name: time_range
+          type: timeRange
+          value: null
+          alias_name: 时间范围
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 298
+      x: 1595
+      y: 100
+      id: 4e19d782-e728-4d99-a208-16ef15bdfa06
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 258
+      x: 1615
+      y: 112
+      id: e277b3af-25e3-4b90-83c9-892d6377c3f6
+      kind: text
+      zIndex: 6
+      content: 24小时内仍未恢复
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 266
+      x: 1611
+      y: 142
+      id: ba07c92e-997b-40fe-ad9a-eded13a2ae16
+      kind: widget
+      type: widget
+      title: 24小时内仍未恢复
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 24小时内仍未恢复
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控告警计数::monitor/query_monitor_alert_counts
+        description: 最近 24 小时内开始、且仍未恢复的告警。不是自然日。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkYxREYiLz4KICA8Zz4KICAgIDxjaXJjbGUgY3g9IjE5LjE1MCIgY3k9IjguNzAwIiByPSIxLjE4MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkY5OTJFIiBzdHJva2Utd2lkdGg9IjEuODUiLz4KICAgIDxwYXRoIGQ9Ik0gMTQuMDAwLDE1LjMwMCBDIDE0LjAwMCwxMi4yMDAgMTYuMDAwLDEwLjMwMCAxOS4xNTAsMTAuMzAwIEMgMjIuMzAwLDEwLjMwMCAyNC4zMDAsMTIuMjAwIDI0LjMwMCwxNS4zMDAgQyAyNC4zMDAsMTkuMDAwIDI3LjMwMCwyNC4wMDAgMjcuMzAwLDI0LjAwMCBMIDExLjAwMCwyNC4wMDAgQyAxMS4wMDAsMjQuMDAwIDE0LjAwMCwxOS4wMDAgMTQuMDAwLDE1LjMwMCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiNGRjk5MkUiIHN0cm9rZS13aWR0aD0iMS44NSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNIDE3LjAwMCwyNi4zNTAgQSAyLjE1LDEuNDUgMCAwIDAgMjEuMzAwLDI2LjM1MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkY5OTJFIiBzdHJva2Utd2lkdGg9IjEuODUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogICAgPHBhdGggZD0iTSAyOC45MDAsOC4xMDAgTCAyOC45MDAsMTIuODAwIE0gMjYuNTUwLDEwLjQ1MCBMIDMxLjI1MCwxMC40NTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGOTkyRSIgc3Ryb2tlLXdpZHRoPSIxLjg1IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8L2c+Cjwvc3ZnPgo=
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - alert_count
+        thresholdColors:
+        - color: '#4f46e5'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: level
+          type: string
+          value: []
+          alias_name: 级别
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 警告
+                value: warning
+              - label: 错误
+                value: error
+              - label: 严重
+                value: critical
+              - label: 无数据
+                value: no_data
+        - desc: 不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。
+          name: status
+          type: string
+          value:
+          - new
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 未恢复
+                value: new
+              - label: 已恢复
+                value: recovered
+              - label: 已关闭
+                value: closed
+        - name: alert_type
+          type: string
+          value: []
+          alias_name: 告警类型
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 阈值告警
+                value: alert
+              - label: 无数据告警
+                value: no_data
+        - desc: 和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。
+          name: time_field
+          type: string
+          value: start_event_time
+          alias_name: 时间字段
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+        - desc: 和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。
+          name: time_range
+          type: timeRange
+          value: 1440
+          alias_name: 时间范围
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 340
+      w: 928
+      x: 24
+      y: 264
+      id: f57c512b-7e37-45c8-a81a-86d5cc5b611e
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 44
+      y: 278
+      id: 1e1e4417-fbcc-4d61-82c1-91079cb2989d
+      kind: text
+      zIndex: 6
+      content: 监控实例类型分布
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 268
+      w: 900
+      x: 38
+      y: 320
+      id: 526d0b01-1361-4bb3-bd6c-3dbf3a664816
+      kind: widget
+      type: widget
+      title: 监控实例类型分布
+      zIndex: 4
+      chartType: bar
+      valueConfig:
+        name: 监控实例类型分布
+        chartType: bar
+        appearance:
+          frame: bare
+        dataSource: 监控实例分布::monitor/query_monitor_instance_distribution
+        valueField: instance_count
+        description: 按分类统计实例数。名称用语言包，操作系统不会显示成主机，也不会把其余分类收成其他。
+        dimensionField: group_value
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: group_by
+          type: string
+          value: monitor_object_type
+          required: true
+          alias_name: 分布维度
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 分类
+                value: monitor_object_type
+              - label: 对象
+                value: monitor_object
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - desc: 先选分类后才出现。不选表示所选分类下的全部对象。
+          name: monitor_object_ids
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - desc: 不填返回全部分组，超过 500 组失败。填写后只返回排序后的前 N 条，最多 500。
+          name: page_size
+          type: number
+          value: null
+          alias_name: 返回条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 340
+      w: 928
+      x: 968
+      y: 264
+      id: d49188bd-6fec-4b55-8e6a-abaf32a820eb
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 988
+      y: 278
+      id: 3083b23d-adcd-4865-8e04-f4e45b84de80
+      kind: text
+      zIndex: 6
+      content: 当前未关闭监控告警
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 30
+      w: 108
+      x: 1772
+      y: 280
+      id: a43cf017-dfb4-4d35-9397-08e073303304
+      kind: text
+      zIndex: 6
+      content: 查看全部
+      textStyle:
+        align: right
+        color: '#3b82f6'
+        fontSize: 16
+        fontWeight: 500
+      interaction:
+        url: /monitor/event/alert
+        kind: title
+        name: 查看全部
+        openMode: newTab
+    - h: 268
+      w: 900
+      x: 982
+      y: 320
+      id: 6daadf8f-01a7-481c-8639-6443e205217c
+      kind: widget
+      type: widget
+      title: 当前未关闭监控告警
+      zIndex: 4
+      chartType: table
+      valueConfig:
+        name: 当前未关闭监控告警
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 监控告警通用查询::monitor/query_monitor_alerts
+        description: 状态为未恢复。级别显示的是原始值。
+        interaction:
+          url: /monitor/event/alert
+          kind: title
+          name: 查看全部
+          openMode: newTab
+        tableConfig:
+          columns:
+          - key: content
+            order: 0
+            title: 告警内容
+            visible: true
+          - key: monitor_instance_name
+            order: 1
+            title: 关联实例
+            visible: true
+          - key: monitor_object_name
+            order: 2
+            title: 监控对象
+            visible: false
+          - key: monitor_instance_id
+            order: 3
+            title: 实例标识
+            visible: false
+          - key: id
+            order: 4
+            title: 告警标识
+            visible: false
+          - key: monitor_object_id
+            order: 5
+            title: 监控对象标识
+            visible: false
+          - key: level
+            order: 6
+            title: 级别
+            visible: true
+            valueMappings:
+            - type: value
+              value: 严重
+              result:
+                color: '#F43B2C'
+            - type: value
+              value: critical
+              result:
+                color: '#F43B2C'
+            - type: value
+              value: 错误
+              result:
+                color: '#D97007'
+            - type: value
+              value: error
+              result:
+                color: '#D97007'
+            - type: value
+              value: 警告
+              result:
+                color: '#FFAD42'
+            - type: value
+              value: warning
+              result:
+                color: '#FFAD42'
+            - type: value
+              value: info
+              result:
+                color: '#2F6BFF'
+            - type: value
+              value: 提醒
+              result:
+                color: '#2F6BFF'
+            - type: value
+              value: 无数据
+              result:
+                color: '#9E9E9E'
+            - type: value
+              value: no_data
+              result:
+                color: '#9E9E9E'
+          - key: status
+            order: 7
+            title: 状态
+            visible: false
+          - key: alert_type
+            order: 8
+            title: 告警类型
+            visible: false
+          - key: value
+            order: 9
+            title: 告警值
+            visible: false
+          - key: start_event_time
+            order: 10
+            title: 开始时间
+            visible: true
+          - key: end_event_time
+            order: 11
+            title: 结束时间
+            visible: false
+          - key: created_at
+            order: 12
+            title: 创建时间
+            visible: false
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: level
+          type: string
+          value: []
+          alias_name: 级别
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 警告
+                value: warning
+              - label: 错误
+                value: error
+              - label: 严重
+                value: critical
+              - label: 无数据
+                value: no_data
+        - desc: 不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。
+          name: status
+          type: string
+          value:
+          - new
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 未恢复
+                value: new
+              - label: 已恢复
+                value: recovered
+              - label: 已关闭
+                value: closed
+        - name: alert_type
+          type: string
+          value: []
+          alias_name: 告警类型
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 阈值告警
+                value: alert
+              - label: 无数据告警
+                value: no_data
+        - desc: 和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。
+          name: time_field
+          type: string
+          value: ''
+          alias_name: 时间字段
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+        - desc: 和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。
+          name: time_range
+          type: timeRange
+          value: null
+          alias_name: 时间范围
+          filterType: params
+        - desc: 和排序方式成对填写。都空时按告警标识升序。
+          name: order_by
+          type: string
+          value: start_event_time
+          alias_name: 排序
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+              - label: 级别
+                value: level
+              - label: 状态
+                value: status
+              - label: 实例名称
+                value: monitor_instance_name
+        - desc: 和排序成对填写。
+          name: order_dir
+          type: string
+          value: desc
+          alias_name: 排序方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 升序
+                value: asc
+              - label: 降序
+                value: desc
+        - desc: 和每页条数成对填写。都空时返回全部明细，超过 500 条会失败。
+          name: page
+          type: number
+          value: 1
+          alias_name: 页码
+          filterType: params
+        - desc: 和页码成对填写。最多 100 条。
+          name: page_size
+          type: number
+          value: 10
+          alias_name: 每页条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 436
+      w: 1872
+      x: 24
+      y: 620
+      id: ff3e7daf-a203-4a03-a697-88b05d74321d
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 1704
+      x: 44
+      y: 634
+      id: f18280dc-4fdb-4591-97f7-92b6232298a6
+      kind: text
+      zIndex: 6
+      content: 采集失败实例（最近采样时间）
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 30
+      w: 108
+      x: 1772
+      y: 636
+      id: 21c93214-307b-42e2-a1b3-e498564e3e45
+      kind: text
+      zIndex: 6
+      content: 查看全部
+      textStyle:
+        align: right
+        color: '#3b82f6'
+        fontSize: 16
+        fontWeight: 500
+      interaction:
+        url: /monitor/integration/list
+        kind: title
+        name: 查看全部
+        openMode: newTab
+    - h: 364
+      w: 1844
+      x: 38
+      y: 676
+      id: 36f2532d-8371-46dd-8ab2-b975e1a84151
+      kind: widget
+      type: widget
+      title: 采集失败实例（最近采样时间）
+      zIndex: 4
+      chartType: table
+      valueConfig:
+        name: 采集失败实例（最近采样时间）
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 监控实例采集查询::monitor/query_monitor_collection
+        description: 采集状态为失联，按最后采样时间降序。分类列是语言包里的分类名。
+        interaction:
+          url: /monitor/view/detail?monitorObjId=$__data.fields.monitor_object_id$&name=$__data.fields.monitor_object$&instance_id=$__data.fields.instance_id$&instance_name=$__data.fields.name$
+          kind: data
+          name: 查看
+          openMode: sameTab
+        tableConfig:
+          columns:
+          - key: instance_id
+            order: 0
+            title: 实例标识
+            visible: false
+          - key: name
+            order: 1
+            title: 实例名称
+            visible: true
+          - key: monitor_object_type
+            order: 2
+            title: 对象类型
+            visible: true
+          - key: monitor_object_name
+            order: 3
+            title: 对象
+            visible: false
+          - key: collect_mode
+            order: 4
+            title: 采集方式
+            visible: true
+          - key: report_status
+            order: 5
+            title: 上报状态
+            visible: false
+          - key: collect_status
+            order: 6
+            title: 采集状态
+            visible: false
+          - key: last_sample_at
+            order: 7
+            title: 最后采样时间
+            visible: true
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value: []
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: report_status
+          type: string
+          value: all
+          alias_name: 上报状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 正常
+                value: normal
+              - label: 失联
+                value: unavailable
+        - name: collect_status
+          type: string
+          value: offline
+          alias_name: 采集状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 正常
+                value: normal
+              - label: 失联
+                value: offline
+        - name: collect_mode
+          type: string
+          value: all
+          alias_name: 采集方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 自动
+                value: auto
+              - label: 手动
+                value: manual
+        - name: order_by
+          type: string
+          value: last_sample_at
+          alias_name: 排序
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 最后采样时间
+                value: last_sample_at
+        - name: order_dir
+          type: string
+          value: desc
+          alias_name: 排序方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 升序
+                value: asc
+              - label: 降序
+                value: desc
+        - desc: 和每页条数成对填写。都空时返回全部实例，超过 500 条会失败。
+          name: page
+          type: number
+          value: 1
+          alias_name: 页码
+          filterType: params
+        - desc: 和页码成对填写。最多 100 条。
+          name: page_size
+          type: number
+          value: 10
+          alias_name: 每页条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    decorations:
+      title: ''
+      showClock: false
+      showTitle: false
+    filters:
+    - id: organization__string
+      key: organization
+      name: 组织
+      type: string
+      order: 0
+      enabled: true
+      inputConfig:
+        control: organization
+      defaultValue: ''
+  refs:
+    datasource_keys:
+    - 监控告警计数::monitor/query_monitor_alert_counts
+    - 监控告警通用查询::monitor/query_monitor_alerts
+    - 监控实例分布::monitor/query_monitor_instance_distribution
+    - 监控实例数量统计::monitor/query_monitor_instance_counts
+    - 监控实例采集查询::monitor/query_monitor_collection
+    namespace_keys: []
+  other: {}
+  refresh_interval: 0
+- key: screen::网络设备运行汇总_内置
+  name: 网络设备运行汇总
+  desc: 基于当前监控数据快照，汇总网络设备的运行情况。总数、失联、采集失败和接口按整个网络设备分类统计。
+  view_sets:
+    viewport:
+      theme: screen-light
+      width: 1920
+      height: 1080
+      adapter: fill
+      background:
+        type: color
+        color: '#f4f8fc'
+    items:
+    - h: 46
+      w: 760
+      x: 28
+      y: 14
+      id: 45655536-729e-44b5-bebb-369cd7bcea7c
+      kind: text
+      zIndex: 6
+      content: 网络设备运行汇总
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 30
+        fontWeight: 700
+    - h: 28
+      w: 1460
+      x: 28
+      y: 62
+      id: 93bd9edd-df5c-497d-bd10-b9c62a2991fa
+      kind: text
+      zIndex: 6
+      content: 基于当前监控数据快照，按整个网络设备分类汇总运行情况。
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 15
+        fontWeight: 400
+    - h: 59
+      w: 211
+      x: 1673
+      y: 23
+      id: 5b74244c-9fa8-4f23-9909-37a5b078ccea
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 6
+      textStyle:
+        color: '#8b9aaf'
+        fontSize: 17
+        fontWeight: 400
+    - h: 148
+      w: 361
+      x: 25
+      y: 100
+      id: 783fc3ae-7440-457a-b16d-f9518b9cc383
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 321
+      x: 45
+      y: 112
+      id: 587c23e5-13b1-47e8-be9c-3c7f54435d24
+      kind: text
+      zIndex: 6
+      content: 网络设备总数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 329
+      x: 40
+      y: 142
+      id: 048567ba-f24e-4272-823b-b5a5233d4f08
+      kind: widget
+      type: widget
+      title: 网络设备总数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 网络设备总数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控实例数量统计::monitor/query_monitor_instance_counts
+        compareMode: percent
+        description: 分类为网络设备的全部实例，比交换机、路由器、防火墙、负载均衡更宽。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNFMEVGRkQiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjE2LjQ1MCIgeT0iMTAuMzAwIiB3aWR0aD0iNy4xIiBoZWlnaHQ9IjUuNSIgcng9IjEuMjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAxNkVGOCIgc3Ryb2tlLXdpZHRoPSIxLjg1Ii8+CjxwYXRoIGQ9Ik0gMjAuMDAwLDE1LjgwMCBMIDIwLjAwMCwxOS44NTAgTSA5Ljk1MCwxOS44NTAgTCAzMC4wNTAsMTkuODUwIiBmaWxsPSJub25lIiBzdHJva2U9IiMwMTZFRjgiIHN0cm9rZS13aWR0aD0iMS44NSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjxyZWN0IHg9IjkuODAwIiB5PSIyMi4wNTAiIHdpZHRoPSI4Ljg1IiBoZWlnaHQ9IjYuMyIgcng9IjEuMzUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAxNkVGOCIgc3Ryb2tlLXdpZHRoPSIxLjg1Ii8+CjxyZWN0IHg9IjIxLjM1MCIgeT0iMjIuMDUwIiB3aWR0aD0iOC44NSIgaGVpZ2h0PSI2LjMiIHJ4PSIxLjM1IiBmaWxsPSJub25lIiBzdHJva2U9IiMwMTZFRjgiIHN0cm9rZS13aWR0aD0iMS44NSIvPgogIDwvZz4KPC9zdmc+Cg==
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - instance_count
+        thresholdColors:
+        - color: '#2563eb'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 361
+      x: 402
+      y: 100
+      id: 03da8b45-9d0b-4449-aca8-dbb41cac9167
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 321
+      x: 422
+      y: 112
+      id: 258e0c92-1086-4e1f-ad10-10d68b8807b9
+      kind: text
+      zIndex: 6
+      content: 网络失联设备数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 329
+      x: 418
+      y: 142
+      id: 7bc7a77e-6ab6-4a18-a34c-b275e0d09d60
+      kind: widget
+      type: widget
+      title: 网络失联设备数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 网络失联设备数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控实例采集数量::monitor/query_monitor_collection_counts
+        compareMode: percent
+        description: 分类为网络设备，且上报状态为失联。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkU1RTUiLz4KICA8Zz4KICAgIDxwYXRoIGQ9Ik0gMTUuNjY4LDE5LjAzOCBMIDExLjc4NCwyMi45MjIgQSAzLjc2NyAzLjc2NyAwIDAgMCAxNy4xMTEsMjguMjQ5IEwgMjAuOTg2LDI0LjM3NCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogICAgPHBhdGggZD0iTSAxOS4xOTgsMTUuNTA4IEwgMjIuOTEyLDExLjc5NCBBIDMuNzY3IDMuNzY3IDAgMCAxIDI4LjIzOSwxNy4xMjEgTCAyNC40NTAsMjAuOTExIiBmaWxsPSJub25lIiBzdHJva2U9IiNGRjNCNDIiIHN0cm9rZS13aWR0aD0iMS44NSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNIDE3LjE0NiwxNC4zMDcgTCAxNy4zMjcsMTIuMTMzIE0gMTQuNzYwLDE1LjEyMyBMIDEzLjY0MywxMy4xNjAgTSAxNC4wOTYsMTcuNTA5IEwgMTEuOTIxLDE2Ljg3NCBNIDI1LjgxMywyMi45NDUgTCAyOC4zNTAsMjIuNzk0IE0gMjUuNjMyLDI1LjE3OSBMIDI2Ljg0MCwyNi44MTAgTSAyMy4xODYsMjYuMDI1IEwgMjMuMTU2LDI4LjMyMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDwvZz4KPC9zdmc+Cg==
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - instance_count
+        thresholdColors:
+        - color: '#dc2626'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - name: report_status
+          type: string
+          value: unavailable
+          alias_name: 上报状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 正常
+                value: normal
+              - label: 失联
+                value: unavailable
+        - name: collect_status
+          type: string
+          value: all
+          alias_name: 采集状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 正常
+                value: normal
+              - label: 失联
+                value: offline
+        - name: collect_mode
+          type: string
+          value: all
+          alias_name: 采集方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 自动
+                value: auto
+              - label: 手动
+                value: manual
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 361
+      x: 779
+      y: 100
+      id: 7360b1c9-80e2-41a9-a07c-b8869ad5c8f1
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 321
+      x: 799
+      y: 112
+      id: c370a1d9-c5b1-48de-ba2e-883291d8312a
+      kind: text
+      zIndex: 6
+      content: Down 接口数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 329
+      x: 795
+      y: 142
+      id: c1e82900-c1c8-4e08-b032-ce46936de389
+      kind: widget
+      type: widget
+      title: Down 接口数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: Down 接口数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控接口当前值数量::monitor/query_interface_current_counts
+        compareMode: percent
+        description: 分类为网络设备，运行状态为 Down。休眠、不在位、下层 Down 不算。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkU1RTUiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjEwLjY1MCIgeT0iMTAuOTc1IiB3aWR0aD0iMTguNyIgaGVpZ2h0PSIxOC4xNSIgcng9IjIuMTUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGM0I0MiIgc3Ryb2tlLXdpZHRoPSIxLjkiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICAgIDxyZWN0IHg9IjEzLjQ1MCIgeT0iMTMuODI1IiB3aWR0aD0iMi4yNSIgaGVpZ2h0PSIyLjI1IiByeD0iMC40NSIgZmlsbD0iI0ZGM0I0MiIvPgogICAgPHJlY3QgeD0iMTcuMDY3IiB5PSIxMy44MjUiIHdpZHRoPSIyLjI1IiBoZWlnaHQ9IjIuMjUiIHJ4PSIwLjQ1IiBmaWxsPSIjRkYzQjQyIi8+CiAgICA8cmVjdCB4PSIyMC42ODMiIHk9IjEzLjgyNSIgd2lkdGg9IjIuMjUiIGhlaWdodD0iMi4yNSIgcng9IjAuNDUiIGZpbGw9IiNGRjNCNDIiLz4KICAgIDxyZWN0IHg9IjI0LjMwMCIgeT0iMTMuODI1IiB3aWR0aD0iMi4yNSIgaGVpZ2h0PSIyLjI1IiByeD0iMC40NSIgZmlsbD0iI0ZGM0I0MiIvPgogICAgPHJlY3QgeD0iMTQuMjgzIiB5PSIyMy4xMjUiIHdpZHRoPSI0LjIiIGhlaWdodD0iMy4wNSIgcng9IjAuNTUiIGZpbGw9IiNGRjNCNDIiLz4KICAgIDxyZWN0IHg9IjIxLjUxNyIgeT0iMjMuMTI1IiB3aWR0aD0iNC4yIiBoZWlnaHQ9IjMuMDUiIHJ4PSIwLjU1IiBmaWxsPSIjRkYzQjQyIi8+CiAgPC9nPgo8L3N2Zz4K
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - interface_count
+        thresholdColors:
+        - color: '#ea580c'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: instance_ids
+          type: string
+          value: []
+          alias_name: 实例
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/query_monitor_instances
+              labelField: name
+              valueField: instance_id
+              queryParams:
+                page: 1
+                page_size: 100
+                monitor_object_id:
+                  ref: monitor_object_id
+              emptyUpstreamHintKey: dashboard.selectMonitorObjectFirst
+        - name: interface_match
+          type: string
+          value: down
+          alias_name: 接口情况
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: Up
+                value: up
+              - label: Down
+                value: down
+              - label: 有错包
+                value: error
+              - label: 有丢包
+                value: discard
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 361
+      x: 1156
+      y: 100
+      id: c89659d8-9ee0-4ffd-8ec6-3457d4452977
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 321
+      x: 1176
+      y: 112
+      id: 866b06c0-96a0-4248-9332-ce14be3b2a86
+      kind: text
+      zIndex: 6
+      content: 有错包接口数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 329
+      x: 1172
+      y: 142
+      id: 05edc5d4-5650-4488-b5c6-009c2db8e4a8
+      kind: widget
+      type: widget
+      title: 有错包接口数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 有错包接口数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控接口当前值数量::monitor/query_interface_current_counts
+        compareMode: percent
+        description: 分类为网络设备，入向或出向 5 分钟错包速率大于 0。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkU1RTUiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjEwLjY1MCIgeT0iMTAuOTc1IiB3aWR0aD0iMTguNyIgaGVpZ2h0PSIxOC4xNSIgcng9IjIuMTUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0ZGM0I0MiIgc3Ryb2tlLXdpZHRoPSIxLjkiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICAgIDxyZWN0IHg9IjEzLjQ1MCIgeT0iMTMuODI1IiB3aWR0aD0iMi4yNSIgaGVpZ2h0PSIyLjI1IiByeD0iMC40NSIgZmlsbD0iI0ZGM0I0MiIvPgogICAgPHJlY3QgeD0iMTcuMDY3IiB5PSIxMy44MjUiIHdpZHRoPSIyLjI1IiBoZWlnaHQ9IjIuMjUiIHJ4PSIwLjQ1IiBmaWxsPSIjRkYzQjQyIi8+CiAgICA8cmVjdCB4PSIyMC42ODMiIHk9IjEzLjgyNSIgd2lkdGg9IjIuMjUiIGhlaWdodD0iMi4yNSIgcng9IjAuNDUiIGZpbGw9IiNGRjNCNDIiLz4KICAgIDxyZWN0IHg9IjI0LjMwMCIgeT0iMTMuODI1IiB3aWR0aD0iMi4yNSIgaGVpZ2h0PSIyLjI1IiByeD0iMC40NSIgZmlsbD0iI0ZGM0I0MiIvPgogICAgPHJlY3QgeD0iMTQuMjgzIiB5PSIyMy4xMjUiIHdpZHRoPSI0LjIiIGhlaWdodD0iMy4wNSIgcng9IjAuNTUiIGZpbGw9IiNGRjNCNDIiLz4KICAgIDxyZWN0IHg9IjIxLjUxNyIgeT0iMjMuMTI1IiB3aWR0aD0iNC4yIiBoZWlnaHQ9IjMuMDUiIHJ4PSIwLjU1IiBmaWxsPSIjRkYzQjQyIi8+CiAgPC9nPgo8L3N2Zz4K
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - interface_count
+        thresholdColors:
+        - color: '#7c3aed'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: instance_ids
+          type: string
+          value: []
+          alias_name: 实例
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/query_monitor_instances
+              labelField: name
+              valueField: instance_id
+              queryParams:
+                page: 1
+                page_size: 100
+                monitor_object_id:
+                  ref: monitor_object_id
+              emptyUpstreamHintKey: dashboard.selectMonitorObjectFirst
+        - name: interface_match
+          type: string
+          value: error
+          alias_name: 接口情况
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: Up
+                value: up
+              - label: Down
+                value: down
+              - label: 有错包
+                value: error
+              - label: 有丢包
+                value: discard
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 148
+      w: 361
+      x: 1533
+      y: 100
+      id: 59876a76-a315-4669-ac7a-1894de62d8db
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 28
+      w: 321
+      x: 1553
+      y: 112
+      id: 2c7cf853-3d3a-47a9-9042-3202296535f4
+      kind: text
+      zIndex: 6
+      content: 当前未关闭告警数
+      textStyle:
+        align: left
+        color: '#8b9aaf'
+        fontSize: 16
+        fontWeight: 500
+    - h: 92
+      w: 329
+      x: 1549
+      y: 142
+      id: 3425613a-bda6-4a5e-8fe5-1bf651cd903d
+      kind: widget
+      type: widget
+      title: 当前未关闭告警数
+      zIndex: 4
+      chartType: single
+      valueConfig:
+        name: 当前未关闭告警数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 监控告警计数::monitor/query_monitor_alert_counts
+        compareMode: percent
+        description: 分类为网络设备，状态为未恢复。
+        singleStyle:
+          align: left
+          iconSize: large
+          showIcon: true
+          iconImage: data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2IgogICAgIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIKICAgICBzaGFwZS1yZW5kZXJpbmc9Imdlb21ldHJpY1ByZWNpc2lvbiI+CiAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkU1RTUiLz4KICA8Zz4KICAgIDxjaXJjbGUgY3g9IjIwLjAwMCIgY3k9IjguNTUwIiByPSIxLjE4MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiLz4KICAgIDxwYXRoIGQ9Ik0gMTQuODUwLDE1LjE1MCBDIDE0Ljg1MCwxMi4wNTAgMTYuODUwLDEwLjE1MCAyMC4wMDAsMTAuMTUwIEMgMjMuMTUwLDEwLjE1MCAyNS4xNTAsMTIuMDUwIDI1LjE1MCwxNS4xNTAgQyAyNS4xNTAsMTguODUwIDI4LjE1MCwyMy44NTAgMjguMTUwLDIzLjg1MCBMIDExLjg1MCwyMy44NTAgQyAxMS44NTAsMjMuODUwIDE0Ljg1MCwxOC44NTAgMTQuODUwLDE1LjE1MCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiNGRjNCNDIiIHN0cm9rZS13aWR0aD0iMS44NSIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNIDE3Ljg1MCwyNi4yMDAgQSAyLjE1LDEuNDUgMCAwIDAgMjIuMTUwLDI2LjIwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkYzQjQyIiBzdHJva2Utd2lkdGg9IjEuODUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDwvZz4KPC9zdmc+Cg==
+          iconSource: upload
+        filterBindings:
+          organization__string: true
+        selectedFields:
+        - alert_count
+        thresholdColors:
+        - color: '#dc2626'
+          value: '0'
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: level
+          type: string
+          value: []
+          alias_name: 级别
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 警告
+                value: warning
+              - label: 错误
+                value: error
+              - label: 严重
+                value: critical
+              - label: 无数据
+                value: no_data
+        - desc: 不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。
+          name: status
+          type: string
+          value:
+          - new
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 未恢复
+                value: new
+              - label: 已恢复
+                value: recovered
+              - label: 已关闭
+                value: closed
+        - name: alert_type
+          type: string
+          value: []
+          alias_name: 告警类型
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 阈值告警
+                value: alert
+              - label: 无数据告警
+                value: no_data
+        - desc: 和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。
+          name: time_field
+          type: string
+          value: null
+          alias_name: 时间字段
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+        - desc: 和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。
+          name: time_range
+          type: timeRange
+          value: null
+          alias_name: 时间范围
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 340
+      w: 928
+      x: 24
+      y: 264
+      id: 33f3a198-62ea-46bc-8b88-debd478ca28d
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 44
+      y: 278
+      id: 0f408626-6795-4436-a330-5fe1d3cd7284
+      kind: text
+      zIndex: 6
+      content: 设备类型分布（设备数）
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 268
+      w: 900
+      x: 38
+      y: 320
+      id: 59b046b4-d343-4258-9f91-b17460986aeb
+      kind: widget
+      type: widget
+      title: 设备类型分布（设备数）
+      zIndex: 4
+      chartType: pie
+      valueConfig:
+        name: 设备类型分布（设备数）
+        chartType: pie
+        appearance:
+          frame: bare
+        dataSource: 监控实例分布::monitor/query_monitor_instance_distribution
+        valueField: instance_count
+        description: 统计该分类下实际有实例的对象。
+        dimensionField: group_value
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: group_by
+          type: string
+          value: monitor_object
+          required: true
+          alias_name: 分布维度
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 分类
+                value: monitor_object_type
+              - label: 对象
+                value: monitor_object
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - desc: 先选分类后才出现。不选表示所选分类下的全部对象。
+          name: monitor_object_ids
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: status
+          type: string
+          value: all
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: 启用
+                value: active
+              - label: 停用
+                value: inactive
+        - desc: 不填返回全部分组，超过 500 组失败。填写后只返回排序后的前 N 条，最多 500。
+          name: page_size
+          type: number
+          value: null
+          alias_name: 返回条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 340
+      w: 928
+      x: 968
+      y: 264
+      id: e9ec1c20-546a-449a-9828-91bd145c7e69
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 988
+      y: 278
+      id: 569d8aa3-19b0-4a06-a02e-c6112708486e
+      kind: text
+      zIndex: 6
+      content: 网络设备资源排行（当前值）
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 268
+      w: 900
+      x: 982
+      y: 320
+      id: 03bc3b96-ae62-4fe7-8f5f-87d60271f4e7
+      kind: widget
+      type: widget
+      title: 网络设备资源排行（当前值）
+      zIndex: 4
+      chartType: topN
+      valueConfig:
+        name: 网络设备资源排行（当前值）
+        chartType: topN
+        appearance:
+          frame: bare
+        dataSource: 网络设备资源排行::monitor/get_network_device_resource_top
+        description: 标题栏可切换 CPU使用率、内存使用率、总流量。总流量不是入向和出向分开的两项。
+        topNLabelField: display_name
+        topNValueField: value
+        dataSourceParams:
+        - name: metric_type
+          type: string
+          value: cpu
+          required: true
+          alias_name: 指标类型
+          filterType: params
+          inputConfig:
+            control: radio
+            optionsSource:
+              type: static
+              staticItems:
+              - label: CPU使用率
+                value: cpu
+              - label: 内存使用率
+                value: memory
+              - label: 总流量
+                value: traffic
+            componentSwitch: true
+        - name: limit
+          type: number
+          value: 10
+          alias_name: 返回条数
+          filterType: fixed
+    - h: 436
+      w: 928
+      x: 24
+      y: 620
+      id: 2026ace6-edec-4c4c-a8c9-bc181174c691
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 44
+      y: 634
+      id: 8630161b-a2e0-40d5-a4d2-1a8bc59d0476
+      kind: text
+      zIndex: 6
+      content: 接口列表（当前）
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 364
+      w: 900
+      x: 38
+      y: 676
+      id: ff4e8326-d55a-4365-ae5c-fe154dff345a
+      kind: widget
+      type: widget
+      title: 接口列表（当前）
+      zIndex: 4
+      chartType: table
+      valueConfig:
+        name: 异常接口列表（当前）
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 监控接口当前值::monitor/query_interface_current
+        description: 标题栏可切换全部、Up、Down、有错包、有丢包。接口状态是数字，1 为 Up，2 为 Down。错包分成入向和出向。
+        tableConfig:
+          columns:
+          - key: instance_id
+            order: 0
+            title: 实例标识
+            visible: false
+          - key: instance_name
+            order: 1
+            title: 设备名称
+            visible: true
+          - key: monitor_object_name
+            order: 2
+            title: 设备类型
+            visible: true
+          - key: if_name
+            order: 3
+            title: 接口名称
+            visible: true
+          - key: oper_status
+            order: 4
+            title: 接口状态
+            visible: true
+            valueMappings:
+            - type: value
+              value: Up
+              result:
+                color: '#16a34a'
+            - type: value
+              value: Down
+              result:
+                color: '#F43B2C'
+            - type: value
+              value: Testing
+              result:
+                color: '#FFAD42'
+            - type: value
+              value: Unknown
+              result:
+                color: '#9E9E9E'
+            - type: value
+              value: Dormant
+              result:
+                color: '#2F6BFF'
+            - type: value
+              value: NotPresent
+              result:
+                color: '#9E9E9E'
+            - type: value
+              value: LowerLayerDown
+              result:
+                color: '#D97007'
+          - key: in_rate
+            order: 5
+            title: 入流速
+            visible: true
+          - key: out_rate
+            order: 6
+            title: 出流速
+            visible: true
+          - key: in_errors
+            order: 7
+            title: 入错包
+            visible: true
+          - key: out_errors
+            order: 8
+            title: 出错包
+            visible: true
+          - key: in_discards
+            order: 9
+            title: 入丢包
+            visible: false
+          - key: out_discards
+            order: 10
+            title: 出丢包
+            visible: false
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: instance_ids
+          type: string
+          value: []
+          alias_name: 实例
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/query_monitor_instances
+              labelField: name
+              valueField: instance_id
+              queryParams:
+                page: 1
+                page_size: 100
+                monitor_object_id:
+                  ref: monitor_object_id
+              emptyUpstreamHintKey: dashboard.selectMonitorObjectFirst
+        - name: interface_match
+          type: string
+          value: all
+          alias_name: 接口情况
+          filterType: params
+          inputConfig:
+            control: radio
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 全部
+                value: all
+              - label: Up
+                value: up
+              - label: Down
+                value: down
+              - label: 有错包
+                value: error
+              - label: 有丢包
+                value: discard
+            componentSwitch: true
+        - name: order_by
+          type: string
+          value: null
+          alias_name: 排序
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 入流速
+                value: in_rate
+              - label: 出流速
+                value: out_rate
+              - label: 错包
+                value: error_rate
+              - label: 接口名
+                value: if_name
+        - name: order_dir
+          type: string
+          value: null
+          alias_name: 排序方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 升序
+                value: asc
+              - label: 降序
+                value: desc
+        - desc: 和每页条数成对填写。都空时返回全部接口，超过 500 条会失败。
+          name: page
+          type: number
+          value: 1
+          alias_name: 页码
+          filterType: params
+        - desc: 和页码成对填写。最多 100 条。
+          name: page_size
+          type: number
+          value: 10
+          alias_name: 每页条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    - h: 436
+      w: 928
+      x: 968
+      y: 620
+      id: 6571541f-7efc-4c1c-80c3-04f4ae8ddf6f
+      kind: shape
+      shape: roundedRect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#e6eef6'
+        borderWidth: 1
+        gradientEnd: '#ffffff'
+        gradientStart: '#ffffff'
+        hideBackground: false
+        backgroundColor: '#ffffff'
+        gradientDirection: vertical
+    - h: 36
+      w: 760
+      x: 988
+      y: 634
+      id: 55296e8f-390c-4075-8118-fd8681f30022
+      kind: text
+      zIndex: 6
+      content: 网络设备未关闭告警（当前）
+      textStyle:
+        align: left
+        color: '#1f2d3d'
+        fontSize: 20
+        fontWeight: 600
+    - h: 30
+      w: 108
+      x: 1772
+      y: 636
+      id: 75481503-2516-4370-aef0-7c27595efd45
+      kind: text
+      zIndex: 6
+      content: 查看全部
+      textStyle:
+        align: right
+        color: '#3b82f6'
+        fontSize: 16
+        fontWeight: 500
+      interaction:
+        url: /monitor/event/alert
+        kind: title
+        name: 查看全部
+        openMode: newTab
+    - h: 364
+      w: 900
+      x: 982
+      y: 676
+      id: 40e521be-4cb3-47cc-b705-9ee67bfcd0dd
+      kind: widget
+      type: widget
+      title: 网络设备未关闭告警（当前）
+      zIndex: 4
+      chartType: table
+      valueConfig:
+        name: 网络设备未关闭告警（当前）
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 监控告警通用查询::monitor/query_monitor_alerts
+        description: 分类为网络设备，状态为未恢复。
+        interaction:
+          url: /monitor/event/alert
+          kind: title
+          name: 查看全部
+          openMode: newTab
+        tableConfig:
+          columns:
+          - key: level
+            order: 0
+            title: 级别
+            visible: true
+            valueMappings:
+            - type: value
+              value: 严重
+              result:
+                color: '#F43B2C'
+            - type: value
+              value: critical
+              result:
+                color: '#F43B2C'
+            - type: value
+              value: 错误
+              result:
+                color: '#D97007'
+            - type: value
+              value: error
+              result:
+                color: '#D97007'
+            - type: value
+              value: 警告
+              result:
+                color: '#FFAD42'
+            - type: value
+              value: warning
+              result:
+                color: '#FFAD42'
+            - type: value
+              value: info
+              result:
+                color: '#2F6BFF'
+            - type: value
+              value: 提醒
+              result:
+                color: '#2F6BFF'
+            - type: value
+              value: 无数据
+              result:
+                color: '#9E9E9E'
+            - type: value
+              value: no_data
+              result:
+                color: '#9E9E9E'
+          - key: content
+            order: 1
+            title: 告警内容
+            visible: true
+          - key: monitor_instance_name
+            order: 2
+            title: 关联实例
+            visible: true
+          - key: monitor_object_name
+            order: 3
+            title: 监控对象
+            visible: false
+          - key: monitor_instance_id
+            order: 4
+            title: 实例标识
+            visible: false
+          - key: id
+            order: 5
+            title: 告警标识
+            visible: false
+          - key: monitor_object_id
+            order: 6
+            title: 监控对象标识
+            visible: false
+          - key: status
+            order: 7
+            title: 状态
+            visible: false
+          - key: alert_type
+            order: 8
+            title: 告警类型
+            visible: false
+          - key: value
+            order: 9
+            title: 告警值
+            visible: false
+          - key: start_event_time
+            order: 10
+            title: 开始时间
+            visible: true
+          - key: end_event_time
+            order: 11
+            title: 结束时间
+            visible: false
+          - key: created_at
+            order: 12
+            title: 创建时间
+            visible: false
+        filterBindings:
+          organization__string: true
+        dataSourceParams:
+        - name: monitor_object_type_ids
+          type: string
+          value:
+          - Network Device
+          alias_name: 分类
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_object_type_options
+              labelField: display_name
+              valueField: id
+        - name: monitor_object_id
+          type: string
+          value: []
+          alias_name: 监控对象
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: dynamic
+              sourceRef:
+                type: rest_api
+                value: monitor/list_monitor_objects_by_type
+              labelField: display_name
+              valueField: id
+              queryParams:
+                monitor_object_type_ids:
+                  ref: monitor_object_type_ids
+              emptyUpstreamHintKey: dashboard.selectClassificationFirst
+        - name: level
+          type: string
+          value: []
+          alias_name: 级别
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 警告
+                value: warning
+              - label: 错误
+                value: error
+              - label: 严重
+                value: critical
+              - label: 无数据
+                value: no_data
+        - desc: 不选时只查未恢复。要查已恢复或已关闭，必须同时填写时间字段和时间范围。
+          name: status
+          type: string
+          value:
+          - new
+          alias_name: 状态
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 未恢复
+                value: new
+              - label: 已恢复
+                value: recovered
+              - label: 已关闭
+                value: closed
+        - name: alert_type
+          type: string
+          value: []
+          alias_name: 告警类型
+          filterType: params
+          inputConfig:
+            control: select
+            multiple: true
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 阈值告警
+                value: alert
+              - label: 无数据告警
+                value: no_data
+        - desc: 和时间范围成对填写。都空表示不按时间过滤。只填一边会失败。
+          name: time_field
+          type: string
+          value: null
+          alias_name: 时间字段
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+        - desc: 和时间字段成对填写。都空表示不按时间过滤。填写后最长 90 天。
+          name: time_range
+          type: timeRange
+          value: null
+          alias_name: 时间范围
+          filterType: params
+        - desc: 和排序方式成对填写。都空时按告警标识升序。
+          name: order_by
+          type: string
+          value: start_event_time
+          alias_name: 排序
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 开始时间
+                value: start_event_time
+              - label: 结束时间
+                value: end_event_time
+              - label: 创建时间
+                value: created_at
+              - label: 级别
+                value: level
+              - label: 状态
+                value: status
+              - label: 实例名称
+                value: monitor_instance_name
+        - desc: 和排序成对填写。
+          name: order_dir
+          type: string
+          value: desc
+          alias_name: 排序方式
+          filterType: params
+          inputConfig:
+            control: select
+            optionsSource:
+              type: static
+              staticItems:
+              - label: 升序
+                value: asc
+              - label: 降序
+                value: desc
+        - desc: 和每页条数成对填写。都空时返回全部明细，超过 500 条会失败。
+          name: page
+          type: number
+          value: 1
+          alias_name: 页码
+          filterType: params
+        - desc: 和页码成对填写。最多 100 条。
+          name: page_size
+          type: number
+          value: 10
+          alias_name: 每页条数
+          filterType: params
+        - name: organization
+          type: string
+          value: ''
+          alias_name: 组织
+          filterType: filter
+          inputConfig:
+            control: organization
+    decorations:
+      title: ''
+      showClock: false
+      showTitle: false
+    filters:
+    - id: organization__string
+      key: organization
+      name: 组织
+      type: string
+      order: 0
+      enabled: true
+      inputConfig:
+        control: organization
+      defaultValue: ''
+  refs:
+    datasource_keys:
+    - 监控告警计数::monitor/query_monitor_alert_counts
+    - 监控告警通用查询::monitor/query_monitor_alerts
+    - 监控实例分布::monitor/query_monitor_instance_distribution
+    - 监控实例数量统计::monitor/query_monitor_instance_counts
+    - 监控实例采集数量::monitor/query_monitor_collection_counts
+    - 监控接口当前值::monitor/query_interface_current
+    - 监控接口当前值数量::monitor/query_interface_current_counts
+    - 网络设备资源排行::monitor/get_network_device_resource_top
+    namespace_keys: []
+  other: {}
+  refresh_interval: 0
 reports: []
 architectures: []
 datasources:

@@ -1,0 +1,156 @@
+{
+  "plugin": "RocketMQ",
+  "plugin_desc": "Collects RocketMQ broker throughput, CommitLog disk usage, topic and consumer-group offsets, consume backlog, and dead-letter topic offsets.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='rocketmq', collect_type='middleware'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact": "asset.ip", "value_type": "ip", "resolver": "input", "options": {"field": "namesrv_addrs"}}],
+  "instance_summary_columns": [{"fact": "asset.ip", "title": "monitor.views.assetIp", "order": 10}],
+  "name": "RocketMQ",
+  "icon": "cc-rocketmq_RocketMQ",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='rocketmq'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["bklite_rocketmq_up", "bklite_rocketmq_broker_tps", "bklite_rocketmq_group_diff", "bklite_rocketmq_broker_commitlog_disk_ratio"],
+  "display_fields": [
+    {"name": "采集存活", "sort_order": 0, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_up"}]},
+    {"name": "Broker 每秒写入的消息", "sort_order": 1, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_broker_tps"}]},
+    {"name": "消费堆积", "sort_order": 2, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_group_diff"}]},
+    {"name": "CommitLog 磁盘占用率", "sort_order": 3, "metrics": [{"plugin": "RocketMQ", "metric": "bklite_rocketmq_broker_commitlog_disk_ratio"}]}
+  ],
+  "metrics": [
+    {
+      "metric_group": "Collection",
+      "name": "bklite_rocketmq_up",
+      "display_name": "Collection Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"0\",\"id\":0},{\"name\":\"1\",\"id\":1}]",
+      "dimensions": [{"name": "namesrv", "description": "NameServer"}],
+      "description": "Whether collection is alive. 1 means alive and 0 means not alive.",
+      "query": "bklite_rocketmq_up{__$labels__}"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "bklite_rocketmq_broker_tps",
+      "display_name": "Broker Write TPS",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "broker_ip", "description": "Broker 地址"}
+      ],
+      "description": "Messages written to the broker per second.",
+      "query": "bklite_rocketmq_broker_tps{__$labels__}"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "bklite_rocketmq_broker_qps",
+      "display_name": "Broker Read TPS",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "broker_ip", "description": "Broker 地址"}
+      ],
+      "description": "Messages read from the broker per second.",
+      "query": "bklite_rocketmq_broker_qps{__$labels__}"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "bklite_rocketmq_broker_commitlog_disk_ratio",
+      "display_name": "CommitLog Disk Usage",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "broker_ip", "description": "Broker 地址"}
+      ],
+      "description": "Percentage of disk occupied by the broker CommitLog.",
+      "query": "bklite_rocketmq_broker_commitlog_disk_ratio{__$labels__} * 100"
+    },
+    {
+      "metric_group": "Topic",
+      "name": "bklite_rocketmq_producer_offset",
+      "display_name": "Topic Current Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "topic", "description": "主题"}
+      ],
+      "description": "Current offset of the topic.",
+      "query": "bklite_rocketmq_producer_offset{__$labels__}"
+    },
+    {
+      "metric_group": "Consumer",
+      "name": "bklite_rocketmq_consumer_offset",
+      "display_name": "Consumer Group Current Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "group", "description": "消费者组"},
+        {"name": "topic", "description": "主题"}
+      ],
+      "description": "Current offset of the consumer group on the topic.",
+      "query": "bklite_rocketmq_consumer_offset{__$labels__}"
+    },
+    {
+      "metric_group": "Consumer",
+      "name": "bklite_rocketmq_consumer_tps",
+      "display_name": "Consume TPS",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "broker", "description": "Broker"},
+        {"name": "group", "description": "消费者组"},
+        {"name": "topic", "description": "主题"}
+      ],
+      "description": "Messages consumed per second.",
+      "query": "bklite_rocketmq_consumer_tps{__$labels__}"
+    },
+    {
+      "metric_group": "Consumer",
+      "name": "bklite_rocketmq_group_diff",
+      "display_name": "Consumer Backlog",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "group", "description": "消费者组"},
+        {"name": "topic", "description": "主题"}
+      ],
+      "description": "Number of messages on the topic that the consumer group has not consumed.",
+      "query": "bklite_rocketmq_group_diff{__$labels__}"
+    },
+    {
+      "metric_group": "Consumer",
+      "name": "bklite_rocketmq_group_dlq",
+      "display_name": "Dead-Letter Topic Offset",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {"name": "cluster", "description": "集群"},
+        {"name": "group", "description": "消费者组"},
+        {"name": "topic", "description": "死信主题，名为 %DLQ% 加上消费者组名"}
+      ],
+      "description": "Current offset of the consumer group's dead-letter topic. The topic name is %DLQ% followed by the group name.",
+      "query": "bklite_rocketmq_group_dlq{__$labels__}"
+    }
+  ]
+}

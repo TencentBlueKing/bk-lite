@@ -11,27 +11,25 @@ ActionCallbackView 测试。
 
 import json
 import time
-import pytest
 from unittest.mock import patch
 
-from django.conf import settings
+import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
-import apps.monitor.models  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
-from apps.alerts.models.action import ActionRule, ActionExecution
-from apps.alerts.models.models import Alert
-from apps.job_mgmt.utils.callback_signer import get_signed_headers, sign_callback
 
+import apps.cmdb.models  # node_mgmt 装入后会加载 monitor，monitor 再引用 CMDB
+import apps.monitor.models  # noqa: F401  # job_mgmt 回调测试会装入 node_mgmt，其路由导入监控模型
+from apps.alerts.models.action import ActionExecution, ActionRule
+from apps.alerts.models.models import Alert
+from apps.job_mgmt.utils.callback_signer import get_signed_headers
 
 # ---------------------------------------------------------------------------
 # 辅助函数
 # ---------------------------------------------------------------------------
 
+
 def _exec(task_id=4821, status="running"):
-    alert = Alert.objects.create(
-        alert_id="A1", fingerprint="f", title="t", content="c", level="1"
-    )
+    alert = Alert.objects.create(alert_id="A1", fingerprint="f", title="t", content="c", level="1")
     rule = ActionRule.objects.create(name="r", team=[1])
     return ActionExecution.objects.create(
         rule=rule,
@@ -47,6 +45,45 @@ def _exec(task_id=4821, status="running"):
 # ---------------------------------------------------------------------------
 # 签名 mock 测试
 # ---------------------------------------------------------------------------
+
+
+def test_action_callback_view_is_api_exempt():
+    """job_mgmt 回调没有 Bearer，AuthMiddleware 必须按 api_exempt 放行。"""
+    from django.urls import resolve
+
+    from apps.alerts.views.action import ActionCallbackView
+
+    assert getattr(ActionCallbackView.as_view(), "api_exempt", False) is True
+    match = resolve("/api/v1/alerts/api/action_callback/")
+    assert getattr(match.func, "api_exempt", False) is True
+
+
+@pytest.mark.django_db
+def test_callback_hmac_bypasses_auth_middleware(settings, client):
+    """现网 POST 无登录 Token；豁免后 HMAC 合法请求必须到达视图并回写状态。"""
+    settings.MIDDLEWARE = ("apps.core.middlewares.auth_middleware.AuthMiddleware",) + tuple(settings.MIDDLEWARE)
+    ex = _exec(task_id=4242, status="running")
+    body = {
+        "task_id": 4242,
+        "status": "success",
+        "total_count": 1,
+        "success_count": 1,
+        "failed_count": 0,
+        "finished_at": "2026-06-23T10:32:00Z",
+    }
+    headers = get_signed_headers(body)
+    resp = client.post(
+        "/api/v1/alerts/api/action_callback/",
+        data=json.dumps(body),
+        content_type="application/json",
+        HTTP_X_BK_LITE_TIMESTAMP=headers["X-BK-Lite-Timestamp"],
+        HTTP_X_BK_LITE_SIGNATURE=headers["X-BK-Lite-Signature"],
+        HTTP_X_BK_LITE_SOURCE=headers["X-BK-Lite-Source"],
+    )
+    assert resp.status_code == 200
+    ex.refresh_from_db()
+    assert ex.status == "success"
+
 
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.verify_job_signature", return_value=True)
@@ -107,6 +144,7 @@ def test_callback_idempotent_on_repeat(_sig, api_client):
 # ---------------------------------------------------------------------------
 # 真实签名测试（不 mock verify_job_signature）
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 def test_callback_real_signature_passes(api_client):

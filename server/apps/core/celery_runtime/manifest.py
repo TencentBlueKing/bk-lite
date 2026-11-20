@@ -63,6 +63,7 @@ TASK_ROUTES = {
     "apps.cmdb.tasks.node_mgmt_sync.watch_node_mgmt_sync_recovery": "state",
     "apps.cmdb.tasks.change_record_retention.cleanup_change_record_retention": "background",
     "apps.cmdb.tasks.transfer.cleanup_transfers": "background",
+    "apps.cmdb.tasks.owner_handover.execute_owner_handover": "background",
     "apps.cmdb.tasks.transfer.execute_transfer": "background",
     "apps.cmdb.tasks.transfer.maintain_transfers": "state",
     "apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime": "background",

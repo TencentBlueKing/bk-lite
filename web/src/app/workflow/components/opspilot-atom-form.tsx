@@ -406,43 +406,39 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   </>;
 }
 
-function RuntimeFields({
-  keys,
-  schema,
-  value,
-  references,
-  disabled = false,
-  onChange,
-  surface = 'string-only',
-  surfaceByKey,
-}: {
+interface InputFieldsProps {
   keys: string[];
   schema?: JsonSchema;
   value: Record<string, unknown>;
   references: DataReferenceOption[];
   disabled?: boolean;
   onChange: (value: Record<string, unknown>) => void;
-  surface?: 'coerce' | 'string-only';
   surfaceByKey?: Record<string, 'coerce' | 'string-only'>;
-}) {
+}
+
+function InputFields({ keys, schema, value, references, disabled, onChange, surfaceByKey }: InputFieldsProps) {
+  return <>{keys.map((key) => {
+    const item = field(schema, key);
+    return <Form.Item className="mb-0" key={key} label={item.title || key} required={schema?.required?.includes(key)}>
+      <SchemaNodeField
+        schema={{ ...item, 'x-text-surface': surfaceByKey?.[key] || 'string-only' }}
+        value={value[key]}
+        references={references}
+        disabled={disabled}
+        onChange={(next) => onChange({ ...value, [key]: next })}
+      />
+    </Form.Item>;
+  })}</>;
+}
+
+function RuntimeFields(props: InputFieldsProps) {
   const { t } = useTranslation();
   return <Collapse ghost items={[{
     key: 'runtime-data',
     label: t('workflowOrchestration.editor.runtimeData', '运行数据'),
     children: <div className="flex flex-col gap-5">
       <Alert type="info" showIcon message={t('workflowOrchestration.editor.runtimeDataHint', '这里配置节点实际处理的数据，可填写固定值，也可从左侧拖入触发输入或上游结果。')} />
-      {keys.map((key) => {
-        const item = field(schema, key);
-        return <Form.Item className="mb-0" key={key} label={item.title || key} required={schema?.required?.includes(key)}>
-          <SchemaNodeField
-            schema={{ ...item, 'x-text-surface': surfaceByKey?.[key] || surface }}
-            value={value[key]}
-            references={references}
-            disabled={disabled}
-            onChange={(next) => onChange({ ...value, [key]: next })}
-          />
-        </Form.Item>;
-      })}
+      <InputFields {...props} />
     </div>,
   }]} />;
 }
@@ -555,13 +551,10 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
     <WorkflowNodeTitleField value={nodeTitle} disabled={readOnly} onChange={onNodeTitleChange} />
     {atomKey === 'bklite_agent' ? <>
       {resourceField('agent_id', t('workflowOrchestration.editor.selectAgent', '选择智能体'), t('workflowOrchestration.editor.pleaseSelectAgent', '请选择智能体'), t('workflowOrchestration.editor.addAgent', '新增智能体'), '/opspilot/skill')}
-      <Form.Item className="mb-0" label={field(schema, 'prompt').title || t('workflowOrchestration.editor.prompt', 'Prompt')} tooltip={t('workflowOrchestration.editor.promptAppendTooltip', '这段提示词会附加到本次输入之前。')}>
-        <SchemaNodeField schema={{ ...field(schema, 'prompt'), 'x-text-surface': 'string-only' }} value={value.prompt} references={references} disabled={readOnly} onChange={(next) => setField('prompt', next)} />
-      </Form.Item>
+      <InputFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} />
       <ReferenceDropGuard>
         <KnowledgeUpload workflowId={workflowId} value={value.knowledge_files} disabled={readOnly} onChange={(next) => setField('knowledge_files', next)} />
       </ReferenceDropGuard>
-      <RuntimeFields keys={['message', 'memory_context']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
     </> : null}
 
     {atomKey === 'bklite_intent_classification' ? <>
@@ -570,7 +563,7 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
         <SchemaNodeField schema={{ ...field(schema, 'classification_rules'), 'x-text-surface': 'string-only' }} value={value.classification_rules} references={references} disabled={readOnly} onChange={(next) => setField('classification_rules', next)} />
       </Form.Item>
       <IntentList value={value.intents} disabled={readOnly} onChange={(next) => setField('intents', next)} />
-      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
+      <RuntimeFields keys={['text']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} />
     </> : null}
 
     {atomKey === 'bklite_memory_read' ? <>
@@ -593,7 +586,7 @@ export function OpsPilotAtomForm({ atomKey, schema, value, references, workflowI
           </Form.Item>
         ),
       }]} />
-      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} surface="string-only" />
+      <RuntimeFields keys={['query']} schema={schema} value={value} references={references} disabled={readOnly} onChange={onChange} />
     </> : null}
 
     {atomKey === 'bklite_memory_write' ? <>

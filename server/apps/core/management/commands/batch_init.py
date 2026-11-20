@@ -309,6 +309,15 @@ class Command(BaseCommand):
         """监控资源初始化"""
         self.stdout.write("初始化监控资源...")
         call_command("plugin_init")
+        try:
+            call_command("init_default_policy_groups")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning(
+                "event=policy_group_default_init_failed failed_stage=init_default_policy_groups error_type=%s",
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
+            self.stdout.write(self.style.WARNING(f"默认策略组初始化跳过（{type(error).__name__}），可运行 init_default_policy_groups 重试"))
 
     def _init_node_mgmt(self):
         """节点管理初始化"""
@@ -343,14 +352,12 @@ class Command(BaseCommand):
     def _init_opspilot(self):
         """OpsPilot资源初始化"""
         self.stdout.write("OpsPilot资源初始化...")
-        # 用两个工作台智能体替换模板目录。不要改回 init_llm，它会写回旧的通用助手。
         call_command("init_skill_templates")
         call_command("parse_tools_yml")
         try:
             call_command("init_skill_packages")
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
             self.stdout.write(self.style.WARNING(f"内置技能包同步跳过（{type(error).__name__}）: {error}"))
-        call_command("init_chatflow")
 
     def _init_log(self):
         """日志模块初始化"""

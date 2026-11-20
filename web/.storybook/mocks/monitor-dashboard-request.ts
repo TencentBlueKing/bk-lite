@@ -1,6 +1,7 @@
 'use client';
 
 import type { AxiosRequestConfig } from 'axios';
+import { environmentPreviewGet, environmentPreviewPost } from './node-environment-request';
 
 interface QueryRangeParams {
   query?: string;
@@ -238,6 +239,8 @@ const inferObjectKey = (url: string) => {
 };
 
 const get = async (url: string, config?: AxiosRequestConfig) => {
+  const environmentPreview = environmentPreviewGet(url);
+  if (environmentPreview !== undefined) return environmentPreview;
   if (url.includes('/monitor/api/metrics_instance/query_range/') || url.includes('/monitor/api/metrics_instance/query_by_instance/')) {
     return queryRange((config?.params || {}) as QueryRangeParams);
   }
@@ -255,6 +258,8 @@ const get = async (url: string, config?: AxiosRequestConfig) => {
 };
 
 const post = async (url: string, data?: Record<string, unknown>) => {
+  const environmentPreview = environmentPreviewPost(url);
+  if (environmentPreview !== undefined) return environmentPreview;
   if (url.includes('/monitor/api/monitor_instance/') && url.includes('/search/')) {
     const key = inferObjectKey(url.replace('/search/', '/list/'));
     return { results: objectInstances[key] || [] };

@@ -5,6 +5,8 @@
   "plugin_desc": "Phoenix Contact FL SWITCH SNMP collection (IANA PEN 4346). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Proven private device-health objects are redundant power-supply status (flWorkBasicPowerStat) and chassis temperature in degrees Celsius (flWorkFWCtrlActualDeviceTemperature). Optional firmware operational status (flWorkFWInfoOperStatus), firmware health text as a tag, and alarm-contact status (flWorkFWCtrlAlarmContactStatus) are collected when the device returns them. CPU and memory utilization are not collected because no private CPU or memory utilization scalar is published. Supported brands/models — Phoenix Contact FL SWITCH industrial Ethernet switches.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_phoenixcontact'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Switch",
   "icon": "mm-phoenixcontact_phoenixcontact",
   "type": "Network Device",

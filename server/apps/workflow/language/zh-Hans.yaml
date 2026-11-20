@@ -64,9 +64,13 @@ error:
   trigger_type_invalid: "触发类型非法"
   trigger_nodes_not_array: "trigger_nodes 必须是数组"
   idempotency_key_required: "该触发方式必须提供幂等键"
+  idempotency_cron_reserved: "手动触发不能使用定时调度的幂等键前缀 cron:"
+  idempotency_identity_conflict: "幂等键已被其他执行身份使用"
   idempotency_key_too_long: "幂等键最长 128 字符"
   schedule_time_count: "time 必须包含 1 到 10 个执行时间"
   schedule_time_format: "time 必须使用 HH:MM 的 24 小时格式"
+  schedule_execution_team_invalid: "定时执行组织必须是单个有效组织"
+  schedule_execution_team_forbidden: "定时执行组织不在当前用户的可用组织内"
   schedule_config_not_object: "定时触发 config 必须是 JSON 对象"
   schedule_frequency_invalid: "frequency 必须是 daily、weekly、monthly 或 crontab"
   cron_field_count: "Cron 表达式非法，必须包含 5 个字段"
@@ -142,6 +146,7 @@ error:
   enabled_invalid: enabled 非法
   excel_render_empty: Excel 模板渲染返回了空文档
   excel_render_failed: Excel 模板渲染失败：{detail}
+  personal_memory_identity_required: 自动流程访问个人记忆需要已验证的执行账号
   execution_actor_invalid: 流程执行身份非法
   execution_already_terminal: 当前执行已是终态
   execution_context_missing: 缺少可信的流程执行上下文
@@ -480,8 +485,7 @@ field_label:
     success_status_codes: "额外成功状态码"
   bklite_agent:
     agent_id: "智能体"
-    message: "输入内容"
-    prompt: "补充提示词"
+    message: "任务内容"
     knowledge_files: "上传知识"
     memory_context: "记忆上下文"
   bklite_intent_classification:

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Button,
   Form,
@@ -19,13 +19,14 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
+import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook, ScriptParam } from '@/app/job/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
-import { buildScheduledTaskTemplatePayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
+import { buildScheduledTaskTemplatePayload, buildTemplateParamsPayload, resolveScheduledTaskConcurrencyPolicy } from '@/app/job/utils/scheduledTaskPayload';
+import { TemplateParamFields } from '@/app/job/components/template-param-fields';
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 
@@ -39,6 +40,8 @@ const CreateCronTaskPage = () => {
     createScheduledTask,
     getScriptList,
     getPlaybookList,
+    getScriptDetail,
+    getPlaybookDetail,
     getCrontabPreview,
   } = useJobApi();
   const { selectedGroup } = useUserInfoContext();
@@ -53,6 +56,14 @@ const CreateCronTaskPage = () => {
 
   const [scripts, setScripts] = useState<Script[]>([]);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
+  const [templateParams, setTemplateParams] = useState<ScriptParam[]>([]);
+  const [editedTemplateParams, setEditedTemplateParams] = useState<Record<string, boolean>>({});
+  const selectedScriptId = Form.useWatch('script', form);
+  const selectedPlaybookId = Form.useWatch('playbook', form);
+  const getScriptDetailRef = useRef(getScriptDetail);
+  const getPlaybookDetailRef = useRef(getPlaybookDetail);
+  getScriptDetailRef.current = getScriptDetail;
+  getPlaybookDetailRef.current = getPlaybookDetail;
 
   // Host selection state (matching HostSelectionModal interface)
   const [hostModalOpen, setHostModalOpen] = useState(false);
@@ -61,9 +72,9 @@ const CreateCronTaskPage = () => {
   const [selectedHosts, setSelectedHosts] = useState<HostItem[]>([]);
 
   // Cron editor state
-  const [cronMinute, setCronMinute] = useState('2');
+  const [cronMinute, setCronMinute] = useState('*');
   const [cronHour, setCronHour] = useState('*');
-  const [cronDay, setCronDay] = useState('1');
+  const [cronDay, setCronDay] = useState('*');
   const [cronMonth, setCronMonth] = useState('*');
   const [cronWeek, setCronWeek] = useState('*');
 
@@ -95,6 +106,35 @@ const CreateCronTaskPage = () => {
       fetchPlaybooks();
     }
   }, [isApiReady]);
+
+  useEffect(() => {
+    const templateId = templateType === 'script' ? selectedScriptId : selectedPlaybookId;
+    if (jobType !== 'script' || !templateId) {
+      setTemplateParams([]);
+      setEditedTemplateParams({});
+      return;
+    }
+    let cancelled = false;
+    const loadDetail = templateType === 'script'
+      ? getScriptDetailRef.current(templateId)
+      : getPlaybookDetailRef.current(templateId);
+    loadDetail
+      .then((detail) => {
+        if (cancelled) return;
+        const nextParams = (detail?.params || []) as ScriptParam[];
+        setTemplateParams(nextParams);
+        setEditedTemplateParams({});
+        form.setFieldsValue(
+          Object.fromEntries(nextParams.map((param) => [`param_${param.name}`, param.default || undefined])),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTemplateParams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, jobType, selectedPlaybookId, selectedScriptId, templateType]);
 
   const getCronExpression = (): string => {
     return `${cronMinute} ${cronHour} ${cronDay} ${cronMonth} ${cronWeek}`;
@@ -155,7 +195,11 @@ const CreateCronTaskPage = () => {
       parts.push(t('job.cronDescEveryHour'));
     }
     if (cronMinute !== '*') {
-      parts.push(t('job.cronDescMinute').replace('{minute}', cronMinute.padStart(2, '0')));
+      if (cronMinute.includes('/')) {
+        parts.push(t('job.cronDescMinuteInterval').replace('{interval}', cronMinute.replace('*/', '')));
+      } else {
+        parts.push(t('job.cronDescMinute').replace('{minute}', cronMinute.padStart(2, '0')));
+      }
     }
 
     return parts.join(' ') || getCronExpression();
@@ -234,6 +278,7 @@ const CreateCronTaskPage = () => {
         target_source: targetSource === 'node_manager' ? 'node_mgmt' : 'manual',
         target_list: targetList,
         timeout: values.timeout || 60,
+        params: buildTemplateParamsPayload(templateParams, values, editedTemplateParams),
         is_enabled: enableAfterSave,
         concurrency_policy: resolveScheduledTaskConcurrencyPolicy(values.concurrency_policy),
         team: selectedGroup ? [Number(selectedGroup.id)] : [],
@@ -270,6 +315,8 @@ const CreateCronTaskPage = () => {
       return;
     }
     setTemplateType(value as 'script' | 'playbook');
+    setTemplateParams([]);
+    setEditedTemplateParams({});
     if (value === 'script') {
       form.setFieldValue('playbook', undefined);
     } else {
@@ -412,6 +459,13 @@ const CreateCronTaskPage = () => {
             </Form.Item>
           )}
 
+          {jobType === 'script' && (
+            <TemplateParamFields
+              params={templateParams}
+              onEncryptedReset={(name) => setEditedTemplateParams((prev) => ({ ...prev, [name]: true }))}
+            />
+          )}
+
           <Form.Item label={t('job.scheduleStrategy')} required>
             <Segmented
               className="w-fit mb-4"
@@ -472,11 +526,11 @@ const CreateCronTaskPage = () => {
             ) : (
               <div className="space-y-3">
                 <div className="text-(--color-text-3) flex gap-2 pl-1 text-xs">
-                  <span className="w-12 text-center">{t('job.cronMinute')}</span>
-                  <span className="w-12 text-center">{t('job.cronHour')}</span>
-                  <span className="w-12 text-center">{t('job.cronDay')}</span>
-                  <span className="w-12 text-center">{t('job.cronMonth')}</span>
-                  <span className="w-12 text-center">{t('job.cronWeek')}</span>
+                  <span className="w-20 text-center">{t('job.cronMinute')}</span>
+                  <span className="w-20 text-center">{t('job.cronHour')}</span>
+                  <span className="w-20 text-center">{t('job.cronDay')}</span>
+                  <span className="w-20 text-center">{t('job.cronMonth')}</span>
+                  <span className="w-20 text-center">{t('job.cronWeek')}</span>
                 </div>
                 <div className="flex gap-2">
                   {[
@@ -491,14 +545,14 @@ const CreateCronTaskPage = () => {
                       value={field.value}
                       onChange={(e) => field.setter(e.target.value)}
                       onBlur={(e) => { if (!e.target.value.trim()) field.setter('*'); }}
-                      className="w-12 border-[var(--color-primary)] text-center font-mono"
+                      className="w-20 border-[var(--color-primary)] text-center font-mono"
                     />
                   ))}
                 </div>
-                <div className="w-[296px] text-center text-sm text-(--color-text-2)">
+                <div className="w-[27rem] text-center text-sm text-(--color-text-2)">
                   {describeCron()}
                 </div>
-                <div className="w-[296px] text-center text-sm">
+                <div className="w-[27rem] text-center text-sm">
                   {previewLoading ? (
                     <>
                       <span className="text-(--color-text-3) text-xs">{t('job.cronNextRun')}</span>

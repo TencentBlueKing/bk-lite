@@ -39,9 +39,19 @@ import { buildLineBarValueFieldOptions, defaultDisplayFields, normalizeLineBarFi
 import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
+  buildDataVariableRequestParams,
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
+import { DataVariableRuntimeProvider, withDatasourceNamespace } from '@/app/ops-analysis/context/dataVariableRuntime';
+import {
+  collectVariableIds,
+  isDataVariableRef,
+  resolveParamRecord,
+  runDataVariables,
+  widgetQueryToDataVariable,
+  type DataVariable,
+} from '@/app/ops-analysis/utils/dataVariable';
 import { dynamicQueryParamsOf } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import type { OptionsQueryEditorContext } from '@/app/ops-analysis/utils/optionsQueryCandidates';
 import { optionsSourceSummary } from '@/app/ops-analysis/utils/optionsSourceIdentity';
@@ -49,6 +59,7 @@ import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
   reconcileComponentParamValue,
+  sameParamValue,
   supportsComponentSwitch,
 } from '@/app/ops-analysis/utils/componentParamSwitch';
 import type {
@@ -199,6 +210,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
+  dataVariables?: DataVariable[];
 }
 
 const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
@@ -209,6 +221,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   dataSourceManager,
   filterDefinitions = [],
   unifiedFilterValues = {},
+  dataVariables,
   builtinNamespaceId,
   showChartThemeMode = false,
   surface = 'dashboard',
@@ -222,12 +235,44 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onDirtyChange,
   previewSingleStyle,
   previewHost = null,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const canvasRawDataRegistry = useWidgetCsvExportRegistry();
   const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
-  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
+  // 筛选联动、表格列、参数输入配置等不在 Form 里，isFieldsTouched 看不见。
+  const unappliedConfigRef = useRef(false);
+  const noteUnappliedConfigChange = useCallback(() => {
+    unappliedConfigRef.current = true;
+    onDirtyChange?.(true);
+  }, [onDirtyChange]);
+  const clearUnappliedConfigChange = useCallback(() => {
+    unappliedConfigRef.current = false;
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+  const configHasUnappliedChanges = () =>
+    form.isFieldsTouched() || unappliedConfigRef.current;
+  const handleClose = () => {
+    const finish = () => onClose?.();
+    if (variant === 'panel' && surface === 'screen') {
+      guardClose(configHasUnappliedChanges, finish, {
+        title: t('common.unsavedTitle'),
+        content: t('opsAnalysis.screen.discardConfigContent'),
+        okText: t('opsAnalysis.screen.discardAndExit'),
+      });
+      return;
+    }
+    guardClose(configHasUnappliedChanges, finish);
+  };
+  const markConfigEdit = <Args extends unknown[]>(
+    handler: (...args: Args) => void,
+  ) => {
+    return (...args: Args) => {
+      noteUnappliedConfigChange();
+      handler(...args);
+    };
+  };
   const [chartType, setChartType] = useState<string>('');
   const [drawerSection, setDrawerSection] = useState<ConfigSection>('data');
   const activeSection = variant === 'panel' ? (configSection ?? 'data') : drawerSection;
@@ -619,10 +664,45 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     try {
       const formValues = form.getFieldsValue();
       const userParams = formValues?.params || {};
+      let requestUserParams = userParams;
+      const preserveArrayNames = new Set<string>();
+      if (collectVariableIds(userParams).length > 0) {
+        const run = await runDataVariables({
+          variables: dataVariables ?? [],
+          roots: collectVariableIds(userParams),
+          fetchRows: async (variable, params) => {
+            const source = dataSourceManager.dataSources.find((item) => item.id === variable.dataSourceId);
+            const shaped = buildDataVariableRequestParams({
+              variable,
+              resolvedParams: params,
+              dataSource: source,
+              filterValues: unifiedFilterValues,
+              filterDefinitions,
+            });
+            const prepared = withDatasourceNamespace(shaped, source?.namespaces, builtinNamespaceId);
+            if (!prepared) throw new Error('data-variable-request-blocked');
+            const result = await getSourceDataByApiId(variable.dataSourceId, prepared, {
+              suppressErrorNotification: true,
+            });
+            return result.data;
+          },
+        });
+        const resolved = resolveParamRecord(userParams, run.columns);
+        if (resolved.blocked) {
+          setPreviewRawData(null);
+          setPreviewLoading(false);
+          return;
+        }
+        requestUserParams = (resolved as { blocked: false; params: Record<string, unknown> }).params;
+        Object.entries(userParams).forEach(([name, value]) => {
+          if (isDataVariableRef(value)) preserveArrayNames.add(name);
+        });
+      }
       const requestParams = processDataSourceParams({
         sourceParams: canonicalSelectedDataSource.params,
         definitionParams: canonicalSelectedDataSource.params,
-        userParams,
+        userParams: requestUserParams,
+        preserveArrayNames,
         chartType,
         resolutionContext: {
           referenceNow: Date.now(),
@@ -663,6 +743,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   }, [
     canonicalSelectedDataSource,
     chartType,
+    dataVariables,
+    filterDefinitions,
+    dataSourceManager,
+    builtinNamespaceId,
+    unifiedFilterValues,
     effectiveNamespaceId,
     form,
     getSourceDataByApiId,
@@ -771,20 +856,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   ]);
 
   const handleChartTypeChange = async (e: any) => {
+    noteUnappliedConfigChange();
     const newChartType = e.target.value;
     setChartType(newChartType);
-    form.setFieldValue('chartType', newChartType);
+    // chartType 已由 Form.Item 在这次 onChange 里写入。此处再 setFieldValue
+    // 会让 rc-field-form 对 errors/warnings 共用的 EMPTY_ERRORS 做 isEqual，
+    // 开发态弹出 “Warning: There may be circular references”。
+    // 其它字段只在值变化时用 setFieldsValue 写，值相同则不再比较 meta。
+    const nextFormValues: Record<string, unknown> = {};
     if (newChartType === 'eventTimeline' && !form.getFieldValue('eventTimeline')) {
-      form.setFieldValue('eventTimeline', { sortOrder: 'desc' });
+      nextFormValues.eventTimeline = { sortOrder: 'desc' };
     }
     if (newChartType === 'radar' && !form.getFieldValue('radar')) {
-      form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+      nextFormValues.radar = { min: 0, max: 100, indicators: [] };
     }
     if (newChartType === 'cardList' && !form.getFieldValue('cardList')) {
-      form.setFieldValue('cardList', {
+      nextFormValues.cardList = {
         leading: { type: 'none' },
         layout: 'list',
-      });
+      };
     }
     if (newChartType === 'multiValue') {
       singleValueConfig.setThresholdColors(initThresholdColors([]));
@@ -795,13 +885,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       if (normalizeLineBarFieldList(form.getFieldValue('selectedFields')).length === 0) {
         const displayFields = defaultDisplayFields(selectedDataSource?.field_schema);
         if (displayFields.length > 0) {
-          form.setFieldValue('selectedFields', displayFields);
+          nextFormValues.selectedFields = displayFields;
           singleValueConfig.setSelectedFields(displayFields);
         }
       }
     }
     if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
-      form.setFieldValue('nodeGraphIdentityMode', 'ip');
+      nextFormValues.nodeGraphIdentityMode = 'ip';
     }
     if (newChartType !== 'single' && activeSection === 'singleStyle') {
       if (variant === 'panel') {
@@ -811,18 +901,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
     }
     if (surface === 'screen') {
-      form.setFieldValue(
-        'appearance',
-        getDefaultScreenWidgetAppearance(newChartType),
-      );
+      const nextAppearance = getDefaultScreenWidgetAppearance(newChartType);
+      if (form.getFieldValue(['appearance', 'frame']) !== nextAppearance.frame) {
+        nextFormValues.appearance = nextAppearance;
+      }
     }
-    form.setFieldValue(
-      ['interaction', 'kind'],
-      interactionKindForChartType(
-        newChartType,
-        form.getFieldValue(['interaction', 'kind']),
-      ),
+    const currentInteractionKind = form.getFieldValue(['interaction', 'kind']);
+    const nextInteractionKind = interactionKindForChartType(
+      newChartType,
+      currentInteractionKind,
     );
+    if (nextInteractionKind !== currentInteractionKind) {
+      nextFormValues.interaction = {
+        ...(form.getFieldValue('interaction') || {}),
+        kind: nextInteractionKind,
+      };
+    }
+    if (Object.keys(nextFormValues).length > 0) {
+      form.setFieldsValue(nextFormValues);
+    }
     if (!supportsComponentSwitch(newChartType)) {
       setWidgetParamOverrides((previous) =>
         previous.map(clearComponentParamSwitch),
@@ -872,7 +969,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       markFormPristine(form);
       setFieldSectionErrors(emptySectionErrorFlags());
       setManualDataError(false);
-      onDirtyChange?.(false);
+      clearUnappliedConfigChange();
       settleInteractionSample(requestId, widgetId);
       return;
     }
@@ -1054,7 +1151,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     markFormPristine(form);
     setFieldSectionErrors(emptySectionErrorFlags());
     setManualDataError(false);
-    onDirtyChange?.(false);
+    clearUnappliedConfigChange();
     settleInteractionSample(requestId, widgetId);
   };
 
@@ -1078,7 +1175,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const handleEditInputConfig = (param: ParamItem) => {
     const override = widgetParamOverrides.find((o) => o.name === param.name);
-    setEditingInputConfigParam(override ?? param);
+    const base = override ?? param;
+    const current = form.getFieldValue(['params', param.name]);
+    if (isDataVariableRef(current)) {
+      setEditingInputConfigParam({
+        ...base,
+        inputConfig: { control: 'dataVariable', dataVariableId: current.dataVariableId },
+      });
+      return;
+    }
+    setEditingInputConfigParam(base);
   };
 
   const reconcileParamWithOptions = useCallback(
@@ -1086,9 +1192,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       resolvedParamOptionsRef.current.set(paramName, options);
       const currentParams = form.getFieldValue('params') || {};
       const nextValue = reconcileComponentParamValue(currentParams[paramName], options);
-      if (nextValue !== currentParams[paramName]) {
-        form.setFieldValue(['params', paramName], nextValue);
-      }
+      if (sameParamValue(nextValue, currentParams[paramName])) return;
+      // setFieldValue 会走 rc-field-form 的 isEqual。字段 errors/warnings 初始共用同一个空数组，
+      // 选项回填时再写一次就会报 circular references。setFieldsValue 不走这条比较。
+      form.setFieldsValue({
+        params: {
+          ...currentParams,
+          [paramName]: nextValue,
+        },
+      });
     },
     [form],
   );
@@ -1115,12 +1227,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       return [...prev, { ...baseParam, inputConfig: newConfig }];
     });
     const currentParams = form.getFieldValue('params') || {};
-    const coerced = coerceValueForMultiple(
-      currentParams[editingParamName],
-      isMultipleSelectInputConfig(newConfig),
-    );
-    if (coerced !== currentParams[editingParamName]) {
-      form.setFieldValue(['params', editingParamName], coerced);
+    if (newConfig.control === 'dataVariable') {
+      form.setFieldValue(['params', editingParamName], { dataVariableId: newConfig.dataVariableId });
+    } else if (isDataVariableRef(currentParams[editingParamName])) {
+      form.setFieldValue(['params', editingParamName], undefined);
+    } else {
+      const coerced = coerceValueForMultiple(
+        currentParams[editingParamName],
+        isMultipleSelectInputConfig(newConfig),
+      );
+      if (coerced !== currentParams[editingParamName]) {
+        form.setFieldValue(['params', editingParamName], coerced);
+      }
     }
     if (resolvedOptions?.length) {
       reconcileParamWithOptions(editingParamName, resolvedOptions);
@@ -1128,6 +1246,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       resolvedParamOptionsRef.current.delete(editingParamName);
     }
     setEditingInputConfigParam(null);
+    noteUnappliedConfigChange();
+  };
+
+  const handleFilterBindingsChange = (bindings: FilterBindings) => {
+    setFilterBindings(bindings);
+    noteUnappliedConfigChange();
   };
 
   // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
@@ -1163,7 +1287,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   }, [effectiveDataSource]);
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
-    onDirtyChange?.(true);
+    noteUnappliedConfigChange();
     setManualDataError(false);
     if (!isTableLikeChartType) {
       return;
@@ -1512,7 +1636,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (submitResult.config) {
         setManualDataError(false);
-        onConfirm?.(submitResult.config);
+        if (onConfirm?.(submitResult.config) === false) return;
+        markFormPristine(form);
+        clearUnappliedConfigChange();
       }
     } catch (error) {
       const plan = planValidationFailure({
@@ -1528,6 +1654,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       setFieldSectionErrors(plan.errors);
       revealConfigSection(plan.section, plan.namePath);
     }
+  };
+
+  const openDataVariableFromQuery = () => {
+    if (!selectedDataSource || !onCreateDataVariable) return;
+    const values = hydrateWidgetFormValues(
+      form.getFieldsValue(true) as WidgetConfigFormValues,
+      { persistReconcile: false },
+    );
+    const params = Object.fromEntries(
+      (values.dataSourceParams ?? [])
+        .filter((param) => param.name)
+        .map((param) => [param.name, param.value]),
+    );
+    const paramInputs: NonNullable<DataVariable['paramInputs']> = {};
+    widgetParamOverrides.forEach((param) => {
+      if (param.name && param.inputConfig) paramInputs[param.name] = param.inputConfig;
+    });
+    onCreateDataVariable(widgetQueryToDataVariable({
+      name: String(form.getFieldValue('name') ?? '').trim(),
+      valueField: '',
+      dataSourceId: selectedDataSource.id,
+      params,
+      filterBindings,
+      paramInputs,
+    }));
   };
 
   const previewToggleButton = (
@@ -1578,9 +1729,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           setPreviewRawData(data);
           setPreviewLoading(false);
         }}
-        liveName={watchedFormValues?.name}
-        liveDescription={watchedFormValues?.description}
+        onRenderStatus={(result) => {
+          if (result.status !== 'loading') {
+            setPreviewLoading(false);
+          }
+        }}
         onRefresh={handlePreview}
+        onCreateDataVariable={
+          onCreateDataVariable && selectedDataSource ? openDataVariableFromQuery : undefined
+        }
       />
     </aside>
   ) : null;
@@ -1741,7 +1898,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             filterBindings={filterBindings}
             globalFilters={filterDefinitions}
             globalFilterValues={unifiedFilterValues}
-            onFilterBindingsChange={setFilterBindings}
+            dataVariables={dataVariables}
+            onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
@@ -1760,30 +1918,30 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 isProbingColumns={tableConfig.isProbingColumns}
                 paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
                 displayColumnsError={tableConfig.displayColumnsError}
-                onAddFilterField={tableConfig.handleAddFilterField}
-                onDeleteFilterField={tableConfig.handleDeleteFilterField}
-                onFilterFieldChange={tableConfig.handleFilterFieldChange}
-                onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
-                onDeleteDisplayColumn={tableConfig.handleDeleteDisplayColumn}
-                onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
-                onDisplayColumnStyleChange={
-                  tableConfig.handleDisplayColumnStyleChange
-                }
-                onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
-                onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
-                onReProbeColumns={tableConfig.handleReProbeColumns}
-                onAddNewFilterField={() =>
+                onAddFilterField={markConfigEdit(tableConfig.handleAddFilterField)}
+                onDeleteFilterField={markConfigEdit(tableConfig.handleDeleteFilterField)}
+                onFilterFieldChange={markConfigEdit(tableConfig.handleFilterFieldChange)}
+                onAddDisplayColumn={markConfigEdit(tableConfig.handleAddDisplayColumn)}
+                onDeleteDisplayColumn={markConfigEdit(tableConfig.handleDeleteDisplayColumn)}
+                onDisplayColumnChange={markConfigEdit(tableConfig.handleDisplayColumnChange)}
+                onDisplayColumnStyleChange={markConfigEdit(
+                  tableConfig.handleDisplayColumnStyleChange,
+                )}
+                onDisplayColumnKeyBlur={markConfigEdit(tableConfig.handleDisplayColumnKeyBlur)}
+                onDisplayColumnDragEnd={markConfigEdit(tableConfig.handleDisplayColumnDragEnd)}
+                onReProbeColumns={markConfigEdit(tableConfig.handleReProbeColumns)}
+                onAddNewFilterField={markConfigEdit(() =>
                   tableConfig.setFilterFields([
                     ...tableConfig.filterFields,
                     tableConfig.createDefaultFilterField(),
                   ])
-                }
-                onAddNewDisplayColumn={() =>
+                )}
+                onAddNewDisplayColumn={markConfigEdit(() =>
                   tableConfig.setDisplayColumns([
                     ...tableConfig.displayColumns,
                     tableConfig.createDefaultDisplayColumn(),
                   ])
-                }
+                )}
               />
             )}
 
@@ -1797,13 +1955,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
                 onFetchSingleValueDataFields={fetchRoleFields}
-                onSingleValueFieldChange={
-                  singleValueConfig.handleSingleValueFieldChange
-                }
-                onThresholdChange={singleValueConfig.handleThresholdChange}
-                onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                onAddThreshold={singleValueConfig.addThreshold}
-                onRemoveThreshold={singleValueConfig.removeThreshold}
+                onSingleValueFieldChange={markConfigEdit(
+                  singleValueConfig.handleSingleValueFieldChange,
+                )}
+                onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                 compareAvailable={singleValueConfig.compareAvailable}
                 showDescriptionField
               />
@@ -1819,13 +1977,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 loadingSingleValueData={loadingRoleFields}
                 thresholdColors={singleValueConfig.thresholdColors}
                 onFetchSingleValueDataFields={fetchRoleFields}
-                onSingleValueFieldChange={
-                  singleValueConfig.handleSingleValueFieldChange
-                }
-                onThresholdChange={singleValueConfig.handleThresholdChange}
-                onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                onAddThreshold={singleValueConfig.addThreshold}
-                onRemoveThreshold={singleValueConfig.removeThreshold}
+                onSingleValueFieldChange={markConfigEdit(
+                  singleValueConfig.handleSingleValueFieldChange,
+                )}
+                onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                 compareAvailable={singleValueConfig.compareAvailable}
               />
             )}
@@ -1873,10 +2031,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                     <ThresholdColorConfigSection
                       t={t}
                       thresholdColors={singleValueConfig.thresholdColors}
-                      onThresholdChange={singleValueConfig.handleThresholdChange}
-                      onThresholdBlur={singleValueConfig.handleThresholdBlur}
-                      onAddThreshold={singleValueConfig.addThreshold}
-                      onRemoveThreshold={singleValueConfig.removeThreshold}
+                      onThresholdChange={markConfigEdit(singleValueConfig.handleThresholdChange)}
+                      onThresholdBlur={markConfigEdit(singleValueConfig.handleThresholdBlur)}
+                      onAddThreshold={markConfigEdit(singleValueConfig.addThreshold)}
+                      onRemoveThreshold={markConfigEdit(singleValueConfig.removeThreshold)}
                       allowEmpty
                     />
                     <Form.Item
@@ -1936,6 +2094,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 previewRawData={previewRawData}
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}
+                resetToken={open ? configReloadKey : 'closed'}
               />
             )}
           </WidgetQueryFields>
@@ -1978,6 +2137,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             : 'param'
         }
         value={editingInputConfigParam?.inputConfig}
+        dataVariables={dataVariables?.map((item) => ({ id: item.id, name: item.name || item.id }))}
+        onCreateDataVariable={onCreateDataVariable}
         onConfirm={handleInputConfigConfirm}
         onCancel={() => setEditingInputConfigParam(null)}
         excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}
@@ -1993,8 +2154,34 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     </>
   );
 
+  const withDataVariables = (node: React.ReactNode) => (
+    <DataVariableRuntimeProvider
+      variables={dataVariables ?? []}
+      referencedValues={watchedFormValues}
+      filterValues={unifiedFilterValues}
+      scopeKey={builtinNamespaceId}
+      prepareParams={(variable, params) => {
+        const source = dataSourceManager.dataSources.find((item) => item.id === variable.dataSourceId);
+        const shaped = buildDataVariableRequestParams({
+          variable,
+          resolvedParams: params,
+          dataSource: source,
+          filterValues: unifiedFilterValues,
+          filterDefinitions,
+        });
+        return withDatasourceNamespace(shaped, source?.namespaces, builtinNamespaceId);
+      }}
+    >
+      {node}
+    </DataVariableRuntimeProvider>
+  );
+
+  const confirmLabel = variant === 'panel' && surface === 'screen'
+    ? t('opsAnalysis.screen.applyConfig')
+    : t('common.confirm');
+
   if (variant === 'panel') {
-    return (
+    return withDataVariables(
       <>
         {previewHost && previewAside
           ? createPortal(previewAside, previewHost)
@@ -2007,9 +2194,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           <div className="flex shrink-0 items-center justify-between gap-2 border-t border-(--color-border-1) px-4 py-3">
             <div>{previewToggleButton}</div>
             <div className="flex items-center gap-2">
-              <Button onClick={handleClose}>{t('common.cancel')}</Button>
-              <Button type="primary" onClick={handleConfirm}>
-                {t('common.confirm')}
+              <Button data-testid="widget-config-cancel" onClick={handleClose}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="primary" data-testid="widget-config-apply" onClick={handleConfirm}>
+                {confirmLabel}
               </Button>
             </div>
           </div>
@@ -2018,7 +2207,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     );
   }
 
-  return (
+  return withDataVariables(
     <Drawer
       title={t('dashboard.viewConfig')}
       placement="right"
@@ -2042,11 +2231,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         <div className="flex items-center justify-between">
           <div>{previewToggleButton}</div>
           <div className="flex items-center gap-2">
-            <Button onClick={handleClose}>
+            <Button data-testid="widget-config-cancel" onClick={handleClose}>
               {t('common.cancel')}
             </Button>
-            <Button type="primary" onClick={handleConfirm}>
-              {t('common.confirm')}
+            <Button type="primary" data-testid="widget-config-apply" onClick={handleConfirm}>
+              {confirmLabel}
             </Button>
           </div>
         </div>

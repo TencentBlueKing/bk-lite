@@ -14,7 +14,17 @@ import {
   Table,
   Tooltip,
 } from 'antd';
-import { DeleteOutlined, HolderOutlined, MinusOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined,
+  CheckCircleOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  HolderOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
 import {
   DndContext,
   PointerSensor,
@@ -56,7 +66,6 @@ import {
   isOptionsQueryParamRef,
   normalizeOptionsQueryParamValue,
   collectOptionsQueryParamIssues,
-  hasOptionsQueryRef,
   isRejectedQueryParams,
   normalizeQueryParamsForStorage,
   stableStringify,
@@ -68,6 +77,7 @@ import {
   resolveOptionsQueryChoice,
   type OptionsQueryEditorContext,
 } from '@/app/ops-analysis/utils/optionsQueryCandidates';
+import { createDataVariableId, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { useTranslation } from '@/utils/i18n';
 
 interface StaticRow extends InputOption {
@@ -129,17 +139,30 @@ interface ParamInputConfigEditorProps {
   /** 同名多行时，正在编辑的筛选 id。校验图用它做节点名。 */
   editingNodeId?: string;
   optionsQueryContext?: OptionsQueryEditorContext;
+  /** 有数据变量时，控件类型多一项。选中后这个参数提交整列。 */
+  dataVariables?: Array<{ id: string; name: string }>;
+  /** 打开新建数据变量。保存后这条会出现在下拉里并被选中。 */
+  onCreateDataVariable?: (variable: DataVariable) => void;
 }
 
-interface SortableStaticRowProps {
-  row: StaticRow;
-  onChange: (uid: string, field: 'label' | 'value', value: string) => void;
-  onAddAfter: (uid: string) => void;
-  onRemove: (uid: string) => void;
-  showRemove: boolean;
-  valuePlaceholder: string;
-  labelPlaceholder: string;
+interface SortableStaticTableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
+  'data-row-key'?: string;
 }
+
+interface StaticDragHandleContextValue {
+  attributes: Record<string, any>;
+  listeners?: Record<string, any>;
+}
+
+const StaticDragHandleContext = React.createContext<StaticDragHandleContextValue | null>(null);
+
+const CONTROL_TYPE_ICONS: Record<string, React.ReactNode> = {
+  input: <EditOutlined aria-hidden />,
+  select: <UnorderedListOutlined aria-hidden />,
+  radio: <CheckCircleOutlined aria-hidden />,
+  organization: <ApartmentOutlined aria-hidden />,
+  dataVariable: <DatabaseOutlined aria-hidden />,
+};
 
 const newId = () => Math.random().toString(36).slice(2);
 const createRow = (): StaticRow => ({ uid: newId(), label: '', value: '' });
@@ -312,53 +335,100 @@ export const describeQueryIssue = (
   if (issue.code === 'depth') return t('paramInput.dynamic.depth', undefined, { path });
   return t('paramInput.dynamic.invalidValue');
 };
-const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
-  row,
-  onChange,
-  onAddAfter,
-  onRemove,
-  showRemove,
-  valuePlaceholder,
-  labelPlaceholder,
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: row.uid });
+const SortableStaticTableRow: React.FC<SortableStaticTableRowProps> = (props) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(props['data-row-key'] ?? 'static-measure-row') });
 
   const style: React.CSSProperties = {
+    ...props.style,
     transform: CSS.Transform.toString(transform),
     transition,
+    ...(isDragging
+      ? { position: 'relative', zIndex: 9999, background: 'var(--color-fill-1)' }
+      : {}),
   };
+  const contextValue = useMemo(
+    () => ({ attributes, listeners }),
+    [attributes, listeners],
+  );
 
   return (
-    <li ref={setNodeRef} style={style} className="mb-2 flex items-center">
-      <HolderOutlined
-        {...attributes}
-        {...listeners}
-        className="mr-[4px] cursor-grab text-[var(--color-text-3)]"
-      />
-      <Input
-        className="mr-[10px] w-2/5"
-        value={String(row.value)}
-        placeholder={valuePlaceholder}
-        onChange={(event) => onChange(row.uid, 'value', event.target.value)}
-      />
-      <Input
-        className="mr-[10px] w-2/5"
-        value={row.label}
-        placeholder={labelPlaceholder}
-        onChange={(event) => onChange(row.uid, 'label', event.target.value)}
-      />
-      <PlusOutlined
-        className="mr-[10px] cursor-pointer text-[var(--color-primary)]"
-        onClick={() => onAddAfter(row.uid)}
-      />
-      {showRemove && (
-        <MinusOutlined
-          className="cursor-pointer text-[var(--color-primary)]"
-          onClick={() => onRemove(row.uid)}
-        />
-      )}
-    </li>
+    <StaticDragHandleContext.Provider value={contextValue}>
+      <tr {...props} ref={setNodeRef} style={style} />
+    </StaticDragHandleContext.Provider>
+  );
+};
+
+const StaticDragHandle: React.FC<{ label: string }> = ({ label }) => {
+  const context = React.useContext(StaticDragHandleContext);
+  if (!context) {
+    return <HolderOutlined aria-label={label} className="text-(--color-text-3)" />;
+  }
+  return (
+    <HolderOutlined
+      {...context.attributes}
+      {...context.listeners}
+      aria-label={label}
+      className="cursor-grab touch-none text-(--color-text-3)"
+    />
+  );
+};
+
+const EditorSection: React.FC<{
+  title?: string;
+  divided?: boolean;
+  children: React.ReactNode;
+}> = ({ title, divided = false, children }) => {
+  if (!title) return <>{children}</>;
+  return (
+    <section className={divided ? 'mt-1 border-t border-(--color-border-2) pt-4' : undefined}>
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold leading-6 text-(--color-text-1)">
+        <span className="h-4 w-[3px] shrink-0 rounded-full bg-(--color-primary)" aria-hidden />
+        {title}
+      </div>
+      {children}
+    </section>
+  );
+};
+
+const AlignedControl: React.FC<{
+  value?: unknown;
+  onChange?: unknown;
+  children: React.ReactNode;
+}> = ({ children }) => (
+  <div className="flex w-full items-center gap-2">{children}</div>
+);
+
+const ToggleRow: React.FC<{
+  title: string;
+  checked: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  alignClassName: string;
+  onChange: (checked: boolean) => void;
+}> = ({ title, checked, disabled = false, disabledReason, alignClassName, onChange }) => {
+  const toggle = (
+    <Switch
+      aria-label={title}
+      checked={checked}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  );
+  return (
+    <Form.Item label={title} className={alignClassName}>
+      {disabledReason ? (
+        <Tooltip title={disabledReason}>
+          <span className="inline-flex">{toggle}</span>
+        </Tooltip>
+      ) : toggle}
+    </Form.Item>
   );
 };
 
@@ -374,11 +444,26 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   editingParamName,
   editingNodeId,
   optionsQueryContext,
+  dataVariables,
+  onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
   const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
+  const [dataVariableId, setDataVariableId] = useState<string | undefined>();
+  const [variableSelectOpen, setVariableSelectOpen] = useState(false);
+  const [listedVariables, setListedVariables] = useState(dataVariables ?? []);
+  const pendingVariableIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    setListedVariables(dataVariables ?? []);
+    const pending = pendingVariableIdRef.current;
+    if (!pending) return;
+    const created = (dataVariables ?? []).find((item) => item.id === pending && item.name);
+    if (!created) return;
+    pendingVariableIdRef.current = null;
+    setDataVariableId(created.id);
+  }, [dataVariables]);
   const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [multiple, setMultiple] = useState(false);
@@ -409,6 +494,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!open) return;
     if (!value) {
       setControl('input');
+      setDataVariableId(undefined);
       setPicker('dropdown');
       setComponentSwitch(false);
       setMultiple(false);
@@ -427,11 +513,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     }
 
     setControl(value.control);
+    setDataVariableId(value.control === 'dataVariable' ? value.dataVariableId : undefined);
     setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
       (value.control === 'select' || value.control === 'radio')
-        && Boolean(value.componentSwitch)
-        && hasOptionsQueryRef(value) === false,
+        && Boolean(value.componentSwitch),
     );
     setMultiple(
       value.control === 'select' ? Boolean(value.multiple) : false,
@@ -493,6 +579,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (
       value.control === 'input'
       || value.control === 'organization'
+      || value.control === 'dataVariable'
     ) {
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -645,6 +732,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       value.control === 'input' ||
       value.control === 'organization' ||
       value.control === 'conditionFilter' ||
+      value.control === 'dataVariable' ||
       value.optionsSource.type !== 'dynamic' ||
       !value.optionsSource.sourceRef ||
       dataSourceList.length === 0
@@ -825,17 +913,12 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     );
   };
 
-  const handleAddStaticRowAfter = (uid: string) => {
-    setStaticRows((prev) => {
-      const index = prev.findIndex((row) => row.uid === uid);
-      const next = [...prev];
-      next.splice(index + 1, 0, createRow());
-      return next;
-    });
+  const handleAddStaticRow = () => {
+    setStaticRows((prev) => [...prev, createRow()]);
   };
 
   const handleRemoveStaticRow = (uid: string) => {
-    setStaticRows((prev) => (prev.length <= 1 ? prev : prev.filter((row) => row.uid !== uid)));
+    setStaticRows((prev) => prev.filter((row) => row.uid !== uid));
   };
 
   const handleStaticDragEnd = (event: DragEndEvent) => {
@@ -863,8 +946,6 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       ...(control === 'select' && picker === 'table' ? { picker: 'table' as const } : {}),
     };
   };
-
-  const queryRefDisablesSwitch = queryParamRows.some((row) => row.mode === 'ref' && row.refName.trim());
 
   const handleConfirm = async () => {
     if (editingConditionFields && sourceType === 'static') {
@@ -910,6 +991,14 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         return field ? [field] : [];
       });
       onConfirm({ control: 'conditionFilter', fields: { kind: 'static', items } });
+      return;
+    }
+    if (!editingConditionFields && control === 'dataVariable') {
+      if (!dataVariableId) {
+        message.warning(t('dataVariable.selectVariable'));
+        return;
+      }
+      onConfirm({ control: 'dataVariable', dataVariableId });
       return;
     }
     if (!editingConditionFields && control === 'input') {
@@ -1092,36 +1181,87 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
     onConfirm({
       control,
-      componentSwitch: queryRefDisablesSwitch ? undefined : (componentSwitch ? true : undefined),
+      componentSwitch: componentSwitch ? true : undefined,
       ...buildOptionControlExtras(),
       optionsSource,
     });
   };
 
   const hasRefQueryParam = queryParamRows.some((row) => row.mode === 'ref');
+  const horizontal = !editingConditionFields;
+  const fieldClass = horizontal
+    ? '!mb-3 [&_.ant-form-item-row]:items-center'
+    : 'mb-3';
+  const fieldTopClass = horizontal
+    ? '!mb-3 [&_.ant-form-item-row]:!flex-nowrap [&_.ant-form-item-row]:items-start [&_.ant-form-item-label]:shrink-0 [&_.ant-form-item-label]:pt-1 [&_.ant-form-item-control]:min-w-0 [&_.ant-form-item-control]:flex-1'
+    : 'mb-2';
+  const showInteraction = horizontal && (
+    control === 'select' || (componentSwitchEnabled && isOptionsControl)
+  );
 
   return (
     <Modal
-      title={t('paramInput.title')}
+      title={(
+        <div className="pr-6">
+          <span className="block text-lg font-bold leading-7 text-(--color-text-1)">
+            {t('paramInput.title')}
+          </span>
+          {!editingConditionFields ? (
+            <span className="mt-1 block text-xs font-normal leading-5 text-(--color-text-3)">
+              {t('paramInput.subtitle')}
+            </span>
+          ) : null}
+        </div>
+      )}
       open={open}
       onCancel={onCancel}
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      width={editingConditionFields ? 760 : 640}
+      width={760}
       centered
       destroyOnHidden
       styles={{
-        body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
+        body: {
+          maxHeight: 'calc(100vh - 240px)',
+          overflowY: 'auto',
+        },
       }}
     >
-      <Form form={form} layout="vertical" colon={false}>
+      <Form
+        form={form}
+        layout={horizontal ? 'horizontal' : 'vertical'}
+        colon={false}
+        labelAlign="left"
+        labelCol={horizontal ? { flex: '96px' } : undefined}
+        wrapperCol={horizontal ? { flex: 'auto' } : undefined}
+        className={horizontal ? '[&_.ant-form-item-label>label]:h-auto [&_.ant-form-item-label>label]:text-sm [&_.ant-form-item-label>label]:font-normal [&_.ant-form-item-label>label]:text-(--color-text-1)' : undefined}
+      >
         {!editingConditionFields && (
-        <Form.Item label={t('paramInput.controlType')} className="mb-3">
-          <Radio.Group
+        <EditorSection title={t('paramInput.sections.control')}>
+        <Form.Item label={t('paramInput.controlType')} className={fieldClass}>
+          <Select
+            aria-label={t('paramInput.controlType')}
+            className="w-full"
+            style={{ width: '100%' }}
             value={control}
-            onChange={(event) => {
-              const nextControl = event.target.value as InputControlConfig['control'];
+            prefix={CONTROL_TYPE_ICONS[control]}
+            options={[
+              { label: t('paramInput.control.input'), value: 'input' },
+              { label: t('paramInput.control.select'), value: 'select' },
+              { label: t('paramInput.control.radio'), value: 'radio' },
+              { label: t('paramInput.control.organization'), value: 'organization' },
+              ...(dataVariables
+                ? [{ label: t('paramInput.control.dataVariable'), value: 'dataVariable' as const }]
+                : []),
+            ]}
+            optionRender={(option) => (
+              <span className="inline-flex items-center gap-2">
+                <span className="text-(--color-text-2)">{CONTROL_TYPE_ICONS[String(option.value)]}</span>
+                <span>{option.label}</span>
+              </span>
+            )}
+            onChange={(nextControl: InputControlConfig['control']) => {
               setControl(nextControl);
               if (nextControl !== 'select') {
                 setPicker('dropdown');
@@ -1136,18 +1276,67 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                 form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
               }
             }}
-            options={[
-              { label: t('paramInput.control.input'), value: 'input' },
-              { label: t('paramInput.control.select'), value: 'select' },
-              { label: t('paramInput.control.radio'), value: 'radio' },
-              { label: t('paramInput.control.organization'), value: 'organization' },
-            ]}
           />
         </Form.Item>
+
+        {control === 'dataVariable' && !editingConditionFields && (
+          <Form.Item label={t('dataVariable.title')} className={fieldClass} required>
+            <div className="flex w-full items-center gap-2">
+              <Select
+                className="min-w-0 flex-1"
+                showSearch
+                optionFilterProp="label"
+                placeholder={t('dataVariable.selectVariable')}
+                value={dataVariableId}
+                open={onCreateDataVariable ? variableSelectOpen : undefined}
+                onOpenChange={onCreateDataVariable ? setVariableSelectOpen : undefined}
+                options={(onCreateDataVariable ? listedVariables : (dataVariables ?? [])).map((item) => ({
+                  value: item.id,
+                  label: item.name || item.id,
+                }))}
+                onChange={setDataVariableId}
+                dropdownRender={onCreateDataVariable ? (menu) => (
+                  <div>
+                    {menu}
+                    <div className="border-t border-[var(--color-border)] px-2 py-1">
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const created: DataVariable = {
+                            id: createDataVariableId(),
+                            name: '',
+                            dataSourceId: 0,
+                            valueField: '',
+                            params: {},
+                          };
+                          pendingVariableIdRef.current = created.id;
+                          setVariableSelectOpen(false);
+                          onCreateDataVariable(created);
+                        }}
+                      >
+                        {t('dataVariable.add')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : undefined}
+              />
+              {onCreateDataVariable ? (
+                <Button
+                  icon={<ReloadOutlined />}
+                  aria-label={t('common.refresh')}
+                  className="shrink-0"
+                  onClick={() => setListedVariables(dataVariables ?? [])}
+                />
+              ) : null}
+            </div>
+          </Form.Item>
         )}
 
         {control === 'select' && !editingConditionFields && (
-          <Form.Item label={t('paramInput.picker')} className="mb-3">
+          <Form.Item label={t('paramInput.picker')} className={fieldClass}>
             <Radio.Group
               value={picker}
               onChange={(event) => setPicker(event.target.value)}
@@ -1158,74 +1347,50 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
             />
           </Form.Item>
         )}
+        </EditorSection>
+        )}
 
-        {control === 'select' && !editingConditionFields && (
-          <Form.Item label={t('paramInput.multiple')} className="mb-3">
-            <Tooltip
-              title={
-                componentSwitch
-                  ? t('paramInput.multipleDisabledByComponentSwitch')
-                  : undefined
-              }
-            >
-              <Switch
-                size="small"
+        {showInteraction && (
+          <EditorSection title={t('paramInput.sections.interaction')} divided>
+            {control === 'select' && (
+              <ToggleRow
+                title={t('paramInput.multiple')}
+                alignClassName={fieldClass}
                 checked={multiple}
-                disabled={componentSwitch}
-                onChange={(checked) => {
-                  setMultiple(checked);
-                  if (checked) {
-                    setComponentSwitch(false);
-                  }
-                }}
+                onChange={setMultiple}
               />
-            </Tooltip>
-          </Form.Item>
+            )}
+            {componentSwitchEnabled && isOptionsControl && (
+              <ToggleRow
+                title={t('dashboard.componentSwitch')}
+                alignClassName={fieldClass}
+                checked={componentSwitch}
+                disabled={Boolean(
+                  componentSwitchOwner &&
+                    componentSwitchOwner.name !== editingParamName,
+                )}
+                disabledReason={
+                  componentSwitchOwner &&
+                    componentSwitchOwner.name !== editingParamName
+                    ? t('dashboard.componentSwitchOccupied', undefined, {
+                      label: componentSwitchOwner.label,
+                    })
+                    : undefined
+                }
+                onChange={setComponentSwitch}
+              />
+            )}
+          </EditorSection>
         )}
 
         {(isOptionsControl || editingConditionFields) && (
-          <>
-            {componentSwitchEnabled && !editingConditionFields && (
-              <Form.Item
-                label={t('dashboard.componentSwitch')}
-                className="mb-3"
-              >
-                <Tooltip
-                  title={
-                    componentSwitchOwner &&
-                      componentSwitchOwner.name !== editingParamName
-                      ? t('dashboard.componentSwitchOccupied', undefined, {
-                        label: componentSwitchOwner.label,
-                      })
-                      : multiple
-                        ? t('dashboard.componentSwitchDisabledByMultiple')
-                        : queryRefDisablesSwitch
-                          ? t('dashboard.componentSwitchDisabledByQueryRef')
-                          : undefined
-                  }
-                >
-                  <Switch
-                    size='small'
-                    checked={componentSwitch && queryRefDisablesSwitch === false}
-                    disabled={Boolean(
-                      (componentSwitchOwner &&
-                        componentSwitchOwner.name !== editingParamName) ||
-                      multiple ||
-                      queryRefDisablesSwitch,
-                    )}
-                    onChange={(checked) => {
-                      setComponentSwitch(checked);
-                      if (checked) {
-                        setMultiple(false);
-                      }
-                    }}
-                  />
-                </Tooltip>
-              </Form.Item>
-            )}
+          <EditorSection
+            title={editingConditionFields ? undefined : t('paramInput.sections.options')}
+            divided={horizontal}
+          >
             <Form.Item
               label={editingConditionFields ? t('paramInput.conditionFields.source') : t('paramInput.sourceType')}
-              className="mb-3"
+              className={fieldClass}
             >
               <Radio.Group
                 value={sourceType}
@@ -1424,48 +1589,100 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                 </div>
               </Form.Item>
             ) : sourceType === 'static' ? (
-              <Form.Item label={t('paramInput.static.options')} className="mb-2">
-                <DndContext
-                  sensors={staticSensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleStaticDragEnd}
-                >
-                  <SortableContext
-                    items={staticRowIds}
-                    strategy={verticalListSortingStrategy}
+              <Form.Item label={t('paramInput.static.options')} className={fieldTopClass}>
+                <div className="min-w-0 overflow-hidden rounded-md border border-(--color-border-1)">
+                  <DndContext
+                    sensors={staticSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleStaticDragEnd}
                   >
-                    <ul className="pt-1">
-                      {staticRows.map((row) => (
-                        <SortableStaticRow
-                          key={row.uid}
-                          row={row}
-                          onChange={handleStaticChange}
-                          onAddAfter={handleAddStaticRowAfter}
-                          onRemove={handleRemoveStaticRow}
-                          showRemove={staticRows.length > 1}
-                          valuePlaceholder={t('paramInput.static.value')}
-                          labelPlaceholder={t('paramInput.static.label')}
-                        />
-                      ))}
-                    </ul>
-                  </SortableContext>
-                </DndContext>
+                    <SortableContext
+                      items={staticRowIds}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <table className="w-full table-fixed border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-(--color-fill-1) text-left text-(--color-text-2)">
+                            <th className="border-b border-(--color-border-1) px-3 py-2 font-normal">
+                              {t('paramInput.static.identifier')}
+                            </th>
+                            <th className="border-b border-(--color-border-1) px-3 py-2 font-normal">
+                              {t('paramInput.static.displayName')}
+                            </th>
+                            <th className="w-16 border-b border-(--color-border-1) px-2 py-2 text-center font-normal">
+                              {t('paramInput.static.action')}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {staticRows.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={3}
+                                className="border-b border-(--color-border-1) px-3 py-3 text-center text-(--color-text-3)"
+                              >
+                                {t('paramInput.static.emptyList')}
+                              </td>
+                            </tr>
+                          ) : staticRows.map((row) => (
+                            <SortableStaticTableRow key={row.uid} data-row-key={row.uid}>
+                              <td className="border-b border-(--color-border-1) px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <StaticDragHandle label={t('paramInput.static.drag')} />
+                                  <Input
+                                    value={String(row.value)}
+                                    onChange={(event) => handleStaticChange(row.uid, 'value', event.target.value)}
+                                  />
+                                </div>
+                              </td>
+                              <td className="border-b border-(--color-border-1) px-3 py-2">
+                                <Input
+                                  value={row.label}
+                                  onChange={(event) => handleStaticChange(row.uid, 'label', event.target.value)}
+                                />
+                              </td>
+                              <td className="border-b border-(--color-border-1) px-2 py-2 text-center">
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  aria-label={t('paramInput.static.remove')}
+                                  icon={<DeleteOutlined />}
+                                  className="text-(--color-text-3)"
+                                  onClick={() => handleRemoveStaticRow(row.uid)}
+                                />
+                              </td>
+                            </SortableStaticTableRow>
+                          ))}
+                        </tbody>
+                      </table>
+                    </SortableContext>
+                  </DndContext>
+                  <Button
+                    type="link"
+                    className="h-auto !w-full !justify-start rounded-none px-3 py-2"
+                    onClick={handleAddStaticRow}
+                  >
+                    <PlusOutlined aria-hidden />
+                    {t('paramInput.static.add')}
+                  </Button>
+                </div>
               </Form.Item>
             ) : (
               <>
-                <div className="mb-3 flex items-start gap-0">
-                  <Form.Item
-                    name="dynamicSourceId"
-                    label={t('paramInput.dynamic.source')}
-                    className="mb-0 flex-1"
-                    rules={[
-                      {
-                        required: true,
-                        message: t('paramInput.dynamic.sourcePlaceholder'),
-                      },
-                    ]}
-                  >
+                <Form.Item
+                  name="dynamicSourceId"
+                  label={t('paramInput.dynamic.source')}
+                  className={fieldClass}
+                  rules={[
+                    {
+                      required: true,
+                      message: t('paramInput.dynamic.sourcePlaceholder'),
+                    },
+                  ]}
+                >
+                  <AlignedControl>
                     <Select
+                      className="min-w-0 flex-1"
                       showSearch
                       loading={dsLoading}
                       value={dynamicSourceId}
@@ -1495,33 +1712,33 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                         )
                       }
                     />
-                  </Form.Item>
-                  <Button
-                    icon={<ReloadOutlined />}
-                    aria-label={t('paramInput.dynamic.preview')}
-                    disabled={!dynamicSourceId}
-                    loading={dynamicPreviewLoading}
-                    title={t('paramInput.dynamic.preview')}
-                    className="mt-[30px]"
-                    onClick={() => {
-                      if (!dynamicSourceId) return;
-                      const params: Record<string, unknown> = {};
-                      queryParamRows.forEach((row) => {
-                        const name = row.name.trim();
-                        if (!name || row.mode === 'ref') return;
-                        const literal = rowLiteralPayload(row);
-                        if (literal === undefined || literal === null || literal === '') return;
-                        params[name] = literal;
-                      });
-                      void fetchDynamicPreview(dynamicSourceId, params);
-                    }}
-                  />
-                </div>
+                    <Button
+                      icon={<ReloadOutlined />}
+                      aria-label={t('paramInput.dynamic.preview')}
+                      disabled={!dynamicSourceId}
+                      loading={dynamicPreviewLoading}
+                      title={t('paramInput.dynamic.preview')}
+                      className="shrink-0"
+                      onClick={() => {
+                        if (!dynamicSourceId) return;
+                        const params: Record<string, unknown> = {};
+                        queryParamRows.forEach((row) => {
+                          const name = row.name.trim();
+                          if (!name || row.mode === 'ref') return;
+                          const literal = rowLiteralPayload(row);
+                          if (literal === undefined || literal === null || literal === '') return;
+                          params[name] = literal;
+                        });
+                        void fetchDynamicPreview(dynamicSourceId, params);
+                      }}
+                    />
+                  </AlignedControl>
+                </Form.Item>
 
                 <Form.Item
                   name="dynamicValueField"
                   label={t('paramInput.dynamic.valueField')}
-                  className="mb-3"
+                  className={fieldClass}
                   rules={[
                     {
                       required: true,
@@ -1544,7 +1761,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                 <Form.Item
                   name="dynamicLabelField"
                   label={t('paramInput.dynamic.labelField')}
-                  className="mb-3"
+                  className={fieldClass}
                   rules={[
                     {
                       required: true,
@@ -1565,7 +1782,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                   />
                 </Form.Item>
                 {queryParamRows.length > 0 ? (
-                  <Form.Item label={t('paramInput.dynamic.queryParams')} className="mb-3">
+                  <Form.Item label={t('paramInput.dynamic.queryParams')} className={fieldTopClass}>
                     <Table<QueryParamRow>
                       className="w-full"
                       size="small"
@@ -1683,7 +1900,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                     ) : null}
                   </Form.Item>
                 ) : null}
-                <Form.Item label={t('paramInput.dynamic.preview')} className="mb-0">
+                <Form.Item label={t('paramInput.dynamic.preview')} className={horizontal ? fieldTopClass : 'mb-0'}>
                   <Table
                     bordered
                     size="small"
@@ -1698,7 +1915,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                 </Form.Item>
               </>
             )}
-          </>
+          </EditorSection>
         )}
       </Form>
     </Modal>

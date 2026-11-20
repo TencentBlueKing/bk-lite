@@ -1,7 +1,7 @@
 import './test-mocks';
 
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 
 import { WorkflowOrchestrationConsole } from '../components/workflow-console';
@@ -21,6 +21,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/utils/request', () => ({
+  HandledRequestError: class extends Error {},
   default: () => ({ get: mocks.get, patch: mocks.patch, post: mocks.post, del: mocks.del }),
 }));
 
@@ -306,6 +307,23 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByRole('button', { name: /调试详情/ })).toBeNull();
   });
 
+  it('未保存流程连续点击调试只创建一个草稿并打开一个调试表单', async () => {
+    mocks.post.mockImplementation((url: string, draft: Record<string, unknown>) => {
+      if (url === '/workflow/api/workflows/') return Promise.resolve({ ...workflow, ...draft, id: 7 });
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
+    render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="新草稿" /></App>);
+    fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
+    fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
+    await closeTopDialog();
+    const debugButton = screen.getByRole('button', { name: /调试流程/ });
+    act(() => { debugButton.click(); debugButton.click(); });
+    const confirm = await screen.findByRole('button', { name: /保存并继续/ });
+    fireEvent.click(confirm);
+    expect(await screen.findByText('调试当前草稿')).not.toBeNull();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
   it('表单触发器的节点测试和整流程调试共用 Schema 动态表单', async () => {
     const formWorkflow = {
       ...workflow,
@@ -425,7 +443,8 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       }
       return Promise.resolve([]);
     });
-    mocks.post.mockResolvedValue(debugRecord);
+    const firstStart = Promise.withResolvers<never>();
+    mocks.post.mockReturnValueOnce(firstStart.promise).mockResolvedValue(debugRecord);
 
     render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
     fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
@@ -435,13 +454,20 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(within(debugDialog!).getByText('调试入口')).not.toBeNull();
     fireEvent.mouseDown(within(debugDialog!).getByRole('combobox'));
     fireEvent.click(await screen.findByText('告警 Webhook · WEBHOOK'));
-    fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试' }));
+    const startButton = within(debugDialog!).getByRole('button', { name: '开始调试' });
+    act(() => { startButton.click(); startButton.click(); });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(startButton).toHaveProperty('disabled', true);
+    await act(async () => firstStart.reject(new Error('启动失败')));
+    expect(await screen.findByText('启动失败')).not.toBeNull();
+    expect(startButton).toHaveProperty('disabled', false);
+    fireEvent.click(startButton);
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/workflows/1/debug/',
       expect.objectContaining({ trigger_id: 'trigger_webhook', inputs: {} }),
     ));
-    expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(1);
+    expect(mocks.post.mock.calls.filter(([url]) => String(url).endsWith('/debug/'))).toHaveLength(2);
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /重新调试/ })).toBeNull();
     expect(await screen.findByText('执行详情')).not.toBeNull();
@@ -499,15 +525,16 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       }
       return Promise.resolve([]);
     });
+    const previewPending = Promise.withResolvers<void>();
     mocks.post.mockImplementation((url: string) => {
       if (url.endsWith('/triggers/schedule-preview/')) {
-        return Promise.resolve({
+        return previewPending.promise.then(() => ({
           config: { frequency: 'daily', time: ['02:00'], expressions: ['0 2 * * *'], timezone: 'Asia/Shanghai' },
           expressions: ['0 2 * * *'],
           timezone: 'Asia/Shanghai',
           next_runs: ['2026-09-19T02:00:00+08:00'],
           test_output: testOutput,
-        });
+        }));
       }
       if (url.endsWith('/workflows/1/debug/')) {
         return Promise.resolve(debugRecord);
@@ -516,7 +543,14 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     });
 
     render(<App><WorkflowOrchestrationConsole workflowId={1} /></App>);
-    fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
+    const debugButton = await screen.findByRole('button', { name: /调试流程/, description: '调试账号 admin · 组织 当前组织' });
+    const identity = screen.getByRole('group', { name: '调试账号 admin · 组织 当前组织' });
+    expect(within(identity).getByText('admin')).not.toBeNull();
+    expect(within(identity).getByText('当前组织')).not.toBeNull();
+    act(() => { debugButton.click(); debugButton.click(); });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(debugButton).toHaveProperty('disabled', true);
+    await act(async () => previewPending.resolve());
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/triggers/schedule-preview/',
@@ -561,7 +595,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
               },
               required: ['triggered_at', 'schedule', 'test'],
             },
-            config: { frequency: 'daily', time: ['02:00'] },
+            config: { frequency: 'daily', time: ['02:00'], execution_team_id: 8, execution_username: 'publisher' },
           },
         ],
         return_nodes: [],
@@ -614,7 +648,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(await screen.findByRole('button', { name: /调试流程/ }));
 
     const debugDialog = (await screen.findByText('调试当前草稿')).closest<HTMLElement>('.ant-modal-content');
-    expect(debugDialog).not.toBeNull();
+    expect(within(debugDialog!).getByRole('button', { name: '开始调试', description: '调试账号 admin · 组织 当前组织' })).not.toBeNull();
     fireEvent.mouseDown(within(debugDialog!).getByRole('combobox'));
     fireEvent.click(await screen.findByText('定时触发器 · SCHEDULE'));
 
@@ -622,7 +656,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(within(debugDialog!).queryByText('是否测试')).toBeNull();
     expect(within(debugDialog!).queryByText('调度规则')).toBeNull();
 
-    fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试' }));
+    fireEvent.click(within(debugDialog!).getByRole('button', { name: '开始调试', description: '调试账号 admin · 组织 运维二组' }));
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/workflows/1/debug/',
@@ -765,7 +799,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(within(windowsRow!).getByRole('checkbox')).toHaveProperty('disabled', true);
   });
 
-  it('Webhook 只保留自动接口与响应模式，并仅在等待模式开放响应节点', async () => {
+  it('Webhook 在立即响应时展示不可添加的响应节点，等待模式才允许添加', async () => {
     const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="Webhook 流程" /></App>);
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
@@ -774,24 +808,24 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(await screen.findByText('Webhook 接口')).not.toBeNull();
     const triggerName = screen.getByDisplayValue('Webhook 触发器');
     expect(triggerName.closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: /添加请求输入字段/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /添加请求输入字段/ }));
+    expect(screen.getByDisplayValue('新请求字段')).not.toBeNull();
     expect(screen.getByText('立即响应（返回 execution_id）')).not.toBeNull();
+    expect(screen.getByText('调用方要看到流程结果时，改为「等待流程结果」，再从节点列表添加「Webhook 响应」。')).not.toBeNull();
 
     fireEvent.click(document.querySelector<HTMLButtonElement>('.ant-modal-close')!);
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
-    expect(screen.queryByRole('button', { name: /Webhook 响应/ })).toBeNull();
-    const pickerClose = container.querySelector<HTMLButtonElement>('.ant-drawer-close');
-    expect(pickerClose).not.toBeNull();
-    if (!pickerClose) return;
-    fireEvent.click(pickerClose);
+    expect(screen.getByRole('button', { name: /Webhook 响应/ })).toHaveProperty('disabled', true);
+    await closeTopDialog();
 
-    const trigger = screen.getByRole('button', { name: /Webhook 触发器/ });
-    fireEvent.doubleClick(trigger);
+    const trigger = container.querySelector<HTMLButtonElement>('[data-workflow-node="trigger"] button[aria-label="Webhook 触发器"]');
+    expect(trigger).not.toBeNull();
+    fireEvent.doubleClick(trigger!);
     fireEvent.mouseDown(await screen.findByText('立即响应（返回 execution_id）'));
     fireEvent.click(await screen.findByText('等待流程结果（同步）'));
-    fireEvent.click(document.querySelector<HTMLButtonElement>('.ant-modal-close')!);
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
-    expect(await screen.findByRole('button', { name: /Webhook 响应/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /Webhook 响应/ })).toHaveProperty('disabled', false);
   });
 
   it('Webhook 监听真实测试请求并用 body 推断输入字段', async () => {
@@ -957,7 +991,27 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     expect(screen.queryByText('已捕获事件')).toBeNull();
   });
 
-  it('改定时频率只更新 config，不冲掉已扩展的 input_schema', async () => {
+  it('只读定时节点展示发布时绑定的账号和组织', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      if (!url.endsWith('/workflows/1/')) return [];
+      return {
+        ...workflow, current_version: 1, has_draft: false,
+        canvas_metadata: {
+          trigger_nodes: [{
+            id: 'schedule', name: '定时触发器', trigger_type: 'SCHEDULE',
+            input_schema: {}, config: { frequency: 'daily', time: ['02:00'], execution_username: 'scheduler-user', execution_team_id: 81 },
+          }],
+        },
+      };
+    });
+    render(<App><WorkflowOrchestrationConsole workflowId={1} mode="view" /></App>);
+    const trigger = await screen.findByText('定时触发器');
+    fireEvent.doubleClick(trigger);
+    expect(await screen.findByRole('textbox', { name: '执行账号' })).toHaveProperty('value', 'scheduler-user');
+    expect(screen.getByDisplayValue('81')).toHaveProperty('readOnly', true);
+  });
+
+  it('旧定时节点默认使用当前账号和组织，换组织和频率后保存单个组织并保留输入定义', async () => {
     const extendedSchema = {
       type: 'object',
       properties: {
@@ -1003,9 +1057,15 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.doubleClick(trigger);
 
     expect(await screen.findByText('触发频率')).not.toBeNull();
+    const account = screen.getByRole('textbox', { name: '执行账号' });
+    expect(account).toHaveProperty('value', 'admin');
+    expect(account).toHaveProperty('readOnly', true);
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('当前组织'));
+    fireEvent.click(await screen.findByText('运维二组'));
     fireEvent.mouseDown(screen.getByText('每天'));
     fireEvent.click(await screen.findByText('每周'));
     await closeTopDialog();
+    expect(screen.getByRole('button', { name: /调试流程/, description: '调试账号 admin · 组织 运维二组' })).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /保存草稿/ }));
 
     await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
@@ -1015,7 +1075,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
           trigger_nodes: [
             expect.objectContaining({
               trigger_type: 'SCHEDULE',
-              config: expect.objectContaining({ frequency: 'weekly' }),
+              config: { frequency: 'weekly', time: ['02:00'], weekdays: [1], execution_team_id: 8 },
               input_schema: expect.objectContaining({
                 properties: expect.objectContaining({
                   message: expect.objectContaining({ type: 'string', title: '告警/输入内容' }),
@@ -1117,7 +1177,8 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /定时触发器/ }));
 
-    expect(await screen.findByText('触发频率')).not.toBeNull();
+    const scheduleDialog = (await screen.findByText('触发频率')).closest<HTMLElement>('[role="dialog"]')!;
+    expect(within(scheduleDialog).getByText('当前组织')).not.toBeNull();
     expect(screen.getByText('每天')).not.toBeNull();
     expect(screen.getByLabelText('执行时间 1')).not.toBeNull();
     expect(screen.queryByText('时区')).toBeNull();
@@ -1129,7 +1190,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
       '/workflow/api/triggers/schedule-preview/',
-      expect.objectContaining({ config: expect.objectContaining({ frequency: 'daily', time: ['02:00'] }) }),
+      expect.objectContaining({ config: expect.objectContaining({ frequency: 'daily', time: ['02:00'], execution_team_id: 7 }) }),
     ));
     expect(await screen.findByText('上次测试')).not.toBeNull();
   });
@@ -1665,7 +1726,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(within(firstDialog!).getByRole('button', { name: '开始调试' }));
 
     expect(await screen.findByRole('button', { name: /调试详情/ })).not.toBeNull();
-    expect(await screen.findByRole('button', { name: /重新调试/ })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /重新调试/, description: '调试账号 admin · 组织 当前组织' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /调试流程/ })).toBeNull();
     await closeTopDialog();
 

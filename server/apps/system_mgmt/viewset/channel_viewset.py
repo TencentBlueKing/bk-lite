@@ -111,6 +111,9 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
     def _reject_if_opspilot_managed(self, request, channel):
         """OpsPilot 工作流自动托管的 NATS 通道禁止编辑/删除（防 API 绕过前端）。"""
         config = channel.config or {}
+        if channel.channel_type == ChannelChoices.NATS and config.get("source") == "workflow":
+            loader = self._get_loader(request)
+            return JsonResponse({"result": False, "message": loader.get("error.workflow_channel_readonly")}, status=403)
         if channel.channel_type == ChannelChoices.NATS and config.get("source") == "opspilot":
             loader = self._get_loader(request)
             message = loader.get(
