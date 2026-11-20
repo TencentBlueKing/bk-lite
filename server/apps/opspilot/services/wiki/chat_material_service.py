@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
-from django.db import transaction
-from django.db.models import Q
+from django.db import connection, transaction
+from django.db.models import Q, TextField
+from django.db.models.functions import Cast
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
@@ -34,8 +36,8 @@ REPLY_NAME_KB = "请指定要写入的知识库"
 REPLY_NOT_WRITTEN = "未写入知识库"
 
 _BODY_EXCERPT_LEN = 50
-_BODY_CAP = 4000
 _CREATED_BY_MAX = 32
+_MATERIAL_BUILD_TRIGGER = "material"
 _SUCCEEDED_BUILD_STATUSES = frozenset({"success", "partial"})
 _FAILED_BUILD_STATUSES = frozenset({"failed", "cancelled"})
 _FAILED_MATERIAL_STATUSES = frozenset({"build_failed", "parse_failed", "invalid"})
@@ -406,12 +408,6 @@ def _dispatch_wiki_material_write(material) -> None:
         )
 
 
-def _clip_body(value) -> str:
-    if not isinstance(value, str):
-        return ""
-    return value[:_BODY_CAP]
-
-
 def _positive_id(value):
     if isinstance(value, bool):
         return None
@@ -488,19 +484,40 @@ def _new_pages(build) -> list[dict]:
     return pages
 
 
+def _related_check_query(material_id: int) -> Q:
+    text = str(material_id)
+    return (
+        Q(related__materials__contains=[material_id])
+        | Q(related__materials__contains=[text])
+        | Q(related__materials__contains=[{"material_id": material_id}])
+        | Q(related__materials__contains=[{"material_id": text}])
+        | Q(related__materials__contains=[{"id": material_id}])
+        | Q(related__materials__contains=[{"id": text}])
+        | Q(related__materials__contains=[{"material_id": "", "id": material_id}])
+        | Q(related__materials__contains=[{"material_id": "", "id": text}])
+    )
+
+
+def _narrow_related_checks(queryset, material_id: int):
+    # SQLite 的 JSONField 没有 contains。先按资料 ID 缩小文本，再按 related.materials 的原语义过滤。
+    if connection.features.supports_json_field_contains:
+        return queryset.filter(_related_check_query(material_id))
+    text = str(material_id)
+    pattern = rf"(^|[^0-9]){re.escape(text)}([^0-9]|$)"
+    return queryset.annotate(_related_text=Cast("related", TextField())).filter(_related_text__regex=pattern)
+
+
 def _related_checks(material):
-    matched = []
-    queryset = CheckItem.objects.filter(knowledge_base_id=material.knowledge_base_id).select_related("candidate_version").order_by("id")
-    for check in queryset:
-        if material.pk in _related_material_ids(check.related):
-            matched.append(check)
-    return matched
+    queryset = CheckItem.objects.filter(knowledge_base_id=material.knowledge_base_id).select_related("candidate_version")
+    queryset = _narrow_related_checks(queryset, material.pk).order_by("id")
+    return [check for check in queryset if material.pk in _related_material_ids(check.related)]
 
 
 def _latest_build(material):
     return (
         BuildRecord.objects.filter(
             knowledge_base_id=material.knowledge_base_id,
+            trigger=_MATERIAL_BUILD_TRIGGER,
             inputs__material_id=material.pk,
         )
         .order_by("-id")
@@ -526,12 +543,14 @@ def _check_payload(check) -> dict:
         current = page.current_version
     candidate = check.candidate_version
     actions = check.suggested_actions if isinstance(check.suggested_actions, list) else []
+    current_body = getattr(current, "body", "")
+    incoming_body = getattr(candidate, "body", "")
     return {
         "id": check.id,
         "page_id": page.id if page is not None else page_id,
         "page_title": page.title if page is not None else "",
-        "current_body": _clip_body(getattr(current, "body", "")),
-        "incoming_body": _clip_body(getattr(candidate, "body", "")),
+        "current_body": current_body if isinstance(current_body, str) else "",
+        "incoming_body": incoming_body if isinstance(incoming_body, str) else "",
         "actions": list(actions),
         "status": check.status,
     }
@@ -548,24 +567,24 @@ def _outcome(material, phase: str, summary: str, pages: list, checks: list) -> d
 
 
 def read_chat_wiki_outcome(material) -> dict:
-    """从资料、该资料最新构建记录和相关检查项读出卡片结果。"""
+    """从资料、该资料最新的 material 构建记录和相关检查项读出卡片结果。"""
+    build = _latest_build(material)
+    build_status = getattr(build, "status", None)
+    if build_status in _FAILED_BUILD_STATUSES or material.status in _FAILED_MATERIAL_STATUSES:
+        return _outcome(material, "failed", REPLY_FAILED, [], [])
+    if build_status not in _SUCCEEDED_BUILD_STATUSES:
+        return _outcome(material, "writing", REPLY_SUCCESS, [], [])
     checks = _related_checks(material)
     payloads = [_check_payload(check) for check in checks]
     if any(check.status == "open" for check in checks):
         return _outcome(material, "needs_decision", SUMMARY_CONFLICT, [], payloads)
     if checks:
         return _outcome(material, "published", SUMMARY_CONFIRMED, [], payloads)
-    build = _latest_build(material)
-    build_status = getattr(build, "status", None)
-    if material.status in _FAILED_MATERIAL_STATUSES or build_status in _FAILED_BUILD_STATUSES:
-        return _outcome(material, "failed", REPLY_FAILED, [], [])
-    if build_status in _SUCCEEDED_BUILD_STATUSES and _new_count(build) > 0:
+    if _new_count(build) > 0:
         pages = _new_pages(build)
         titles = [page["title"] for page in pages if page["title"]]
         return _outcome(material, "published", SUMMARY_GENERATED_PREFIX + "、".join(titles), pages, [])
-    if build_status in _SUCCEEDED_BUILD_STATUSES:
-        return _outcome(material, "published", SUMMARY_QUIET, [], [])
-    return _outcome(material, "writing", REPLY_SUCCESS, [], [])
+    return _outcome(material, "published", SUMMARY_QUIET, [], [])
 
 
 def _record_decision_log(*, operator: str, domain: str, source_ip: str, material, check_id: int, action: str) -> None:
