@@ -1731,7 +1731,10 @@
         "uninstallConfirmChannels": "This takes the channel offline. Uninstall succeeds only when no channel instances use it.",
         "uninstallHasChannels": "Delete the channel instances before uninstalling this pack.",
         "deliveryChanged": "Delivery cannot change while channel instances exist",
-        "replaceUnavailable": "This pack is not loaded, so it cannot be replaced"
+        "replaceUnavailable": "This pack is not loaded, so it cannot be replaced",
+        "downloadIntegrationExample": "Download integration example",
+        "downloadChannelExample": "Download notification channel example",
+        "downloadExampleFailed": "Failed to download the example pack"
       },
       "createInstanceDesc": "Select a type from the list of connected integrated systems to create an instance of the integrated system"
     },

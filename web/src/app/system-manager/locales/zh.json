@@ -1731,7 +1731,10 @@
         "uninstallConfirmChannels": "将下线该渠道。无渠道实例时才会卸载成功。",
         "uninstallHasChannels": "请先删除该渠道下的渠道实例，再卸载。",
         "deliveryChanged": "已有渠道实例时不能更换投递方式",
-        "replaceUnavailable": "当前包未加载，不能更换"
+        "replaceUnavailable": "当前包未加载，不能更换",
+        "downloadIntegrationExample": "下载集成包示例",
+        "downloadChannelExample": "下载通知渠道包示例",
+        "downloadExampleFailed": "示例包下载失败"
       },
       "createInstanceDesc": "从已接入的集成系统类型中选择一个类型创建集成系统实例"
     },
