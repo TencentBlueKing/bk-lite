@@ -114,7 +114,7 @@ class MetricQueryService:
 
         # Metric类型: 从metric配置中获取instance_id_keys
         metric_id = self.policy.query_condition["metric_id"]
-        self.metric = Metric.objects.filter(id=metric_id).first()
+        self.metric = Metric.objects.filter(id=metric_id).select_related("monitor_plugin").first()
 
         if not self.metric:
             raise BaseAppException(f"metric does not exist [{metric_id}]")
@@ -164,6 +164,7 @@ class MetricQueryService:
             self.metric.query,
             query_condition.get("filter", []),
             base_filters=base_filters or None,
+            metric=self.metric,
         )
 
     def _scope_instance_id_keys(self):
@@ -533,7 +534,7 @@ class MetricQueryService:
         metric_ids = []
         for condition in conditions:
             metric_ids.extend(item.get("metric_id") for item in condition_metric_items(condition))
-        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids)}
+        metrics = {item.id: item for item in Metric.objects.filter(id__in=metric_ids).select_related("monitor_plugin")}
         missing = [metric_id for metric_id in metric_ids if metric_id not in metrics]
         if missing:
             raise BaseAppException(f"metric does not exist [{missing[0]}]")
@@ -578,6 +579,7 @@ class MetricQueryService:
                 metric.query or "",
                 condition.get("filter") or [],
                 base_filters=base_filters or None,
+                metric=metric,
             )
 
         def build_query(base_query, step, policy_like=policy_like, group_by=group_by):

@@ -1,6 +1,8 @@
 import math
 import re
 
+from rest_framework import serializers
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
@@ -8,16 +10,12 @@ from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.tasks.utils.policy_methods import (
     ALLOWED_FORECAST_LOOKBACK,
     COMPARE_MODE_BASELINE_DAYS,
-    COMPARE_SPAN_CONFLICT_MESSAGE,
-    span_value_message,
     COMPARE_MODE_BASELINE_WEEKS,
     COMPARE_MODE_OFFSET_DAYS,
     COMPARE_MODE_OFFSET_HOURS,
     COMPARE_MODES,
-    MAX_COMPARE_BASELINE_WEEKS,
-    MAX_COMPARE_OFFSET_DAYS,
-    MAX_COMPARE_OFFSET_HOURS,
     COMPARE_OFFSET_SECONDS,
+    COMPARE_SPAN_CONFLICT_MESSAGE,
     COMPARE_VALUE_KINDS,
     COMPARE_VALUE_KINDS_BY_MODE,
     COUNT_IF_ALGORITHM,
@@ -25,6 +23,9 @@ from apps.monitor.tasks.utils.policy_methods import (
     HIGH_SIDE_METHODS,
     LEVEL_ALGORITHMS,
     LOW_SIDE_METHODS,
+    MAX_COMPARE_BASELINE_WEEKS,
+    MAX_COMPARE_OFFSET_DAYS,
+    MAX_COMPARE_OFFSET_HOURS,
     NEW_ALGORITHMS,
     PER_SERIES_ALGORITHMS,
     POLICY_ALGORITHMS,
@@ -32,9 +33,9 @@ from apps.monitor.tasks.utils.policy_methods import (
     base_query_contains_rate_function,
     period_to_seconds,
     resolve_result_unit,
+    span_value_message,
 )
 from apps.monitor.utils.unit_converter import UnitConverter
-from rest_framework import serializers
 
 # 阈值条件合法等级 —— 取自 MonitorPolicy.LEVEL_CHOICES 的用户可选档（排除系统在无数据时自动生成的 no_data）
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
@@ -47,7 +48,7 @@ _VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
 # 枚举指标阈值只能做等值比较，与策略页 ENUM_COMPARISON_METHOD 一致。
 _ENUM_THRESHOLD_METHODS = {"=", "!="}
 # label name 合法正则（Prometheus 规范）
-_LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+_LABEL_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 class MonitorPolicySerializer(serializers.ModelSerializer):
@@ -70,9 +71,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         from apps.monitor.services.alert_handlers import AlertHandlerInvalid, normalize_policy_handlers
 
         handlers = attrs["handlers"] if handlers_provided else list(getattr(self.instance, "handlers", None) or [])
-        organizations = (
-            attrs["organizations"] if organizations_provided else list(getattr(self.instance, "organizations", None) or [])
-        )
+        organizations = attrs["organizations"] if organizations_provided else list(getattr(self.instance, "organizations", None) or [])
         try:
             resolved = normalize_policy_handlers(handlers, organizations)
         except AlertHandlerInvalid as exc:
@@ -139,19 +138,13 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"threshold[{index}] 缺少 value")
             raw_value = item.get("value")
             if isinstance(raw_value, bool):
-                raise serializers.ValidationError(
-                    f"threshold[{index}].value 必须是有限数值"
-                )
+                raise serializers.ValidationError(f"threshold[{index}].value 必须是有限数值")
             try:
                 number = float(raw_value)
             except (TypeError, ValueError) as err:
-                raise serializers.ValidationError(
-                    f"threshold[{index}].value 必须是有限数值"
-                ) from err
+                raise serializers.ValidationError(f"threshold[{index}].value 必须是有限数值") from err
             if not math.isfinite(number):
-                raise serializers.ValidationError(
-                    f"threshold[{index}].value 必须是有限数值"
-                )
+                raise serializers.ValidationError(f"threshold[{index}].value 必须是有限数值")
             if item.get("level") not in _VALID_THRESHOLD_LEVELS:
                 raise serializers.ValidationError(f"threshold[{index}].level 非法，须为 {sorted(_VALID_THRESHOLD_LEVELS)} 之一")
         return value
@@ -165,12 +158,8 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
     def get_effective_units(self, attrs):
         metric_unit = self._get_value(attrs, "metric_unit", "") or ""
-        calculation_unit = (
-            self._get_value(attrs, "calculation_unit", "") or metric_unit
-        )
-        threshold_unit = (
-            self._get_value(attrs, "threshold_unit", "") or calculation_unit
-        )
+        calculation_unit = self._get_value(attrs, "calculation_unit", "") or metric_unit
+        threshold_unit = self._get_value(attrs, "threshold_unit", "") or calculation_unit
         return calculation_unit, threshold_unit
 
     def validate(self, attrs):
@@ -203,43 +192,22 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             if result_unit.unit and not UnitConverter.is_known_unit(result_unit.unit):
                 raise serializers.ValidationError({"calculation_unit": "结果单位无效"})
             effective_threshold = threshold_unit or result_unit.unit
-            if (
-                result_unit.unit
-                and effective_threshold
-                and effective_threshold != result_unit.unit
-            ):
-                raise serializers.ValidationError(
-                    {
-                        "threshold_unit": (
-                            f"阈值单位必须与结果单位 {result_unit.unit} 一致"
-                        )
-                    }
-                )
+            if result_unit.unit and effective_threshold and effective_threshold != result_unit.unit:
+                raise serializers.ValidationError({"threshold_unit": (f"阈值单位必须与结果单位 {result_unit.unit} 一致")})
             return attrs
 
         if not calculation_unit and not threshold_unit:
             # Trap、枚举指标与历史 PMQ 策略没有数值单位，保持现有契约。
             if query_condition.get("type") in {"pmq", "metric"}:
                 return attrs
-            raise serializers.ValidationError(
-                {"threshold_unit": "数值型告警阈值必须配置结果单位和阈值单位"}
-            )
+            raise serializers.ValidationError({"threshold_unit": "数值型告警阈值必须配置结果单位和阈值单位"})
 
         if not UnitConverter.is_known_unit(calculation_unit):
-            raise serializers.ValidationError(
-                {"calculation_unit": "结果单位无效"}
-            )
+            raise serializers.ValidationError({"calculation_unit": "结果单位无效"})
         if not UnitConverter.is_known_unit(threshold_unit):
             raise serializers.ValidationError({"threshold_unit": "阈值单位无效"})
         if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
-            raise serializers.ValidationError(
-                {
-                    "threshold_unit": (
-                        f"阈值单位 {threshold_unit} 不能转换为结果单位 "
-                        f"{calculation_unit}"
-                    )
-                }
-            )
+            raise serializers.ValidationError({"threshold_unit": (f"阈值单位 {threshold_unit} 不能转换为结果单位 " f"{calculation_unit}")})
         return attrs
 
     def validate_trigger_count(self, value):
@@ -303,13 +271,9 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             name = condition.get("name", "")
             method = condition.get("method", "")
             if name and not _LABEL_NAME_RE.match(str(name)):
-                raise serializers.ValidationError(
-                    f"filter[{idx}].name={name!r} 包含非法字符，只允许 [a-zA-Z_][a-zA-Z0-9_]*"
-                )
+                raise serializers.ValidationError(f"filter[{idx}].name={name!r} 包含非法字符，只允许 [a-zA-Z_][a-zA-Z0-9_]*")
             if method and method not in _VALID_LABEL_METHODS:
-                raise serializers.ValidationError(
-                    f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
-                )
+                raise serializers.ValidationError(f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}")
             if isinstance(condition.get("value"), (list, tuple, set, dict)):
                 raise serializers.ValidationError(f"filter[{idx}].value 必须是标量")
         return value
@@ -338,9 +302,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
     def validate_group_algorithm(self, value):
         """校验分组聚合算法须为下游支持的聚合函数。"""
         if value and value not in _VALID_GROUP_AGGREGATION_ALGORITHMS:
-            raise serializers.ValidationError(
-                f"group_algorithm 非法，须为 {sorted(_VALID_GROUP_AGGREGATION_ALGORITHMS)} 之一"
-            )
+            raise serializers.ValidationError(f"group_algorithm 非法，须为 {sorted(_VALID_GROUP_AGGREGATION_ALGORITHMS)} 之一")
         return value
 
     def validate_group_by(self, value):
@@ -386,18 +348,14 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if not value:
             return "absolute"
         if value not in COMPARE_MODES:
-            raise serializers.ValidationError(
-                f"compare_mode 非法，须为 {sorted(COMPARE_MODES)} 之一"
-            )
+            raise serializers.ValidationError(f"compare_mode 非法，须为 {sorted(COMPARE_MODES)} 之一")
         return value
 
     def validate_compare_value_kind(self, value):
         if not value:
             return ""
         if value not in COMPARE_VALUE_KINDS:
-            raise serializers.ValidationError(
-                f"compare_value_kind 非法，须为 {sorted(COMPARE_VALUE_KINDS)} 之一"
-            )
+            raise serializers.ValidationError(f"compare_value_kind 非法，须为 {sorted(COMPARE_VALUE_KINDS)} 之一")
         return value
 
     def validate_recovery_threshold(self, value):
@@ -407,9 +365,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("recovery_threshold 必须是对象")
         valid_methods = set(AlertConstants.THRESHOLD_METHODS)
         if value.get("method") not in valid_methods:
-            raise serializers.ValidationError(
-                f"recovery_threshold.method 非法，须为 {sorted(valid_methods)} 之一"
-            )
+            raise serializers.ValidationError(f"recovery_threshold.method 非法，须为 {sorted(valid_methods)} 之一")
         if "value" not in value:
             raise serializers.ValidationError("recovery_threshold 缺少 value")
         raw_value = value.get("value")
@@ -418,9 +374,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         try:
             number = float(raw_value)
         except (TypeError, ValueError) as err:
-            raise serializers.ValidationError(
-                "recovery_threshold.value 必须是有限数值"
-            ) from err
+            raise serializers.ValidationError("recovery_threshold.value 必须是有限数值") from err
         if not math.isfinite(number):
             raise serializers.ValidationError("recovery_threshold.value 必须是有限数值")
         return value
@@ -428,8 +382,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
     def _result_unit_policy_like(self, attrs):
         return {
             "algorithm": self._get_value(attrs, "algorithm", ""),
-            "compare_mode": self._get_value(attrs, "compare_mode", "absolute")
-            or "absolute",
+            "compare_mode": self._get_value(attrs, "compare_mode", "absolute") or "absolute",
             "compare_value_kind": self._get_value(attrs, "compare_value_kind", "") or "",
             "metric_unit": self._get_value(attrs, "metric_unit", "") or "",
             "calculation_unit": self._get_value(attrs, "calculation_unit", "") or "",
@@ -457,7 +410,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         metric = Metric.objects.filter(id=metric_id).first()
         if not metric:
             return ""
-        return compile_filter_to_query(metric.query or "", query_condition.get("filter") or [])
+        return compile_filter_to_query(metric.query or "", query_condition.get("filter") or [], metric=metric)
 
     def _is_enum_metric(self, attrs):
         query_condition = self._get_value(attrs, "query_condition", {}) or {}
@@ -478,7 +431,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         attrs["recovery_threshold"] = {}
         return attrs
 
-    def _validate_calc_enrichment(self, attrs):
+    def _validate_calc_enrichment(self, attrs):  # noqa: C901
         collect_type = self._get_value(attrs, "collect_type", "") or ""
         query_condition = self._get_value(attrs, "query_condition", {}) or {}
         if isinstance(query_condition, dict) and query_condition.get("type") == "multi" and collect_type == "trap":
@@ -496,10 +449,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
 
         allowed_kinds = COMPARE_VALUE_KINDS_BY_MODE.get(compare_mode)
         if allowed_kinds is not None and compare_kind not in allowed_kinds:
-            errors["compare_value_kind"] = (
-                f"compare_mode={compare_mode} 只允许 compare_value_kind 为 "
-                f"{sorted(allowed_kinds)}"
-            )
+            errors["compare_value_kind"] = f"compare_mode={compare_mode} 只允许 compare_value_kind 为 " f"{sorted(allowed_kinds)}"
 
         if compare_mode == "timeleft" and algorithm not in LEVEL_ALGORITHMS:
             errors["algorithm"] = "距容量线剩余时间只允许 avg/max/min/last 类汇聚"
@@ -519,18 +469,12 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 if lookback_key not in ALLOWED_FORECAST_LOOKBACK:
                     errors["forecast_lookback"] = "回看窗只允许 1h / 4h / 24h"
             thresholds = self._get_value(attrs, "threshold", []) or []
-            trigger_methods = {
-                item.get("method")
-                for item in thresholds
-                if isinstance(item, dict) and item.get("method")
-            }
+            trigger_methods = {item.get("method") for item in thresholds if isinstance(item, dict) and item.get("method")}
             if trigger_methods - LOW_SIDE_METHODS:
                 errors["threshold"] = "距容量线剩余时间只允许 < / <= 阈值"
             unit = str(self._get_value(attrs, "forecast_target_unit", "") or "").strip()
             metric_unit = str(self._get_value(attrs, "metric_unit", "") or "").strip()
-            if unit and (
-                not metric_unit or not UnitConverter.is_convertible(unit, metric_unit)
-            ):
+            if unit and (not metric_unit or not UnitConverter.is_convertible(unit, metric_unit)):
                 errors["forecast_target_unit"] = "容量线单位必须与指标单位属于同一量纲"
             attrs["forecast_target_unit"] = unit
         else:
@@ -583,11 +527,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         if span:
             field, limit, unit_seconds, label = span
             raw_span = self._get_value(attrs, field, None)
-            minimum = (
-                2
-                if compare_mode in (COMPARE_MODE_BASELINE_WEEKS, COMPARE_MODE_BASELINE_DAYS)
-                else 1
-            )
+            minimum = 2 if compare_mode in (COMPARE_MODE_BASELINE_WEEKS, COMPARE_MODE_BASELINE_DAYS) else 1
             span_message = span_value_message(label, raw_span, minimum, limit)
             if span_message:
                 errors[field] = span_message
@@ -604,11 +544,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                         stride_seconds = 7 * 86400
                     else:
                         stride_seconds = 86400
-                    if (
-                        period_seconds
-                        and period_seconds % stride_seconds == 0
-                        and 1 <= period_seconds // stride_seconds <= raw_span
-                    ):
+                    if period_seconds and period_seconds % stride_seconds == 0 and 1 <= period_seconds // stride_seconds <= raw_span:
                         errors["compare_mode"] = COMPARE_SPAN_CONFLICT_MESSAGE
             if "compare_mode" in attrs:
                 for other, *_rest in span_fields.values():
@@ -627,11 +563,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         recovery = self._get_value(attrs, "recovery_threshold", {}) or {}
         thresholds = self._get_value(attrs, "threshold", []) or []
         if recovery:
-            trigger_methods = {
-                item.get("method")
-                for item in thresholds
-                if isinstance(item, dict) and item.get("method")
-            }
+            trigger_methods = {item.get("method") for item in thresholds if isinstance(item, dict) and item.get("method")}
             recovery_method = recovery.get("method")
             if trigger_methods & HIGH_SIDE_METHODS and trigger_methods & LOW_SIDE_METHODS:
                 errors["recovery_threshold"] = "多级触发方向不一致时不能配置恢复阈值"
@@ -725,11 +657,9 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                         return
                 continue
             if algorithm == "rate":
-                base_query = compile_filter_to_query(metric.query or "", condition.get("filter") or [])
+                base_query = compile_filter_to_query(metric.query or "", condition.get("filter") or [], metric=metric)
                 if base_query_contains_rate_function(base_query):
-                    errors["query_condition"] = (
-                        f"条件 {ref} 的基础查询已包含 rate/irate/increase，不能再选速率类汇聚"
-                    )
+                    errors["query_condition"] = f"条件 {ref} 的基础查询已包含 rate/irate/increase，不能再选速率类汇聚"
                     return
             self._validate_condition_units(condition, errors)
             if errors:
@@ -760,9 +690,7 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             errors["query_condition"] = f"条件 {ref} 的阈值单位无效"
             return
         if not UnitConverter.is_convertible(threshold_unit, calculation_unit):
-            errors["query_condition"] = (
-                f"条件 {ref} 的阈值单位 {threshold_unit} 不能转换为结果单位 {calculation_unit}"
-            )
+            errors["query_condition"] = f"条件 {ref} 的阈值单位 {threshold_unit} 不能转换为结果单位 {calculation_unit}"
 
     def _condition_unit_policy_like(self, condition):
         return {

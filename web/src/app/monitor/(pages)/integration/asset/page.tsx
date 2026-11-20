@@ -1059,9 +1059,15 @@ const Asset = () => {
     const templateName = plugin?.display_name || plugin?.name || '--';
     modal.confirm({
       title: t('monitor.integrations.unbindTemplateTitle'),
-      content: t('monitor.integrations.unbindTemplateContent', '', {
-        name: templateName
-      }),
+      content:
+        plugin?.collect_type === 'script' || plugin?.template_type === 'script'
+          ? t(
+            'monitor.integrations.scriptUnbindContent',
+            '只移除这份脚本采集，不会删除该实例，也不影响其它采集。'
+          )
+          : t('monitor.integrations.unbindTemplateContent', '', {
+            name: templateName
+          }),
       centered: true,
       okText: t('common.delete'),
       cancelText: t('common.cancel'),

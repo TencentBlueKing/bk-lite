@@ -1171,8 +1171,23 @@ class InstanceConfigService:
         )
 
         # 对需要统一实例身份的对象应用 identity adapter，统一 storage/logical/raw 三层 ID
-        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name", "instance_id_keys", "level").first()
         monitor_object_name = monitor_object.name if monitor_object else ""
+        script_attach = str(collect_type or "").casefold() == "script"
+        if script_attach:
+            from apps.monitor.services.script_attach import (
+                SCRIPT_ATTACH_NEED_INSTANCE,
+                SCRIPT_ATTACH_UNSUPPORTED,
+                bind_script_attach_instance_keys,
+                is_single_key_instance_object,
+            )
+
+            if monitor_object is None or not is_single_key_instance_object(monitor_object):
+                raise BaseAppException(SCRIPT_ATTACH_UNSUPPORTED)
+            try:
+                bind_script_attach_instance_keys(sanitized_instances)
+            except ValueError:
+                raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
         is_host_monitoring_onboarding = HostDeploymentStatus.applies_to(
             monitor_object_name,
             collector,
@@ -1254,32 +1269,48 @@ class InstanceConfigService:
                         collect_type=HostDeploymentStatus.COLLECT_TYPE,
                     ).exists():
                         raise BaseAppException("监控实例已存在主机监控配置，无法重复接入")
-                if not new_instances and not existing_instances and not reattached_ids:
+                if script_attach and (new_instances or reclaimable_ids or not existing_instances):
+                    raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
+                if (
+                    script_attach
+                    and MonitorInstance.objects.filter(
+                        id__in=[instance["instance_id"] for instance in existing_instances],
+                        is_active=False,
+                    ).exists()
+                ):
+                    raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
+                if not script_attach and not new_instances and not existing_instances and not reattached_ids:
                     logger.info("没有需要处理的实例")
                     return []
 
                 if new_instances or existing_instances:
-                    logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
-                    if reclaimable_ids:
-                        from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
+                    if script_attach:
+                        # 只新增或更新这份脚本配置，不新建实例，也不改已有实例的名称、组织和属性。
+                        config_instances = existing_instances
+                        created_instance_ids = []
+                    else:
+                        logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
+                        if reclaimable_ids:
+                            from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 
-                        MonitorInstanceRemovalService.remove(reclaimable_ids)
+                            MonitorInstanceRemovalService.remove(reclaimable_ids)
 
-                    # 阶段2：数据库操作（使用外层事务）
-                    created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
-                        new_instances,
-                        existing_instances,
-                        monitor_object_id,
-                        actor_context=actor_context,
-                    )
-                    logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
+                        # 阶段2：数据库操作（使用外层事务）
+                        created_instance_ids, created_rule_ids = InstanceConfigService._create_instances_in_db(
+                            new_instances,
+                            existing_instances,
+                            monitor_object_id,
+                            actor_context=actor_context,
+                        )
+                        config_instances = new_instances + existing_instances
+                        logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 
                     # 阶段3：调用 Controller 创建采集配置（使用外层事务）
                     # 注意：所有实例（新建+已存在）都需要创建采集配置
                     sanitized_data = {**data}
                     sanitized_data["instances"] = [
                         {key: value for key, value in instance.items() if key not in {"_summary_fact_source", "summary_facts"}}
-                        for instance in new_instances + existing_instances
+                        for instance in config_instances
                     ]
                     sanitized_data["monitor_plugin_id"] = monitor_plugin_id
                     onboarding_ids = [
@@ -1295,15 +1326,13 @@ class InstanceConfigService:
                     )
                     logger.info("采集配置创建成功")
                     policy_group_context = {
-                        "new_instances": new_instances,
+                        "new_instances": [] if script_attach else new_instances,
                         "existing_instances": existing_instances,
                         "created_ids": set(created_instance_ids),
                         "choice": data.get("policy_group"),
                     }
                     processed_instance_ids = [
-                        str(instance["instance_id"])
-                        for instance in new_instances + existing_instances
-                        if instance.get("instance_id") not in (None, "")
+                        str(instance["instance_id"]) for instance in config_instances if instance.get("instance_id") not in (None, "")
                     ]
                     finalize_onboarding_credential(
                         processed_instance_ids,
@@ -1420,6 +1449,7 @@ class InstanceConfigService:
             from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
 
             existing_rows = NodeMgmt().get_child_configs_by_ids([child_info["id"]])
+            old_content = None
             if existing_rows and existing_rows[0].get("content"):
                 old_content = ConfigFormat.toml_to_dict(existing_rows[0]["content"])
                 child_info["content"] = _restore_config_secrets(child_info.get("content") or {}, old_content)
@@ -1428,7 +1458,10 @@ class InstanceConfigService:
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
             if str(config_obj.collect_type or "").casefold() == "script":
                 from apps.monitor.services.custom_script_plugin import prepare_script_child_content_for_save
+                from apps.monitor.services.script_attach import assert_script_identity_unchanged
 
+                if old_content is not None:
+                    assert_script_identity_unchanged(old_content, child_info.get("content") or {})
                 child_info["content"] = prepare_script_child_content_for_save(child_info.get("content") or {})
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:

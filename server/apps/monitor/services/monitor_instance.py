@@ -437,10 +437,17 @@ class InstanceSearch:
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
 
         # 先去重各插件的 status_query 并并发拉取状态映射，避免在下面的插件循环里逐个串行发 VM 查询
-        status_map_by_query = self._batch_plugin_status_maps(
-            instance_id_keys,
-            {plugin.status_query for plugin in plugins},
-        )
+        from apps.monitor.services.script_attach import is_script_plugin, script_plugin_status_probe
+
+        status_requests = []
+        for plugin in plugins:
+            if is_script_plugin(plugin):
+                # 脚本状态只认模板 id，避免和原生短名撞车，也不用插件数字主键。
+                probe = script_plugin_status_probe(plugin, instance_id_keys) or plugin.status_query
+                status_requests.append((probe, False))
+            else:
+                status_requests.append((plugin.status_query, True))
+        status_map_by_query = self._batch_plugin_status_maps(instance_id_keys, status_requests)
 
         for plugin in plugins:
             # 添加翻译属性
@@ -459,7 +466,11 @@ class InstanceSearch:
             legacy_plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
             plugin_map.setdefault(legacy_plugin_key, plugin_info)
 
-            status_map = status_map_by_query.get(plugin.status_query, {})
+            if is_script_plugin(plugin):
+                status_key = script_plugin_status_probe(plugin, instance_id_keys) or plugin.status_query
+            else:
+                status_key = plugin.status_query
+            status_map = status_map_by_query.get(status_key, {})
             plugin_status_map[plugin.id] = status_map
             if legacy_plugin_key_counts[legacy_plugin_key] == 1:
                 plugin_status_map[legacy_plugin_key] = status_map
@@ -915,7 +926,12 @@ class InstanceSearch:
         if not monitor_object_id or not isinstance(vm_params, dict):
             return qs
 
-        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, data_type="Enum").exclude(query="").order_by("id")
+        metrics = (
+            Metric.objects.filter(monitor_object_id=monitor_object_id, data_type="Enum")
+            .exclude(query="")
+            .select_related("monitor_plugin")
+            .order_by("id")
+        )
         seen_names = set()
         unique_metrics = []
         for metric in metrics:
@@ -943,7 +959,9 @@ class InstanceSearch:
             if all_ids and selected >= all_ids:
                 continue
 
-            query = InstanceSearch._replace_promql_labels(metric.query, labels)
+            from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+            query = isolate_metric_query(InstanceSearch._replace_promql_labels(metric.query, labels), metric)
             metrics_result = VictoriaMetricsAPI().query(query, step="20m")
             matched_ids = []
             instance_id_keys = metric.instance_id_keys or []
@@ -1150,19 +1168,34 @@ class InstanceSearch:
         return dict(count=count, results=serialized)
 
     def _batch_plugin_status_maps(self, instance_id_keys, queries):
-        """并发拉取多个插件 status_query 的正常状态映射，返回 {query: status_map}。
+        """并发拉取多个插件状态查询，返回 {query: status_map}。
 
-        每个 query 是一次独立的 VM 读，去重相同 query 后并发执行——结果与逐个串行查询完全一致，
-        只是把插件列表页的 N 次串行 VM 查询压成一批并发，消除「插件越多越慢」。
-        单个 query 失败降级为空映射、不影响其余 query（与原逐个调用各自独立的语义一致）。
+        queries 可以是查询字符串，或 (query, isolate_script)。原生查询会排除脚本序列；
+        脚本查询保持调用方已经收窄过的探测。
         """
-        unique_queries = [query for query in queries if query and str(query).strip()]
+        normalized = []
+        for item in queries:
+            if isinstance(item, tuple):
+                query, isolate_script = item
+            else:
+                query, isolate_script = item, False
+            if query and str(query).strip():
+                normalized.append((query, bool(isolate_script)))
+        unique_queries = list(dict.fromkeys(normalized))
         if not unique_queries:
             return {}
         max_workers = min(len(unique_queries), PLUGIN_STATUS_QUERY_MAX_WORKERS)
         status_map_by_query = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_query = {executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries}
+            future_to_query = {
+                executor.submit(
+                    self.get_plugin_normal_status_map,
+                    instance_id_keys,
+                    query,
+                    isolate_script=isolate_script,
+                ): query
+                for query, isolate_script in unique_queries
+            }
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
                 try:
@@ -1172,10 +1205,16 @@ class InstanceSearch:
                     status_map_by_query[query] = {}
         return status_map_by_query
 
-    def get_plugin_normal_status_map(self, instance_id_keys, query):
+    def get_plugin_normal_status_map(self, instance_id_keys, query, *, isolate_script=False):
         if not query or not str(query).strip():
             return {}
-        resp = VictoriaMetricsAPI().query(last_sample_timestamp_query(query), step=LAST_SAMPLE_LOOKBACK)
+        if isolate_script:
+            from apps.monitor.utils.script_series_isolation import isolate_status_timestamp_query
+
+            prepared = isolate_status_timestamp_query(query)
+        else:
+            prepared = last_sample_timestamp_query(query)
+        resp = VictoriaMetricsAPI().query(prepared, step=LAST_SAMPLE_LOOKBACK)
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
@@ -1210,7 +1249,9 @@ class InstanceSearch:
                 query = query.replace("}", f",{params_str}}}", 1)
             else:
                 query = f"{query}{{{params_str}}}"
-        metrics = VictoriaMetricsAPI().query(last_sample_timestamp_query(query), step=LAST_SAMPLE_LOOKBACK)
+        from apps.monitor.utils.script_series_isolation import isolate_status_timestamp_query
+
+        metrics = VictoriaMetricsAPI().query(isolate_status_timestamp_query(query), step=LAST_SAMPLE_LOOKBACK)
         return metrics.get("data", {}).get("result", [])
 
     @staticmethod

@@ -22,7 +22,7 @@ from apps.monitor.utils.alert_name_variables import summary_facts_with_model_ip
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.instance import list_reporting_status
-from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_timestamp_query, last_sample_unix_seconds
+from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
@@ -91,6 +91,10 @@ class MonitorObjectService:
         if not metric:
             return {}
 
+        from apps.monitor.utils.script_series_isolation import isolate_status_timestamp_query
+
+        # 默认状态按原始样本时间排除脚本序列。脚本探测自己已带 collect_type，不会被改写。
+        metric = isolate_status_timestamp_query(metric)
         cache_key = hashlib.md5(f"{metric}|{','.join(instance_id_keys or [])}".encode("utf-8")).hexdigest()
         now = time.monotonic()
         cached = _instance_status_cache.get(cache_key)
@@ -99,7 +103,7 @@ class MonitorObjectService:
 
         from apps.monitor.services.metrics import Metrics
 
-        query = last_sample_timestamp_query(metric)
+        query = metric
         if not Metrics.query_already_limited(query):
             query = f"limitk({STATUS_QUERY_MAX_SERIES}, {query})"
 
@@ -241,6 +245,7 @@ class MonitorObjectService:
         instance_ids=None,
         ordering=None,
         order="asc",
+        script_attach_candidates=False,
     ):
         """获取监控对象实例"""
         from apps.monitor.services.instance_list_ordering import apply_ordering_to_instances, parse_ordering_params
@@ -281,30 +286,45 @@ class MonitorObjectService:
 
         instance_id_keys = obj_metric_map.get("instance_id_keys") or []
         status_query = obj_metric_map.get("default_metric", "")
+        plugin_membership = None
         if monitor_plugin_id:
             plugin = (
                 MonitorPlugin.objects.filter(
                     id=monitor_plugin_id,
                     monitor_object=monitor_object_id,
                 )
-                .only("id", "status_query")
+                .only("id", "status_query", "collect_type", "template_type", "template_id")
                 .first()
             )
             if not plugin:
                 return {"count": 0, "results": []}
+            from apps.monitor.services.script_attach import plugin_filter_membership, script_plugin_status_probe
+
+            plugin_membership = plugin_filter_membership(monitor_obj, plugin)
+            script_probe = script_plugin_status_probe(plugin, instance_id_keys)
+            if script_probe:
+                status_query = script_probe
             # 复合插件（K8S Cluster/Pod/Node）共用集群级 status_query。
             # 派生对象身份键更长，硬套插件查询会拼出 ('cluster', None) 把列表洗空。
-            if plugin.status_query and MonitorObjectService.plugin_status_query_covers_identity(
+            elif plugin.status_query and MonitorObjectService.plugin_status_query_covers_identity(
                 plugin.status_query,
                 instance_id_keys,
             ):
                 status_query = plugin.status_query
 
+        if script_attach_candidates:
+            from apps.monitor.services.script_attach import exclude_script_only_instances
+
+            qs = exclude_script_only_instances(qs)
+
         instance_map = MonitorObjectService._safe_get_instances_by_metric(
             status_query,
             instance_id_keys,
         )
-        if monitor_plugin_id:
+        if plugin_membership is not None:
+            # 成员来自 CollectConfig。已配置但还没出点的实例保留，卸载后的过期点不再占位。
+            qs = qs.filter(id__in=list(plugin_membership))
+        elif monitor_plugin_id:
             qs = qs.filter(id__in=instance_map.keys())
 
         status_raw = None
@@ -400,6 +420,9 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         query = metric_obj.query.replace("__$labels__", f"{', '.join(query_parts)}")
+        from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+        query = isolate_metric_query(query, metric_obj)
         vm_api = VictoriaMetricsAPI()
         metrics = vm_api.query(query)
         metric_results = metrics.get("data", {}).get("result", [])
@@ -480,12 +503,17 @@ class MonitorObjectService:
     def _build_field_query(metric_obj, labels_str):
         """按实例标签过滤条件拼出字段展示列的取数查询。"""
         query_template = (getattr(metric_obj, "query", "") or "").strip()
+        from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
         if "__$labels__" in query_template:
-            return query_template.replace("__$labels__", labels_str)
-        metric_name = (getattr(metric_obj, "name", "") or "").strip()
-        if metric_name:
-            return f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
-        return query_template
+            built = query_template.replace("__$labels__", labels_str)
+        else:
+            metric_name = (getattr(metric_obj, "name", "") or "").strip()
+            if metric_name:
+                built = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+            else:
+                built = query_template
+        return isolate_metric_query(built, metric_obj)
 
     @staticmethod
     def query_field_label_values(metric_obj, field):
@@ -706,7 +734,7 @@ class MonitorObjectService:
         groups = {}
         for item in resolved:
             metric_obj = item[2]
-            group_key = (metric_obj.query, tuple(metric_obj.instance_id_keys))
+            group_key = (metric_obj.monitor_plugin_id, metric_obj.query, tuple(metric_obj.instance_id_keys))
             groups.setdefault(group_key, []).append(item)
 
         for items in groups.values():

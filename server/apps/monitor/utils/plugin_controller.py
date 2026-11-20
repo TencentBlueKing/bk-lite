@@ -663,6 +663,11 @@ class Controller:
                         "plugin_id": plugin_template_id or plugin_id,
                         "monitor_plugin_id": plugin_id,
                     }
+                    if str(collect_type or "") == "script":
+                        template_label = str(plugin_template_id or "").strip()
+                        if not template_label:
+                            raise BaseAppException("脚本采集缺少模板标识，无法下发")
+                        render_context["plugin_id"] = template_label
                     node_os = os_by_node.get(str(config_info.get("node_id") or ""))
                     if node_os and not str(render_context.get("operating_system") or "").strip():
                         render_context["operating_system"] = node_os
