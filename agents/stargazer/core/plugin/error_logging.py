@@ -120,12 +120,22 @@ def log_plugin_exception(
 
     log_method = getattr(logger, level, logger.error)
     frames = _traceback_frames(error)
+    cause = error.__cause__ or error.__context__
+    if cause is None or cause is error:
+        cause_type = "-"
+        cause_message = "-"
+    else:
+        cause_type = _safe_token(type(cause).__name__)
+        cause_message = _safe_error_message(cause)
     log_method(
-        "event=plugin_exception plugin_ref=%s target=%s error_type=%s error_message=%s call_chain=%s\nsource_context=\n%s",
+        "event=plugin_exception plugin_ref=%s target=%s error_type=%s error_message=%s "
+        "cause_type=%s cause_message=%s call_chain=%s\nsource_context=\n%s",
         _safe_token(plugin_ref),
         _safe_token(target, default="logical"),
         _safe_token(type(error).__name__),
         _safe_error_message(error),
+        cause_type,
+        cause_message,
         _call_chain(frames),
         _source_context(frames),
     )

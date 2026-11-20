@@ -15,7 +15,16 @@ ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS/MACADDRESS/MACADDR/IPV4ADDR/WWPN/
 RUNSPEED），由 CMDB 侧 runner 归一化。
 """
 import httpx
+from core.collection.connect_failure import credential_detail, transport_detail
 from sanic.log import logger
+
+
+class OceanStorAuthError(RuntimeError):
+    pass
+
+
+class OceanStorPermissionError(OceanStorAuthError):
+    """403 是权限不足，不能当成用户名或密码错误。"""
 
 
 class OceanStorManager:
@@ -44,6 +53,40 @@ class OceanStorManager:
             h["iBaseToken"] = self.token
         return h
 
+    async def probe(self):
+        import httpx
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        self._client = httpx.AsyncClient(timeout=self.timeout, verify=self.verify_tls)
+        try:
+            await self.login()
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        except httpx.TimeoutException:
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code="tcp_connect_timeout",
+            )
+        except httpx.ConnectError as exc:
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code=transport_detail(exc),
+            )
+        except OceanStorPermissionError:
+            return AccessProbeResult(
+                status=AccessProbeStatus.CAPABILITY_DENIED,
+                error_code="capability_denied",
+            )
+        except OceanStorAuthError:
+            return AccessProbeResult(
+                status=AccessProbeStatus.AUTH_FAILED,
+                error_code=credential_detail(self.username, self.password),
+            )
+        finally:
+            await self.logout()
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None
+
     async def login(self):
         url = f"{self.base_url}/deviceManager/rest/xxxxx/sessions"
         payload = {"username": self.username, "password": self.password, "scope": "0"}
@@ -52,13 +95,18 @@ class OceanStorManager:
             json=payload,
             headers={"Content-Type": "application/json"},
         )
+        status_code = getattr(resp, "status_code", None)
+        if status_code == 403:
+            raise OceanStorPermissionError("OceanStor 权限不足")
+        if status_code == 401:
+            raise OceanStorAuthError("OceanStor 登录被拒绝")
         data = (resp.json() or {}).get("data", {})
         if not data:
-            raise RuntimeError("OceanStor 登录失败：未返回 data")
+            raise OceanStorAuthError("OceanStor 登录失败：未返回 data")
         self.token = data.get("iBaseToken")
         self.device_id = data.get("deviceid")
         if not self.token or not self.device_id:
-            raise RuntimeError("OceanStor 登录失败：缺少 iBaseToken/deviceid")
+            raise OceanStorAuthError("OceanStor 登录失败：缺少 iBaseToken/deviceid")
 
     async def logout(self):
         if not self.device_id or self._client is None:

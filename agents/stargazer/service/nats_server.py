@@ -98,6 +98,43 @@ async def test_connection(data):
     return {"result": True, "data": data}
 
 
+@register_handler("access_check", queue=_handler_queue("access_check"))
+async def access_check(data):
+    """连通性测试。调用抽离后的 collect_info 逻辑，reply 只表示接纳。"""
+    if not isinstance(data, dict):
+        return {"status": "rejected", "error_code": "invalid_request"}
+    model_id = str(data.get("model_id") or "").strip()
+    check_id = str(data.get("check_id") or "").strip()
+    collect_task_id = str(data.get("collect_task_id") or "").strip()
+    if not model_id or not check_id or not collect_task_id:
+        return {"status": "rejected", "error_code": "invalid_request"}
+    from api.collect import run_collect_info
+
+    try:
+        result = await run_collect_info(
+            data,
+            purpose="access_check",
+            task_id=f"access-check-{check_id}",
+        )
+    except ValueError:
+        logger.warning("event=access_check_rejected model_id=%s error_type=ValueError", model_id)
+        return {"status": "rejected", "error_code": "invalid_request"}
+    except Exception as exc:  # noqa: BLE001 - reply 不携带异常正文
+        logger.error(
+            "event=access_check_failed model_id=%s check_id=%s failed_stage=admit error_type=%s",
+            model_id,
+            check_id,
+            type(exc).__name__,
+        )
+        return {"status": "rejected", "error_code": "stargazer_unavailable"}
+    if not isinstance(result, dict):
+        return {"status": "rejected", "error_code": "stargazer_unavailable"}
+    return {
+        "status": str(result.get("status") or "rejected"),
+        "error_code": str(result.get("error_code") or ""),
+    }
+
+
 @register_handler("health_check", queue=_handler_queue("health_check"))
 async def health_check(data):
     return {

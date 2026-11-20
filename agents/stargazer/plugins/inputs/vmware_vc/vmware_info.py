@@ -75,41 +75,32 @@ class VmwareManage(object):
             return AccessProbeResult(status=AccessProbeStatus.READY)
         except Exception as err:  # noqa: BLE001 - 收敛为稳定领域结果
             text = _exception_chain_text(err)
-            if any(
-                token in text
-                for token in (
-                    "password",
-                    "credential",
-                    "login",
-                    "auth",
-                    "permission",
-                    "unauthorized",
-                    "incorrect user",
-                )
-            ):
+            if "permission" in text and not any(token in text for token in ("password", "login", "incorrect user")):
                 return AccessProbeResult(
-                    status=AccessProbeStatus.AUTH_FAILED,
-                    error_code="authentication_failed",
+                    status=AccessProbeStatus.CAPABILITY_DENIED,
+                    error_code="capability_denied",
                 )
-            if any(
-                token in text
-                for token in (
-                    "timed out",
-                    "timeout",
-                    "no route",
-                    "connection refused",
-                    "unreachable",
-                    "name or service not known",
-                )
-            ):
-                return AccessProbeResult(
-                    status=AccessProbeStatus.NO_RESPONSE,
-                    error_code="protocol_no_response",
-                )
-            return AccessProbeResult(
-                status=AccessProbeStatus.NO_RESPONSE,
-                error_code="vmware_probe_failed",
-            )
+            if any(token in text for token in ("password", "credential", "login", "auth", "unauthorized", "incorrect user")):
+                if not str(self.user or "").strip():
+                    detail = "credential_user"
+                elif not self.password:
+                    detail = "credential_password"
+                else:
+                    detail = "credential_user_or_password"
+                return AccessProbeResult(status=AccessProbeStatus.AUTH_FAILED, error_code=detail)
+            if "connection refused" in text:
+                detail = "tcp_connection_refused"
+            elif "timed out" in text or "timeout" in text:
+                detail = "tcp_connect_timeout"
+            elif "no route" in text:
+                detail = "tcp_no_route"
+            elif "name or service not known" in text or "nodename nor servname" in text:
+                detail = "dns_resolution_failed"
+            elif "unreachable" in text:
+                detail = "tcp_connect_failed"
+            else:
+                raise
+            return AccessProbeResult(status=AccessProbeStatus.TARGET_UNREACHABLE, error_code=detail)
         finally:
             self.disconnect_vc()
 
