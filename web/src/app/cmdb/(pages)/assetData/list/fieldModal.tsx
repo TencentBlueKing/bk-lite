@@ -30,7 +30,7 @@ import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 interface FieldModalProps {
-  onSuccess: (instUuid?: string) => void;
+  onSuccess: (instUuid?: string, associate?: boolean) => void;
   userList: UserItem[];
   createHandler?: (payload: {
     model_id: string;
@@ -374,7 +374,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         }
         const instUuid = result?.inst_uuid;
         message.success(msg);
-        onSuccess(confirmType ? instUuid : '');
+        onSuccess(type === 'add' ? instUuid : confirmType ? instUuid : '', Boolean(confirmType));
         handleCancel();
       } catch (error) {
         console.log(error);

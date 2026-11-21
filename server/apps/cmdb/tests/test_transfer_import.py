@@ -158,6 +158,7 @@ def test_run_keeps_other_rows_when_one_unique_field_conflicts(monkeypatch):
     assert summary["created"] == 1
     assert summary["failed_rows"] == 1
     assert summary["updated"] == 0
+    assert summary["created_inst_uuids"] == ["22222222-2222-4222-8222-222222222222"]
     assert created[0]["inst_name"] == "two"
     assert errors[0][0] == 4
     assert errors[0][2] == "inst_name"
@@ -223,7 +224,14 @@ def test_run_updates_when_all_unique_fields_match(monkeypatch):
     task = SimpleNamespace(pk="task-1", model_id="host", team_id=1)
     context = SimpleNamespace(actor=SimpleNamespace(username="admin", roles=["admin"]), teams=[1], associations=[])
     summary, errors = TransferImport.run(task, stream=None, context=context, progress=lambda *a: None)
-    assert summary == {"created": 0, "updated": 1, "failed_rows": 0, "created_relations": 0, "failed_relations": 0}
+    assert summary == {
+        "created": 0,
+        "updated": 1,
+        "failed_rows": 0,
+        "created_relations": 0,
+        "failed_relations": 0,
+        "created_inst_uuids": [],
+    }
     assert errors == []
     assert updated[0]["inst_name"] == "one"
     assert updated[0]["serial"] == "IT-225"
@@ -353,3 +361,19 @@ def test_credential_reason_omits_submitted_value():
     assert "SECRET-CELL" not in reason
     assert TransferExecution._excel_text("=1+1") == "'=1+1"
     assert TransferExecution._excel_text("数量") == "数量"
+
+
+def test_append_created_inst_uuid_skips_updates_duplicates_and_caps():
+    from apps.cmdb.services.monitor_link import BATCH_PUSH_LIMIT
+    from apps.cmdb.services.transfer_import import TransferImport
+
+    summary = {"created_inst_uuids": []}
+    TransferImport._append_created_inst_uuid(summary, {"inst_uuid": "  u-1  "})
+    TransferImport._append_created_inst_uuid(summary, {"inst_uuid": "u-1"})
+    TransferImport._append_created_inst_uuid(summary, {"inst_name": "no-id"})
+    TransferImport._append_created_inst_uuid(summary, "not-a-dict")
+    assert summary["created_inst_uuids"] == ["u-1"]
+    summary["created_inst_uuids"] = [f"u-{index}" for index in range(BATCH_PUSH_LIMIT)]
+    TransferImport._append_created_inst_uuid(summary, {"inst_uuid": "u-overflow"})
+    assert "u-overflow" not in summary["created_inst_uuids"]
+    assert len(summary["created_inst_uuids"]) == BATCH_PUSH_LIMIT

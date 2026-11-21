@@ -9,6 +9,7 @@ from apps.alerts.tasks import itsm_tasks  # noqa: F401
 from apps.alerts.tasks.tasks import (  # noqa: F401
     async_auto_assignment_for_alerts,
     beat_close_alert,
+    beat_replay_monitor_shield_events,
     beat_retry_unassigned_assignment,
     build_instant_alerts,
     check_and_send_escalations,

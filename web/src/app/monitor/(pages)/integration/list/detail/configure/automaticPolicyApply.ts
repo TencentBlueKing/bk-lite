@@ -1,4 +1,8 @@
 import {
+  buildMonitorToCmdbFollowUp,
+  type LinkFollowUpOffer,
+} from '@/app/cmdb/utils/systemLinkage';
+import {
   buildBulkApplyPayload,
   buildCollectionPolicyBulkConfig,
   formatTemplateListName,
@@ -7,6 +11,7 @@ import {
   type BulkConfig,
   type PolicyTemplateItem
 } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import type { ClientData } from '@/types';
 
 export const COLLECTION_POLICY_FIELD = 'monitor_policy_template_keys';
 export const COLLECTION_POLICY_NAME_PREFIX_FIELD = 'monitor_policy_name_prefix';
@@ -304,6 +309,26 @@ export const extractCollectInstanceIds = (
     .map((item) => String(item?.instance_id ?? '').trim())
     .filter(Boolean);
 };
+
+export const resolveAccessCmdbFollowUp = ({
+  clientData,
+  clientLoading,
+  objectName,
+  collectResult,
+  collectParams,
+}: {
+  clientData: ClientData[] | undefined | null;
+  clientLoading: boolean;
+  objectName: string;
+  collectResult: unknown;
+  collectParams?: { instances?: Array<{ instance_id?: unknown }> };
+}): LinkFollowUpOffer | null =>
+  buildMonitorToCmdbFollowUp(
+    clientData,
+    clientLoading,
+    objectName,
+    extractCollectInstanceIds(collectResult, collectParams),
+  );
 
 export const buildCollectionPolicyApplyPayload = ({
   monitorObjectId,

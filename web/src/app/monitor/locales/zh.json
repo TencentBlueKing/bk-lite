@@ -911,6 +911,7 @@
       "batchUpdateCollectConfig": "升级探针",
       "syncToCmdb": "同步到 CMDB",
       "syncToCmdbConfirm": "将为选中的 {count} 个实例生成同步到 CMDB 的任务。已关联的不会改台账字段。",
+      "syncToCmdbFollowUpOverflow": "本次接入 {total} 个实例。将先同步前 {count} 个到 CMDB，其余可在资产列表继续勾选。",
       "syncToCmdbFailed": "创建同步到 CMDB 的任务失败",
       "noUpdatableCollectConfig": "选中实例没有可升级的探针（已手改的不会覆盖）",
       "selfBuilt": "自建",
