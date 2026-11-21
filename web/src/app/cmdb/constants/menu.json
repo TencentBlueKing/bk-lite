@@ -172,12 +172,6 @@
           ]
         },
         {
-          "title": "负责人交接",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetManage/ownerHandover",
-          "name": "model_management"
-        },
-        {
           "title": "自动发现",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/autoDiscovery",
@@ -231,6 +225,12 @@
           "title": "自定义上报",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/customReporting",
+          "name": "model_management"
+        },
+        {
+          "title": "负责人交接",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/ownerHandover",
           "name": "model_management"
         },
         {
@@ -421,12 +421,6 @@
           ]
         },
         {
-          "title": "Owner Handover",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetManage/ownerHandover",
-          "name": "model_management"
-        },
-        {
           "title": "Auto Discover",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/autoDiscovery",
@@ -480,6 +474,12 @@
           "title": "Custom Reporting",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/customReporting",
+          "name": "model_management"
+        },
+        {
+          "title": "Owner Handover",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/ownerHandover",
           "name": "model_management"
         },
         {
