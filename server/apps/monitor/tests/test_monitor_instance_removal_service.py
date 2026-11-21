@@ -385,10 +385,57 @@ def test_remove_remote_failure_keeps_database_state(db, monkeypatch):
     with pytest.raises(BaseAppException, match="删除监控实例失败"):
         MonitorInstanceRemovalService.remove([instance.id])
 
+    assert not MonitorInstance.objects.filter(id=instance.id).exists()
+    assert not CollectConfig.objects.filter(id=config.id).exists()
+    from apps.monitor.models.remote_config_deletion import PendingRemoteConfigDeletion
+
+    pending = PendingRemoteConfigDeletion.objects.get()
+    assert pending.base_config_ids == [config.id]
+    monkeypatch.setattr(
+        "apps.monitor.services.monitor_instance_removal.NodeMgmt",
+        lambda: types.SimpleNamespace(
+            delete_child_configs=lambda ids: None,
+            delete_configs=lambda ids: None,
+        ),
+    )
+    MonitorInstanceRemovalService.flush_remote_config_deletions(pending_id=pending.pk)
+    assert not PendingRemoteConfigDeletion.objects.exists()
+
+
+def test_issue_6495_local_failure_does_not_delete_remote_config(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(name="RemovalLocalFailure", display_name="Removal Local Failure")
+    instance = MonitorInstance.objects.create(id="('local-fail',)", name="local-fail", monitor_object=monitor_object)
+    CollectConfig.objects.create(
+        id="local-fail-config",
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="agent",
+        file_type="toml",
+        is_child=False,
+    )
+    remote_calls = []
+    monkeypatch.setattr(
+        "apps.monitor.services.monitor_instance_removal.NodeMgmt",
+        lambda: types.SimpleNamespace(
+            delete_child_configs=lambda ids: remote_calls.append(("child", list(ids))),
+            delete_configs=lambda ids: remote_calls.append(("base", list(ids))),
+        ),
+    )
+
+    def fail_close(*args, **kwargs):
+        raise RuntimeError("local cleanup failed")
+
+    monkeypatch.setattr(MonitorInstanceRemovalService, "close_alerts_for_instances", classmethod(lambda cls, *args, **kwargs: fail_close()))
+
+    with pytest.raises(BaseAppException, match="删除监控实例失败"):
+        MonitorInstanceRemovalService.remove([instance.id])
+
     assert MonitorInstance.objects.filter(id=instance.id).exists()
-    assert CollectConfig.objects.filter(id=config.id).exists()
-    alert.refresh_from_db()
-    assert alert.status == "new"
+    assert remote_calls == []
+    from apps.monitor.models.remote_config_deletion import PendingRemoteConfigDeletion
+
+    assert not PendingRemoteConfigDeletion.objects.exists()
 
 
 def test_remove_rejects_oversized_batch_before_remote_call(db, monkeypatch):
