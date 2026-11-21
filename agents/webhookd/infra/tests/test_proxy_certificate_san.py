@@ -43,14 +43,21 @@ def certificate_authority(tmp_path_factory):
     return key_path, cert_path
 
 
-def _generate_proxy_archive(proxy_address, certificate_authority):
+def _generate_proxy_archive(proxy_address, certificate_authority, legacy_nats_url=None):
     key_path, cert_path = certificate_authority
     payload = {
         "node_id": "proxy-test",
         "zone_id": "2",
         "zone_name": "proxy-test",
         "server_url": "https://server.example.com",
-        "nats_url": f"nats://{proxy_address}:4222",
+        "proxy_package_version": 2,
+        "nats_leaf_url": f"tls://{proxy_address}:17422",
+        "nats_leaf_username": "proxy-leaf",
+        "nats_leaf_password": "leaf@p:%",
+        "nats_source_domain": "bklite_primary",
+        "nats_bucket": "test-bucket",
+        "nats_installer_username": "installer",
+        "nats_installer_password": 'install-"$pass',
         "nats_username": "user",
         "nats_password": "password",
         "api_token": "token",
@@ -62,6 +69,12 @@ def _generate_proxy_archive(proxy_address, certificate_authority):
         "apm_nats_password": "apm-password",
         "traefik_web_port": "443",
     }
+    if legacy_nats_url is not None:
+        del payload["proxy_package_version"], payload["nats_bucket"], payload["nats_source_domain"]
+        for key in tuple(payload):
+            if key.startswith(("nats_leaf_", "nats_installer_")):
+                del payload[key]
+        payload["nats_url"] = legacy_nats_url
     env = os.environ | {
         "PROXY_CA_KEY_PATH": str(key_path),
         "PROXY_CA_CERT_PATH": str(cert_path),
@@ -73,11 +86,32 @@ def _generate_proxy_archive(proxy_address, certificate_authority):
         text=True,
         env=env,
     )
-    install_script = json.loads(result.stdout)["install_script"]
+    response = json.loads(result.stdout)
+    if legacy_nats_url is None:
+        assert response["proxy_package_version"] == 2
+    else:
+        assert "proxy_package_version" not in response
+    install_script = response["install_script"]
     archive_match = re.search(r'^ARCHIVE="([^"]+)"$', install_script, re.MULTILINE)
     assert archive_match
     archive_bytes = base64.b64decode(archive_match.group(1))
     return tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz")
+
+
+@pytest.mark.parametrize("endpoint, authority", [
+    ("nats://hub.example.com", "hub.example.com:4222"),
+    ("tls://[2001:db8::1]:17422", "[2001:db8::1]:17422"),
+])
+def test_new_webhook_accepts_legacy_server_payload(certificate_authority, endpoint, authority):
+    with _generate_proxy_archive("proxy.example.com", certificate_authority, endpoint) as archive:
+        nats_config = archive.extractfile("./conf/nats/nats.conf").read().decode()
+        mirror = json.load(archive.extractfile("./conf/nats/jetstream.json"))
+
+    assert f'url: "tls://{authority}"' in nats_config
+    assert 'user: "installer"' not in nats_config
+    assert "NATS_INSTALLER_USER_BLOCK" not in nats_config
+    assert mirror["name"] == mirror["mirror"]["name"] == "OBJ_bklite"
+    assert mirror["mirror"]["external"]["api"] == "$JS.bklite.API"
 
 
 def test_proxy_archive_traefik_startup_flags(certificate_authority):
@@ -130,13 +164,20 @@ def test_proxy_certificate_contains_typed_san_and_valid_nats_route(
         nats_config = archive.extractfile("./conf/nats/nats.conf").read().decode()
         compose_config = archive.extractfile("./docker-compose.yaml").read().decode()
         generated_env = archive.extractfile("./.env").read().decode()
+        mirror = json.load(archive.extractfile("./conf/nats/jetstream.json"))
+        assert archive.getmember("./conf/nats/nats.conf").mode == 0o600
         regional_config = archive.extractfile("./conf/apm/regional.yaml").read().decode()
 
     if expected_dns:
         assert expected_dns in san.get_values_for_type(x509.DNSName)
     if expected_ip:
         assert expected_ip in {str(address) for address in san.get_values_for_type(x509.IPAddress)}
-    assert f'url: "tls://{proxy_address}:4222"' in nats_config
+    assert f'url: "tls://proxy-leaf:leaf%40p%3A%25@{proxy_address}:17422"' in nats_config
+    assert nats_config.count('user: "installer"') == 1
+    assert 'user: "installer"' in nats_config.split('authorization {', 1)[1]
+    assert '"$JS.FC.OBJ_test-bucket.>"' in nats_config
+    assert mirror["name"] == "OBJ_test-bucket"
+    assert mirror["mirror"] == {"name": "OBJ_test-bucket", "external": {"api": "$JS.bklite_primary.API"}}
     assert 'publish = ["apm.traces.2"]' in nats_config
     assert 'subscribe = ["_INBOX.>"]' in nats_config
     assert "apm-regional-collector:" in compose_config
@@ -180,5 +221,5 @@ def test_bootstrap_uses_rendered_nats_admin_user(certificate_authority):
 
     # payload nats_username 渲染为 .env 的 NATS_ADMIN_USERNAME
     assert "NATS_ADMIN_USERNAME=user" in generated_env
-    assert '--user "${NATS_ADMIN_USERNAME}"' in bootstrap
+    assert 'NATS_USER="$NATS_ADMIN_USERNAME"' in bootstrap
     assert "--user admin" not in bootstrap

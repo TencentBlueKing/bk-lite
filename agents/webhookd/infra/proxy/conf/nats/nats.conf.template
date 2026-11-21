@@ -14,8 +14,8 @@ leafnodes {
   port 7422
   remotes [
     {
-      url: "tls://${REMOTE_HOST}:${REMOTE_NATS_PORT}"
-      
+      url: "${REMOTE_NATS_URL}"
+
       tls {
         cert_file: "/etc/nats/certs/proxy.crt"
         key_file:  "/etc/nats/certs/proxy.key"
@@ -27,35 +27,35 @@ leafnodes {
 }
 debug: false
 trace: false
-authorization {  
+authorization {
   default_permissions = {
     publish = []
     subscribe = []
   }
   users = [
     {
-      user: "${NATS_ADMIN_USERNAME}"
-      password: "${NATS_ADMIN_PASSWORD}"
+      user: ${NATS_ADMIN_USERNAME_JSON}
+      password: ${NATS_ADMIN_PASSWORD_JSON}
       permissions: {
         publish = [">"]
         subscribe = [">"]
       }
     },
     {
-      user: "${NATS_MONITOR_USERNAME}"
-      password: "${NATS_MONITOR_PASSWORD}"
+      user: ${NATS_MONITOR_USERNAME_JSON}
+      password: ${NATS_MONITOR_PASSWORD_JSON}
       permissions: {
         publish = ["metrics.>", "vector", "_INBOX.>"]
         subscribe = []
       }
     },
     {
-      user: "${APM_NATS_USERNAME}"
-      password: "${APM_NATS_PASSWORD}"
+      user: ${NATS_APM_USERNAME_JSON}
+      password: ${NATS_APM_PASSWORD_JSON}
       permissions: {
         publish = ["apm.traces.${ZONE_ID}"]
         subscribe = ["_INBOX.>"]
       }
-    }
+    }${NATS_INSTALLER_USER_BLOCK}
   ]
 }

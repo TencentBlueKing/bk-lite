@@ -1,0 +1,21 @@
+,
+    {
+      user: ${NATS_INSTALLER_USERNAME_JSON}
+      password: ${NATS_INSTALLER_PASSWORD_JSON}
+      permissions: {
+        publish: [
+          "installer.progress.>",
+          "$JS.API.STREAM.INFO.${NATS_OBJECT_STREAM}",
+          "$JS.API.STREAM.MSG.GET.${NATS_OBJECT_STREAM}",
+          "$JS.API.DIRECT.GET.${NATS_OBJECT_STREAM}",
+          "$JS.API.DIRECT.GET.${NATS_OBJECT_STREAM}.>",
+          "$JS.API.CONSUMER.CREATE.${NATS_OBJECT_STREAM}",
+          "$JS.API.CONSUMER.CREATE.${NATS_OBJECT_STREAM}.>",
+          "$JS.API.CONSUMER.INFO.${NATS_OBJECT_STREAM}.>",
+          "$JS.API.CONSUMER.MSG.NEXT.${NATS_OBJECT_STREAM}.>",
+          "$JS.API.CONSUMER.DELETE.${NATS_OBJECT_STREAM}.>",
+          "$JS.FC.${NATS_OBJECT_STREAM}.>"
+        ]
+        subscribe: ["_INBOX.>"]
+      }
+    }
