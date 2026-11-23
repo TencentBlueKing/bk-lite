@@ -651,3 +651,87 @@ export const reorderDashboardGroupBlock = (
 
   return rebuilt;
 };
+
+/**
+ * 收起分组后再拖动时，GridStack 写出的 y 只按表头高度排列。
+ * 分组正文仍是完整高度，后一个分组的表头会落进前一个分组的正文里。
+ * 展开或重新加载时，碰撞会把后写入的分组挤到末尾。
+ * 这里只把重叠的顶层块按原来的 y 顺序往下撑开，不改变块内相对位置。
+ */
+export const separateOverlappingDashboardBlocks = (
+  items: DashboardLayoutItem[],
+): DashboardLayoutItem[] => {
+  const normalized = normalizeDashboardLayoutGroupIds(items);
+  const sections = buildDashboardSections(normalized);
+
+  interface BlockAnchor {
+    y: number;
+    x: number;
+    id: string;
+    height: number;
+    memberIds: string[];
+  }
+
+  const anchors: BlockAnchor[] = sections.groups.map((section) => {
+    const top = section.group.y;
+    const bottom = Math.max(
+      section.group.y + section.group.h,
+      ...section.widgets.map((widget) => widget.y + widget.h),
+    );
+
+    return {
+      y: top,
+      x: section.group.x,
+      id: section.group.i,
+      height: Math.max(bottom - top, section.group.h),
+      memberIds: [section.group.i, ...section.widgets.map((widget) => widget.i)],
+    };
+  });
+
+  const rows = new Map<number, DashboardWidgetLayoutItem[]>();
+  sections.ungrouped.forEach((widget) => {
+    const row = rows.get(widget.y) ?? [];
+    row.push(widget);
+    rows.set(widget.y, row);
+  });
+  rows.forEach((widgets, y) => {
+    anchors.push({
+      y,
+      x: Math.min(...widgets.map((widget) => widget.x)),
+      id: widgets[0]?.i ?? `row:${y}`,
+      height: Math.max(...widgets.map((widget) => widget.y + widget.h)) - y,
+      memberIds: widgets.map((widget) => widget.i),
+    });
+  });
+
+  anchors.sort(
+    (left, right) => left.y - right.y || left.x - right.x || left.id.localeCompare(right.id),
+  );
+
+  const deltaById = new Map<string, number>();
+  let cursor = 0;
+  let changed = false;
+
+  anchors.forEach((anchor) => {
+    const delta = anchor.y < cursor ? cursor - anchor.y : 0;
+    if (delta !== 0) {
+      changed = true;
+    }
+    anchor.memberIds.forEach((id) => {
+      deltaById.set(id, delta);
+    });
+    cursor = Math.max(cursor, anchor.y + delta + anchor.height);
+  });
+
+  if (!changed) {
+    return items;
+  }
+
+  return normalized.map((item) => {
+    const delta = deltaById.get(item.i) ?? 0;
+    if (delta === 0) {
+      return item;
+    }
+    return { ...item, y: item.y + delta };
+  });
+};
