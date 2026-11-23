@@ -5,9 +5,10 @@
 
 > 与旧参考实现的差异（本分支事实）：  
 > - 有 Django `0045_instance_uuid_transition`（**仅结构**；因上游占用 `0044_alter_*` 而顺延编号）  
-> - 有维护命令 `migrate_cmdb_instance_uuid_refs` / `migrate_oa_cmdb_instance_uuid_refs`  
-> - 有运行期 Celery 任务 `migrate_cmdb_instance_uuid_runtime`：`batch_init` 只注册并
->   `delay` 一次，Worker 起来后幂等 `--apply`，**不**同步挡启动  
+> - 有维护命令 `migrate_cmdb_instance_uuid_runtime`（编排 CMDB + OA）以及
+>   `migrate_cmdb_instance_uuid_refs` / `migrate_oa_cmdb_instance_uuid_refs`  
+> - **没有**运行期 Celery 周期任务。`batch_init` 删除历史 Beat 条目，**不** `delay`、
+>   **不**同步挡启动；清洗在维护窗口手工执行  
 > - **没有** `prepare_cmdb_instance_uuid_cutover`、**没有** 删列 cutover 迁移（后续另开，编号另定）  
 > - 同步清洗 **不得** 进入 `batch_init` 硬门禁；**不得** 改 `migrate \|\| true` 语义来掩盖失败  
 > 详见 `specs/changes/cmdb-instance-uuid/IMPLEMENTATION_PLAN.md` T5/T8。
@@ -16,9 +17,9 @@
 
 - 协调备份 PostgreSQL、FalkorDB 与相关对象存储元数据，记录同一恢复点。  
   （本阶段 Neo4j 不在范围。）
-- **默认路径（常规升级）**：部署后 `batch_init` 注册运行期任务；Celery Worker
-  起来后自动幂等 `--apply`，失败下轮重试。多副本靠任务缓存锁互斥。  
-  未完成前非法 UUID 详情仍会失败，但会自动愈合。
+- **默认路径**：部署后 `batch_init` 拆除历史周期任务，不自动清洗。在维护窗口执行
+  `migrate_cmdb_instance_uuid_runtime`（默认 apply 后再 verify）。多进程靠任务缓存锁互斥。  
+  未完成前非法 UUID 详情仍会失败，需手工重跑命令愈合。
 - **大流量 / 需验收证据的切换**：仍建议短暂停写，并人工执行下文 `--dry-run` /
   `--apply` / `--verify`，保存原始输出。
 - 停止 Web 写流量、Celery worker/beat、NATS CMDB 消费者、Stargazer 配置任务
@@ -69,12 +70,12 @@ uv run python manage.py migrate_cmdb_instance_uuid_refs --verify
 2. 创建协调备份。  
 3. 部署新 Server/Worker/Agent；**先不恢复业务写流量**。  
 4. 普通 `migrate` 应用 `0045_instance_uuid_transition`（启动脚本既有顺序；**不要**在 `batch_init` 内同步跑清洗）。  
-   `batch_init` 只会注册 Celery 周期任务并 `delay` 一次异步清洗。  
-5. （可选，大流量窗口）在维护编排中执行 §2 清洗与 verify；保存原始输出。  
-   常规升级可依赖 Worker 运行期自动收敛。  
+   `batch_init` 只会拆除历史 UUID 周期任务。  
+5. 在维护编排中执行 §2 清洗与 verify，或一条
+   `uv run python manage.py migrate_cmdb_instance_uuid_runtime`；保存原始输出。  
 6. 启动 NATS/Celery/Stargazer 等消费者；按发布节奏启动 Web。  
 7. 冒烟：数字 URL/path 安全失败；UUID API/OpenAPI/配置回调成功；Telegraf 标签仍为
-   `cmdb_{task_id}`；运行期任务日志出现 apply 完成或已完成跳过。
+   `cmdb_{task_id}`；手工命令输出 apply 完成。
 
 禁止：把同步 `--apply` 塞进 `batch_init`；用 `sleep`/吞异常掩盖启动依赖；旧 Worker 与新版本并行写。
 

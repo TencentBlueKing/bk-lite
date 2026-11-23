@@ -204,20 +204,15 @@ class Command(BaseCommand):
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
         self._schedule_ci_context_rebuild()
-        # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
+        # UUID 存量清洗改为手工 manage.py；启动只拆除历史周期任务，禁止同步 --apply。
         try:
-            from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime
+            from apps.cmdb.tasks.uuid_migration import disable_uuid_migration_periodic_task
 
-            ensure_uuid_migration_periodic_task()
-            try:
-                migrate_cmdb_instance_uuid_runtime.delay()
-            except Exception as exc:
-                # Broker 暂不可达时不阻断启动；周期任务会在 Beat/Worker 就绪后收敛。
-                logger.warning("投递 CMDB UUID 运行期清洗任务失败（将由周期任务重试）: %s", exc)
-            self.stdout.write("已注册 CMDB UUID 运行期清洗任务（异步收敛，不阻断启动）")
+            disable_uuid_migration_periodic_task()
+            self.stdout.write("已停用 CMDB UUID 周期清洗（改为手工 migrate_cmdb_instance_uuid_runtime）")
         except Exception as exc:
-            logger.warning("注册 CMDB UUID 运行期清洗失败（不阻断启动）: %s", exc)
-            self.stdout.write(self.style.WARNING(f"CMDB UUID 运行期清洗注册跳过: {exc}"))
+            logger.warning("停用 CMDB UUID 周期清洗失败（不阻断启动）: %s", exc)
+            self.stdout.write(self.style.WARNING(f"CMDB UUID 周期任务拆除跳过: {exc}"))
 
     def _schedule_display_field_backfill(self) -> None:
         """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
