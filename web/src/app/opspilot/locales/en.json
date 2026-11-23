@@ -1537,6 +1537,8 @@
       "analyzing": "Analyzing tool results...",
       "expandHint": "Click to expand",
       "calledCount": "{count} tools called",
+      "pptSkill": "PPT skill",
+      "pptSkillAction": "Write the slides and export",
       "error": "Error",
       "runError": "Run error",
       "streamInterrupted": "Tool call ended, but no result event arrived before the stream broke.",

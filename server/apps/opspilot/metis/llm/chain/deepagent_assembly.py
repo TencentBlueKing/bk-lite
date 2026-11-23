@@ -13,7 +13,7 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     is_pod_restart_reason_query,
     looks_like_attachment_file_task,
 )
-from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
+from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY, PLANNED_FINAL_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 from apps.opspilot.services.conversation_skill_package import PREPARE_CONVERSATION_SKILL_PACKAGE_TOOL, skill_package_request_needs_planner
 from apps.opspilot.services.ppt_master_runtime import PPT_AUTHORING_MIN_MODEL_CALLS, execution_guidance, is_ppt_master_package
@@ -573,6 +573,13 @@ class DeepAgentAssemblyMixin:
         if extra is None:
             graph_request.extra_config = extra = {}
         extra[HIDE_PLANNED_STEP_TEXT_KEY] = bool(hidden)
+
+    @staticmethod
+    def _set_planned_final_text(graph_request, text: str) -> None:
+        extra = getattr(graph_request, "extra_config", None)
+        if extra is None:
+            graph_request.extra_config = extra = {}
+        extra[PLANNED_FINAL_TEXT_KEY] = str(text or "").strip()
 
     @staticmethod
     def _plan_is_skills_only(candidate_plan) -> bool:

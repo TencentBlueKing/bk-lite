@@ -21,6 +21,7 @@ from apps.opspilot.services.ppt_master_runtime import (
     attachment_filename,
     begin_ppt_run,
     conversation_workspace,
+    execution_guidance,
     inspect_ppt_run,
     message_continues_ppt,
     ppt_probe_reason,
@@ -305,6 +306,8 @@ def test_execution_guidance_blocks_pdf_and_unsupported_routes():
     assert "attribution_guard.py" in text
     assert "svg_to_pptx.py" in text
     assert "/ppt-workspace" in text
+    virtual = execution_guidance("/ppt-workspace")
+    assert "目录名时间戳是 ppt-workspace" not in virtual
     assert "read_file /skills/ppt-master/SKILL.md" in text
 
 

@@ -225,6 +225,29 @@ class TestSkillBackendSources:
         assert "npm install" in commands[0]
         assert "pandas" in commands[0]
 
+    def test_ppt_master_execute_does_not_pip_install(self):
+        from deepagents.backends.protocol import ExecuteResponse
+
+        from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
+
+        sandbox = MagicMock(workspace="/tmp/opspilot-test")
+        sandbox.execute_command.side_effect = lambda *args, **kwargs: ExecuteResponse(output="ok", exit_code=0)
+        backend = LocalSkillBackend(sandbox)
+        backend.set_packages(
+            [
+                {
+                    "package_id": "ppt-master",
+                    "name": "ppt-master",
+                    "required_python_packages": ["PyMuPDF", "edge-tts"],
+                }
+            ]
+        )
+        result = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py projects/a")
+        commands = [call.args[0] for call in sandbox.execute_command.call_args_list]
+        assert result.exit_code == 0
+        assert not any("pip install" in command or "npm install" in command for command in commands)
+        assert any("svg_to_pptx.py" in command for command in commands)
+
     def test_materialize_failure_is_explicit_without_host_fallback(self):
         node = ToolsNodes()
         error = RuntimeError("boom")
@@ -725,6 +748,76 @@ class TestBuildDeepagentNodes:
         assert "execute" not in visibility._hidden_tools
         assert limit.run_limit >= PPT_AUTHORING_MIN_MODEL_CALLS
 
+    def test_ppt_page_inventory_is_not_the_user_answer(self):
+        """模型列完页面就停时，用户看到的是导出结果，不是那份页面清单。"""
+        node = ToolsNodes()
+        node.all_tools = []
+        package = {"package_id": "ppt-master", "name": "ppt-master"}
+        node._extra_config = SimpleNamespace(
+            matched_skill_packages=[package],
+            enabled_skill_packages=[package],
+        )
+        inventory = "已完成全部 7 页 SVG 的编写，文件位于 /ppt-workspace/projects/alert-overview/svg_output/，接下来由平台执行 svg_to_pptx.py 导出 pptx。"
+        req = _request(
+            user_message="汇总总结下，生成一个PPT文件",
+            extra_config={
+                "execution_id": "exec-ppt-finish",
+                "matched_skill_packages": [package],
+                "enabled_skill_packages": [package],
+            },
+        )
+        captured = {}
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=[package]),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], "ppt-run")),
+        ):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "生成演示文稿",
+                    "steps": [{"objective": "按 ppt-master 写每一页 SVG，并导出可下载的 pptx", "tools": ["__use_skills__"]}],
+                },
+                agent_reply=inventory,
+            )
+        visible = [str(getattr(message, "content", "") or "") for message in result["messages"]]
+        assert inventory not in visible
+        assert "svg_output" not in visible[-1]
+        assert visible[-1] == req.extra_config["opspilot_planned_final_text"]
+        assert req.extra_config["opspilot_hide_planned_step_text"] is True
+
+    def test_alert_query_does_not_run_ppt_when_package_is_only_enabled(self):
+        """只启用 ppt-master、这句话没有命中它时，查告警不能改成写 PPT。"""
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts")]
+        package = {"package_id": "ppt-master", "name": "ppt-master"}
+        node._extra_config = SimpleNamespace(matched_skill_packages=[], enabled_skill_packages=[package])
+        req = _request(
+            user_message="查询所有的活动告警信息",
+            extra_config={"enabled_skill_packages": [package], "matched_skill_packages": []},
+        )
+        captured = {}
+        with (
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=[package]),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(MagicMock(), ["/skills/"], "ppt-run")),
+        ):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查询活动告警",
+                    "steps": [{"objective": "列出活动告警", "tools": ["alerts_list_alerts"]}],
+                },
+                agent_reply="当前没有活动告警。",
+            )
+        joined = "\n".join(str(getattr(message, "content", "") or "") for messages in captured["ainvoke_messages"] for message in messages)
+        assert "按 ppt-master 写每一页 SVG" not in joined
+        assert "列出活动告警" in joined
+
     def test_context_overflow_skips_current_step_and_continues_remaining(self):
         node = ToolsNodes()
         node.all_tools = [
@@ -915,6 +1008,63 @@ class TestBuildDeepagentNodes:
         assert "do_request_failed" not in rendered
         traceback_errors = [r for r in caplog.records if r.name == "opspilot" and r.levelno >= logging.ERROR and r.exc_info]
         assert traceback_errors == owned
+
+    def test_planner_upstream_502_surfaces_failure_instead_of_lightweight_progress(self, caplog):
+        """规划器上游 502 不得落入零工具轻量直答，否则页面先空等再留下「正在获取…」假进度。"""
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts")]
+        req = _request(user_message="汇总下告警中心的活动告警，整理总结成一个PPT")
+        captured = {}
+
+        gb = _FakeGraphBuilder()
+        name = asyncio.run(node.build_deepagent_nodes(gb, composite_node_name="deep_agent"))
+        wrapper = gb.nodes[name]
+
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        class InternalServerError(Exception):
+            pass
+
+        class _PlannerLLM:
+            async def ainvoke(self, messages, config=None):
+                captured.setdefault("planner_calls", []).append(messages)
+                raise InternalServerError("Error code: 502")
+
+            async def astream(self, messages, config=None):
+                captured["lightweight_astream"] = True
+                yield AIMessage(content="我先查询当前活动告警的数据，再整理成 PPT。\n正在获取告警数据。")
+
+        caplog.set_level(logging.ERROR, logger="opspilot")
+        with (
+            patch("apps.opspilot.metis.llm.chain.node.create_planned_agent", return_value=MagicMock()),
+            patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=MagicMock()),
+            patch.object(ToolsNodes, "get_llm_client", return_value=_PlannerLLM()),
+            patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
+            patch.object(ToolsNodes, "_resolve_skill_packages", return_value=[{"name": "PPT Master Skill"}]),
+            patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
+        ):
+            result = asyncio.run(
+                wrapper(
+                    {"messages": [HumanMessage(content=req.user_message)]},
+                    {"configurable": {"graph_request": req}},
+                )
+            )
+
+        content = str(result["messages"][-1].content)
+        assert "上游请求失败" in content or "模型服务暂时不可用" in content or "无法连接大模型服务" in content
+        assert "正在获取告警数据" not in content
+        assert "lightweight_astream" not in captured
+        owned = [
+            rec
+            for rec in caplog.records
+            if rec.name == "opspilot"
+            and rec.levelno == logging.ERROR
+            and rec.exc_info
+            and rec.msg == "event=deepagent_llm_upstream_failed failed_stage=%s error_type=%s request_id=%s"
+        ]
+        assert len(owned) == 1
+        assert owned[0].args[0] == "tool_execution_planning"
+        assert owned[0].args[1] == "InternalServerError"
 
     def test_successful_step_compacts_history_before_next_step(self):
         node = ToolsNodes()

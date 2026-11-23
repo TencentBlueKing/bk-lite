@@ -8,8 +8,9 @@ import pytest
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain_core.messages import ToolMessage
 
+from apps.opspilot.services.python_sandbox import runtime as runtime_mod
 from apps.opspilot.services.python_sandbox.result_backend import build_result_backend
-from apps.opspilot.services.python_sandbox.runtime import PythonSandbox, SandboxUnavailable
+from apps.opspilot.services.python_sandbox.runtime import PythonSandbox, SandboxUnavailable, resolve_posix_shell
 
 
 @pytest.fixture
@@ -17,6 +18,28 @@ def runtime():
     runtime = PythonSandbox()
     yield runtime
     runtime.close()
+
+
+def test_resolve_posix_shell_prefers_which(monkeypatch):
+    monkeypatch.setattr(runtime_mod.shutil, "which", lambda name: "/usr/bin/sh" if name == "sh" else None)
+    assert resolve_posix_shell() == "/usr/bin/sh"
+
+
+def test_resolve_posix_shell_falls_back_to_git_on_windows(monkeypatch, tmp_path):
+    fake_sh = tmp_path / "Git" / "bin" / "sh.exe"
+    fake_sh.parent.mkdir(parents=True)
+    fake_sh.write_bytes(b"")
+    monkeypatch.setattr(runtime_mod.shutil, "which", lambda *_a, **_k: None)
+    monkeypatch.setattr(runtime_mod.os, "name", "nt")
+    monkeypatch.setattr(runtime_mod, "_WINDOWS_SH_CANDIDATES", (str(fake_sh),))
+    assert resolve_posix_shell() == str(fake_sh)
+
+
+def test_resolve_posix_shell_returns_none_when_missing(monkeypatch):
+    monkeypatch.setattr(runtime_mod.shutil, "which", lambda *_a, **_k: None)
+    monkeypatch.setattr(runtime_mod.os, "name", "nt")
+    monkeypatch.setattr(runtime_mod, "_WINDOWS_SH_CANDIDATES", (r"C:\missing-git\bin\sh.exe",))
+    assert resolve_posix_shell() is None
 
 
 def test_large_result_is_local_file_without_starting_process(runtime, mocker):
@@ -44,6 +67,7 @@ def test_python_and_shell_use_server_interpreter_and_shared_cwd(runtime, tmp_pat
     assert runtime.execute("open('answer.txt').read()") == "中文"
     assert runtime.execute(f"open({str(host_file)!r}).read()") == "host-visible"
     assert runtime.execute("import os\nos.getenv('DB_PASSWORD', 'absent')") == "absent"
+    assert Path(runtime.execute("import pathlib\nstr(pathlib.Path.home())")).resolve() == Path(runtime.workspace).resolve()
     assert runtime.execute("import os\nos.getcwd()") == runtime.workspace
     assert Path(runtime.workspace).is_dir()
 

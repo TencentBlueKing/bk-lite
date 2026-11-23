@@ -1534,6 +1534,8 @@
       "analyzing": "正在分析工具结果...",
       "expandHint": "点击展开查看详情",
       "calledCount": "已调用 {count} 个工具",
+      "pptSkill": "PPT 技能",
+      "pptSkillAction": "写页面并导出",
       "error": "错误",
       "runError": "运行错误",
       "streamInterrupted": "工具调用已结束，但流中断前未收到结果事件。",

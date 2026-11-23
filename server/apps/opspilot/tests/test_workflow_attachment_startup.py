@@ -83,18 +83,27 @@ def test_build_attachment_bytes_docx_renders_markdown_heading_and_table():
     assert document.paragraphs[0].runs[0].font.name == "微软雅黑"
 
 
+def _pptx_slide_text(slide) -> str:
+    return "\n".join(shape.text_frame.text for shape in slide.shapes if shape.has_text_frame)
+
+
 def test_build_attachment_bytes_pptx_is_a_slide_deck():
     from io import BytesIO
 
     from pptx import Presentation
+    from pptx.util import Inches
 
     payload = build_attachment_bytes("# 广州旅游\n\n- 珠江\n- 早茶\n", "pptx", title="广州旅游")
     assert payload[:2] == b"PK"
     deck = Presentation(BytesIO(payload))
     assert len(deck.slides) == 1
-    assert deck.slides[0].shapes.title.text == "广州旅游"
-    assert "珠江" in deck.slides[0].placeholders[1].text_frame.text
-    assert deck.slides[0].placeholders[1].text_frame.paragraphs[0].runs[0].font.name == "微软雅黑"
+    assert deck.slide_width == Inches(13.333)
+    text = _pptx_slide_text(deck.slides[0])
+    assert "广州旅游" in text
+    assert "珠江" in text
+    assert "•" not in text
+    runs = [run for shape in deck.slides[0].shapes if shape.has_text_frame for paragraph in shape.text_frame.paragraphs for run in paragraph.runs]
+    assert runs[0].font.name == "微软雅黑"
 
 
 def test_build_attachment_bytes_docx_is_office_zip():
@@ -195,9 +204,49 @@ def test_build_attachment_bytes_pptx_splits_each_h1_into_a_slide():
 
     payload = build_attachment_bytes("# 第一页\n\n要点\n\n# 第二页\n\n收尾", "pptx", title="第一页")
     deck = Presentation(BytesIO(payload))
-    titles = [slide.shapes.title.text for slide in deck.slides]
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
     assert len(deck.slides) >= 2
-    assert titles == ["第一页", "第二页"]
+    assert "第一页" in texts[0]
+    assert "第二页" in texts[1]
+    assert "2 / 2" in texts[1]
+
+
+def test_build_attachment_bytes_pptx_uses_cover_callout_and_point_pages():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = "# 巡检\n\n本周范围\n\n# 核心结论\n\n- 磁盘满\n- 需扩容\n\n# 明细\n\n- 一\n- 二\n- 三\n- 四\n- 五\n"
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="巡检")))
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
+    assert "巡检" in texts[0]
+    assert "•" not in texts[0]
+    assert any("核心结论" in text and "• 磁盘满" in text for text in texts)
+    assert any("明细" in text and "• 五" in text for text in texts)
+    assert sum("明细" in text for text in texts) == 2
+
+
+def test_build_attachment_bytes_pptx_renders_markdown_tables():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = "# 告警明细\n\n| 编号 | 标题 | 状态 |\n| --- | --- | --- |\n| SEED-AC-02 | CPU 使用率过高 | processing |\n| SEED-AC-01 | 磁盘使用率过高 | pending |\n"
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="告警明细")))
+    tables = [shape.table for slide in deck.slides for shape in slide.shapes if shape.has_table]
+    assert len(tables) == 1
+    assert tables[0].cell(0, 0).text == "编号"
+    assert tables[0].cell(1, 0).text == "SEED-AC-02"
+    assert tables[0].cell(2, 1).text == "磁盘使用率过高"
+    assert "编号：标题" not in _pptx_slide_text(deck.slides[-1])
+
+    pipes = "# 告警明细\n\n| SEED-AC-02 | CPU 使用率过高 | processing | admin |\n| SEED-AC-01 | 磁盘使用率过高 | pending | admin |\n"
+    piped = Presentation(BytesIO(build_attachment_bytes(pipes, "pptx", title="告警明细")))
+    piped_tables = [shape.table for slide in piped.slides for shape in slide.shapes if shape.has_table]
+    assert len(piped_tables) == 1
+    assert piped_tables[0].cell(0, 0).text == "SEED-AC-02"
+    assert piped_tables[0].cell(1, 3).text == "admin"
+    assert "•" not in piped_tables[0].cell(0, 0).text
 
 
 def test_normalize_attachment_file_type_rewrites_alias_extension():

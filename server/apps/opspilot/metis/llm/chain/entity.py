@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # 分步执行期间由引擎写入 extra_config：为 True 时 AG-UI 不推步内助手正文。
 HIDE_PLANNED_STEP_TEXT_KEY = "opspilot_hide_planned_step_text"
+# PPT 终稿句。一旦写下，流里只放行这句，页面清单不能再进气泡。
+PLANNED_FINAL_TEXT_KEY = "opspilot_planned_final_text"
 # 保活 / 步内隐藏正文：走 CUSTOM，不进 TEXT_MESSAGE_*，前端静默，也不落库。
 STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
 HIDDEN_STEP_TEXT_EVENT_NAME = "planned_step_hidden_text"
