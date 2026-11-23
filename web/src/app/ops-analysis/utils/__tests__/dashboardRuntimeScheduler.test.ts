@@ -317,13 +317,17 @@ describe('DashboardRuntimeScheduler', () => {
     await expect(otherPromise).resolves.toBe('other');
   });
 
-  it('cancels only queued consumers and never starts work after destroy', async () => {
+  it('aborts a started request on destroy and never starts work afterwards', async () => {
     const scheduler = new DashboardRuntimeScheduler({ concurrency: 1 });
     const blocker = deferred<string>();
+    let signal: AbortSignal | undefined;
     const blockerPromise = scheduler.schedule({
       consumerId: 'started', ownerId: 'started', physicalKey: 'started',
       priority: { cause: 0, visibility: 0, distance: 0, order: 0 },
-      start: () => blocker.promise,
+      start: (nextSignal) => {
+        signal = nextSignal;
+        return blocker.promise;
+      },
     });
     const queuedPromise = scheduler.schedule({
       consumerId: 'queued', ownerId: 'queued-owner', physicalKey: 'queued',
@@ -334,13 +338,77 @@ describe('DashboardRuntimeScheduler', () => {
     scheduler.cancelQueuedForOwner('queued-owner');
     await expect(queuedPromise).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
     scheduler.destroy();
+    expect(signal?.aborted).toBe(true);
     blocker.resolve('started-result');
-    await expect(blockerPromise).resolves.toBe('started-result');
-    expect(scheduler.snapshot()).toMatchObject({ destroyed: true, queued: 0 });
+    await expect(blockerPromise).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
+    expect(scheduler.snapshot()).toMatchObject({ destroyed: true, queued: 0, running: 0 });
     await expect(scheduler.schedule({
       consumerId: 'late', ownerId: 'late', physicalKey: 'late',
       priority: { cause: 0, visibility: 0, distance: 0, order: 0 },
       start: async () => 'late',
     })).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
+  });
+
+  it('aborts the shared request only after the last consumer leaves and frees the slot once', async () => {
+    const scheduler = new DashboardRuntimeScheduler({ concurrency: 1 });
+    const shared = deferred<string>();
+    const signals: AbortSignal[] = [];
+    let starts = 0;
+    const first = scheduler.schedule({
+      consumerId: 'first', ownerId: 'first-owner', physicalKey: 'shared',
+      priority: { cause: 0, visibility: 0, distance: 0, order: 0 },
+      start: (signal) => {
+        starts += 1;
+        signals.push(signal);
+        return shared.promise;
+      },
+    });
+    const second = scheduler.schedule({
+      consumerId: 'second', ownerId: 'second-owner', physicalKey: 'shared',
+      priority: { cause: 0, visibility: 0, distance: 0, order: 1 },
+      start: () => {
+        throw new Error('duplicate must not start');
+      },
+    });
+
+    scheduler.releaseConsumer('first');
+    expect(signals[0]?.aborted).toBe(false);
+    expect(scheduler.snapshot().running).toBe(1);
+    shared.resolve('shared-value');
+    await expect(second).resolves.toBe('shared-value');
+    await expect(first).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
+    expect(starts).toBe(1);
+    expect(scheduler.snapshot().running).toBe(0);
+
+    scheduler.releaseConsumer('second');
+    expect(signals[0]?.aborted).toBe(false);
+
+    const replacement = deferred<string>();
+    const third = scheduler.schedule({
+      consumerId: 'third', ownerId: 'third-owner', physicalKey: 'shared',
+      priority: { cause: 0, visibility: 0, distance: 0, order: 2 },
+      start: (signal) => {
+        starts += 1;
+        signals.push(signal);
+        return replacement.promise;
+      },
+    });
+    scheduler.releaseConsumer('third');
+    expect(signals[1]?.aborted).toBe(true);
+    expect(scheduler.snapshot().running).toBe(0);
+    replacement.resolve('too-late');
+    await expect(third).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
+
+    const next = scheduler.schedule({
+      consumerId: 'next', ownerId: 'next-owner', physicalKey: 'shared',
+      priority: { cause: 0, visibility: 0, distance: 0, order: 3 },
+      start: async (signal) => {
+        signals.push(signal);
+        return 'fresh';
+      },
+    });
+    await expect(next).resolves.toBe('fresh');
+    expect(signals[2]?.aborted).toBe(false);
+    expect(starts).toBe(2);
   });
 });

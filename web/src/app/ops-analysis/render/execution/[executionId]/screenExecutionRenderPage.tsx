@@ -179,8 +179,8 @@ export const ScreenExecutionRenderPageContent = ({
       ),
     ]));
     void loadCanvasDataSources(dataSourceIds)
-      .then(() => {
-        if (cancelled) return;
+      .then((loaded) => {
+        if (cancelled || loaded === null) return;
         setDataSourcesReady(true);
       })
       .catch(() => {

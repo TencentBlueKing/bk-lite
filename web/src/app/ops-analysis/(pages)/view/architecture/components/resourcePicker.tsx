@@ -79,8 +79,17 @@ const ResourcePicker = ({
           setTotal(result.total);
           setLoading(false);
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (seq !== searchSeqRef.current) return;
+          if (
+            typeof error === 'object'
+            && error !== null
+            && ((error as { name?: string }).name === 'AbortError'
+              || (error as { name?: string }).name === 'CanceledError'
+              || (error as { code?: string }).code === 'ERR_CANCELED')
+          ) {
+            return;
+          }
           setHits([]);
           setTotal(0);
           setLoading(false);

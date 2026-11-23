@@ -18,7 +18,9 @@ interface RuntimeRequestEntry<T = unknown> {
   state: 'queued' | 'started';
   priority: RuntimeRequestPriority;
   consumers: Map<string, RuntimeRequestConsumer<T>>;
-  start: () => Promise<T>;
+  start: (signal: AbortSignal) => Promise<T>;
+  controller: AbortController;
+  settled: boolean;
 }
 
 interface ScheduleRuntimeRequest<T> {
@@ -26,7 +28,7 @@ interface ScheduleRuntimeRequest<T> {
   ownerId: string;
   physicalKey: string;
   priority: RuntimeRequestPriority;
-  start: () => Promise<T>;
+  start: (signal: AbortSignal) => Promise<T>;
 }
 
 export class RuntimeRequestCancelledError extends Error {
@@ -98,10 +100,34 @@ export class DashboardRuntimeScheduler {
         priority: resolvedPriority,
         consumers: new Map([[consumerId, consumer]]),
         start,
+        controller: new AbortController(),
+        settled: false,
       };
       this.entries.set(physicalKey, entry as RuntimeRequestEntry);
       this.drain();
     });
+  }
+
+  releaseConsumer(consumerId: string): void {
+    for (const entry of this.entries.values()) {
+      const consumer = entry.consumers.get(consumerId);
+      if (!consumer) continue;
+      entry.consumers.delete(consumerId);
+      consumer.reject(new RuntimeRequestCancelledError());
+      if (entry.consumers.size > 0) {
+        if (entry.state === 'queued') {
+          entry.priority = bestPriority(entry);
+        }
+        return;
+      }
+      if (entry.state === 'started') {
+        entry.controller.abort();
+        this.finishEntry(entry);
+        return;
+      }
+      this.entries.delete(entry.physicalKey);
+      return;
+    }
   }
 
   cancelQueuedForOwner(ownerId: string): void {
@@ -141,12 +167,20 @@ export class DashboardRuntimeScheduler {
     if (this.destroyed) return;
     this.destroyed = true;
     this.ownerLocations.clear();
-    this.entries.forEach((entry, key) => {
-      if (entry.state !== 'queued') return;
-      entry.consumers.forEach((consumer) => {
+    Array.from(this.entries.values()).forEach((entry) => {
+      const consumers = Array.from(entry.consumers.values());
+      entry.consumers.clear();
+      consumers.forEach((consumer) => {
         consumer.reject(new RuntimeRequestCancelledError());
       });
-      this.entries.delete(key);
+      if (entry.state === 'started') {
+        entry.controller.abort();
+        this.finishEntry(entry);
+        return;
+      }
+      if (this.entries.get(entry.physicalKey) === entry) {
+        this.entries.delete(entry.physicalKey);
+      }
     });
   }
 
@@ -202,29 +236,39 @@ export class DashboardRuntimeScheduler {
     this.running += 1;
     let request: Promise<unknown>;
     try {
-      request = entry.start();
+      request = entry.start(entry.controller.signal);
     } catch (reason) {
+      const consumers = Array.from(entry.consumers.values());
       this.finishEntry(entry);
-      entry.consumers.forEach((consumer) => consumer.reject(reason));
+      consumers.forEach((consumer) => consumer.reject(reason));
       return;
     }
     void Promise.resolve(request).then(
       (value) => {
+        if (entry.settled) return;
+        const consumers = Array.from(entry.consumers.values());
         this.finishEntry(entry);
-        entry.consumers.forEach((consumer) => consumer.resolve(value));
+        consumers.forEach((consumer) => consumer.resolve(value));
       },
       (reason) => {
+        if (entry.settled) return;
+        const consumers = Array.from(entry.consumers.values());
         this.finishEntry(entry);
-        entry.consumers.forEach((consumer) => consumer.reject(reason));
+        consumers.forEach((consumer) => consumer.reject(reason));
       },
     );
   }
 
   private finishEntry(entry: RuntimeRequestEntry): void {
+    if (entry.settled) return;
+    entry.settled = true;
+    const releaseSlot = entry.state === 'started';
     if (this.entries.get(entry.physicalKey) === entry) {
       this.entries.delete(entry.physicalKey);
     }
-    this.running = Math.max(0, this.running - 1);
+    if (releaseSlot) {
+      this.running = Math.max(0, this.running - 1);
+    }
     this.drain();
   }
 }
