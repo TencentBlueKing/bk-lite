@@ -39,8 +39,12 @@ def _match_condition(row, condition):
         return row.get("_id") in value
     if op == "id>":
         return row.get("_id") > value
-    if op == "str[]":
-        return row.get(field) in set(value)
+    if op in {"str[]", "int[]"}:
+        field_value = row.get(field)
+        if isinstance(field_value, (list, dict, tuple, set)):
+            return False
+        members = value if isinstance(value, list) else list(value)
+        return field_value in members
     return row.get(field) == value
 
 
@@ -370,7 +374,7 @@ def test_full_sync_failed_snapshot_never_deletes_existing_edges(monkeypatch, fai
     def fail(label, conditions, **kwargs):
         model_id = next(condition["value"] for condition in conditions if condition["field"] == "model_id")
         paged = any(condition.get("type") == "id>" for condition in conditions)
-        exact_page = any(condition.get("type") == "str[]" for condition in conditions)
+        exact_page = any(condition.get("type") in {"str[]", "int[]"} for condition in conditions)
         if model_id == failed_model and (paged or exact_page):
             raise RuntimeError(f"{failed_model} snapshot unavailable")
         return original(label, conditions, **kwargs)
@@ -468,3 +472,87 @@ def test_full_sync_exact_page_queries_existing_edges_once(graph, monkeypatch):
         src = next(condition for condition in conditions if condition["field"] == "src_inst_uuid")
         assert src["type"] == "str[]"
         assert set(src["value"]) == {graph.instances[0]["inst_uuid"], graph.instances[1]["inst_uuid"]}
+
+
+def test_list_exact_source_value_keeps_matching_auto_edge_without_scalar_in(monkeypatch):
+    source = node(1, "source", ip_addr=["10.0.0.1"])
+    target = node(11, "target", ip_addr=["10.0.0.1"])
+    graph = MemoryGraph([source, target])
+    assoc = association("r-list")
+    assoc["auto_relation_rule"]["rules"][0]["match_pairs"][0].update(src_field_id="ip_addr", dst_field_id="ip_addr")
+    monkeypatch.setattr(mod, "GraphClient", lambda: graph)
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [assoc])
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
+    graph.edges.append(owned_auto_edge(assoc, source["inst_uuid"], target["inst_uuid"]))
+
+    result = SVC.reconcile_for_instances([1])
+
+    assert result["deleted"] == 0
+    assert result["skipped"] == 1
+    assert edge_pairs(graph) == {(source["inst_uuid"], target["inst_uuid"])}
+    target_ops = {condition.get("type") for conditions in _target_queries(graph) for condition in conditions}
+    assert "str[]" not in target_ops
+    assert "int[]" not in target_ops
+
+
+def test_int_exact_match_queries_targets_with_int_in(monkeypatch):
+    source = node(1, "source", port=8080)
+    target = node(11, "target", port=8080)
+    spare = node(12, "target", port=80)
+    graph = MemoryGraph([source, target, spare])
+    assoc = association("r-port")
+    assoc["auto_relation_rule"]["rules"][0]["match_pairs"][0].update(src_field_id="port", dst_field_id="port")
+    monkeypatch.setattr(mod, "GraphClient", lambda: graph)
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [assoc])
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
+
+    result = SVC.reconcile_for_instances([1])
+
+    assert result["created"] == 1
+    assert edge_pairs(graph) == {(source["inst_uuid"], target["inst_uuid"])}
+    in_ops = [condition for conditions in _target_queries(graph) for condition in conditions if condition.get("type") in {"str[]", "int[]"}]
+    assert in_ops
+    assert in_ops[0]["type"] == "int[]"
+    assert in_ops[0]["value"] == [8080]
+
+
+def test_missing_source_uuid_still_deletes_stale_auto_edge(monkeypatch):
+    source = node(1, "source", key="gone")
+    source["inst_uuid"] = ""
+    target = node(11, "target", key="match")
+    graph = MemoryGraph([source, target])
+    assoc = association("r-missing-uuid")
+    monkeypatch.setattr(mod, "GraphClient", lambda: graph)
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [assoc])
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
+    graph.edges.append(owned_auto_edge(assoc, "", target["inst_uuid"]))
+
+    result = SVC.reconcile_for_instances([1])
+
+    assert result["deleted"] == 1
+    assert graph.edges == []
+    assert any(
+        any(condition.get("field") == "src_inst_uuid" and condition.get("type") == "str=" for condition in conditions)
+        for conditions in graph.edge_queries
+    )
+
+
+def test_batch_edge_query_chunks_source_uuids(monkeypatch):
+    monkeypatch.setattr(mod, "AUTO_RELATION_BATCH_SIZE", 2)
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [association("r1")])
+    sources = [instance(index, "source", "a") for index in range(1, 6)]
+    graph = MemoryGraph(sources + [instance(11, "target", "a")])
+    monkeypatch.setattr(mod, "GraphClient", lambda: graph)
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
+
+    result = SVC.reconcile_for_instances([source["_id"] for source in sources])
+
+    assert result["created"] == 5
+    src_chunks = []
+    for conditions in graph.edge_queries:
+        src = next(condition for condition in conditions if condition["field"] == "src_inst_uuid")
+        assert src["type"] == "str[]"
+        assert len(src["value"]) <= 2
+        src_chunks.append(list(src["value"]))
+    assert len(src_chunks) >= 3
+    assert {uuid for chunk in src_chunks for uuid in chunk} == {source["inst_uuid"] for source in sources}
