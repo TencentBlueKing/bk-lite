@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import Channel, UserLoginLog
+from apps.system_mgmt.models import Channel, OperationLog, UserLoginLog
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt.viewset.user_login_log_viewset import UserLoginLogViewSet
 
@@ -59,6 +59,19 @@ def test_channel_create_and_retrieve(super_client):
     assert retr.status_code == 200
     # CustomRenderer 包裹为 {result, code, message, data}
     assert retr.json()["data"]["name"] == "newchan"
+
+
+def test_channel_create_writes_operation_log_as_system_manager(super_client):
+    create = super_client.post(
+        f"{V}/channel/",
+        {"name": "audit-chan", "channel_type": ChannelChoices.EMAIL, "config": {}, "description": "d", "team": [1]},
+        format="json",
+    )
+    assert create.status_code in (200, 201)
+    log = OperationLog.objects.get(target_name="audit-chan")
+    assert log.app == "system-manager"
+    assert log.action_type == "create"
+    assert log.target_type == "channel"
 
 
 def test_channel_update_settings(super_client):

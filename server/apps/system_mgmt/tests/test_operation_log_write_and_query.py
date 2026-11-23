@@ -164,9 +164,52 @@ def test_list_does_not_present_empty_outcome_as_success():
     assert items
     row = next(item for item in items if item["summary"] == "未标注结果")
     assert row["outcome"] == ""
-    assert row["app_name"] == "配置管理"
+    assert row["app_name"] == "CMDB"
     assert "成功" not in json.dumps(row, ensure_ascii=False)
     assert row.get("action_type_display") != "成功"
+
+
+def test_list_uses_bilingual_app_name_not_display_name():
+    admin = _admin()
+    team_id = _team_user("alice")
+    App.objects.update_or_create(
+        name="system-manager",
+        defaults={"display_name": "Setting", "url": "/system-manager", "is_build_in": True},
+    )
+    App.objects.update_or_create(
+        name="acme-ops",
+        defaults={"display_name": "Acme Ops", "url": "/acme", "is_build_in": False},
+    )
+    OperationLog.objects.create(
+        username="alice",
+        domain=VISIBLE_DOMAIN,
+        source_ip="127.0.0.1",
+        app="system-manager",
+        action_type="update",
+        summary="setting-row",
+        outcome="success",
+    )
+    OperationLog.objects.create(
+        username="alice",
+        domain=VISIBLE_DOMAIN,
+        source_ip="127.0.0.1",
+        app="acme-ops",
+        action_type="update",
+        summary="custom-row",
+        outcome="success",
+    )
+    items = _list_items(_client(admin, team_id))
+    setting_row = next(item for item in items if item["summary"] == "setting-row")
+    custom_row = next(item for item in items if item["summary"] == "custom-row")
+    assert setting_row["app_name"] == "系统管理"
+    assert setting_row["app_name"] != "Setting"
+    assert custom_row["app_name"] == "Acme Ops"
+
+    admin.locale = "en"
+    admin.save(update_fields=["locale"])
+    en_items = _list_items(_client(admin, team_id))
+    en_row = next(item for item in en_items if item["summary"] == "setting-row")
+    assert en_row["app_name"] == "System Management"
 
 
 def test_list_redacts_legacy_plaintext_detail():
@@ -319,7 +362,7 @@ def test_export_columns_app_display_name_and_redaction():
         "失败原因",
     ]
     values = [sheet.cell(row=2, column=index).value for index in range(1, 13)]
-    assert values[4] == "配置管理"
+    assert values[4] == "CMDB"
     assert values[7] == "host"
     assert values[8] == "web-1"
     assert values[9] == "42"

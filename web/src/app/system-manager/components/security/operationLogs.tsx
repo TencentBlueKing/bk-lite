@@ -19,6 +19,7 @@ import {
 } from '@/app/system-manager/utils/operationLogDetail';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 const { Search } = Input;
 
@@ -166,6 +167,14 @@ const OperationLogs: React.FC = () => {
   const formatRecorded = (value: string) =>
     value === UNRECORDED ? t('system.security.outcomeUnrecorded') : value;
 
+  const formatAppName = (record: { app?: string; app_name?: string }) => {
+    const label = resolveAppDisplayName(
+      { name: record.app, display_name: record.app_name },
+      t,
+    ).trim();
+    return label || UNRECORDED;
+  };
+
   const formatOutcome = (outcome: OperationOutcome) => {
     if (outcome === 'success') return t('system.security.outcomeSuccess');
     if (outcome === 'failure') return t('system.security.outcomeFailure');
@@ -235,7 +244,7 @@ const OperationLogs: React.FC = () => {
       title: t('system.security.appName'),
       dataIndex: 'app_name',
       key: 'app_name',
-      render: (_: string, record: OperationLog) => record.app_name || record.app,
+      render: (_: string, record: OperationLog) => formatRecorded(formatAppName(record)),
     },
     {
       title: t('system.security.operationType'),
@@ -302,7 +311,7 @@ const OperationLogs: React.FC = () => {
             allowClear
             className="w-48"
             options={clientData.map((item) => ({
-              label: item.display_name,
+              label: resolveAppDisplayName(item, t),
               value: item.name,
             }))}
           />
@@ -398,7 +407,7 @@ const OperationLogs: React.FC = () => {
                     : t('system.security.outcomeUnrecorded')}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('system.security.appName')}>
-                  {formatRecorded(detailView.appName)}
+                  {formatRecorded(formatAppName(detailRecord))}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('system.security.sourceIp')}>
                   {formatRecorded(detailView.sourceIp)}

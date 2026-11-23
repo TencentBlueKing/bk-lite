@@ -1051,3 +1051,26 @@ def test_user_viewset_change_status_unlock_clears_lock_state_only_for_locked_use
             "update_fields": ["account_locked_until", "password_error_count"],
         }
     ]
+
+
+@pytest.mark.django_db
+def test_create_authorization_writes_operation_log_as_system_manager(api_client, authenticated_user):
+    pytest.importorskip("apps.system_mgmt.enterprise.viewset.sensitive_info_authorization_viewset")
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"sensitive_info-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    created = api_client.post(
+        "/api/v1/system_mgmt/sensitive_info_authorization/",
+        {
+            "username": "audit-sensitive",
+            "domain": "domain.com",
+            "sensitive_types": ["email"],
+        },
+        format="json",
+    )
+
+    assert created.status_code == 201, created.content
+    log = OperationLog.objects.get(summary__startswith="新增敏感信息授权: audit-sensitive@")
+    assert log.app == "system-manager"
+    assert log.action_type == "create"

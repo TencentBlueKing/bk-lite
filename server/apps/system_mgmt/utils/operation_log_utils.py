@@ -4,6 +4,7 @@
 from ipware import get_client_ip
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.builtin_app_i18n import localized_app_display_name
 from apps.system_mgmt.models.app import App
 from apps.system_mgmt.models.operation_log import OperationLog
 
@@ -53,17 +54,34 @@ def normalize_failure_reason(outcome, failure_reason):
     return failure_reason or ""
 
 
-def app_display_name_map(names=None):
+def _localized_app_label(name, display_name="", is_build_in=True, loader=None):
+    if loader and is_build_in:
+        translated = localized_app_display_name(name, loader)
+        if translated:
+            return translated
+    return display_name or name or ""
+
+
+def app_display_name_map(names=None, loader=None):
     queryset = App.objects.all()
     if names is not None:
         queryset = queryset.filter(name__in=set(names))
-    return dict(queryset.values_list("name", "display_name"))
+    return {
+        name: _localized_app_label(name, display_name, is_build_in, loader)
+        for name, display_name, is_build_in in queryset.values_list("name", "display_name", "is_build_in")
+    }
 
 
-def resolve_app_display_name(app, mapping=None):
+def resolve_app_display_name(app, mapping=None, loader=None):
     if mapping is None:
-        mapping = app_display_name_map([app] if app else [])
-    return mapping.get(app) or app or ""
+        mapping = app_display_name_map([app] if app else [], loader=loader)
+    if app in mapping:
+        return mapping[app]
+    if loader:
+        translated = localized_app_display_name(app, loader)
+        if translated:
+            return translated
+    return app or ""
 
 
 def persist_operation_log(

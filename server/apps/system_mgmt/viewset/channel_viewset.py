@@ -261,7 +261,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             log_operation(
                 request,
                 "create",
-                "channel",
+                "system-manager",
                 f"新增{channel_type}渠道: {channel_name}",
                 target_type="channel",
                 target_id=response.data.get("id"),
@@ -294,7 +294,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             log_operation(
                 request,
                 "update",
-                "channel",
+                "system-manager",
                 f"编辑{channel_type}渠道: {channel_name}",
                 target_type="channel",
                 target_id=obj.id,
@@ -325,7 +325,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             log_operation(
                 request,
                 "delete",
-                "channel",
+                "system-manager",
                 f"删除{channel_type}渠道: {channel_name}",
                 target_type="channel",
                 target_id=obj.id,
@@ -375,7 +375,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         log_operation(
             request,
             "update",
-            "channel",
+            "system-manager",
             f"编辑{obj.channel_type}渠道: {obj.name}",
             target_type="channel",
             target_id=obj.id,

@@ -73,7 +73,7 @@ class IMAccountAssociationViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "create",
-                "user_sync",
+                "system-manager",
                 f"新增账号关联: {response.data.get('name', '')}",
                 target_type="im_account_association",
                 target_id=response.data.get("id"),
@@ -89,7 +89,7 @@ class IMAccountAssociationViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "update",
-                "user_sync",
+                "system-manager",
                 f"编辑账号关联: {response.data.get('name', '')}",
                 target_type="im_account_association",
                 target_id=response.data.get("id"),
@@ -112,7 +112,7 @@ class IMAccountAssociationViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "delete",
-                "user_sync",
+                "system-manager",
                 f"删除账号关联: {name}",
                 target_type="im_account_association",
                 target_id=obj.id,

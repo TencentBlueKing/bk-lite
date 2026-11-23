@@ -116,7 +116,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "create",
-                "channel",
+                "system-manager",
                 f"新增IM应用通知: {response.data.get('name', '')}",
                 target_type="im_notification_channel",
                 target_id=response.data.get("id"),
@@ -143,7 +143,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "update",
-                "channel",
+                "system-manager",
                 f"编辑IM应用通知: {response.data.get('name', '')}",
                 target_type="im_notification_channel",
                 target_id=obj.id,
@@ -179,7 +179,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             log_operation(
                 request,
                 "delete",
-                "channel",
+                "system-manager",
                 f"删除IM应用通知: {channel_name}",
                 target_type="im_notification_channel",
                 target_id=obj.id,

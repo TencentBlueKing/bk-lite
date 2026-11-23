@@ -245,7 +245,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
                 data.get("domain") or log.domain,
                 log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "-",
                 data.get("source_ip") or log.source_ip,
-                data.get("app_name") or resolve_app_display_name(log.app) or "-",
+                data.get("app_name") or resolve_app_display_name(log.app, loader=self.loader) or "-",
                 action_type_display_map.get(log.action_type, log.action_type),
                 data.get("summary") or "-",
                 data.get("target_type") or unrecorded_label,

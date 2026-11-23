@@ -295,6 +295,15 @@ outcome:
 status:
   success: 成功
   failed: 失败
+login_method:
+  unrecorded: 未记录
+  otp_suffix: (OTP)
+  bk_lite_builtin: 本地密码
+  ad: AD
+  feishu: 飞书
+  wecom: 企业微信
+  wechat: 微信
+  blueking: 蓝鲸
 export:
   too_many_rows: '导出行数超过上限 {limit}（当前 {count} 行）。请缩小筛选条件，或使用 selected_ids 导出已选记录。'
   login_log_sheet: 用户登录日志
@@ -311,7 +320,12 @@ export:
   column_location: 地理位置
   column_browser: 浏览器
   column_os: 操作系统
+  column_client: 客户端
+  column_login_method: 登录方式
+  column_login_account: 账号
+  column_login_source_ip: 来源 IP
   column_login_status: 登录状态
+  column_login_result: 登录结果
   column_failure_reason: 失败原因
   column_app: 应用
   column_action_type: 操作类型

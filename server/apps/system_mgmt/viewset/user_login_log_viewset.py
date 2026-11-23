@@ -14,6 +14,7 @@ from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
 from apps.system_mgmt.utils.audit_log_export import export_limit_rejection
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
+from apps.system_mgmt.utils.login_log_utils import format_client_display, format_login_method_display
 
 
 class UserLoginLogFilter(filters.FilterSet):
@@ -138,8 +139,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         - username: 用户名
         - login_time_start: 开始时间
         - login_time_end: 结束时间
-        - source_ip: 源IP
-        - location: 地理位置
+        - source_ip: 来源 IP
         - os_info: 操作系统
         - browser_info: 浏览器
 
@@ -180,14 +180,12 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
 
         # 设置表头
         headers = [
-            self._export_label("export.column_username", "用户名"),
-            self._export_label("export.column_domain", "域名"),
             self._export_label("export.column_login_time", "登录时间"),
-            self._export_label("export.column_source_ip", "源IP地址"),
-            self._export_label("export.column_location", "地理位置"),
-            self._export_label("export.column_browser", "浏览器"),
-            self._export_label("export.column_os", "操作系统"),
-            self._export_label("export.column_login_status", "登录状态"),
+            self._export_label("export.column_login_account", "账号"),
+            self._export_label("export.column_login_method", "登录方式"),
+            self._export_label("export.column_client", "客户端"),
+            self._export_label("export.column_login_source_ip", "来源 IP"),
+            self._export_label("export.column_login_result", "登录结果"),
             self._export_label("export.column_failure_reason", "失败原因"),
         ]
 
@@ -206,7 +204,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
             cell.alignment = header_alignment
 
         # 设置列宽
-        column_widths = [20, 20, 22, 18, 25, 20, 20, 12, 40]
+        column_widths = [22, 20, 20, 28, 18, 12, 40]
         for i, width in enumerate(column_widths, 1):
             sheet.column_dimensions[sheet.cell(row=1, column=i).column_letter].width = width
 
@@ -219,13 +217,11 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         # 写入数据
         for log in queryset:
             row_data = [
-                log.username,
-                log.domain,
                 log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "-",
+                log.username,
+                format_login_method_display(log.login_method, log.used_otp, loader=self.loader),
+                format_client_display(log.os_info, log.browser_info, loader=self.loader),
                 log.source_ip,
-                log.location or "-",
-                log.browser_info or "-",
-                log.os_info or "-",
                 status_display_map.get(log.status, log.status),
                 log.failure_reason or "-",
             ]

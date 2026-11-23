@@ -45,7 +45,7 @@ vi.mock('@/components/time-selector', () => ({
 
 vi.mock('@/components/custom-table', () => ({
   default: (props: { rowSelection?: TableRowSelection<unknown>; columns?: Array<{ key?: string }> }) => {
-    if (props.columns?.some((column) => column.key === 'detail')) {
+    if (props.columns?.some((column) => column.key === 'outcome')) {
       operationSelection = props.rowSelection;
     } else {
       loginSelection = props.rowSelection;
@@ -145,7 +145,7 @@ describe('UserLoginLogs export', () => {
     expect((exportButton as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText('system.security.exportCsv')).toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText('system.user.table.username'), {
+    fireEvent.change(screen.getByPlaceholderText('system.security.loginAccountPlaceholder'), {
       target: { value: 'bob' },
     });
     fireEvent.change(screen.getByPlaceholderText('system.security.sourceIpPlaceholder'), {
@@ -179,6 +179,38 @@ describe('UserLoginLogs export', () => {
     fireEvent.click(exportButton);
     await waitFor(() => {
       expect(exportUserLoginLogs).toHaveBeenLastCalledWith({ selected_ids: [4] });
+    });
+  });
+
+  it('reset reloads the list without the filters that were just cleared', async () => {
+    render(<UserLoginLogs />);
+    await waitFor(() => {
+      expect(getUserLoginLogs).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('system.security.loginAccountPlaceholder'), {
+      target: { value: 'bob' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('system.security.sourceIpPlaceholder'), {
+      target: { value: '10.1.1.1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /common\.search/ }));
+
+    await waitFor(() => {
+      const params = getUserLoginLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBe('bob');
+      expect(params.source_ip).toBe('10.1.1.1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.reset/ }));
+
+    await waitFor(() => {
+      const params = getUserLoginLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBeUndefined();
+      expect(params.source_ip).toBeUndefined();
+      expect(params.status).toBeUndefined();
+      expect(params.login_time_start).toBeUndefined();
+      expect(params.login_time_end).toBeUndefined();
     });
   });
 });

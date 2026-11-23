@@ -326,6 +326,15 @@ outcome:
 status:
   success: Success
   failed: Failed
+login_method:
+  unrecorded: Not recorded
+  otp_suffix: (OTP)
+  bk_lite_builtin: Local password
+  ad: AD
+  feishu: Feishu
+  wecom: WeCom
+  wechat: WeChat
+  blueking: BlueKing
 export:
   too_many_rows: 'Export exceeds the limit of {limit} rows (current count is {count}). Narrow the filters, or export the selected rows with selected_ids.'
   login_log_sheet: User login logs
@@ -342,7 +351,12 @@ export:
   column_location: Location
   column_browser: Browser
   column_os: Operating system
+  column_client: Client
+  column_login_method: Login method
+  column_login_account: Account
+  column_login_source_ip: Source IP
   column_login_status: Login status
+  column_login_result: Login result
   column_failure_reason: Failure reason
   column_app: App
   column_action_type: Action type

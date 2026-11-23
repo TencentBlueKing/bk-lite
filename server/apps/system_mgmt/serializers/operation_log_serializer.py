@@ -32,11 +32,11 @@ class OperationLogSerializer(serializers.ModelSerializer):
                 names = [instances.app]
             else:
                 names = [item.app for item in instances]
-            self._app_name_map = app_display_name_map(names)
+            self._app_name_map = app_display_name_map(names, loader=self.loader)
         return self._app_name_map
 
     def get_app_name(self, obj):
-        return resolve_app_display_name(obj.app, self._app_names())
+        return resolve_app_display_name(obj.app, self._app_names(), loader=self.loader)
 
     def get_action_type_display(self, obj):
         """获取操作类型的翻译显示"""

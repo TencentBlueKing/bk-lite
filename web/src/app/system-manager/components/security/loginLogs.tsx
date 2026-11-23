@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { message, Select, Space, Button, Tag, Input } from 'antd';
+import { message, Select, Space, Button, Tag, Input, Drawer, Descriptions } from 'antd';
 import { SearchOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -12,6 +12,29 @@ import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
 
+const EMPTY_FILTERS: {
+  status?: 'success' | 'failed';
+  username?: string;
+  source_ip?: string;
+} = {};
+
+interface UserLoginLog {
+  id: number;
+  username: string;
+  login_time?: string;
+  created_at?: string;
+  login_method?: string;
+  login_method_display?: string;
+  used_otp?: boolean;
+  os_info?: string;
+  browser_info?: string;
+  client_display?: string;
+  source_ip?: string;
+  status: string;
+  status_display?: string;
+  failure_reason?: string;
+}
+
 const UserLoginLogs: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -19,53 +42,63 @@ const UserLoginLogs: React.FC = () => {
   const timeSelectorRef = useRef<any>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<UserLoginLog[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0
   });
-  const [filters, setFilters] = useState<{
-    status?: 'success' | 'failed';
-    username?: string;
-    source_ip?: string;
-  }>({});
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [timeRange, setTimeRange] = useState<number[]>(() => {
     const end = dayjs().valueOf();
     const start = dayjs().subtract(7, 'day').valueOf();
     return [start, end];
   });
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<UserLoginLog | null>(null);
 
   useEffect(() => {
     fetchLogs();
   }, []);
 
-  const buildLoginFilters = () => {
+  const unrecorded = t('system.security.outcomeUnrecorded');
+
+  const formatRecorded = (value?: string) => value || unrecorded;
+
+  const buildLoginFilters = (
+    nextFilters = filters,
+    nextTimeRange = timeRange,
+  ) => {
     const params: Record<string, string> = {};
-    if (filters.status) {
-      params.status = filters.status;
+    if (nextFilters.status) {
+      params.status = nextFilters.status;
     }
-    if (filters.username) {
-      params.username = filters.username;
+    if (nextFilters.username) {
+      params.username = nextFilters.username;
     }
-    if (filters.source_ip) {
-      params.source_ip = filters.source_ip;
+    if (nextFilters.source_ip) {
+      params.source_ip = nextFilters.source_ip;
     }
-    if (timeRange && timeRange.length === 2) {
-      params.login_time_start = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
-      params.login_time_end = dayjs(timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
+    if (nextTimeRange && nextTimeRange.length === 2) {
+      params.login_time_start = dayjs(nextTimeRange[0]).format('YYYY-MM-DD HH:mm:ss');
+      params.login_time_end = dayjs(nextTimeRange[1]).format('YYYY-MM-DD HH:mm:ss');
     }
     return params;
   };
 
-  const fetchLogs = async (page = 1, pageSize = 10) => {
+  const fetchLogs = async (
+    page = 1,
+    pageSize = 10,
+    nextFilters = filters,
+    nextTimeRange = timeRange,
+  ) => {
     try {
       setLoading(true);
       const params: Record<string, string | number> = {
         page,
         page_size: pageSize,
-        ...buildLoginFilters(),
+        ...buildLoginFilters(nextFilters, nextTimeRange),
       };
 
       const response = await getUserLoginLogs(params);
@@ -88,14 +121,12 @@ const UserLoginLogs: React.FC = () => {
   };
 
   const handleReset = () => {
-    setFilters({});
+    setFilters(EMPTY_FILTERS);
     setTimeRange([]);
     if (timeSelectorRef.current?.reset) {
       timeSelectorRef.current.reset();
     }
-    setTimeout(() => {
-      fetchLogs(1, pagination.pageSize);
-    }, 0);
+    fetchLogs(1, pagination.pageSize, EMPTY_FILTERS, []);
   };
 
   const handleTimeChange = (range: number[]) => {
@@ -106,7 +137,7 @@ const UserLoginLogs: React.FC = () => {
     fetchLogs(page, pageSize);
   };
 
-  const rowSelection: TableRowSelection<any> = {
+  const rowSelection: TableRowSelection<UserLoginLog> = {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => {
       setSelectedRowKeys(keys);
@@ -136,13 +167,12 @@ const UserLoginLogs: React.FC = () => {
     }
   };
 
+  const openDetail = (record: UserLoginLog) => {
+    setDetailRecord(record);
+    setDetailVisible(true);
+  };
 
-  const columns: ColumnsType<any> = [
-    {
-      title: t('system.user.table.username'),
-      dataIndex: 'username',
-      key: 'username'
-    },
+  const columns: ColumnsType<UserLoginLog> = [
     {
       title: t('system.security.loginTime'),
       dataIndex: 'login_time',
@@ -150,19 +180,24 @@ const UserLoginLogs: React.FC = () => {
       render: (text: string) => convertToLocalizedTime(text)
     },
     {
-      title: t('system.security.loginLocation'),
-      dataIndex: 'location',
-      key: 'location'
+      title: t('system.security.loginAccount'),
+      dataIndex: 'username',
+      key: 'username'
     },
     {
-      title: t('system.security.operatingSystem'),
-      dataIndex: 'os_info',
-      key: 'os_info'
+      title: t('system.security.loginMethod'),
+      dataIndex: 'login_method_display',
+      key: 'login_method',
+      render: (text: string) => formatRecorded(text)
     },
     {
-      title: t('system.security.browser'),
-      dataIndex: 'browser_info',
-      key: 'browser_info'
+      title: t('system.security.client'),
+      dataIndex: 'client_display',
+      key: 'client',
+      render: (text: string, record) =>
+        formatRecorded(
+          text || [record.os_info, record.browser_info].filter(Boolean).join(' ')
+        )
     },
     {
       title: t('system.security.loginHost'),
@@ -173,13 +208,23 @@ const UserLoginLogs: React.FC = () => {
       title: t('system.security.loginStatus'),
       dataIndex: 'status',
       key: 'status',
-      render: (status: string, record: any) => {
+      render: (status: string, record) => {
         return (
           <Tag color={status === 'success' ? 'green' : 'red'}>
             {record.status_display}
           </Tag>
         );
       }
+    },
+    {
+      title: t('common.detail'),
+      key: 'detail',
+      width: 80,
+      render: (_: unknown, record) => (
+        <Button type="link" size="small" onClick={() => openDetail(record)}>
+          {t('common.detail')}
+        </Button>
+      )
     }
   ];
 
@@ -199,7 +244,7 @@ const UserLoginLogs: React.FC = () => {
               ]}
             />
             <Input
-              placeholder={t('system.user.table.username')}
+              placeholder={t('system.security.loginAccountPlaceholder')}
               className="w-[200px]"
               allowClear
               value={filters.username}
@@ -254,6 +299,50 @@ const UserLoginLogs: React.FC = () => {
           }}
         />
       </div>
+
+      <Drawer
+        title={t('common.detail')}
+        width={520}
+        open={detailVisible}
+        onClose={() => {
+          setDetailVisible(false);
+          setDetailRecord(null);
+        }}
+        destroyOnHidden
+      >
+        {detailRecord && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('system.security.loginTime')}>
+              {detailRecord.login_time
+                ? convertToLocalizedTime(detailRecord.login_time)
+                : unrecorded}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('system.security.loginAccount')}>
+              {formatRecorded(detailRecord.username)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('system.security.loginMethod')}>
+              {formatRecorded(detailRecord.login_method_display)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('system.security.loginStatus')}>
+              {formatRecorded(detailRecord.status_display)}
+            </Descriptions.Item>
+            {detailRecord.status === 'failed' && (
+              <Descriptions.Item label={t('system.security.failureReason')}>
+                {formatRecorded(detailRecord.failure_reason)}
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label={t('system.security.loginHost')}>
+              {formatRecorded(detailRecord.source_ip)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('system.security.client')}>
+              {formatRecorded(
+                detailRecord.client_display
+                || [detailRecord.os_info, detailRecord.browser_info].filter(Boolean).join(' ')
+              )}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Drawer>
 
     </div>
   );
