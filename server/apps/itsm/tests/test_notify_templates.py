@@ -5,9 +5,10 @@ import pytest
 
 from apps.console_mgmt.models import Notification
 from apps.console_mgmt.viewsets.notification import NotificationViewSet
-from apps.itsm.models import NotifyTemplate
+from apps.itsm.models import NotifyTemplate, Ticket, Workflow
 from apps.itsm.serializers.org import NotifyTemplateSerializer
 from apps.itsm.services.notify.service import dispatch_notification
+from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.signals import send_itsm_notification
 from apps.system_mgmt.models import User
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationUserMapping
@@ -116,6 +117,27 @@ def test_template_form_validates_channel_and_template_syntax():
     assert not NotifyTemplateSerializer(data={**payload, "channel_type": "unavailable"}).is_valid()
     invalid = NotifyTemplateSerializer(data={**payload, "content_tpl": "{% if incomplete %}"})
     assert not invalid.is_valid() and "content_tpl" in invalid.errors
+
+
+def test_new_task_renders_ticket_fields_in_im_without_changing_the_site_link(django_capture_on_commit_callbacks):
+    workflow = Workflow.objects.create(domain="test.example", name="服务申请流程", key="notice-test")
+    ticket = Ticket.objects.create(
+        domain=workflow.domain, workflow=workflow, sn="REQ-NOTICE-1", title="更换设备", creator="owner", process_instance_id="process-1"
+    )
+    NotifyTemplate.objects.create(
+        domain=ticket.domain,
+        event="task.created",
+        channel_type="im",
+        title_tpl="工单待办 {{ sn }}",
+        content_tpl="{{ ticket_title }} · {{ workflow }} · {{ node }} · {{ ticket_path }}",
+    )
+    client = SimpleNamespace(
+        list_tasks_including_children=lambda _: [{"id": "task-1", "assignee": "handler", "taskDefinitionKey": "handle", "name": "部门审批"}]
+    )
+    with patch("apps.itsm.services.notify.service._send_im_if_configured") as send_im, django_capture_on_commit_callbacks(execute=True):
+        TicketService(client).sync_ticket(ticket)
+    send_im.assert_called_once_with("工单待办 REQ-NOTICE-1", f"更换设备 · 服务申请流程 · 部门审批 · /itsm/tickets/{ticket.id}", ["handler"], domain=ticket.domain)
+    assert Notification.objects.get().target_url == f"/itsm/tickets/{ticket.id}"
 
 
 def test_ticket_event_uses_sender_domain():

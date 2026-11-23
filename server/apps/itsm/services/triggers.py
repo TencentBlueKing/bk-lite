@@ -36,12 +36,12 @@ def fire_triggers(ticket, action: str, operator: str) -> None:
             ticket.tags.add(tag)
             message = f"tag:{response}"
         elif trigger.action == "notice" and ticket.created_by:
-            from apps.itsm.services.notify.service import dispatch_notification
+            from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 
             try:
                 dispatch_notification(
                     "trigger",
-                    {"title": trigger.name, "content": response or trigger.name},
+                    {**ticket_notice_variables(ticket), "title": trigger.name, "content": response or trigger.name},
                     [ticket.created_by],
                     site_only=ticket.is_test,
                     domain=ticket.domain,

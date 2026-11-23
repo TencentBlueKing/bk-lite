@@ -7,12 +7,20 @@ from jinja2.sandbox import SandboxedEnvironment
 
 from apps.console_mgmt.services.notifications import create_targeted_notification
 from apps.core.logger import itsm_logger
-from apps.itsm.models import NotifyTemplate
+from apps.itsm.models import NotifyTemplate, Ticket
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationChannelStatusChoices, IMNotificationUserMapping
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 template_environment = SandboxedEnvironment()
+
+
+def ticket_notice_variables(ticket: Ticket, *, link_to_ticket: bool = False) -> dict[str, str]:
+    path = f"/itsm/tickets/{ticket.pk}"
+    variables = {"ticket_title": ticket.title, "sn": ticket.sn, "workflow": ticket.workflow.name, "ticket_path": path}
+    if link_to_ticket:
+        variables["url"] = path
+    return variables
 
 
 def render_template(event: str, variables: dict, *, domain: str, channel_type: str, fallback: tuple[str, str] | None = None) -> tuple[str, str]:

@@ -69,14 +69,19 @@ def execute_node(ticket, node):
     kind = node.get("type")
     config = node.get("auto") or {}
     if kind in {"cc", "notice"}:
-        from apps.itsm.services.notify.service import dispatch_notification
+        from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 
         receivers = config.get("receivers") or (node.get("assignee") or {}).get("value") or []
         if not receivers:
             raise ActionFailure("通知节点缺少接收人", retryable=True)
         result = dispatch_notification(
             "node.notice",
-            {"title": ticket.title, "content": config.get("content") or ticket.title},
+            {
+                **ticket_notice_variables(ticket),
+                "title": ticket.title,
+                "content": config.get("content") or ticket.title,
+                "node": node.get("name") or node["id"],
+            },
             receivers,
             event_key=f'itsm-notice-{ticket.id}-{node["id"]}-{ticket.process_instance_id}',
             site_only=ticket.is_test,

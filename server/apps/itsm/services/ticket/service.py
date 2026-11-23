@@ -4,7 +4,7 @@ from django.utils import timezone
 from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
 from apps.itsm.services.form.fetch import validate_submission
-from apps.itsm.services.notify.service import dispatch_notification
+from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
 from apps.itsm.services.ticket.actions import (
@@ -166,9 +166,9 @@ class TicketService:
                         event="task.created",
                         receivers=[current_task.assignee],
                         variables={
+                            **ticket_notice_variables(current_ticket, link_to_ticket=True),
                             "title": current_ticket.title,
                             "node": current_task.node_name,
-                            "url": f"/itsm/tickets/{current_ticket.id}",
                         },
                         event_key=f"itsm-task-{current_task.flowable_task_id}",
                     )
@@ -416,16 +416,18 @@ class TicketService:
             data = {**data, "round_started_at": timezone.now().isoformat()}
             self._reopen(ticket, operator)
         elif action == "urge":
-            receivers = [
-                name
-                for name in ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).values_list(
-                    "assignee", flat=True
-                )
-                if name
-            ]
+            pending = list(
+                ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).values_list("assignee", "node_name")
+            )
+            receivers = [assignee for assignee, _ in pending if assignee]
             dispatch_notification(
                 "ticket.urge",
-                {"title": ticket.title, "url": f"/itsm/tickets/{ticket.id}", "content": data.get("opinion") or "请尽快处理"},
+                {
+                    **ticket_notice_variables(ticket, link_to_ticket=True),
+                    "title": ticket.title,
+                    "content": data.get("opinion") or "请尽快处理",
+                    "node": "、".join(dict.fromkeys(name for _, name in pending if name)),
+                },
                 receivers or [ticket.creator],
                 event_key=f"itsm-urge-{ticket.id}-{int(timezone.now().timestamp())}",
                 site_only=ticket.is_test,

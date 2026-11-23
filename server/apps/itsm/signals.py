@@ -3,7 +3,7 @@ from django.db.models.signals import post_save
 from django.dispatch import Signal, receiver
 
 from apps.itsm.models import TicketComment, TicketLog
-from apps.itsm.services.notify.service import deliver_with_retry
+from apps.itsm.services.notify.service import deliver_with_retry, ticket_notice_variables
 
 itsm_event = Signal()
 
@@ -43,9 +43,10 @@ def notify_ticket_followers(sender, instance, created, **kwargs):
         deliver_with_retry(
             "ticket.followed",
             {
+                **ticket_notice_variables(ticket, link_to_ticket=True),
                 "title": f"关注工单更新：{ticket.title}",
                 "content": f"{ticket.sn} · {label}",
-                "url": f"/itsm/tickets/{ticket.pk}",
+                "action_label": label,
             },
             receivers,
             event_key,
