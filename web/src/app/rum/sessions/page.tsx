@@ -25,7 +25,7 @@ import {
 } from '@/app/rum/api';
 import CustomTable from '@/components/custom-table';
 import ExportButton from '@/app/rum/components/export-button';
-import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
+import PipelineDegradedBanner, { RumDegradedEmpty } from '@/app/rum/components/pipeline-degraded';
 import {
   RumDualWorkbench,
   RumFilterBlock,
@@ -37,7 +37,7 @@ import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-s
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import RumPageError from '@/app/rum/components/rum-page-error';
-import { degradationReason } from '@/app/rum/lib/degradation';
+import { degradationBanners, listEmptyUsesAnalyticsCopy } from '@/app/rum/lib/degradation';
 import { resolveRumPageState } from '@/app/rum/lib/page-state';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import {
@@ -160,7 +160,8 @@ export default function RumSessionsPage() {
   const errored = page?.summary?.errored || 0;
   const medianDuration =
     page?.summary && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
-  const degrade = degradationReason(page);
+  const banners = degradationBanners(page);
+  const analyticsEmpty = listEmptyUsesAnalyticsCopy(page);
   const chrome = resolveRumPageState({
     // Refetch (range / filter change) must also enter loading chrome; otherwise
     // stale rows stay on screen with no feedback while the network is in flight.
@@ -284,7 +285,13 @@ export default function RumSessionsPage() {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t('rum.sessions.title', '会话')}</h1>
 
-      {degrade ? <div className="mb-2 shrink-0"><PipelineDegradedBanner reason={degrade} /></div> : null}
+      {banners.length > 0 ? (
+        <div className="mb-2 shrink-0">
+          {banners.map((reason) => (
+            <PipelineDegradedBanner key={reason} reason={reason} />
+          ))}
+        </div>
+      ) : null}
 
       <RumDualWorkbench
         asideTitle={t('rum.sessions.quickFilter', '快速筛选')}
@@ -371,7 +378,16 @@ export default function RumSessionsPage() {
                   <div className="mb-1.5 text-[11px] text-[var(--color-text-3)]">
                     {t('rum.sessions.trend', '会话趋势')}
                   </div>
-                  <SessionTrendChart points={trend} compact hideTitle />
+                  <SessionTrendChart
+                    points={trend}
+                    compact
+                    hideTitle
+                    emptyText={
+                      analyticsEmpty
+                        ? t('rum.pipeline.emptyAnalytics', '分析数据面暂不可用，列表暂时为空。')
+                        : undefined
+                    }
+                  />
                 </div>
               ) : null}
 
@@ -424,7 +440,11 @@ export default function RumSessionsPage() {
 
               {!pending && sessions.length === 0 ? (
                 <div className="flex min-h-0 flex-1 items-center justify-center">
-                  <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                  {analyticsEmpty ? (
+                    <RumDegradedEmpty reason="analytics" />
+                  ) : (
+                    <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                  )}
                 </div>
               ) : sessions.length > 0 ? (
                 <div className="min-h-0 min-w-0 flex-1">

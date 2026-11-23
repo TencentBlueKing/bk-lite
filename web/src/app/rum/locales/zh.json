@@ -23,7 +23,9 @@
     },
     "pipeline": {
       "controlUnavailable": "RUM 控制面暂不可用，无法确认接入状态。",
-      "analyticsUnavailable": "RUM 分析数据面暂不可用，指标与列表可能为空。"
+      "analyticsUnavailable": "RUM 分析数据面暂不可用，指标与列表可能为空。",
+      "emptyControl": "无法确认接入状态，列表暂时为空。",
+      "emptyAnalytics": "分析数据面暂不可用，列表暂时为空。"
     },
     "common": {
       "timeWindow": "时间窗",

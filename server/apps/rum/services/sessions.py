@@ -4,10 +4,17 @@ import time
 from typing import Any
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
-from apps.rum.services.query import empty_replay_manifest, empty_session_journey, empty_session_list, empty_session_trend, parse_range_params
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
+from apps.rum.services.health import EnabledApplications, list_enabled_applications
+from apps.rum.services.query import (
+    empty_replay_manifest,
+    empty_session_journey,
+    empty_session_list,
+    empty_session_trend,
+    parse_range_params,
+    stamp_pipeline_flags,
+)
 from apps.rum.services.replay import ReplayIndex, get_replay_index, sign_payload, verify_payload
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.validation import ValidationError, valid_application
@@ -25,28 +32,8 @@ class SessionsService:
         self.replay_index = replay_index or get_replay_index()
         self.settings = load_rum_settings()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        enabled = [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)]
-        return enabled, None
-
-    def _resolve_applications(self, actor: str, requested: list[str]) -> tuple[list[str], str | None]:
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason:
-            return [], reason
-        if requested:
-            scoped = [name for name in requested if name in enabled]
-        else:
-            scoped = enabled
-        if not self.analytics.available():
-            return scoped, "analytics"
-        return scoped, None
+    def _resolve_applications(self, actor: str, requested: list[str]) -> EnabledApplications:
+        return list_enabled_applications(self.control, actor, requested)
 
     def _requested_apps(self, params: dict[str, Any]) -> list[str]:
         apps: list[str] = []
@@ -65,15 +52,15 @@ class SessionsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        apps, reason = self._resolve_applications(actor, self._requested_apps(params))
-        if reason == "control":
+        found = self._resolve_applications(actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_session_list(reason="control")
-        if reason == "analytics":
-            return empty_session_list(reason="analytics")
+        if not self.analytics.available():
+            return stamp_pipeline_flags(empty_session_list(reason="analytics"), control=found.control_down)
         opts = {
             "from": start,
             "to": end,
-            "applications": apps,
+            "applications": found.applications,
             "sessionId": params.get("sessionId") or "",
             "sessionIdPrefix": params.get("sessionIdPrefix") or "",
             "route": params.get("route") or "",
@@ -90,14 +77,14 @@ class SessionsService:
         }
         try:
             if opts["hasReplay"] and self.replay_index.available():
-                return self._list_replay_sessions(opts)
+                return stamp_pipeline_flags(self._list_replay_sessions(opts), control=found.control_down)
             page = self.analytics.list_sessions(self.settings.tenant_id, opts)
         except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
             logger.warning(
                 "rum sessions list analytics failed failed_stage=list_sessions error_type=%s",
                 type(exc).__name__,
             )
-            return empty_session_list(reason="analytics")
+            return stamp_pipeline_flags(empty_session_list(reason="analytics"), control=found.control_down)
         if self.replay_index.available() and page.get("sessions"):
             ready = self._ready_sessions(page["sessions"])
             replayed = 0
@@ -107,7 +94,7 @@ class SessionsService:
                 if has:
                     replayed += 1
             page.setdefault("summary", {})["replayed"] = replayed
-        return page
+        return stamp_pipeline_flags(page, control=found.control_down)
 
     def _ready_sessions(self, rows: list[dict]) -> set[tuple[str, str]]:
         return self.replay_index.ready_sessions([_session_pair(row) for row in rows])
@@ -165,15 +152,15 @@ class SessionsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        apps, reason = self._resolve_applications(actor, self._requested_apps(params))
-        if reason == "control":
+        found = self._resolve_applications(actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_session_trend(reason="control")
-        if reason == "analytics":
-            return empty_session_trend(reason="analytics")
+        if not self.analytics.available():
+            return stamp_pipeline_flags(empty_session_trend(reason="analytics"), control=found.control_down)
         opts = {
             "from": start,
             "to": end,
-            "applications": apps,
+            "applications": found.applications,
             "route": params.get("route") or "",
             "userId": params.get("userId") or "",
             "device": params.get("device") or "",
@@ -184,13 +171,14 @@ class SessionsService:
             "traffic": params.get("traffic") or "visitors",
         }
         try:
-            return self.analytics.session_trend(self.settings.tenant_id, opts)
+            page = self.analytics.session_trend(self.settings.tenant_id, opts)
         except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
             logger.warning(
                 "rum sessions trend analytics failed failed_stage=session_trend error_type=%s",
                 type(exc).__name__,
             )
-            return empty_session_trend(reason="analytics")
+            return stamp_pipeline_flags(empty_session_trend(reason="analytics"), control=found.control_down)
+        return stamp_pipeline_flags(page, control=found.control_down)
 
     def get_session(self, actor: str, session_id: str, params: dict[str, Any]) -> dict:
         application = (params.get("application") or "").strip()
@@ -200,12 +188,12 @@ class SessionsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        apps, reason = self._resolve_applications(actor, [application])
-        if reason == "control":
+        found = self._resolve_applications(actor, [application])
+        if found.control_down and found.catalog_empty:
             return empty_session_journey(reason="control")
-        if reason == "analytics":
-            return empty_session_journey(reason="analytics")
-        if application not in apps:
+        if not self.analytics.available():
+            return stamp_pipeline_flags(empty_session_journey(reason="analytics"), control=found.control_down)
+        if application not in found.applications:
             raise ControlError("not_found", "application not found")
         journey = self.analytics.session_journey(
             self.settings.tenant_id,
@@ -216,7 +204,7 @@ class SessionsService:
         session = journey.get("session") or {}
         if not session.get("sessionId"):
             raise ControlError("not_found", "session not found")
-        return journey
+        return stamp_pipeline_flags(journey, control=found.control_down)
 
     def replay_manifest(self, actor: str, params: dict[str, Any]) -> dict:
         application = (params.get("application") or "").strip()
@@ -225,13 +213,13 @@ class SessionsService:
             raise ValidationError("application and session are required")
         if not valid_application(application):
             raise ValidationError("invalid application")
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
-            return empty_replay_manifest(reason="control")
-        if application not in enabled:
+        found = list_enabled_applications(self.control, actor)
+        if application not in found.applications:
+            if found.control_down and found.catalog_empty:
+                return empty_replay_manifest(reason="control")
             raise ControlError("not_found", "application not found")
         if not self.replay_index.available():
-            return empty_replay_manifest(reason="analytics")
+            return stamp_pipeline_flags(empty_replay_manifest(reason="analytics"), control=found.control_down)
         manifest = self.replay_index.replay_manifest(self.settings.tenant_id, application, session)
         for recording in manifest.get("recordings") or []:
             for segment in recording.get("segments") or []:
@@ -247,7 +235,7 @@ class SessionsService:
                     )
                 else:
                     segment["ref"] = segment.get("ref") or ""
-        return manifest
+        return stamp_pipeline_flags(manifest, control=found.control_down)
 
     def replay_grant(self, actor: str, body: dict) -> dict:
         application = (body.get("application") or "").strip()
@@ -255,10 +243,10 @@ class SessionsService:
         target_ref = (body.get("targetRef") or "").strip()
         if not application or not session or not target_ref:
             raise ValidationError("application, session and targetRef are required")
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
-            return {"controlUnavailable": True}
-        if application not in enabled:
+        found = list_enabled_applications(self.control, actor)
+        if application not in found.applications:
+            if found.control_down and found.catalog_empty:
+                return {"controlUnavailable": True}
             raise ControlError("not_found", "application not found")
         claims = verify_payload(target_ref, "ref")
         if not claims or claims.get("application") != application or claims.get("session") != session or not claims.get("objectKey"):

@@ -23,7 +23,9 @@
     },
     "pipeline": {
       "controlUnavailable": "RUM control plane is unavailable, so ingest status cannot be confirmed.",
-      "analyticsUnavailable": "RUM analytics is unavailable; metrics and lists may be empty."
+      "analyticsUnavailable": "RUM analytics is unavailable; metrics and lists may be empty.",
+      "emptyControl": "Ingest status cannot be confirmed, so this list is empty for now.",
+      "emptyAnalytics": "Analytics is unavailable, so this list is empty for now."
     },
     "common": {
       "timeWindow": "Time window",
