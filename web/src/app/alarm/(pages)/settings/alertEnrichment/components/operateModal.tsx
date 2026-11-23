@@ -11,6 +11,15 @@ import { useSettingApi } from '@/app/alarm/api/settings';
 import { EnrichmentRuleListItem } from '@/app/alarm/types/settings';
 import { ruleList } from '@/app/alarm/constants/settings';
 import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
+import {
+  contextFieldCatalogIncomplete,
+  contextFieldOptionsKey,
+  displayProjectionSource,
+  mapCmdbContextFieldGroups,
+  matchProjectionSourceFilter,
+  resolveProjectionSource,
+  type ContextFieldOptionGroup,
+} from '../cmdbContextFieldOptions';
 
 interface OperateModalProps {
   open: boolean;
@@ -62,46 +71,6 @@ function projectionAliases(rows: { source?: string; as?: string }[] | undefined)
   return options;
 }
 
-interface ContextFieldOption {
-  value: string;
-  label: string;
-}
-
-interface ContextFieldOptionGroup {
-  label: string;
-  options: ContextFieldOption[];
-}
-
-function flattenContextFieldOptions(groups: ContextFieldOptionGroup[]) {
-  const items: ContextFieldOption[] = [];
-  for (const group of groups || []) {
-    for (const item of group.options || []) {
-      if (!item?.value) continue;
-      items.push({ value: item.value, label: String(item.label || item.value) });
-    }
-  }
-  return items;
-}
-
-function displayProjectionSource(source: string, groups: ContextFieldOptionGroup[]) {
-  const key = String(source || '');
-  if (!key) return key;
-  const hit = flattenContextFieldOptions(groups).find((item) => item.value === key);
-  return hit?.label || key;
-}
-
-function resolveProjectionSource(text: string, groups: ContextFieldOptionGroup[]) {
-  const raw = String(text || '');
-  const trimmed = raw.trim();
-  if (!trimmed) return raw;
-  const items = flattenContextFieldOptions(groups);
-  const byValue = items.find((item) => item.value === trimmed);
-  if (byValue) return byValue.value;
-  const byLabel = items.find((item) => item.label === trimmed);
-  if (byLabel) return byLabel.value;
-  return raw;
-}
-
 const ProjectionSourceAutoComplete: React.FC<{
   value?: string;
   onChange?: (value: string) => void;
@@ -110,26 +79,22 @@ const ProjectionSourceAutoComplete: React.FC<{
   placeholder?: string;
 }> = ({ value, onChange, aliasIndex, options, placeholder }) => {
   const form = Form.useFormInstance();
-  const fieldItems = flattenContextFieldOptions(options);
   return (
     <AutoComplete
       allowClear
+      key={contextFieldOptionsKey(options)}
       value={displayProjectionSource(value || '', options)}
       options={options}
       placeholder={placeholder}
       style={{ width: 280 }}
-      filterOption={(input, option) => {
-        const exactSelected = fieldItems.some(
-          (item) => item.value === input || item.label === input
-        );
-        if (exactSelected) return true;
-        const q = input.toLowerCase();
-        const candidate = option as { value?: string; label?: unknown } | undefined;
-        return (
-          String(candidate?.value ?? '').toLowerCase().includes(q) ||
-          String(candidate?.label ?? '').toLowerCase().includes(q)
-        );
-      }}
+      listHeight={360}
+      filterOption={(input, option) =>
+        matchProjectionSourceFilter(
+          String(input || ''),
+          option as { value?: string; label?: unknown; options?: { value: string; label: string }[] },
+          options
+        )
+      }
       onChange={(nextValue) => {
         const next = resolveProjectionSource(String(nextValue || ''), options);
         const previous = String(value || '');
@@ -217,24 +182,28 @@ const OperateModal: React.FC<OperateModalProps> = ({
   useEffect(() => {
     if (!open || typeof getCmdbContextFields !== 'function') return;
     let cancelled = false;
-    getCmdbContextFields()
-      .then((data: { groups?: { model_id: string; model_name?: string; fields?: { source: string; attr_name?: string }[] }[] }) => {
-        if (cancelled) return;
-        setContextFieldOptions(
-          (data?.groups || []).map((group) => ({
-            label: group.model_name || group.model_id,
-            options: (group.fields || []).map((field) => ({
-              value: field.source,
-              label: field.attr_name
-                ? `${field.attr_name} (${field.source})`
-                : field.source,
-            })),
-          }))
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setContextFieldOptions([]);
-      });
+    const applyGroups = (groups?: { model_id: string; model_name?: string; fields?: { source: string; attr_name?: string }[] }[]) => {
+      if (cancelled) return;
+      setContextFieldOptions(mapCmdbContextFieldGroups(groups));
+    };
+    const loadContextFields = async () => {
+      let groups: { model_id: string; model_name?: string; fields?: { source: string; attr_name?: string }[] }[] | undefined;
+      try {
+        const first = await getCmdbContextFields();
+        groups = first?.groups;
+        applyGroups(groups);
+      } catch {
+        applyGroups([]);
+      }
+      if (cancelled || !contextFieldCatalogIncomplete(groups)) return;
+      try {
+        const retry = await getCmdbContextFields();
+        applyGroups(retry?.groups);
+      } catch {
+        // 保留第一次已经画上的应用字段
+      }
+    };
+    loadContextFields();
     return () => {
       cancelled = true;
     };
