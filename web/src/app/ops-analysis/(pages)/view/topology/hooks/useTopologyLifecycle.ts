@@ -31,7 +31,7 @@ interface UseTopologyLifecycleParams {
   clearOperationHistory: () => void;
   clearRefreshTimer: () => void;
   finishInitialization: () => void;
-  handleLoadTopology: (dataId: number | string) => Promise<{
+  handleLoadTopology: (dataId: number | string, signal?: AbortSignal) => Promise<{
     filters?: UnifiedFilterDefinition[];
     refreshInterval?: number;
   }>;
@@ -49,6 +49,7 @@ interface UseTopologyLifecycleParams {
     dataSources?: DatasourceItem[],
     namespaceId?: number,
   ) => void;
+  abortInflightDataRequests: () => void;
   refreshTopologyNodes: (
     scope: 'reload',
     values?: Record<string, FilterValue>,
@@ -57,7 +58,7 @@ interface UseTopologyLifecycleParams {
   ) => void;
   scheduleTopologyInitialization: (callback: () => void) => void;
   startInitialization: () => void;
-  syncTopologyCanvasResources: () => Promise<DatasourceItem[]>;
+  syncTopologyCanvasResources: () => Promise<DatasourceItem[] | null>;
   toggleEditMode: () => void;
 }
 
@@ -79,6 +80,7 @@ export const useTopologyLifecycle = ({
   loadCanvasNamespaces,
   refreshAllSingleValueNodes,
   refreshAllChartNodes,
+  abortInflightDataRequests,
   refreshTopologyNodes,
   scheduleTopologyInitialization,
   startInitialization,
@@ -93,6 +95,9 @@ export const useTopologyLifecycle = ({
     UnifiedFilterDefinition[]
   >([]);
   const handleLoadTopologyRef = useRef(handleLoadTopology);
+  const seenTopologyIdRef = useRef(selectedTopology?.data_id);
+  const abortInflightDataRequestsRef = useRef(abortInflightDataRequests);
+  abortInflightDataRequestsRef.current = abortInflightDataRequests;
 
   useEffect(() => {
     handleLoadTopologyRef.current = handleLoadTopology;
@@ -134,6 +139,11 @@ export const useTopologyLifecycle = ({
   ]);
 
   useEffect(() => {
+    const detailController = new AbortController();
+    if (seenTopologyIdRef.current !== selectedTopology?.data_id) {
+      seenTopologyIdRef.current = selectedTopology?.data_id;
+      abortInflightDataRequestsRef.current();
+    }
     state.resetAllStates();
     startInitialization();
     clearOperationHistory();
@@ -148,10 +158,16 @@ export const useTopologyLifecycle = ({
 
     if (selectedTopology?.data_id && state.graphInstance) {
       handleLoadTopologyRef
-        .current(selectedTopology.data_id)
+        .current(selectedTopology.data_id, detailController.signal)
         .then(async ({ filters: loadedFilters, refreshInterval }) => {
+          if (detailController.signal.aborted) return;
           onLoadedRefreshInterval?.(refreshInterval ?? 0);
           const canvasDataSources = await syncTopologyCanvasResources();
+          if (detailController.signal.aborted) return;
+          if (canvasDataSources == null) {
+            finishInitialization();
+            return;
+          }
           const autoBuiltFilters = buildFiltersFromNodes(
             state.graphInstance,
             canvasDataSources,
@@ -201,6 +217,7 @@ export const useTopologyLifecycle = ({
     }
 
     return () => {
+      detailController.abort();
       clearRefreshTimer();
     };
   }, [

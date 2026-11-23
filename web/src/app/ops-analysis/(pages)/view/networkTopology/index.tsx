@@ -24,6 +24,7 @@ import {
   useNetworkTopologyApi,
 } from '@/app/ops-analysis/api/networkTopology';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
@@ -146,6 +147,18 @@ const detailListRowClassName =
   'flex min-h-[28px] items-center justify-between gap-3 rounded-md border border-[var(--color-border-1,#edf1f6)] bg-[var(--color-bg-1,#fbfcfe)] px-2 py-1.5';
 const detailPortPairRowClassName =
   'flex min-h-[28px] items-center gap-2 rounded-md border border-[var(--color-border-1,#edf1f6)] bg-[var(--color-bg-1,#fbfcfe)] px-2 py-1.5';
+const replaceOwnedSignal = (slot: { current: AbortController | null }) => {
+  slot.current?.abort();
+  const controller = new AbortController();
+  slot.current = controller;
+  return controller.signal;
+};
+
+const abortOwnedSignal = (slot: { current: AbortController | null }) => {
+  slot.current?.abort();
+  slot.current = null;
+};
+
 const detailPortPairNameClassName =
   'min-w-0 flex-1 break-all [overflow-wrap:anywhere] line-clamp-2 leading-5 text-[var(--color-text-2,#4b5563)]';
 
@@ -227,6 +240,25 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const nodeMetricsRequestGenerationRef = useRef(0);
     const linkInterfacesRequestGenerationRef = useRef(0);
     const runtimeLoadGenerationRef = useRef(0);
+    const runtimeAbortRef = useRef<AbortController | null>(null);
+    const nodeMetricsAbortRef = useRef<AbortController | null>(null);
+    const draftMetricAbortRef = useRef<AbortController | null>(null);
+    const linkRuntimeAbortRef = useRef<AbortController | null>(null);
+    const abortEditReads = useCallback(() => {
+      abortOwnedSignal(nodeMetricsAbortRef);
+      abortOwnedSignal(draftMetricAbortRef);
+      abortOwnedSignal(linkRuntimeAbortRef);
+    }, []);
+    const takeRuntimeSignal = useCallback((external?: AbortSignal) => {
+      if (external) return external;
+      return replaceOwnedSignal(runtimeAbortRef);
+    }, []);
+    useEffect(() => () => {
+      abortOwnedSignal(runtimeAbortRef);
+      abortOwnedSignal(nodeMetricsAbortRef);
+      abortOwnedSignal(draftMetricAbortRef);
+      abortOwnedSignal(linkRuntimeAbortRef);
+    }, []);
     const runtimeRefreshPromiseRef = useRef<{
       canvasId: string;
       silent: boolean;
@@ -322,10 +354,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       (
         id: string | number,
         runtimeConfig: NetworkTopologyConfig,
-        options?: { silent?: boolean },
+        options?: { silent?: boolean; signal?: AbortSignal },
       ): Promise<void> => {
         const runtimeCanvasId = String(id);
         const silent = options?.silent === true;
+        const signal = takeRuntimeSignal(options?.signal);
         const current = runtimeRefreshPromiseRef.current;
         if (silent && shouldSkipIntervalTick(current?.canvasId === runtimeCanvasId)) {
           return Promise.resolve();
@@ -374,8 +407,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               runtimeBatcher.pushMetrics(node.id, loadingMetrics);
             }
             try {
-              const res = await api.getMetricValues(runtimeCanvasId, metricRequests);
-              if (!isCurrent()) return;
+              const res = await api.getMetricValues(runtimeCanvasId, metricRequests, signal);
+              if (!isCurrent() || signal.aborted) return;
               const itemByRequestId = new Map(
                 (res.items ?? []).map((item) => [item.request_id, item]),
               );
@@ -385,7 +418,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               });
               runtimeBatcher.pushMetrics(node.id, runtimeMetrics);
             } catch (err) {
-              if (!isCurrent()) return;
+              if (signal.aborted || isTransportCanceled(err) || !isCurrent()) return;
               if (silent) {
                 return;
               }
@@ -411,8 +444,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               const res = await api.getLinkRuntime(runtimeCanvasId, {
                 link,
                 nodes: selectLinkEndpointNodes(runtimeNodeIndex, link),
-              });
-              if (!isCurrent()) return;
+              }, signal);
+              if (!isCurrent() || signal.aborted) return;
               if (res?.link) {
                 runtimeBatcher.pushLink(res.link);
               }
@@ -420,7 +453,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               if (Object.keys(summaries).length > 0) {
                 runtimeBatcher.pushSummaries(summaries);
               }
-            } catch {
+            } catch (err) {
+              if (signal.aborted || isTransportCanceled(err)) return;
               // 单条连线失败时保留旧值/未知态,不阻塞其他运行态返回。
             }
           });
@@ -439,13 +473,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         };
         return task;
       },
-      [api, runtimeBatcher],
+      [api, runtimeBatcher, takeRuntimeSignal],
     );
 
     // 加载画布 view_sets(GET /config/ 由后端 network_topology_view 提供,
     // 失败时降级到空画布,显示「加载画布失败」toast)。
     useEffect(() => {
       if (!canvasId) {
+        abortOwnedSignal(runtimeAbortRef);
+        abortEditReads();
         nodeMetricsRequestGenerationRef.current += 1;
         linkInterfacesRequestGenerationRef.current += 1;
         runtimeLoadGenerationRef.current += 1;
@@ -462,6 +498,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       }
       const id = canvasId;
       let active = true;
+      const detailController = new AbortController();
+      const runtimeSignal = takeRuntimeSignal();
       nodeMetricsRequestGenerationRef.current += 1;
       linkInterfacesRequestGenerationRef.current += 1;
       runtimeLoadGenerationRef.current += 1;
@@ -480,37 +518,40 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         editor.resetConfig(seeded);
         setViewSetsLoading(false);
         api
-          .getNetworkTopologyDetail(id)
+          .getNetworkTopologyDetail(id, detailController.signal)
           .then((detail) => {
-            if (!active) return;
+            if (!active || detailController.signal.aborted) return;
             setSavedRefreshInterval(
               normalizeCanvasRefreshInterval(detail?.refresh_interval),
             );
           })
-          .catch(() => {
-            if (!active) return;
+          .catch((error: unknown) => {
+            if (!active || detailController.signal.aborted || isTransportCanceled(error)) return;
             setSavedRefreshInterval(0);
           });
-        void loadConfiguredRuntime(id, seeded);
+        void loadConfiguredRuntime(id, seeded, { signal: runtimeSignal });
         return () => {
           active = false;
+          detailController.abort();
+          abortOwnedSignal(runtimeAbortRef);
+          abortEditReads();
         };
       }
       setViewSetsLoading(true);
       api
-        .getNetworkTopologyDetail(id)
+        .getNetworkTopologyDetail(id, detailController.signal)
         .then((detail) => {
-          if (!active) return;
+          if (!active || detailController.signal.aborted) return;
           setSavedRefreshInterval(
             normalizeCanvasRefreshInterval(detail?.refresh_interval),
           );
         })
-        .catch(() => {
-          if (!active) return;
+        .catch((error: unknown) => {
+          if (!active || detailController.signal.aborted || isTransportCanceled(error)) return;
           setSavedRefreshInterval(0);
         });
       api
-        .getViewSets(id)
+        .getViewSets(id, detailController.signal)
         .then((viewSets) => {
           if (!active) return;
           const next = viewSets ?? emptyConfig;
@@ -521,10 +562,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setRuntimeInterfaceSummaryOverrides({});
           editor.resetConfig(next);
           // Phase B-1：分享态通过 session proxy 拉 metric_values / link_runtime。
-          void loadConfiguredRuntime(id, next);
+          void loadConfiguredRuntime(id, next, { signal: runtimeSignal });
         })
         .catch((err: unknown) => {
-          if (!active) return;
+          if (!active || detailController.signal.aborted || isTransportCanceled(err)) return;
           message.error(
             err instanceof Error
               ? err.message
@@ -534,6 +575,9 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         .finally(() => active && setViewSetsLoading(false));
       return () => {
         active = false;
+        detailController.abort();
+        abortOwnedSignal(runtimeAbortRef);
+        abortEditReads();
       };
       // 故意省略 api/editor 等稳定依赖,避免画布切换以外的因素触发重新拉取。
        
@@ -625,7 +669,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         setMetricOptionsLoading(true);
         setMetricOptions([]);
         api
-          .getNodeMetrics(String(canvasId), nodeRef(node))
+          .getNodeMetrics(String(canvasId), nodeRef(node), replaceOwnedSignal(nodeMetricsAbortRef))
           .then((metricsRes) => {
             if (nodeMetricsRequestGenerationRef.current !== generation) return;
             const items = (metricsRes as { items?: unknown[] })?.items ?? [];
@@ -646,7 +690,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               }),
             );
           })
-          .catch(() => {
+          .catch((error: unknown) => {
+            if (isTransportCanceled(error)) return;
             if (nodeMetricsRequestGenerationRef.current !== generation) return;
             setMetricOptions([]);
           })
@@ -996,7 +1041,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], loadingMetrics),
         }));
         try {
-          const res = await api.getMetricValues(String(canvasId), metricRequests);
+          const res = await api.getMetricValues(
+            String(canvasId),
+            metricRequests,
+            replaceOwnedSignal(draftMetricAbortRef),
+          );
           const itemByRequestId = new Map(
             (res.items ?? []).map((item) => [item.request_id, item]),
           );
@@ -1009,6 +1058,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], runtimeMetrics),
           }));
         } catch (err) {
+          if (isTransportCanceled(err)) return;
           const errorMetrics = metrics.map((metric, index) =>
             toRuntimeMetric(
               {
@@ -1153,7 +1203,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           .getLinkRuntime(String(canvasId), {
             link: nextLink,
             nodes: selectLinkEndpointNodes(indexRuntimeNodes(prev.nodes), nextLink),
-          })
+          }, replaceOwnedSignal(linkRuntimeAbortRef))
           .then((res) => {
             if (res?.link) {
               setRuntimeLinkOverrides((prevOverrides) => ({
@@ -1170,6 +1220,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }
           })
           .catch((err: unknown) => {
+            if (isTransportCanceled(err)) return;
             message.warning(
               err instanceof Error
                 ? err.message

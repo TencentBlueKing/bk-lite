@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { describe, expect, it } from 'vitest';
+import { createTransportCancelError } from '@/utils/requestCancellation';
 
 import { buildDashboardRenderSignal } from '@/app/ops-analysis/renderContract';
 import { classifyWidgetQueryError } from '@/app/ops-analysis/utils/requestError';
@@ -11,6 +12,15 @@ import { classifyWidgetQueryError } from '@/app/ops-analysis/utils/requestError'
  * → backend resolve_report_failed_semantics → data_load / RetryClassifier
  */
 describe('Widget query errorCode production path', () => {
+  it('cancellation does not become a report-failed errorCode', () => {
+    expect(classifyWidgetQueryError(createTransportCancelError())).toBeUndefined();
+    expect(classifyWidgetQueryError(new AxiosError('canceled', 'ERR_CANCELED'))).toBeUndefined();
+    expect(classifyWidgetQueryError(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED')))
+      .toBe('widget_query_timeout');
+    expect(classifyWidgetQueryError(new AxiosError('Network Error', 'ERR_NETWORK')))
+      .toBe('widget_query_transient');
+  });
+
   it('timeout axios error → report-failed carries widget_query_timeout', () => {
     const err = new AxiosError(
       'timeout of 30000ms exceeded',

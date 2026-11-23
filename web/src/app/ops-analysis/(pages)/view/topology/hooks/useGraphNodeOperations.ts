@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Node, Graph as X6Graph } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { resolveEffectiveFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
@@ -31,6 +31,7 @@ import {
   formatDisplayValue,
 } from '../utils/topologyUtils';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   beginMappedOwnerRequest,
   finishMappedOwnerRequest,
@@ -122,6 +123,27 @@ export const useGraphNodeOperations = ({
   );
   const singleValueFetchGenerationRef = useRef<Map<string, number>>(new Map());
   const singleValueInflightCountRef = useRef<Map<string, number>>(new Map());
+  const singleValueAbortRef = useRef<Map<string, AbortController>>(new Map());
+  const singleValueAbortLifecycleRef = useRef(0);
+
+  const abortInflightSingleValueRequests = useCallback(() => {
+    singleValueAbortRef.current.forEach((controller) => controller.abort());
+    singleValueAbortRef.current.clear();
+    singleValueFetchGenerationRef.current.forEach((generation, nodeId) => {
+      singleValueFetchGenerationRef.current.set(nodeId, generation + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    const lifecycle = ++singleValueAbortLifecycleRef.current;
+    return () => {
+      const controllers = Array.from(singleValueAbortRef.current.values());
+      queueMicrotask(() => {
+        if (singleValueAbortLifecycleRef.current !== lifecycle) return;
+        controllers.forEach((controller) => controller.abort());
+      });
+    };
+  }, []);
 
   const startLoadingAnimation = useCallback((node: Node) => {
     const loadingStates = ['○ ○ ○', '● ○ ○', '○ ● ○', '○ ○ ●', '○ ○ ○'];
@@ -182,6 +204,9 @@ export const useGraphNodeOperations = ({
       const generation = gate.generation;
       const isCurrent = () =>
         singleValueFetchGenerationRef.current.get(nodeId) === generation;
+      singleValueAbortRef.current.get(nodeId)?.abort();
+      const controller = new AbortController();
+      singleValueAbortRef.current.set(nodeId, controller);
       const previousData = node.getData();
 
       if (!silent) {
@@ -210,7 +235,8 @@ export const useGraphNodeOperations = ({
 
         const compareResult = await fetchCompareData({
           dataSourceId: Number(valueConfig.dataSource),
-          getSourceDataByApiId: getRuntimeSourceDataByApiId,
+          getSourceDataByApiId: (sourceId, params) =>
+            getRuntimeSourceDataByApiId(sourceId, params, controller.signal),
           config: valueConfig,
           dataSource: { params: valueConfig.dataSourceParams || [] },
           extraParams:
@@ -329,7 +355,7 @@ export const useGraphNodeOperations = ({
           adjustSingleValueNodeSize(node as Node, nodeText);
         }
       } catch (error) {
-        if (!isCurrent()) return;
+        if (isTransportCanceled(error) || !isCurrent()) return;
         console.error('更新单值节点数据失败:', error);
         if (silent) {
           node.setData(
@@ -371,6 +397,9 @@ export const useGraphNodeOperations = ({
           adjustSingleValueNodeSize(node as Node, SINGLE_VALUE_ERROR_PLACEHOLDER);
         }
       } finally {
+        if (singleValueAbortRef.current.get(nodeId) === controller) {
+          singleValueAbortRef.current.delete(nodeId);
+        }
         finishMappedOwnerRequest(
           singleValueFetchGenerationRef.current,
           singleValueInflightCountRef.current,
@@ -656,6 +685,7 @@ export const useGraphNodeOperations = ({
     handleNodeUpdate,
     handleViewConfigConfirm,
     refreshAllSingleValueNodes,
+    abortInflightSingleValueRequests,
     startLoadingAnimation,
     updateSingleNodeData,
     ...dataOperations,

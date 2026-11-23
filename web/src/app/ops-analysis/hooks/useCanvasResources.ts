@@ -16,6 +16,7 @@ export const useCanvasResources = () => {
     const { source, getDataSourceIds, getNamespaceIds } = params;
     const dataSourceIds = getDataSourceIds(source);
     const canvasDataSources = await loadCanvasDataSources(dataSourceIds);
+    if (canvasDataSources == null) return null;
     const namespaceIds = Array.from(getNamespaceIds(source, canvasDataSources));
     await loadCanvasNamespaces(namespaceIds);
     return canvasDataSources;

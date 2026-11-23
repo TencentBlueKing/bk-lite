@@ -176,7 +176,7 @@ describe('UnifiedFilterBar options query', () => {
       await vi.advanceTimersByTimeAsync(300);
     });
     expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-    expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: '东区' }, undefined);
+    expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: '东区' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     fireEvent.change(input, { target: { value: '' } });
     expect(input).toHaveProperty('value', '');
@@ -206,6 +206,6 @@ describe('UnifiedFilterBar options query', () => {
       await Promise.resolve();
     });
     expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-    expect(getSourceDataByApiId).toHaveBeenCalledWith(10, { area_id: 'a2' }, undefined);
+    expect(getSourceDataByApiId).toHaveBeenCalledWith(10, { area_id: 'a2' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 });

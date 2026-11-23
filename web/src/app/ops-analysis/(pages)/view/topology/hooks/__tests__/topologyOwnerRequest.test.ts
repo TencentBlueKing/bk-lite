@@ -8,6 +8,7 @@ import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 const testState = vi.hoisted(() => ({
   fetchWidgetData: vi.fn(),
   fetchCompareData: vi.fn(),
+  getSourceDataByApiId: vi.fn(),
 }));
 
 vi.mock('@/utils/i18n', () => ({
@@ -23,9 +24,9 @@ vi.mock('@/app/ops-analysis/api/topology', () => ({
 
 vi.mock('@/app/ops-analysis/api/dataSource', () => ({
   useDataSourceApi: () => ({
-    getSourceDataByApiId: vi.fn(),
+    getSourceDataByApiId: testState.getSourceDataByApiId,
   }),
-  withRuntimeSourceDataErrorSuppression: <T>(fn: T) => fn,
+  withRuntimeSourceDataErrorSuppression: <T,>(fn: T) => fn,
 }));
 
 vi.mock('@/app/ops-analysis/utils/widgetDataTransform', async () => {
@@ -118,6 +119,7 @@ const createFakeGraph = (nodes: Record<string, ReturnType<typeof createFakeNode>
 afterEach(() => {
   testState.fetchWidgetData.mockReset();
   testState.fetchCompareData.mockReset();
+  testState.getSourceDataByApiId.mockReset();
   vi.mocked(updateNodeAttributes).mockReset();
 });
 
@@ -361,6 +363,37 @@ describe('topology chart node owner requests', () => {
     });
     expect(node.getData().rawData).toEqual({ name: 'Latest' });
   });
+
+  it('aborts the in-flight chart query when the canvas drops it and does not mark an error', async () => {
+    const node = createFakeNode({ type: 'chart', rawData: { name: 'A' } });
+    const graph = createFakeGraph({ 'chart-1': node });
+    const signals: AbortSignal[] = [];
+    testState.getSourceDataByApiId.mockImplementation((_id: number, _params: unknown, signal?: AbortSignal) => {
+      if (signal) signals.push(signal);
+      return new Promise(() => {});
+    });
+    testState.fetchWidgetData.mockImplementation(async (input: {
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      await input.getSourceDataByApiId(1, {});
+      return { name: 'late' };
+    });
+
+    const { result } = renderHook(() => useGraphData(graph as never, vi.fn()));
+    void result.current.loadChartNodeData('chart-1', chartValueConfig);
+    await waitFor(() => expect(signals).toHaveLength(1));
+
+    act(() => {
+      result.current.abortInflightChartRequests();
+    });
+
+    expect(signals[0]?.aborted).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(node.getData().hasError).not.toBe(true);
+    expect(node.getData().rawData).toEqual({ name: 'A' });
+  });
 });
 
 describe('topology single-value node owner requests', () => {
@@ -597,5 +630,41 @@ describe('topology single-value node owner requests', () => {
         }),
       }),
     );
+  });
+
+  it('aborts an in-flight single-value query without showing a fetch error', async () => {
+    const node = createFakeNode({ type: 'single-value' });
+    const graph = createFakeGraph({ 'sv-1': node });
+    const signals: AbortSignal[] = [];
+    testState.getSourceDataByApiId.mockImplementation((_id: number, _params: unknown, signal?: AbortSignal) => {
+      if (signal) signals.push(signal);
+      return new Promise(() => {});
+    });
+    testState.fetchCompareData.mockImplementation(async (input: {
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<unknown>;
+    }) => {
+      await input.getSourceDataByApiId(7, { current: true });
+      return { currentData: { cpu: 1 }, baselineData: null };
+    });
+
+    const { result } = renderHook(() =>
+      useGraphNodeOperations({
+        graphInstance: graph as never,
+        state: dummyState,
+        handleSave: vi.fn(),
+      }),
+    );
+
+    void result.current.updateSingleNodeData(singleValueNode);
+    await waitFor(() => expect(signals).toHaveLength(1));
+    act(() => {
+      result.current.abortInflightSingleValueRequests();
+    });
+    expect(signals[0]?.aborted).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(node.getData().hasError).not.toBe(true);
+    expect(node.getData().fetchError).not.toBe(true);
   });
 });

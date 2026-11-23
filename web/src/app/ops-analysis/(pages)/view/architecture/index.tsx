@@ -12,6 +12,7 @@ import {
 } from 'react';
 import styles from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import { iconList } from '@/app/cmdb/utils/common';
 import { getModelIconUrl } from '@/app/cmdb/utils/modelIcon';
 import { message, Spin } from 'antd';
@@ -124,12 +125,12 @@ const Isoflow = dynamic(
   }
 );
 
-const createArchitectureIcons = async () => {
+const createArchitectureIcons = async (signal: AbortSignal) => {
   const cmdbIcons = await Promise.all(
     selectCmdbIsometricIcons(iconList).map(async (icon) => ({
       id: icon.id,
       name: icon.name,
-      url: await svgToBase64(icon.src),
+      url: await svgToBase64(icon.src, signal),
       isIsometric: true as const,
     }))
   );
@@ -177,6 +178,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const sceneApiRef = useRef<IsoflowSceneApi | null>(null);
     const searchResourcesRef = useRef(searchArchitectureResources);
     searchResourcesRef.current = searchArchitectureResources;
+    const searchAbortRef = useRef<AbortController | null>(null);
+    useEffect(() => () => {
+      searchAbortRef.current?.abort();
+    }, []);
     /** Cross-model keyword search returns every hit; later pages are sliced locally. */
     const fulltextResultRef = useRef<{ keyword: string; raw: unknown } | null>(null);
     const [loadedArchitectureId, setLoadedArchitectureId] = useState<
@@ -212,14 +217,16 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     });
 
     useEffect(() => {
-      let isMounted = true;
-      createArchitectureIcons().then((icons) => {
-        if (isMounted) {
+      const controller = new AbortController();
+      createArchitectureIcons(controller.signal).then((icons) => {
+        if (!controller.signal.aborted) {
           setUniqueIcons(icons);
         }
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted || isTransportCanceled(error)) return;
       });
       return () => {
-        isMounted = false;
+        controller.abort();
       };
     }, []);
 
@@ -261,7 +268,10 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     }, [playbackDetail, playbackMode, selectedArchitecture?.data_id, uniqueIcons]);
 
     useEffect(() => {
-      if (uniqueIcons.length === 0) return;
+      const controller = new AbortController();
+      if (uniqueIcons.length === 0) {
+        return () => controller.abort();
+      }
 
       const currentArchitectureId = selectedArchitecture?.data_id;
 
@@ -293,7 +303,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
                 fitToScreen: true,
               });
             }
-            const data = seeded ?? await getArchitectureDetail(currentArchitectureId);
+            const data = seeded ?? await getArchitectureDetail(
+              currentArchitectureId,
+              controller.signal,
+            );
+            if (controller.signal.aborted) return;
             const viewSets = Array.isArray(data.view_sets)
               ? { items: [], views: [] }
               : data.view_sets || { items: [], views: [] };
@@ -325,9 +339,11 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
               });
             }
           } catch (error) {
+            if (controller.signal.aborted || isTransportCanceled(error)) return;
             console.error('Load failed:', error);
             message.error(t('opsAnalysis.architecture.loadFailed'));
           } finally {
+            if (controller.signal.aborted) return;
             setLoading(false);
             setTimeout(() => {
               isUpdatingRef.current = false;
@@ -352,6 +368,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         setSavedRefreshInterval(0);
         lastModelUpdateRef.current = '';
       }
+      return () => controller.abort();
     }, [
       uniqueIcons,
       playbackMode,
@@ -615,16 +632,17 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
     useEffect(() => {
       if (shareMode) return undefined;
-      let cancelled = false;
-      getArchitectureModels()
+      const controller = new AbortController();
+      getArchitectureModels(controller.signal)
         .then((data) => {
-          if (!cancelled) setModelOptions(flattenModelOptions(data));
+          if (!controller.signal.aborted) setModelOptions(flattenModelOptions(data));
         })
-        .catch(() => {
-          if (!cancelled) setModelOptions([]);
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || isTransportCanceled(error)) return;
+          setModelOptions([]);
         });
       return () => {
-        cancelled = true;
+        controller.abort();
       };
     }, [getArchitectureModels, shareMode]);
 
@@ -732,10 +750,14 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
         page: number,
         pageSize = BINDING_SEARCH_PAGE_SIZE,
       ): Promise<BindingSearchPage> => {
+        searchAbortRef.current?.abort();
         const mode = bindingSearchMode(keyword, modelId);
         if (mode === 'idle') {
+          searchAbortRef.current = null;
           return { hits: [], hasMore: false, total: 0 };
         }
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
         const text = keyword.trim();
         const model = modelId.trim();
         if (mode === 'fulltext') {
@@ -749,7 +771,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
                 page,
                 page_size: pageSize,
                 case_sensitive: false,
-              }),
+              }, controller.signal),
             };
           }
           return architectureSearchPage(fulltextResultRef.current?.raw, page, pageSize);
@@ -760,7 +782,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
           page,
           page_size: pageSize,
           case_sensitive: false,
-        });
+        }, controller.signal);
         return architectureSearchPage(raw, page, pageSize);
       },
       [],
