@@ -40,7 +40,11 @@ export const applyTableChangeHandler = (
       instance_name: option.instance_name || option.label
     };
     if (option.node_id) {
-      next.node_ids = [String(option.node_id)];
+      const nodeId = String(option.node_id);
+      next.node_ids = [nodeId];
+      if (option.node_name) {
+        next.collector_node = { id: nodeId, name: String(option.node_name) };
+      }
     }
     if (option.interval != null && option.interval !== '') {
       next.native_interval = option.interval;

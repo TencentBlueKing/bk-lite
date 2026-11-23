@@ -509,10 +509,9 @@ class Controller:
         return str(collect_type or "").casefold() == "script"
 
     def _lookup_existing_script_collect_configs(self, configs, collect_type, plugin_id):
-        """脚本采集复用已有 CollectConfig：同一实例+script 不得再创建。
+        """同一实例、同一脚本插件复用已有行。另一份脚本插件另建配置。
 
-        unique_together 是 (instance, collector, collect_type, config_type)，不含 plugin。
-        按 plugin 优先匹配，否则复用已有行做 update，避免再走创建撞唯一键。
+        请求没带插件时只复用同样没有插件的行，避免每次提交都新建一份。
         """
         if not self._is_script_collect(collect_type):
             return {}
@@ -525,13 +524,14 @@ class Controller:
             collect_type__iexact=str(collect_type or ""),
             config_type__in=config_types,
         )
+        if plugin_id in (None, ""):
+            qs = qs.filter(monitor_plugin__isnull=True)
+        else:
+            qs = qs.filter(monitor_plugin_id=plugin_id)
         existing = {}
-        preferred_plugin_id = None if plugin_id in (None, "") else str(plugin_id)
         for obj in qs:
             key = (obj.monitor_instance_id, obj.config_type, bool(obj.is_child))
-            same_plugin = preferred_plugin_id is not None and str(obj.monitor_plugin_id or "") == preferred_plugin_id
-            if same_plugin or key not in existing:
-                existing[key] = obj
+            existing[key] = obj
         return existing
 
     @staticmethod

@@ -700,12 +700,14 @@ class Metrics:
             metrics = (
                 Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=[b["metric"] for b in bindings])
                 .select_related("monitor_plugin")
-                .values("name", "unit", "data_type", "monitor_plugin__name")
+                .values("name", "unit", "data_type", "monitor_plugin__name", "monitor_plugin__collect_type")
             )
             by_plugin = {((m["monitor_plugin__name"] or ""), m["name"]): m for m in metrics}
             by_name = {}
             for m in metrics:
-                by_name.setdefault(m["name"], m)
+                # 没写插件的旧绑定只认原生指标，和取数侧一致。
+                if str(m["monitor_plugin__collect_type"] or "").casefold() != "script":
+                    by_name.setdefault(m["name"], m)
             targets = []
             for binding in bindings:
                 plugin_name, metric_name = binding["plugin"], binding["metric"]
@@ -718,7 +720,13 @@ class Metrics:
         supplementary = monitor_obj.supplementary_indicators
         if not supplementary:
             return []
-        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).values("name", "unit", "data_type")
+        metrics = [
+            m
+            for m in Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).values(
+                "name", "unit", "data_type", "monitor_plugin__collect_type"
+            )
+            if str(m["monitor_plugin__collect_type"] or "").casefold() != "script"
+        ]
         unit_map = {m["name"]: m["unit"] for m in metrics}
         dtype_map = {m["name"]: m["data_type"] for m in metrics}
         return [(name, unit_map.get(name), dtype_map.get(name)) for name in supplementary]

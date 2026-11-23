@@ -657,6 +657,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           instance_name?: string;
           ip?: string;
           node_id?: string;
+          node_name?: string;
           interval?: number;
         }) => ({
           value: item.instance_id,
@@ -664,6 +665,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           storage_instance_key: item.instance_id,
           instance_name: item.instance_name || item.instance_id,
           node_id: item.node_id || '',
+          node_name: item.node_name || '',
           interval: item.interval
         }));
         if (!cancelled) {

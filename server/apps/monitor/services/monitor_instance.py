@@ -932,9 +932,12 @@ class InstanceSearch:
             .select_related("monitor_plugin")
             .order_by("id")
         )
+        from apps.monitor.services.script_attach import is_script_plugin
+
         seen_names = set()
         unique_metrics = []
-        for metric in metrics:
+        # 同名时原生指标优先，脚本指标排在后面。
+        for metric in sorted(metrics, key=lambda item: is_script_plugin(item.monitor_plugin)):
             if metric.name in seen_names or metric.name in _VM_PARAM_RESERVED_KEYS:
                 continue
             if str(metric.name).startswith(FIELD_PARAM_PREFIX):

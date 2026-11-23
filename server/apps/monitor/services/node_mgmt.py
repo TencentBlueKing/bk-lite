@@ -668,7 +668,7 @@ class InstanceConfigService:
         config_types_to_create = {config.get("type") for config in configs if config.get("type")}
 
         # 检查已存在的配置（避免重复创建相同采集配置）。
-        # 脚本采集同一实例+script 走更新而非拒绝，由 Controller 复用已有 CollectConfig。
+        # 同一脚本插件由 Controller 更新已有行。另一份脚本插件另建配置，这里不拒绝。
         allow_script_upsert = str(collect_type or "").casefold() == "script"
         if config_types_to_create:
             existing_qs = CollectConfig.objects.filter(
@@ -1205,19 +1205,20 @@ class InstanceConfigService:
                 raise BaseAppException(f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}")
             deployment_status.release_unbound_child_configs(requested_node_ids)
         prepared_instances = sanitized_instances
-        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
+        # 脚本挂到已选实例。主机、进程、网络设备适配会按节点或云区域重算主键，这里不再走。
+        if not script_attach and InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
-        elif InstanceConfigService._should_use_process_identity_adapter(monitor_object_name):
+        elif not script_attach and InstanceConfigService._should_use_process_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_process_identity_instances(sanitized_instances)
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
-        elif InstanceConfigService._should_use_network_device_identity_adapter(monitor_object_name):
+        elif not script_attach and InstanceConfigService._should_use_network_device_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_network_device_identity_instances(sanitized_instances)
             except ValueError as e:

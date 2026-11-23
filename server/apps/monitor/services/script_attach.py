@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.db.models import Exists, OuterRef, Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, Metric, PolicyGroupRule
 from apps.monitor.services.custom_script_plugin import is_script_collect_type
 from apps.monitor.utils.dimension import normalize_instance_identity
@@ -50,6 +51,7 @@ def bind_script_attach_instance_keys(instances) -> None:
         identity = normalize_instance_identity(raw)
         instance["storage_instance_key"] = identity["storage_instance_key"]
         instance["instance_id"] = identity["storage_instance_key"]
+        instance["logical_instance_value"] = identity["logical_instance_value"]
 
 
 def _walk_identity_values(node, found: set[str]) -> None:
@@ -97,16 +99,79 @@ def configured_instance_ids(monitor_object_id, plugin_id) -> set:
 
 
 def plugin_filter_membership(monitor_object, plugin):
-    """按插件过滤列表的成员。
+    """脚本插件只认 CollectConfig。原生插件返回 None，由调用方决定圈选。"""
+    if not is_script_plugin(plugin):
+        return None
+    return configured_instance_ids(monitor_object.id, plugin.id)
 
-    单键对象和脚本插件只认 CollectConfig：已配置但还没出点的要出现，
-    卸载后不能靠过期点继续留下。多键对象没有任何配置时仍按上报点过滤
-    （K8s 这类没有 CollectConfig 的上报实例）。返回 None 表示沿用上报点交集。
+
+def fill_script_attach_collector_nodes(items, organization_ids) -> None:
+    """没有节点的实例，用当前组织可见的唯一在线原生采集节点预填。多个节点不猜。
+
+    实例上已经有节点时不改节点，只在该节点属于本次可见结果时补上名称。
     """
-    configured = configured_instance_ids(monitor_object.id, plugin.id)
-    if is_script_plugin(plugin) or is_single_key_instance_object(monitor_object) or configured:
-        return configured
-    return None
+    rows = [item for item in items or [] if item and item.get("instance_id")]
+    if not rows:
+        return
+    found = _native_collect_nodes([item["instance_id"] for item in rows], organization_ids)
+    for item in rows:
+        nodes = found.get(item["instance_id"], [])
+        current = str(item.get("node_id") or "").strip()
+        if current:
+            match = next((node for node in nodes if node["id"] == current), None)
+            if match:
+                item["node_name"] = match["name"]
+            continue
+        active = {node["id"]: node for node in nodes if node["active"]}
+        if len(active) != 1:
+            continue
+        node = next(iter(active.values()))
+        item["node_id"] = node["id"]
+        item["node_name"] = node["name"]
+
+
+def _native_collect_nodes(instance_ids, organization_ids) -> dict[str, list[dict]]:
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    config_rows = list(
+        CollectConfig.objects.filter(
+            monitor_instance_id__in=list(instance_ids),
+            is_child=True,
+        )
+        .exclude(collect_type__iexact="script")
+        .values_list("id", "monitor_instance_id")
+    )
+    if not config_rows:
+        return {}
+    config_to_instance = {str(config_id): instance_id for config_id, instance_id in config_rows}
+    try:
+        payload = NodeMgmt().get_child_config_nodes_by_ids(list(config_to_instance), list(organization_ids or []))
+    except Exception:
+        logger.exception("event=script_attach_node_lookup_failed failed_stage=node_lookup error_type=node_lookup_error")
+        return {}
+    nodes_by_instance: dict[str, list[dict]] = {}
+    seen: dict[str, set[str]] = {}
+    for row in payload or []:
+        if not isinstance(row, dict):
+            continue
+        instance_id = config_to_instance.get(str(row.get("id") or ""))
+        if not instance_id:
+            continue
+        for node in row.get("nodes") or []:
+            if not isinstance(node, dict) or node.get("id") in (None, ""):
+                continue
+            node_id = str(node["id"])
+            if node_id in seen.setdefault(instance_id, set()):
+                continue
+            seen[instance_id].add(node_id)
+            nodes_by_instance.setdefault(instance_id, []).append(
+                {
+                    "id": node_id,
+                    "name": str(node.get("name") or node_id),
+                    "active": bool(node.get("active")),
+                }
+            )
+    return nodes_by_instance
 
 
 def script_plugin_status_probe(plugin, instance_id_keys) -> str | None:
@@ -131,7 +196,8 @@ def script_collect_scope_plugin_ids(policy):
     from apps.monitor.tasks.utils.policy_multi import query_metric_items
 
     items = query_metric_items(getattr(policy, "query_condition", None) or {})
-    metric_ids = [item.get("metric_id") for item in items if isinstance(item, dict) and item.get("metric_id")]
+    # 只认数字主键。其它形态的 metric_id 不可能是脚本指标，交给原有扫描流程处理。
+    metric_ids = [item.get("metric_id") for item in items if isinstance(item, dict) and str(item.get("metric_id") or "").isdigit()]
     if metric_ids:
         script_ids = set()
         saw_metric = False

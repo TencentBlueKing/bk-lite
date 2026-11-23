@@ -286,7 +286,7 @@ class MonitorObjectService:
 
         instance_id_keys = obj_metric_map.get("instance_id_keys") or []
         status_query = obj_metric_map.get("default_metric", "")
-        plugin_membership = None
+        list_plugin = None
         if monitor_plugin_id:
             plugin = (
                 MonitorPlugin.objects.filter(
@@ -298,9 +298,9 @@ class MonitorObjectService:
             )
             if not plugin:
                 return {"count": 0, "results": []}
-            from apps.monitor.services.script_attach import plugin_filter_membership, script_plugin_status_probe
+            from apps.monitor.services.script_attach import script_plugin_status_probe
 
-            plugin_membership = plugin_filter_membership(monitor_obj, plugin)
+            list_plugin = plugin
             script_probe = script_plugin_status_probe(plugin, instance_id_keys)
             if script_probe:
                 status_query = script_probe
@@ -321,11 +321,15 @@ class MonitorObjectService:
             status_query,
             instance_id_keys,
         )
-        if plugin_membership is not None:
-            # 成员来自 CollectConfig。已配置但还没出点的实例保留，卸载后的过期点不再占位。
-            qs = qs.filter(id__in=list(plugin_membership))
-        elif monitor_plugin_id:
-            qs = qs.filter(id__in=instance_map.keys())
+        if list_plugin is not None:
+            from apps.monitor.services.script_attach import plugin_filter_membership
+
+            script_membership = plugin_filter_membership(monitor_obj, list_plugin)
+            if script_membership is not None:
+                # 脚本只列出已挂上这份插件的实例。卸载后过期点不再占位。
+                qs = qs.filter(id__in=script_membership)
+            else:
+                qs = qs.filter(id__in=instance_map.keys())
 
         status_raw = None
         if isinstance(vm_params, dict):
@@ -403,6 +407,10 @@ class MonitorObjectService:
             )
 
         MonitorObjectService.add_attr(result, visible_organization_ids)
+        if script_attach_candidates:
+            from apps.monitor.services.script_attach import fill_script_attach_collector_nodes
+
+            fill_script_attach_collector_nodes(result, visible_organization_ids)
 
         return dict(count=count, results=result)
 
@@ -678,8 +686,11 @@ class MonitorObjectService:
             supplementary = obj_metric_map.get("supplementary_indicators", [])
             if not supplementary:
                 return
-            for metric_obj in Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary):
-                if metric_obj.name in skip_out_keys:
+            from apps.monitor.services.script_attach import is_script_plugin
+
+            for metric_obj in Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).select_related("monitor_plugin"):
+                # 只按名字取数的旧路径不取脚本指标，同名时不让脚本值盖掉原生列。
+                if metric_obj.name in skip_out_keys or is_script_plugin(metric_obj.monitor_plugin):
                     continue
                 value_map = MonitorObjectService._query_metric_values(metric_obj, result)
                 for instance in result:
@@ -701,6 +712,8 @@ class MonitorObjectService:
         MonitorObjectService._merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map, needed_plugins=needed_plugins)
 
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
+        from apps.monitor.services.script_attach import is_script_plugin
+
         metric_by_plugin = {}
         metric_by_name = {}
         for metric_obj in Metric.objects.filter(
@@ -709,7 +722,9 @@ class MonitorObjectService:
         ).select_related("monitor_plugin"):
             plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
             metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
-            metric_by_name.setdefault(metric_obj.name, metric_obj)
+            # 没写插件的旧绑定只认原生指标。脚本指标要显式绑定到脚本插件。
+            if not is_script_plugin(metric_obj.monitor_plugin):
+                metric_by_name.setdefault(metric_obj.name, metric_obj)
 
         # 先把每个绑定解析成 (plugin, metric, metric_obj, eligible)
         resolved = []
@@ -734,7 +749,9 @@ class MonitorObjectService:
         groups = {}
         for item in resolved:
             metric_obj = item[2]
-            group_key = (metric_obj.monitor_plugin_id, metric_obj.query, tuple(metric_obj.instance_id_keys))
+            # 原生插件查询相同就合并成一次。脚本指标按插件收窄，各自单独查。
+            script_plugin_id = metric_obj.monitor_plugin_id if is_script_plugin(metric_obj.monitor_plugin) else None
+            group_key = (script_plugin_id, metric_obj.query, tuple(metric_obj.instance_id_keys))
             groups.setdefault(group_key, []).append(item)
 
         for items in groups.values():
