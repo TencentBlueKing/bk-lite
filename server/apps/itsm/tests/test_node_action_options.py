@@ -303,6 +303,20 @@ def test_cannot_urge_as_a_task_assignee(approval_ticket):
         dispatch.assert_called_once()
 
 
+def test_test_ticket_urge_is_only_delivered_to_site(approval_ticket):
+    ticket, _ = approval_ticket
+    ticket.is_test = True
+    ticket.save(update_fields=["is_test"])
+    configure(ticket, actions=["urge"])
+    with (
+        patch("apps.itsm.views.tickets._service", return_value=TicketService()),
+        patch("apps.itsm.services.ticket.service.dispatch_notification") as dispatch,
+    ):
+        response = operate_ticket(request("post", {"action": "urge"}, "owner"), ticket.id)
+    assert response.status_code == 200
+    assert dispatch.call_args.kwargs["site_only"] is True
+
+
 @pytest.mark.parametrize(
     ("node_type", "display"),
     [

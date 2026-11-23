@@ -40,7 +40,11 @@ def fire_triggers(ticket, action: str, operator: str) -> None:
 
             try:
                 dispatch_notification(
-                    "trigger", {"title": trigger.name, "content": response or trigger.name}, [ticket.created_by], site_only=ticket.is_test
+                    "trigger",
+                    {"title": trigger.name, "content": response or trigger.name},
+                    [ticket.created_by],
+                    site_only=ticket.is_test,
+                    domain=ticket.domain,
                 )
                 message = "notice:sent"
             except Exception as exc:

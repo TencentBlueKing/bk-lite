@@ -10,7 +10,14 @@ itsm_event = Signal()
 
 @receiver(itsm_event)
 def send_itsm_notification(sender, event, receivers, variables, event_key="", **kwargs):
-    deliver_with_retry(event, variables or {}, list(receivers or []), event_key or "", site_only=bool(getattr(sender, "is_test", False)))
+    deliver_with_retry(
+        event,
+        variables or {},
+        list(receivers or []),
+        event_key or "",
+        site_only=bool(getattr(sender, "is_test", False)),
+        domain=getattr(sender, "domain", ""),
+    )
 
 
 @receiver(post_save, sender=TicketLog)
@@ -43,6 +50,7 @@ def notify_ticket_followers(sender, instance, created, **kwargs):
             receivers,
             event_key,
             site_only=ticket.is_test,
+            domain=ticket.domain,
         )
 
     transaction.on_commit(notify, robust=True)

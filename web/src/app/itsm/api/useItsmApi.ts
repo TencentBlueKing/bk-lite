@@ -236,7 +236,7 @@ export function useItsmApi() {
   const deleteHandlerGroup = useCallback((id: number) => del(`/itsm/api/handler_groups/?id=${id}`), [del]);
   const listNotifyTemplates = useCallback(() => get('/itsm/api/notify_templates/'), [get]);
   const saveNotifyTemplate = useCallback(
-    (body: { id?: number; event: string; title_tpl: string; content_tpl: string }) => post('/itsm/api/notify_templates/', body),
+    (body: { id?: number; event: string; channel_type?: 'site' | 'im'; title_tpl: string; content_tpl: string }) => post('/itsm/api/notify_templates/', body),
     [post],
   );
   const deleteNotifyTemplate = useCallback((id: number) => del(`/itsm/api/notify_templates/?id=${id}`), [del]);

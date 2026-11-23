@@ -428,6 +428,8 @@ class TicketService:
                 {"title": ticket.title, "url": f"/itsm/tickets/{ticket.id}", "content": data.get("opinion") or "请尽快处理"},
                 receivers or [ticket.creator],
                 event_key=f"itsm-urge-{ticket.id}-{int(timezone.now().timestamp())}",
+                site_only=ticket.is_test,
+                domain=ticket.domain,
             )
         elif action == "respond":
             self._set_status(ticket, "processing")

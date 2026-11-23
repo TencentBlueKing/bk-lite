@@ -80,6 +80,7 @@ def execute_node(ticket, node):
             receivers,
             event_key=f'itsm-notice-{ticket.id}-{node["id"]}-{ticket.process_instance_id}',
             site_only=ticket.is_test,
+            domain=ticket.domain,
         )
         if not (result.get("site") or {}).get("result"):
             raise ActionFailure("通知投递结果待核对")

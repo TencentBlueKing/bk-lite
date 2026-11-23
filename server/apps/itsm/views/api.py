@@ -2,7 +2,7 @@ import json
 
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
@@ -454,7 +454,8 @@ class NotifyTemplateView(ItsmAPIView):
     @api_errors
     @HasPermission("notify-View")
     def get(self, request):
-        return Response({"items": NotifyTemplateSerializer(NotifyTemplate.objects.filter(domain=domain_of(request)).all(), many=True).data})
+        templates = NotifyTemplate.objects.filter(domain=domain_of(request)).all()
+        return Response({"items": NotifyTemplateSerializer(templates, many=True).data, "can_edit": has_permission(request, "notify-Edit")})
 
     @api_errors
     @HasPermission("notify-Edit")
@@ -468,11 +469,21 @@ class NotifyTemplateView(ItsmAPIView):
         else:
             serializer = NotifyTemplateSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
+        instance = serializer.instance
+        values = serializer.validated_data
+        event = values.get("event", instance.event if instance else "")
+        channel_type = values.get("channel_type", instance.channel_type if instance else "site")
+        if instance and instance.is_builtin and (event != instance.event or channel_type != instance.channel_type):
+            return self.fail("内置通知模板的事件和渠道不可修改")
         actor = self.actor(request)
         extra = {"updated_by": actor, "domain": domain_of(request)}
-        if serializer.instance is None:
+        if instance is None:
             extra["created_by"] = actor
-        serializer.save(**extra)
+        try:
+            with transaction.atomic():
+                serializer.save(**extra)
+        except IntegrityError:
+            return self.fail("此事件和渠道已存在通知模板")
         return Response({"id": serializer.instance.id})
 
     @api_errors

@@ -131,6 +131,7 @@ def _run(service_for, item, run, config):
                 [run.created_by],
                 event_key=f"itsm-schedule-run-{run.id}",
                 site_only=bool(run.ticket and run.ticket.is_test),
+                domain=item.domain,
             )
             if not (result.get("site") or {}).get("result"):
                 raise ValueError("通知未投递")
