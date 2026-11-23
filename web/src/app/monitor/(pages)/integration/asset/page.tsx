@@ -1322,7 +1322,7 @@ const Asset = () => {
     }
   ) => {
     const forceRedispatch = Boolean(options?.forceRedispatch);
-    // 重新下发重渲该实例全部未手改配置。升级探针才按当前可升级插件过滤。
+    // 重新下发重渲该实例全部配置，包括页面上改过的。升级探针才按当前可升级插件过滤。
     const pluginId = forceRedispatch
       ? undefined
       : options?.pluginId || stalePluginId || undefined;

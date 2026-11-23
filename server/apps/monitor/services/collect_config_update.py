@@ -1,7 +1,7 @@
 """采集配置相对插件内容指纹的需更新判定与一键重渲染。
 
 需更新是实例×插件的正交标志，不进入上报正常/失联，也不表示节点二进制可升级。
-一键更新只覆盖未手改配置：服务端按新模板重渲染，失败回滚该条。
+一键升级只覆盖未手改配置。重新下发会覆盖手改和内容漂移，按当前模板写回节点。失败回滚该条。
 """
 
 from __future__ import annotations
@@ -594,7 +594,8 @@ class CollectConfigUpdateService:
         force_redispatch=False,
     ) -> dict:
         plugin_fp = plugin_content_fingerprint(plugin)
-        # 重新下发不看版本和内容指纹。空指纹只表示「升级探针」无方向，不阻止按当前模板重渲。
+        # 重新下发不看版本和内容指纹，并覆盖手改与内容漂移，让节点配置回到当前模板。
+        overwrite_edits = bool(discard_hand_edited or force_redispatch)
         if not plugin_fp and not force_redispatch:
             return {
                 "updated": [],
@@ -642,7 +643,7 @@ class CollectConfigUpdateService:
                 nonlocal instance_updated, instance_edited, instance_failed
                 if not force_redispatch and not discard_hand_edited and not is_config_stale(config_obj, plugin):
                     return
-                if is_config_hand_edited(config_obj) and not discard_hand_edited:
+                if is_config_hand_edited(config_obj) and not overwrite_edits:
                     instance_edited = True
                     return
                 try:
@@ -650,7 +651,7 @@ class CollectConfigUpdateService:
                         node_mgmt,
                         config_obj,
                         plugin_fp,
-                        discard_hand_edited=discard_hand_edited,
+                        discard_hand_edited=overwrite_edits,
                     )
                     instance_updated = True
                 except HandEditedCollectConfigError:
@@ -686,14 +687,14 @@ class CollectConfigUpdateService:
                             with transaction.atomic():
                                 if not force_redispatch and not discard_hand_edited and not is_config_stale(current, plugin):
                                     continue
-                                if is_config_hand_edited(current) and not discard_hand_edited:
+                                if is_config_hand_edited(current) and not overwrite_edits:
                                     instance_edited = True
                                     continue
                                 CollectConfigUpdateService._rerender_one(
                                     node_mgmt,
                                     current,
                                     plugin_fp,
-                                    discard_hand_edited=discard_hand_edited,
+                                    discard_hand_edited=overwrite_edits,
                                 )
                                 instance_updated = True
                         except HandEditedCollectConfigError:
