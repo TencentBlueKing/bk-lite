@@ -1,0 +1,16 @@
+name: Example Channel
+description: Example notification channel pack. It does not deliver messages.
+
+templates:
+  connection:
+    title: Connection
+    groups:
+      main:
+        title: Main
+        fields:
+          endpoint:
+            label: Endpoint
+          api_secret:
+            label: API Secret
+          template_id:
+            label: Template ID

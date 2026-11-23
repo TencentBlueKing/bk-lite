@@ -250,3 +250,48 @@ def test_user_login_log_export_excel_rejects_invalid_filters(super_client):
     assert response.data["message"] == "Invalid filter parameters"
     assert list(response.data["errors"]) == ["login_time_start"]
     assert [str(error) for error in response.data["errors"]["login_time_start"]] == ["Enter a valid date/time."]
+
+
+def test_cloud_test_send_uses_the_saved_channel_and_current_user_phone(super_client):
+    from apps.system_mgmt.models import User as SysUser
+
+    SysUser.objects.create(
+        username="chadmin",
+        display_name="管理员",
+        email="chadmin@example.com",
+        phone="13800138000",
+        password="x",
+        domain="domain.com",
+    )
+    channel = Channel.objects.create(
+        name="短信",
+        channel_type=ChannelChoices.SMS,
+        description="告警短信",
+        team=[1],
+        config={"provider": "tencent", "secret_key": "stored-secret"},
+    )
+
+    with patch(
+        "apps.system_mgmt.viewset.channel_viewset.send_cloud_notification", return_value={"result": True, "message": "success", "recipients": []}
+    ) as send:
+        response = super_client.post(
+            f"{V}/channel/test_send/",
+            {
+                "channel_id": channel.id,
+                "channel_type": ChannelChoices.SMS,
+                "title": "请求里的标题不会被使用",
+                "content": "请求里的正文不会被使用",
+                "config": {"secret_key": "******mask"},
+            },
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["result"] is True
+    saved, title, content, receivers = send.call_args.args
+    assert saved.id == channel.id
+    assert saved.config["secret_key"] == "stored-secret"
+    assert title == "[短信] Test Message"
+    assert content == "This is a test message from channel '短信'. Receiver: 管理员"
+    assert receivers == [SysUser.objects.get(username="chadmin").id]
+    assert send.call_args.kwargs["template_params"] is None

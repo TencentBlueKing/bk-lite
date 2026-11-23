@@ -441,6 +441,7 @@ class SystemMgmt(object):
         internal_caller="",
         append_receivers=True,
         channel_type=None,
+        template_params=None,
     ):
         """
         通过指定通道发送消息
@@ -468,6 +469,8 @@ class SystemMgmt(object):
             request_payload["append_receivers"] = False
         if channel_type:
             request_payload["channel_type"] = channel_type
+        if template_params is not None:
+            request_payload["template_params"] = template_params
         return self.client.run("send_msg_with_channel", **request_payload)
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):

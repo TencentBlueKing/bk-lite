@@ -1,9 +1,11 @@
+import json
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.system_mgmt.models import Channel, ChannelChoices
 from apps.system_mgmt.viewset.channel_viewset import ChannelViewSet
-
 
 pytestmark = pytest.mark.django_db
 
@@ -96,6 +98,31 @@ def test_update_allows_authorized_team(authenticated_user):
     assert response.status_code == 200
     channel.refresh_from_db()
     assert channel.team == [1]
+
+
+def test_cloud_test_send_rejects_channel_outside_user_team(authenticated_user):
+    user = _grant(authenticated_user, "channel_list-Edit")
+    channel = Channel.objects.create(
+        name="短信",
+        channel_type=ChannelChoices.SMS,
+        config={"provider": "tencent"},
+        description="",
+        team=[2],
+    )
+    factory = APIRequestFactory()
+    request = factory.post(
+        "/system_mgmt/channel/test_send/",
+        {"channel_id": channel.id, "channel_type": ChannelChoices.SMS, "title": "标题", "content": "正文"},
+        format="json",
+    )
+    force_authenticate(request, user=user)
+
+    with patch("apps.system_mgmt.viewset.channel_viewset.send_cloud_notification") as send:
+        response = ChannelViewSet.as_view({"post": "test_send"})(request)
+
+    assert response.status_code == 403
+    assert json.loads(response.content)["message"] == "无权访问该渠道"
+    send.assert_not_called()
 
 
 def test_superuser_can_create_channel_for_any_team(authenticated_user):
