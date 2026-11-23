@@ -8,6 +8,11 @@ export interface ImpactTopologyNode {
   layer?: string;
   role?: string;
   found?: boolean;
+  alert_state?: string;
+  alert_count?: number;
+  level?: string | number | null;
+  outside_incident_count?: number;
+  member_truncated?: boolean;
 }
 
 export interface ImpactTopologyLink {
@@ -21,8 +26,14 @@ export interface ImpactTopologyLink {
 
 export interface ImpactTopologyPayload {
   relation_status?: string;
+  context_status?: string;
+  alert_status?: string;
   message?: string;
   truncated?: boolean;
+  related_truncated?: boolean;
+  quiet_omitted?: number;
+  omitted_quiet_nodes?: ImpactTopologyNode[];
+  omitted_quiet_links?: ImpactTopologyLink[];
   nodes?: ImpactTopologyNode[];
   links?: ImpactTopologyLink[];
 }
@@ -55,6 +66,12 @@ export interface ImpactCopy {
   unavailable: string;
   truncated: string;
   unboundHint: string;
+  noAlert: string;
+  alertUnknown: string;
+  outside: (count: number) => string;
+  quietOmitted: (count: number) => string;
+  relatedTruncated: string;
+  atLeast: (count: number) => string;
 }
 
 export const defaultImpactCopy: ImpactCopy = {
@@ -65,6 +82,12 @@ export const defaultImpactCopy: ImpactCopy = {
   unavailable: '配置关系暂时查不到',
   truncated: '关系未展开',
   unboundHint: '这些告警没有绑定 CMDB 对象',
+  noAlert: '无告警',
+  alertUnknown: '告警情况暂时查不到',
+  outside: (count) => `另有 ${count} 条未入本事故`,
+  quietOmitted: (count) => `还有 ${count} 个关联对象当前无告警未画入，入画请点击。`,
+  relatedTruncated: '关联对象过多，只展示一部分',
+  atLeast: (count) => `至少 ${count} 条`,
 };
 
 export interface ImpactGraphAlert {
@@ -80,7 +103,9 @@ export interface ImpactLinkedObject {
 
 export interface ImpactGraphNode {
   id: string;
-  kind: 'seed' | 'bridge' | 'unbound';
+  kind: 'seed' | 'bridge' | 'unbound' | 'related' | 'application' | 'system';
+  alertState: string;
+  memberTruncated: boolean;
   label: string;
   detail: string;
   color: string | null;
@@ -104,6 +129,7 @@ export interface ImpactGraphModel {
   mode: 'empty' | 'not_purchased' | 'graph';
   message: string;
   hint: string;
+  quietOmitted: number;
   nodes: ImpactGraphNode[];
   edges: ImpactGraphEdge[];
   width: number;
@@ -142,12 +168,21 @@ export function buildImpactGraph(
   levels: ImpactLevelRef[] = [],
   levelColors: Record<string, string> = {},
   copy: ImpactCopy = defaultImpactCopy,
+  includeOmittedQuiet = false,
 ): ImpactGraphModel {
   if (alerts.length === 0) {
     return blank('empty', '');
   }
   if (payload?.relation_status === 'not_purchased') {
     return blank('not_purchased', payload.message || copy.notPurchased);
+  }
+  if (includeOmittedQuiet && payload) {
+    payload = {
+      ...payload,
+      nodes: [...(payload.nodes || []), ...(payload.omitted_quiet_nodes || [])],
+      links: [...(payload.links || []), ...(payload.omitted_quiet_links || [])],
+      quiet_omitted: 0,
+    };
   }
 
   const degraded = !payload || payload.relation_status === 'unavailable';
@@ -157,11 +192,16 @@ export function buildImpactGraph(
   buckets.forEach((bucket) => {
     const apiNode = degraded ? undefined : apiNodeById(payload).get(bucket.id);
     const found = Boolean(apiNode && apiNode.found !== false);
+    const outside = Number(apiNode?.outside_incident_count || 0);
     nodes.push({
       id: bucket.id,
       kind: 'seed',
+      alertState: 'incident',
+      memberTruncated: false,
       label: bucket.label || (found ? apiNode?.inst_name || '' : ''),
-      detail: copy.alertCount(bucket.alerts.length),
+      detail: outside > 0
+        ? `${copy.alertCount(bucket.alerts.length)} · ${copy.outside(outside)}`
+        : copy.alertCount(bucket.alerts.length),
       color: colorFor(bucket.levelId, levels, levelColors),
       levelName: levelName(bucket.levelId, levels),
       layer: found ? normalizeLayer(apiNode?.layer) : 'none',
@@ -175,23 +215,11 @@ export function buildImpactGraph(
 
   if (!degraded && !truncated) {
     (payload?.nodes || []).forEach((apiNode) => {
-      if (apiNode.role !== 'bridge') return;
+      const role = apiNode.role || '';
+      if (!['bridge', 'related', 'application', 'system'].includes(role)) return;
       const id = canonicalUuid(apiNode.inst_uuid);
       if (!id || nodes.some((node) => node.id === id)) return;
-      nodes.push({
-        id,
-        kind: 'bridge',
-        label: apiNode.inst_name || apiNode.model_name || '',
-        detail: copy.bridge,
-        color: null,
-        levelName: '',
-        layer: normalizeLayer(apiNode.layer),
-        alerts: [],
-        linkedObjects: [],
-        relations: [],
-        x: 0,
-        y: 0,
-      });
+      nodes.push(analysisNode(apiNode, role as ImpactGraphNode['kind'], levels, levelColors, copy));
     });
   }
 
@@ -199,14 +227,19 @@ export function buildImpactGraph(
   const edges = !degraded && !truncated ? linksFor(payload, nodes) : [];
   attachRelations(nodes, edges);
   const box = layout(nodes);
-  let hint = '';
-  if (degraded) hint = payload?.message || copy.unavailable;
-  else if (truncated) hint = copy.truncated;
-  else if (buckets.size === 0 && nodes.some((node) => node.kind === 'unbound')) hint = copy.unboundHint;
+  const hints: string[] = [];
+  if (degraded) hints.push(payload?.message || copy.unavailable);
+  else if (truncated) hints.push(copy.truncated);
+  else if (buckets.size === 0 && nodes.some((node) => node.kind === 'unbound')) hints.push(copy.unboundHint);
+  if (!degraded && !truncated && payload?.message) hints.push(payload.message);
+  if (!degraded && !truncated && payload?.related_truncated) hints.push(copy.relatedTruncated);
+  const hint = hints.filter(Boolean).join(' ');
+  const quietOmitted = !degraded && !truncated ? Number(payload?.quiet_omitted || 0) : 0;
   return {
     mode: 'graph',
     message: '',
     hint,
+    quietOmitted,
     nodes,
     edges,
     width: box.width,
@@ -219,6 +252,7 @@ function blank(mode: ImpactGraphModel['mode'], message: string): ImpactGraphMode
     mode,
     message,
     hint: '',
+    quietOmitted: 0,
     nodes: [],
     edges: [],
     width: 0,
@@ -290,12 +324,51 @@ function unboundNode(alert: ImpactAlertRef, index: number, label: string, copy: 
   return {
     id: `unbound:${alert.id}:${index}`,
     kind: 'unbound',
+    alertState: 'unbound',
+    memberTruncated: false,
     label: label || alert.title || '',
     detail: copy.unbound,
     color: null,
     levelName: '',
     layer: 'unbound',
     alerts: [{ id: alert.id, title: alert.title || '' }],
+    linkedObjects: [],
+    relations: [],
+    x: 0,
+    y: 0,
+  };
+}
+
+function analysisNode(
+  apiNode: ImpactTopologyNode,
+  kind: ImpactGraphNode['kind'],
+  levels: ImpactLevelRef[],
+  levelColors: Record<string, string>,
+  copy: ImpactCopy,
+): ImpactGraphNode {
+  const state = apiNode.alert_state || '';
+  const legacyBridge = kind === 'bridge' && !state;
+  const alertState = state || (kind === 'bridge' ? 'clear' : 'clear');
+  const count = Number(apiNode.alert_count || 0);
+  const levelId = levelNumber(apiNode.level);
+  const counted = alertState === 'active' || alertState === 'incident';
+  const countText = apiNode.member_truncated ? copy.atLeast(count) : copy.alertCount(count);
+  let detail = countText;
+  if (legacyBridge || (kind === 'bridge' && alertState === 'clear')) detail = copy.bridge;
+  else if (kind === 'bridge' && alertState === 'active') detail = `${copy.bridge} · ${countText}`;
+  else if (alertState === 'clear') detail = copy.noAlert;
+  else if (alertState === 'unknown') detail = copy.alertUnknown;
+  return {
+    id: canonicalUuid(apiNode.inst_uuid),
+    kind,
+    alertState,
+    memberTruncated: Boolean(apiNode.member_truncated),
+    label: apiNode.inst_name || apiNode.model_name || '',
+    detail,
+    color: counted ? colorFor(levelId, levels, levelColors) : null,
+    levelName: counted ? levelName(levelId, levels) : '',
+    layer: normalizeLayer(apiNode.layer),
+    alerts: [],
     linkedObjects: [],
     relations: [],
     x: 0,

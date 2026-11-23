@@ -504,11 +504,49 @@ class PrecheckService:
             for datasource in DataSourceAPIModel.objects.filter(name__in={name for name, _ in datasource_keys})
             if (datasource.name, datasource.rest_api) in datasource_keys
         }
-        for ds in doc.datasources:
+        from django.db.models import prefetch_related_objects
+
+        from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
+        from apps.operation_analysis.services.import_export.datasource_package_identity import HandleIndex, business_config_equal, find_identity_row
+
+        handle_index = HandleIndex()
+        namespace_nats = {item.name: getattr(item, "namespace", None) or "" for item in doc.namespaces}
+        resolved_rows = [(ds, find_identity_row(ds)) for ds in doc.datasources]
+        prefetch_related_objects([row for _, row in resolved_rows if row is not None], "namespaces")
+        for ds, identity_row in resolved_rows:
+            if identity_row is not None:
+                accessible = current_team is None or can_access_datasource_in_org(identity_row, current_team)
+                if not accessible:
+                    conflicts.append(
+                        {
+                            "object_key": ds.key,
+                            "object_type": ObjectType.DATASOURCE.value,
+                            "reason": ConflictReason.NO_PERMISSION_CONFLICT,
+                            "suggested_actions": [ConflictAction.IMPORT_AS_NEW.value],
+                        }
+                    )
+                    continue
+                if not business_config_equal(
+                    ds,
+                    identity_row,
+                    handle_index=handle_index.cover(ds, identity_row),
+                    namespace_nats=namespace_nats,
+                ):
+                    conflicts.append(
+                        {
+                            "object_key": ds.key,
+                            "object_type": ObjectType.DATASOURCE.value,
+                            "reason": ConflictReason.IDENTITY_CONFIG_CONFLICT,
+                            "suggested_actions": [ConflictAction.REUSE_TARGET.value, ConflictAction.IMPORT_AS_NEW.value],
+                        }
+                    )
+                continue
+
             existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
                 has_permission = cls._check_datasource_group_permission(existing, current_team)
-                suggested_actions = all_actions if has_permission else rename_only
+                # 没有稳定身份时不能按名称覆盖或跳过并绑到旧行，只允许另存一条。
+                suggested_actions = [ConflictAction.RENAME.value] if has_permission else rename_only
                 if is_legacy_raw_monitor_query(source_type=getattr(ds, "source_type", None), rest_api=ds.rest_api):
                     if not has_permission:
                         suggested_actions = []

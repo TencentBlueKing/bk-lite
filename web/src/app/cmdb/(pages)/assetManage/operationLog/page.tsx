@@ -39,6 +39,7 @@ const DEFAULT_SCENARIOS = [
   'relation_change',
   'ordinary_attribute_change',
   'collect_automation_change',
+  'owner_handover',
 ];
 
 const OperationLog: React.FC = () => {

@@ -3504,7 +3504,7 @@ screens:
               type: dynamic
               sourceRef:
                 type: rest_api
-                value: cmdb/get_room_list
+                value: CMDB 机房列表::cmdb/get_room_list
               labelField: inst_name
               valueField: inst_uuid
         - name: view
@@ -3577,7 +3577,7 @@ screens:
           type: dynamic
           sourceRef:
             type: rest_api
-            value: cmdb/get_room_list
+            value: CMDB 机房列表::cmdb/get_room_list
           labelField: inst_name
           valueField: inst_uuid
       defaultValue: null
@@ -3728,7 +3728,7 @@ screens:
           labelField: inst_name
           sourceRef:
             type: rest_api
-            value: cmdb/list_application_systems
+            value: 应用系统::cmdb/list_application_systems
           type: dynamic
           valueField: inst_uuid
       key: application_system_id

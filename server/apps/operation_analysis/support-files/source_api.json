@@ -208,7 +208,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_host_instance_list"
+              "value": "监控主机列表::monitor/get_host_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -400,7 +400,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_host_instance_list"
+              "value": "监控主机列表::monitor/get_host_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -519,7 +519,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_host_instance_list"
+              "value": "监控主机列表::monitor/get_host_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -637,7 +637,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_host_instance_list"
+              "value": "监控主机列表::monitor/get_host_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -732,7 +732,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_monitor_instance_list"
+              "value": "监控实例列表::monitor/get_monitor_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -1730,7 +1730,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -1827,7 +1827,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_room_list"
+              "value": "CMDB 机房列表::cmdb/get_room_list"
             },
             "valueField": "inst_uuid",
             "labelField": "inst_name"
@@ -1876,7 +1876,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_room_list"
+              "value": "CMDB 机房列表::cmdb/get_room_list"
             },
             "valueField": "inst_uuid",
             "labelField": "inst_name"
@@ -2004,7 +2004,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_room_list"
+              "value": "CMDB 机房列表::cmdb/get_room_list"
             },
             "valueField": "inst_uuid",
             "labelField": "inst_name"
@@ -2127,7 +2127,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_region_options"
+              "value": "CMDB 地区列表::cmdb/get_region_options"
             },
             "valueField": "value",
             "labelField": "label"
@@ -2333,7 +2333,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_monitor_instance_list"
+              "value": "监控实例列表::monitor/get_monitor_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -2416,7 +2416,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/get_monitor_instance_list"
+              "value": "监控实例列表::monitor/get_monitor_instance_list"
             },
             "valueField": "instance_id",
             "labelField": "display_name"
@@ -2665,7 +2665,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_application_systems"
+              "value": "应用系统::cmdb/list_application_systems"
             },
             "valueField": "inst_uuid",
             "labelField": "display_name"
@@ -3041,7 +3041,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -3119,7 +3119,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_cloud_region_options"
+              "value": "云区域列表::cmdb/get_cloud_region_options"
             },
             "valueField": "id",
             "labelField": "name"
@@ -3141,7 +3141,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_association_options"
+              "value": "模型关联列表::cmdb/get_model_association_options"
             },
             "valueField": "model_asst_id",
             "labelField": "label"
@@ -3748,7 +3748,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -3767,7 +3767,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "valueField": "model_id",
             "labelField": "model_name",
@@ -3855,7 +3855,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -3874,7 +3874,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "valueField": "model_id",
             "labelField": "model_name",
@@ -3933,7 +3933,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "labelField": "classification_name",
             "valueField": "classification_id"
@@ -3953,7 +3953,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "labelField": "model_name",
             "valueField": "model_id",
@@ -3980,7 +3980,7 @@
             "kind": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4005,7 +4005,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4102,7 +4102,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "labelField": "classification_name",
             "valueField": "classification_id"
@@ -4122,7 +4122,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "labelField": "model_name",
             "valueField": "model_id",
@@ -4149,7 +4149,7 @@
             "kind": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4174,7 +4174,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4269,7 +4269,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "labelField": "classification_name",
             "valueField": "classification_id"
@@ -4289,7 +4289,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "labelField": "model_name",
             "valueField": "model_id",
@@ -4316,7 +4316,7 @@
             "kind": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4342,7 +4342,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4367,7 +4367,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_attr_options"
+              "value": "CMDB 模型属性列表::cmdb/list_cmdb_attr_options"
             },
             "labelField": "attr_name",
             "valueField": "attr_id",
@@ -4456,7 +4456,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -4475,7 +4475,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "valueField": "model_id",
             "labelField": "model_name",
@@ -4503,7 +4503,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "模型关联列表（按所选模型）::cmdb/get_model_association_options"
+              "value": "模型关联列表（按模型）::cmdb/get_model_association_options"
             },
             "valueField": "model_asst_id",
             "labelField": "label",
@@ -4598,7 +4598,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -4617,7 +4617,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "valueField": "model_id",
             "labelField": "model_name",
@@ -4645,7 +4645,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "模型关联列表（按所选模型）::cmdb/get_model_association_options"
+              "value": "模型关联列表（按模型）::cmdb/get_model_association_options"
             },
             "valueField": "model_asst_id",
             "labelField": "label",
@@ -4708,7 +4708,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/get_model_classification_options"
+              "value": "CMDB 模型分类列表::cmdb/get_model_classification_options"
             },
             "valueField": "classification_id",
             "labelField": "classification_name"
@@ -4727,7 +4727,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "cmdb/list_cmdb_model_options"
+              "value": "CMDB 模型列表::cmdb/list_cmdb_model_options"
             },
             "valueField": "model_id",
             "labelField": "model_name",
@@ -4755,7 +4755,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "模型关联列表（按所选模型）::cmdb/get_model_association_options"
+              "value": "模型关联列表（按模型）::cmdb/get_model_association_options"
             },
             "valueField": "model_asst_id",
             "labelField": "label",
@@ -4833,7 +4833,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "监控对象列表::monitor/monitor_objects"
             },
             "labelField": "display_name",
             "valueField": "id"
@@ -4853,7 +4853,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/query_monitor_instances"
+              "value": "监控实例通用查询::monitor/query_monitor_instances"
             },
             "labelField": "name",
             "valueField": "instance_id",
@@ -5246,7 +5246,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_monitor_object_options"
+              "value": "监控对象列表::monitor/monitor_objects"
             },
             "valueField": "id",
             "labelField": "display_name"
@@ -5267,7 +5267,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/query_monitor_instances"
+              "value": "监控实例通用查询::monitor/query_monitor_instances"
             },
             "valueField": "instance_id",
             "labelField": "name",
@@ -5295,7 +5295,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/monitor_metrics"
+              "value": "监控指标列表::monitor/monitor_metrics"
             },
             "valueField": "id",
             "labelField": "option_label",
@@ -5341,7 +5341,7 @@
             "kind": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "monitor/list_metric_dimensions"
+              "value": "监控指标维度::monitor/list_metric_dimensions"
             },
             "valueField": "name",
             "labelField": "label",
@@ -6481,7 +6481,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "alert/list_alert_source_options"
+              "value": "告警来源列表::alert/list_alert_source_options"
             },
             "labelField": "name",
             "valueField": "source_id"
@@ -6870,7 +6870,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "alert/list_alert_source_options"
+              "value": "告警来源列表::alert/list_alert_source_options"
             },
             "labelField": "name",
             "valueField": "source_id"
@@ -7085,7 +7085,7 @@
             "type": "dynamic",
             "sourceRef": {
               "type": "rest_api",
-              "value": "alert/list_alert_source_options"
+              "value": "告警来源列表::alert/list_alert_source_options"
             },
             "labelField": "name",
             "valueField": "source_id"

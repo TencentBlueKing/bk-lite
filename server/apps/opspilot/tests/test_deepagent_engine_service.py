@@ -1292,6 +1292,48 @@ class TestBuildDeepagentNodes:
         _assert_visible_tool_steps(captured["visible_tool_calls"], [["alerts_list_alerts"], ["generate_attachment_file"], []])
         assert len(captured["planner_calls"]) == 1
 
+    def test_wecom_pdf_workflow_continues_after_numbered_step_with_approval_enabled(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts"), _tool("generate_attachment_file"), _tool("request_user_choice")]
+        req = _request(
+            user_message="查询告警并生成 PDF",
+            extra_config={"reply_channel": "WECOM_BOT"},
+            approval_config=SimpleNamespace(enabled=True, tools=["generate_attachment_file"], unattended_strategy="allow"),
+        )
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "告警报告", "steps": [{"objective": "查询告警", "tools": ["alerts_list_alerts"]}]},
+                agent_step_tool_results={
+                    1: ("alerts_list_alerts", '{"success":true,"count":4}'),
+                    3: ("generate_attachment_file", '{"filename":"report.pdf","file_url":"/report.pdf"}'),
+                },
+                agent_replies={
+                    1: "按对象统计：\n1. 数据库 4 条",
+                    2: "PDF 报告已生成，是否将其保存为附件？\n1. 是\n2. 否",
+                    4: "当前有 4 条活动告警，详见附件。",
+                },
+            )
+        assert [m.content for m in result["messages"]][-1] == "当前有 4 条活动告警，详见附件。"
+        assert all("request_user_choice" not in names for names in captured["visible_tool_calls"])
+        assert "generate_attachment_file" in captured["create_kwargs"]["interrupt_on"]
+
+    def test_wecom_planned_file_requires_successful_tool_result(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("generate_attachment_file")]
+        req = _request(user_message="生成 PDF 报告", extra_config={"reply_channel": "WECOM_BOT"})
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), pytest.raises(ValueError, match="未能生成计划中的附件"):
+            self._run_wrapper(
+                node,
+                req,
+                {},
+                plan_payload={"goal": "PDF", "steps": [{"objective": "生成报告", "tools": ["generate_attachment_file"]}]},
+                agent_reply="报告已生成。",
+            )
+
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
         node = ToolsNodes()

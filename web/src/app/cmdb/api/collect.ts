@@ -27,6 +27,17 @@ export const useCollectApi = () => {
   const executeCollect = (collectId: string) =>
     post(`/cmdb/api/collect/${collectId}/exec_task/`);
 
+  const setCollectEnabled = (collectId: string, enabled: boolean) =>
+    post(`/cmdb/api/collect/${collectId}/set_enabled/`, { enabled });
+
+  const startAccessCheck = (collectId: string) =>
+    post(`/cmdb/api/collect/${collectId}/access_check/`, {});
+
+  const getAccessCheck = (
+    collectId: string,
+    config?: { suppressErrorNotification?: boolean }
+  ) => get(`/cmdb/api/collect/${collectId}/access_check/`, config);
+
 
   // 获取采集任务信息
   const getCollectInfo = (collectId: string) =>
@@ -103,6 +114,9 @@ export const useCollectApi = () => {
     updateCollect,
     deleteCollect,
     executeCollect,
+    setCollectEnabled,
+    startAccessCheck,
+    getAccessCheck,
     getCollectInfo,
     getCollectModelTree,
     getCollectModelInstances,

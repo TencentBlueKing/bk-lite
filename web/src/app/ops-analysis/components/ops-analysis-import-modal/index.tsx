@@ -243,7 +243,7 @@ const OpsAnalysisImportModal: React.FC<OpsAnalysisImportModalProps> = ({
             width: '38%',
             render: (_: any, record: ConflictItem) => (
               <Radio.Group
-                className="flex items-center whitespace-nowrap"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1"
                 value={conflictDecisions[record.object_key]}
                 onChange={(e) =>
                   setConflictDecisions({
@@ -265,6 +265,16 @@ const OpsAnalysisImportModal: React.FC<OpsAnalysisImportModalProps> = ({
                 {record.suggested_actions.includes('rename') && (
                   <Radio value="rename">
                     {t('opsAnalysisSidebar.actionRename')}
+                  </Radio>
+                )}
+                {record.suggested_actions.includes('reuse_target') && (
+                  <Radio value="reuse_target">
+                    {t('opsAnalysisSidebar.actionReuseTarget')}
+                  </Radio>
+                )}
+                {record.suggested_actions.includes('import_as_new') && (
+                  <Radio value="import_as_new">
+                    {t('opsAnalysisSidebar.actionImportAsNew')}
                   </Radio>
                 )}
               </Radio.Group>

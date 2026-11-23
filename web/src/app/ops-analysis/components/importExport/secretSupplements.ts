@@ -40,7 +40,11 @@ export const hasBlockingImportWarnings = (
     return false;
   }
   if (warning.code !== SECRET_PLACEHOLDER_WARNING_CODE) return true;
-  if (warning.object_key && conflictDecisions[warning.object_key] === 'overwrite') {
+  if (
+    warning.object_key
+    && (conflictDecisions[warning.object_key] === 'overwrite'
+      || conflictDecisions[warning.object_key] === 'reuse_target')
+  ) {
     return false;
   }
 

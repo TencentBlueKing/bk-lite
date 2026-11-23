@@ -179,8 +179,8 @@ def test_vision_options_skip_unsupported_protocol_and_client_init_failure(monkey
 def test_vision_options_builds_anthropic_compat_client(monkeypatch):
     built = {}
 
-    def fake_build(*, api_base, api_key, vendor_type=""):
-        built.update(api_base=api_base, api_key=api_key, vendor_type=vendor_type)
+    def fake_build(*, api_base, api_key, vendor_type="", skip_ssl_verify=False):
+        built.update(api_base=api_base, api_key=api_key, vendor_type=vendor_type, skip_ssl_verify=skip_ssl_verify)
         return object()
 
     monkeypatch.setattr(material_service, "build_anthropic_vision_client", fake_build)
@@ -194,7 +194,7 @@ def test_vision_options_builds_anthropic_compat_client(monkeypatch):
                 openai_api_base="https://api.anthropic.com",
                 openai_api_key="sk-ant",
                 model_name="claude-sonnet",
-                vendor=SimpleNamespace(vendor_type="anthropic"),
+                vendor=SimpleNamespace(vendor_type="anthropic", skip_ssl_verify=True),
             )
         ),
     )
@@ -207,6 +207,7 @@ def test_vision_options_builds_anthropic_compat_client(monkeypatch):
         "api_base": "https://api.anthropic.com",
         "api_key": "sk-ant",
         "vendor_type": "anthropic",
+        "skip_ssl_verify": True,
     }
 
 

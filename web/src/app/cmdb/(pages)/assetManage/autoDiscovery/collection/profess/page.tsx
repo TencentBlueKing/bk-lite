@@ -26,6 +26,8 @@ import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import CollectionStats from './components/collectionStats';
 import ReconcileDrawer from './components/reconcileDrawer';
+import AccessCheckDrawer, { type AccessCheckPayload } from './components/accessCheckDrawer';
+import { ACCESS_CHECK_MODEL_IDS } from './accessCheckScope';
 import {
   findPluginCategory,
   reconcilePluginGroups,
@@ -46,7 +48,7 @@ import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { Alert, Button, Drawer, Input, Modal, Segmented, Spin, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Drawer, Input, Modal, Segmented, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
 import {
@@ -153,6 +155,7 @@ const ProfessionalCollection: React.FC = () => {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [executingTaskIds, setExecutingTaskIds] = useState<number[]>([]);
+  const [togglingTaskIds, setTogglingTaskIds] = useState<number[]>([]);
   const [docDrawerVisible, setDocDrawerVisible] = useState(false);
   const [taskDocDrawerVisible, setTaskDocDrawerVisible] = useState(false);
   const [pluginDoc, setPluginDoc] = useState<string>('');
@@ -604,8 +607,145 @@ const ProfessionalCollection: React.FC = () => {
     });
   };
 
+  const handleToggleEnabled = useCallback(
+    async (record: CollectTask, enabled: boolean) => {
+      const currentEnabled = record.enabled !== false;
+      if (togglingTaskIds.includes(record.id) || currentEnabled === enabled) {
+        return;
+      }
+      setTogglingTaskIds((prev) => [...prev, record.id]);
+      try {
+        await collectApi.setCollectEnabled(record.id.toString(), enabled);
+        setTableData((prev) =>
+          prev.map((item) => (item.id === record.id ? { ...item, enabled } : item))
+        );
+        message.success(
+          t(enabled ? 'Collection.taskEnabledSuccess' : 'Collection.taskDisabledSuccess')
+        );
+      } catch (error) {
+        console.error('Failed to change collect task enabled:', error);
+      } finally {
+        setTogglingTaskIds((prev) => prev.filter((id) => id !== record.id));
+      }
+    },
+    [collectApi, t, togglingTaskIds]
+  );
+
+  const [accessCheckTask, setAccessCheckTask] = useState<CollectTask | null>(null);
+  const [accessCheckResult, setAccessCheckResult] = useState<AccessCheckPayload | null>(null);
+  const [accessCheckLoading, setAccessCheckLoading] = useState(false);
+  const [startingCheckIds, setStartingCheckIds] = useState<number[]>([]);
+  const [runningCheckIds, setRunningCheckIds] = useState<number[]>([]);
+  const runningCheckIdsRef = useRef<number[]>([]);
+  const accessCheckTaskIdRef = useRef<number | null>(null);
+  const collectApiRef = useRef(collectApi);
+  runningCheckIdsRef.current = runningCheckIds;
+  accessCheckTaskIdRef.current = accessCheckTask?.id ?? null;
+  collectApiRef.current = collectApi;
+
+  const reloadAccessCheck = useCallback(async () => {
+    if (!accessCheckTask) {
+      return null;
+    }
+    const payload = await collectApi.getAccessCheck(accessCheckTask.id.toString(), {
+      suppressErrorNotification: true,
+    });
+    return (payload || null) as AccessCheckPayload | null;
+  }, [accessCheckTask, collectApi]);
+
+  useEffect(() => {
+    if (!runningCheckIds.length) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      const ids = runningCheckIdsRef.current;
+      if (!ids.length) {
+        return;
+      }
+      void Promise.all(
+        ids.map(async (id) => {
+          try {
+            const payload = (await collectApiRef.current.getAccessCheck(id.toString(), {
+              suppressErrorNotification: true,
+            })) as AccessCheckPayload | null;
+            if (accessCheckTaskIdRef.current === id) {
+              setAccessCheckResult(payload);
+            }
+            return payload?.status === 'running' ? id : null;
+          } catch (error) {
+            console.error('Failed to poll access check:', error);
+            return id;
+          }
+        })
+      ).then((next) => {
+        const alive = next.filter((id): id is number => id !== null);
+        setRunningCheckIds((current) => (
+          current.length === alive.length && current.every((id, index) => id === alive[index])
+            ? current
+            : alive
+        ));
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [runningCheckIds.length]);
+
+  const markAccessCheckRunning = useCallback((taskId: number) => {
+    setRunningCheckIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]));
+  }, []);
+
+  const handleAccessCheck = useCallback(
+    async (record: CollectTask) => {
+      if (startingCheckIds.includes(record.id) || runningCheckIds.includes(record.id)) {
+        return;
+      }
+      setStartingCheckIds((prev) => [...prev, record.id]);
+      try {
+        const payload = (await collectApi.startAccessCheck(record.id.toString())) as AccessCheckPayload | null;
+        if (!payload?.status) {
+          return;
+        }
+        message.success(t('Collection.accessCheck.started'));
+        if (payload.status === 'running') {
+          markAccessCheckRunning(record.id);
+        }
+      } catch (error) {
+        console.error('Failed to start access check:', error);
+      } finally {
+        setStartingCheckIds((prev) => prev.filter((id) => id !== record.id));
+      }
+    },
+    [collectApi, markAccessCheckRunning, runningCheckIds, startingCheckIds, t]
+  );
+
+  const handleOpenAccessCheck = useCallback(
+    async (record: CollectTask) => {
+      setAccessCheckTask(record);
+      setAccessCheckResult(null);
+      setAccessCheckLoading(true);
+      try {
+        const payload = (await collectApi.getAccessCheck(record.id.toString(), {
+          suppressErrorNotification: true,
+        })) as AccessCheckPayload | null;
+        setAccessCheckResult(payload);
+        if (payload?.status === 'running') {
+          markAccessCheckRunning(record.id);
+        }
+      } catch (error) {
+        console.error('Failed to load access check:', error);
+        setAccessCheckResult(null);
+      } finally {
+        setAccessCheckLoading(false);
+      }
+    },
+    [collectApi, markAccessCheckRunning]
+  );
+
   const handleExecuteNow = useCallback(
     async (record: CollectTask) => {
+      if (record.enabled === false) {
+        message.warning(t('Collection.taskDisabled'));
+        return;
+      }
       if (executingTaskIds.includes(record.id)) {
         return;
       }
@@ -626,7 +766,7 @@ const ProfessionalCollection: React.FC = () => {
         setExecutingTaskIds((prev) => prev.filter((id) => id !== record.id));
       }
     },
-    [executingTaskIds]
+    [collectApi, executingTaskIds, t]
   );
 
   const handleGoToCollectTool = useCallback(
@@ -752,14 +892,23 @@ const ProfessionalCollection: React.FC = () => {
 
   const onSelectFields = (fields: string[]) => {
     setDisplayFieldKeys(fields);
+    const enabledCol = allColumns.find((col) => col.key === 'enabled');
+    const accessCheckCol = allColumns.find((col) => col.key === 'access_check');
     const actionCol = allColumns.find((col) => col.key === 'action');
+    const pinned = new Set(['enabled', 'access_check', 'action']);
     const ordered = [
       ...allColumns
-        .filter((col) => fields.includes(col.key as string))
+        .filter(
+          (col) =>
+            !pinned.has(col.key as string) &&
+            fields.includes(col.key as string)
+        )
         .sort(
           (a, b) =>
             fields.indexOf(a.key as string) - fields.indexOf(b.key as string)
         ),
+      ...(enabledCol ? [enabledCol] : []),
+      ...(accessCheckCol ? [accessCheckCol] : []),
       ...(actionCol ? [actionCol] : []),
     ] as ExtendedColumnItem[];
     setCurrentColumns(ordered);
@@ -768,16 +917,20 @@ const ProfessionalCollection: React.FC = () => {
   const actionRender = useCallback(
     (record: CollectTask) => {
       const loadingExec = executingTaskIds.includes(record.id);
+      const checking =
+        startingCheckIds.includes(record.id) || runningCheckIds.includes(record.id);
       const executing =
         record.exec_status === EXEC_STATUS.COLLECTING ||
         record.exec_status === EXEC_STATUS.WRITING ||
         loadingExec;
+      const taskEnabled = record.enabled !== false;
 
       return (
-        <div className="flex gap-3 whitespace-nowrap">
+        <div className="flex items-center gap-2 whitespace-nowrap">
           <Button
             type="link"
             size="small"
+            className="h-auto px-0"
             onClick={() => handleViewDetail(record)}
           >
             {t('Collection.table.detail')}
@@ -787,13 +940,16 @@ const ProfessionalCollection: React.FC = () => {
             requiredPermissions={['Execute']}
             instPermissions={record.permission}
           >
-            <Button
-              type="link"
-              size="small"
-              disabled={executing}
-              loading={loadingExec}
-              onClick={() => handleExecuteNow(record)}
-            >
+            <Tooltip title={taskEnabled ? undefined : t('Collection.taskDisabled')}>
+              <span className="inline-flex">
+                <Button
+                  type="link"
+                  size="small"
+                  className="h-auto px-0"
+                  disabled={executing || !taskEnabled}
+                  loading={loadingExec}
+                  onClick={() => handleExecuteNow(record)}
+                >
               {record.model_id === 'pc'
                 ? t(
                   loadingExec
@@ -805,8 +961,27 @@ const ProfessionalCollection: React.FC = () => {
                     ? 'Collection.table.syncing'
                     : 'Collection.table.sync'
                 )}
-            </Button>
+                </Button>
+              </span>
+            </Tooltip>
           </PermissionWrapper>
+          {ACCESS_CHECK_MODEL_IDS.has(record.model_id) && (
+            <PermissionWrapper
+              requiredPermissions={['Execute']}
+              instPermissions={record.permission}
+            >
+              <Button
+                type="link"
+                size="small"
+                className="h-auto px-0"
+                disabled={executing || checking}
+                loading={checking}
+                onClick={() => handleAccessCheck(record)}
+              >
+                {t('Collection.accessCheck.action')}
+              </Button>
+            </PermissionWrapper>
+          )}
           <PermissionWrapper
             requiredPermissions={['Edit']}
             instPermissions={record.permission}
@@ -814,6 +989,7 @@ const ProfessionalCollection: React.FC = () => {
             <Button
               type="link"
               size="small"
+              className="h-auto px-0"
               disabled={executing}
               onClick={() => handleEdit(record)}
             >
@@ -828,6 +1004,7 @@ const ProfessionalCollection: React.FC = () => {
             <Button
               type="link"
               size="small"
+              className="h-auto px-0"
               disabled={executing}
               onClick={() => handleCopy(record)}
             >
@@ -841,6 +1018,7 @@ const ProfessionalCollection: React.FC = () => {
             <Button
               type="link"
               size="small"
+              className="h-auto px-0"
               disabled={executing}
               onClick={() => handleDelete(record)}
             >
@@ -850,7 +1028,54 @@ const ProfessionalCollection: React.FC = () => {
         </div>
       );
     },
-    [executingTaskIds, t]
+    [executingTaskIds, handleExecuteNow, handleAccessCheck, runningCheckIds, startingCheckIds, t]
+  );
+
+  const enabledRender = useCallback(
+    (record: CollectTask) => {
+      const taskEnabled = record.enabled !== false;
+      return (
+        <PermissionWrapper
+          requiredPermissions={['Edit']}
+          instPermissions={record.permission}
+        >
+          <Tooltip title={taskEnabled ? t('Collection.table.collectionOpen') : t('Collection.table.collectionPaused')}>
+            <Switch
+              size="small"
+              checked={taskEnabled}
+              loading={togglingTaskIds.includes(record.id)}
+              aria-label={t('Collection.table.collectionSwitch')}
+              onChange={(checked) => handleToggleEnabled(record, checked)}
+            />
+          </Tooltip>
+        </PermissionWrapper>
+      );
+    },
+    [handleToggleEnabled, t, togglingTaskIds]
+  );
+
+  const accessCheckRender = useCallback(
+    (record: CollectTask) => {
+      if (!ACCESS_CHECK_MODEL_IDS.has(record.model_id)) {
+        return <span>--</span>;
+      }
+      return (
+        <PermissionWrapper
+          requiredPermissions={['Execute']}
+          instPermissions={record.permission}
+        >
+          <Button
+            type="link"
+            size="small"
+            className="h-auto px-0"
+            onClick={() => handleOpenAccessCheck(record)}
+          >
+            {t('Collection.accessCheck.view')}
+          </Button>
+        </PermissionWrapper>
+      );
+    },
+    [handleOpenAccessCheck, t]
   );
 
   const getColumns = useCallback(
@@ -860,14 +1085,15 @@ const ProfessionalCollection: React.FC = () => {
         dataIndex: 'name',
         key: 'name',
         fixed: 'left',
-        width: 180,
-        render: (text: string) => <span>{text || '--'}</span>,
+        width: 150,
+        ellipsis: true,
+        render: (text: string) => <span title={text || undefined}>{text || '--'}</span>,
       },
       {
         title: t('Collection.table.pluginName'),
         dataIndex: 'model_id',
         key: 'plugin_name',
-        width: 180,
+        width: 128,
         render: (_value: string, record: CollectTask) => {
           const plugin = resolveCollectPlugin(categoryList, record);
           const label = plugin?.name || record.model_id || '--';
@@ -881,7 +1107,7 @@ const ProfessionalCollection: React.FC = () => {
               className="h-auto max-w-full px-0"
               onClick={() => openPluginTasksRef.current(plugin.id)}
             >
-              <span className="block max-w-[148px] truncate">{label}</span>
+              <span className="block max-w-[108px] truncate">{label}</span>
             </Button>
           );
         },
@@ -890,7 +1116,7 @@ const ProfessionalCollection: React.FC = () => {
         title: t('Collection.table.syncStatus'),
         dataIndex: 'exec_status',
         key: 'exec_status',
-        width: 160,
+        width: 104,
         filters: statusFilters,
         filterMultiple: false,
         filteredValue: currentExecStatusUI !== undefined ? [currentExecStatusUI] : null,
@@ -911,7 +1137,7 @@ const ProfessionalCollection: React.FC = () => {
         title: t('Collection.table.latestOverview'),
         dataIndex: 'collect_digest',
         key: 'collect_digest',
-        width: 400,
+        width: 248,
         render: (_value, record: CollectTask) => {
           const digest = (record.message || {}) as CollectTaskMessage;
           const collectToolProtocol = getCollectToolProtocol(
@@ -982,7 +1208,7 @@ const ProfessionalCollection: React.FC = () => {
         title: t('Collection.table.syncTime'),
         dataIndex: 'exec_time',
         key: 'exec_time',
-        width: 220,
+        width: 168,
         render: (text: string) => (
           <span>{text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '--'}</span>
         ),
@@ -991,7 +1217,7 @@ const ProfessionalCollection: React.FC = () => {
         title: t('Collection.table.reportTime'),
         dataIndex: 'last_time',
         key: 'last_time',
-        width: 220,
+        width: 168,
         render: (_, record: CollectTask) => {
           const lastTime = (record.message as CollectTaskMessage)?.last_time;
           return (
@@ -1003,19 +1229,39 @@ const ProfessionalCollection: React.FC = () => {
         title: t('Collection.table.creator'),
         dataIndex: 'created_by',
         key: 'created_by',
-        width: 120,
+        width: 88,
         render: (text: string) => <span>{text || '--'}</span>,
+      },
+      {
+        title: (
+          <Tooltip title={t('Collection.table.collectionSwitchHint')}>
+            <span>{t('Collection.table.collectionSwitch')}</span>
+          </Tooltip>
+        ),
+        dataIndex: 'enabled',
+        key: 'enabled',
+        fixed: 'right',
+        width: 88,
+        render: (_, record) => enabledRender(record),
+      },
+      {
+        title: t('Collection.table.testSituation'),
+        dataIndex: 'access_check',
+        key: 'access_check',
+        fixed: 'right',
+        width: 88,
+        render: (_, record) => accessCheckRender(record),
       },
       {
         title: t('Collection.table.actions'),
         dataIndex: 'action',
         key: 'action',
         fixed: 'right',
-        width: 320,
+        width: 292,
         render: (_, record) => actionRender(record),
       },
     ],
-    [t, actionRender, categoryList, handleGoToCollectTool, currentExecStatusUI]
+    [t, actionRender, accessCheckRender, enabledRender, categoryList, handleGoToCollectTool, currentExecStatusUI]
   );
 
   const handleViewDetail = (record: CollectTask) => {
@@ -1057,12 +1303,41 @@ const ProfessionalCollection: React.FC = () => {
     }
   };
 
+  const columnRevision = [
+    locale,
+    categoryList.map((item) => item.id).join(','),
+    currentExecStatusUI ?? '',
+    executingTaskIds.join(','),
+    togglingTaskIds.join(','),
+    startingCheckIds.join(','),
+    runningCheckIds.join(','),
+  ].join('|');
+  const getColumnsRef = useRef(getColumns);
+  getColumnsRef.current = getColumns;
+
   useEffect(() => {
-    const newColumns = getColumns() as ExtendedColumnItem[];
+    const newColumns = getColumnsRef.current() as ExtendedColumnItem[];
     setAllColumns(newColumns);
-    setDisplayFieldKeys(newColumns.map((col) => col.key as string));
-    setCurrentColumns(newColumns);
-  }, [getColumns]);
+    setDisplayFieldKeys((current) =>
+      current.length ? current : newColumns.map((col) => col.key as string)
+    );
+    setCurrentColumns((current) => {
+      if (!current.length) {
+        return newColumns;
+      }
+      const byKey = new Map(newColumns.map((col) => [col.key, col]));
+      const pinned = ['enabled', 'access_check', 'action'];
+      const next = current
+        .map((col) => byKey.get(col.key))
+        .filter((col): col is ExtendedColumnItem => Boolean(col));
+      const body = next.filter((col) => !pinned.includes(String(col.key)));
+      const tail = pinned
+        .map((key) => byKey.get(key))
+        .filter((col): col is ExtendedColumnItem => Boolean(col));
+      const merged = [...body, ...tail];
+      return merged.length ? merged : newColumns;
+    });
+  }, [columnRevision]);
 
   const handlePluginCardClick = useCallback(
     (pluginId: string) => {
@@ -1385,7 +1660,10 @@ const ProfessionalCollection: React.FC = () => {
                     displayFieldKeys,
                     choosableFields: allColumns.filter(
                       (item): item is ColumnItem =>
-                        item.key !== 'action' && 'dataIndex' in item,
+                        item.key !== 'action' &&
+                        item.key !== 'enabled' &&
+                        item.key !== 'access_check' &&
+                        'dataIndex' in item,
                     ),
                   }}
                 />
@@ -1505,6 +1783,18 @@ const ProfessionalCollection: React.FC = () => {
       >
         <NodeMgmtSyncDetail open={nodeMgmtSyncVisible} />
       </Drawer>
+      <AccessCheckDrawer
+        open={Boolean(accessCheckTask)}
+        loading={accessCheckLoading}
+        taskName={accessCheckTask?.name || ''}
+        initial={accessCheckResult}
+        reload={reloadAccessCheck}
+        onClose={() => {
+          setAccessCheckTask(null);
+          setAccessCheckResult(null);
+          setAccessCheckLoading(false);
+        }}
+      />
       <ReconcileDrawer
         open={reconcileVisible}
         modelId={currentPlugin?.model_id || selectedPluginId}

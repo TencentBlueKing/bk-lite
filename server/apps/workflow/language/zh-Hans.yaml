@@ -11,10 +11,10 @@ choice:
 message:
   invalid_current_team: "缺少或非法的 current_team"
   waiting_items: "等 {count} 项"
-  report_link_invalid: "报告下载链接无效"
-  report_expired: "报告已过期"
-  report_unavailable: "报告文件暂不可用"
-  report_too_large: "报告文件超过下载大小限制"
+  report_link_invalid: "附件下载链接无效"
+  report_expired: "附件已过期"
+  report_unavailable: "附件暂不可用"
+  report_too_large: "附件超过下载大小限制"
 error:
   workflow_deleted: "流程已删除，不能创建新执行"
   workflow_publish_required: "只能执行已发布流程"
@@ -291,6 +291,14 @@ error:
   report_payload_invalid: 报告模板引用内容非法
   report_reference_execution: 报告文件不属于当前执行
   report_reference_forbidden: 报告文件不存在或无权访问
+  notification_attachment_count: "通知附件最多支持 10 个文件引用"
+  notification_attachment_base_url: "发送附件下载链接需要配置 WEB_BASE_URL"
+  notification_wecom_text_limit: "企微机器人通知正文超过 4096 字节"
+  notification_wecom_body_rejected: "企微机器人未接受通知正文。"
+  agent_attachment_missing_file: "智能体生成的附件缺少文件"
+  agent_attachment_too_large: "智能体附件超过下载大小限制"
+  artifact_link_invalid: "附件下载链接无效"
+  artifact_link_expired: "附件下载链接已过期"
   report_reference_invalid: 报告文件引用非法
   report_reference_rejected: 报告模板引用无效
   report_store_unavailable: 报告模板存储暂不可用
@@ -461,7 +469,7 @@ field_label:
     recipients: "通知人"
     title: "通知标题"
     body: "通知内容"
-    artifacts: "Office 附件"
+    artifacts: "附件"
     report_artifact: "附件"
   bklite_job_execute:
     targets: "目标主机"

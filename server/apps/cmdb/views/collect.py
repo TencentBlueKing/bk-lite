@@ -70,6 +70,7 @@ class CollectModelViewSet(AuthViewSet):
         "destroy",
         "info",
         "exec_task",
+        "set_enabled",
         "task_overview",
     }
 
@@ -393,6 +394,12 @@ class CollectModelViewSet(AuthViewSet):
         instance = self.get_object()
         return WebUtils.response_success(instance.info)
 
+    @HasPermission("auto_collection-Edit")
+    @action(methods=["POST"], detail=True, url_path="set_enabled")
+    def set_enabled(self, request, *args, **kwargs):
+        data = CollectModelService.set_enabled(request, self)
+        return WebUtils.response_success(data)
+
     @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=True)
     def exec_task(self, request, *args, **kwargs):
@@ -405,6 +412,21 @@ class CollectModelViewSet(AuthViewSet):
             raise BaseAppException("您没有操作该采集任务的权限！")
         result = CollectModelService.exec_task(instance=instance, operator=request.user.username)
         return result
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["GET", "POST"], detail=True, url_path="access_check")
+    def access_check(self, request, *args, **kwargs):
+        from apps.cmdb.services.collect_access_check_service import CollectAccessCheckService
+
+        instance = self.get_object()
+        user = request.user
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        if not self.get_has_permission(user, instance, current_team, include_children=include_children):
+            return WebUtils.response_403("您没有操作该采集任务的权限！")
+        if request.method == "GET":
+            return CollectAccessCheckService.get(instance)
+        return CollectAccessCheckService.start(instance, getattr(user, "username", "") or "")
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=True, url_path="unknown_soid_mappings")

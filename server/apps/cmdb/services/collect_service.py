@@ -36,7 +36,7 @@ from apps.cmdb.services.vmware_collection_scope import VmwareCollectionScope
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.core.utils.celery_utils import CeleryUtils, crontab_format
@@ -62,6 +62,7 @@ class CollectModelService(object):
         "driver_type",
         "model_id",
         "is_interval",
+        "enabled",
         "cycle_value_type",
         "cycle_value",
         "scan_cycle",
@@ -556,6 +557,58 @@ class CollectModelService(object):
         logger.debug("[CollectTask] 删除节点参数完成 task_id=%s", instance.id)
 
     @staticmethod
+    def resolve_enabled(data, *, previous=None):
+        """创建缺省为开；更新缺省保留原值。只接受布尔值。"""
+        if not isinstance(data, dict) or "enabled" not in data:
+            if previous is None:
+                return True
+            return bool(getattr(previous, "enabled", True))
+        value = data.get("enabled")
+        if not isinstance(value, bool):
+            raise ValidationAppException("启用开关必须是布尔值")
+        return value
+
+    @classmethod
+    def _sync_projection_beat(cls, task, *, enabled):
+        task_name = f"{cls.NAME}_{task.id}"
+        register = bool(enabled) and bool(getattr(task, "is_interval", False)) and cls.should_register_sync_beat(task)
+        scan_cycle = getattr(task, "scan_cycle", None)
+        if register and scan_cycle:
+            CeleryUtils.create_or_update_periodic_task(
+                name=task_name,
+                crontab=scan_cycle,
+                args=[task.id],
+                task=cls.TASK,
+            )
+            return
+        CeleryUtils.delete_periodic_task(task_name)
+
+    @classmethod
+    def _apply_task_projection(cls, task, *, previous=None, replace=False):
+        """按调用方给出的任务对象投递节点配置和 K8s Beat。"""
+        enabled = bool(getattr(task, "enabled", True))
+        cls._sync_projection_beat(task, enabled=enabled)
+        if not cls.should_sync_node_params(task):
+            return
+        if not enabled:
+            cls.delete_butch_node_params(previous or task)
+            return
+        if replace:
+            cls.delete_butch_node_params(previous or task)
+        cls.push_butch_node_params(task)
+
+    @classmethod
+    def project_collect_task(cls, task, *, previous=None, replace=False):
+        """投递一次；若投递期间任务被改写，按最新行再投递一轮。"""
+        revision = getattr(task, "updated_at", None) if isinstance(task, CollectModels) else None
+        cls._apply_task_projection(task, previous=previous, replace=replace)
+        if revision is None or not getattr(task, "pk", None):
+            return
+        latest = CollectModels.objects.filter(pk=task.pk).first()
+        if latest is not None and latest.updated_at != revision:
+            cls._apply_task_projection(latest, replace=replace)
+
+    @staticmethod
     def _request_payload(request, payload=None):
         if payload is not None:
             return payload
@@ -581,7 +634,11 @@ class CollectModelService(object):
 
     @classmethod
     def create(cls, request, view_self, payload=None, *, credential_pool_max_size=CollectCredentialPoolService.MAX_POOL_SIZE):
-        create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
+        source = cls._request_payload(request, payload)
+        formatted = cls.format_params(source)
+        create_data, is_interval = formatted[0], formatted[1]
+        enabled = cls.resolve_enabled(source, previous=None)
+        create_data["enabled"] = enabled
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
             cls._bind_vault_credentials(request, create_data["credential"])
@@ -601,24 +658,11 @@ class CollectModelService(object):
             def sync_external_resources():
                 from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
 
-                task_name = f"{cls.NAME}_{instance.id}"
                 try:
-                    # 更新定时任务：VM 对账改由全局守门；仅清理遗留 beat。
-                    if is_interval and cls.should_register_sync_beat(instance):
-                        CeleryUtils.create_or_update_periodic_task(
-                            name=task_name,
-                            crontab=scan_cycle,
-                            args=[instance.id],
-                            task=cls.TASK,
-                        )
-                        # create 场景满足阈值则注册一次延迟补跑
+                    # 新建没有旧投影：开启时只下发，关闭时删除可能残留的同 ID 配置。
+                    cls.project_collect_task(instance, replace=False)
+                    if enabled and is_interval and cls.should_register_sync_beat(instance):
                         cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
-                    else:
-                        CeleryUtils.delete_periodic_task(task_name)
-
-                    # RPC 调用：推送节点参数
-                    if cls.should_sync_node_params(instance):
-                        cls.push_butch_node_params(instance)
                     if first_collection_run is not None:
                         FirstCollectionOrchestrator.mark_config_ready_and_dispatch(first_collection_run.id)
                 except Exception as exc:  # noqa: BLE001 - Post-commit external sync must remain compensatable.
@@ -746,7 +790,10 @@ class CollectModelService(object):
             cls._merge_scan_append(instance, source)
 
         cls.has_permission(request, instance, view_self)
-        update_data, is_interval, scan_cycle = cls.format_params(source)
+        formatted = cls.format_params(source)
+        update_data, is_interval = formatted[0], formatted[1]
+        enabled = cls.resolve_enabled(source, previous=instance)
+        update_data["enabled"] = enabled
         cls.format_update_credential(instance, update_data)
         if update_data.get("credential"):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
@@ -776,26 +823,12 @@ class CollectModelService(object):
             def sync_external_resources():
                 from apps.cmdb.services.first_collection_orchestrator import FirstCollectionOrchestrator
 
-                task_name = f"{cls.NAME}_{instance.id}"
                 try:
-                    # 更新定时任务：VM 对账改由全局守门；关闭周期或 VM 类型时清理遗留 beat。
-                    if is_interval and cls.should_register_sync_beat(instance):
-                        CeleryUtils.create_or_update_periodic_task(
-                            name=task_name,
-                            crontab=scan_cycle,
-                            args=[instance.id],
-                            task=cls.TASK,
-                        )
-                        if schedule_changed or first_collection_run is not None:
-                            # update 场景仅在调度参数变更时注册延迟补跑
-                            cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
-                    else:
-                        CeleryUtils.delete_periodic_task(task_name)
-
-                    # RPC 调用：先删除旧节点参数，再推送新节点参数
-                    if cls.should_sync_node_params(instance):
-                        cls.delete_butch_node_params(old_instance)
-                        cls.push_butch_node_params(instance)
+                    # 更新先按保存前的任务删除旧投影，再按当前启用状态下发。
+                    cls.project_collect_task(instance, previous=old_instance, replace=True)
+                    schedule_follow_up = schedule_changed or first_collection_run is not None
+                    if enabled and is_interval and cls.should_register_sync_beat(instance) and schedule_follow_up:
+                        cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
                     if first_collection_run is not None:
                         FirstCollectionOrchestrator.mark_config_ready_and_dispatch(first_collection_run.id)
                 except Exception as exc:  # noqa: BLE001 - Post-commit external sync must remain compensatable.
@@ -956,6 +989,68 @@ class CollectModelService(object):
         }
 
     @classmethod
+    def set_enabled(cls, request, view_self):
+        """列表开关：只改启用状态，并按该状态撤回或重新下发采集配置。"""
+        from apps.core.models.maintainer_info import maintainer_kwargs
+
+        enabled = cls.parse_required_enabled(cls._request_payload(request))
+        visible = view_self.get_object()
+        with transaction.atomic():
+            instance = CollectModels.objects.select_for_update().get(pk=visible.pk)
+            cls.has_permission(request, instance, view_self)
+            changed = bool(instance.enabled) != enabled
+            if changed:
+                before_snapshot = cls._snapshot_task(instance)
+                maintainer = maintainer_kwargs(
+                    operator=getattr(request.user, "username", None),
+                    domain=getattr(request.user, "domain", None),
+                    include_created=False,
+                )
+                for field_name, field_value in maintainer.items():
+                    setattr(instance, field_name, field_value)
+                instance.enabled = enabled
+                instance.save(update_fields=["enabled", "updated_at", *maintainer.keys()])
+                create_change_record(
+                    operator=request.user.username,
+                    model_id=instance.model_id,
+                    label="采集任务",
+                    _type=UPDATE_INST,
+                    message=f"{'启用' if enabled else '关闭'}采集任务. 任务名称: {instance.name}",
+                    inst_id=instance.id,
+                    model_object=OPERATOR_COLLECT_TASK,
+                    scenario=COLLECT_AUTOMATION_CHANGE,
+                    before_data=before_snapshot,
+                    after_data=cls._snapshot_task(instance),
+                )
+                logger.info("event=collect_task_enabled_changed task_id=%s enabled=%s", instance.id, enabled)
+            task_id = instance.id
+
+            def sync_external_resources(task_id=task_id):
+                try:
+                    current = CollectModels.objects.filter(pk=task_id).first()
+                    if current is None:
+                        return
+                    cls.project_collect_task(current, replace=True)
+                except Exception as exc:  # noqa: BLE001 - Post-commit external sync must remain compensatable.
+                    logger.error(
+                        "event=collect_task_external_sync_failed task_id=%s operation=set_enabled failed_stage=post_commit_sync error_type=%s",
+                        task_id,
+                        type(exc).__name__,
+                        exc_info=safe_exception_info(exc),
+                    )
+                    raise BaseAppException("采集任务已保存，但外部资源同步失败，请重新保存任务后重试", log=False) from None
+
+            transaction.on_commit(sync_external_resources)
+
+        return {"id": task_id, "enabled": enabled}
+
+    @staticmethod
+    def parse_required_enabled(data):
+        if not isinstance(data, dict) or "enabled" not in data or not isinstance(data.get("enabled"), bool):
+            raise ValidationAppException("启用开关必须是布尔值")
+        return data["enabled"]
+
+    @classmethod
     def exec_task(cls, instance, operator):
         """
         执行任务
@@ -968,10 +1063,20 @@ class CollectModelService(object):
 
     @classmethod
     def _exec_task_after_lock(cls, instance, operator):
+        if not bool(getattr(instance, "enabled", True)) and not bool(getattr(instance, "is_system", False)):
+            return WebUtils.response_error(error_message="任务已关闭", status_code=400)
         if getattr(instance, "task_type", None) == CollectPluginTypes.CONFIG_FILE:
             return WebUtils.response_error(error_message="配置文件采集仅支持周期执行", status_code=400)
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
+        from apps.cmdb.models.collect_access_check import CollectAccessCheck
+
+        if CollectAccessCheck.objects.filter(task_id=instance.pk, status="running").exists():
+            return WebUtils.response_error(
+                {"error_code": "check_running"},
+                error_message="连通性测试进行中",
+                status_code=409,
+            )
 
         before_snapshot = cls._snapshot_task(instance)
         cls.repair_host_cloud_snapshot(instance)

@@ -30,6 +30,10 @@ interface ParamInputControlProps {
   optionsBlocked?: boolean;
   optionsBlockReason?: 'empty' | 'invalid';
   optionsQuerySignature?: string;
+  /** 当前用户能否打开组件编辑器修好选项来源。 */
+  canRepairOptionSource?: boolean;
+  /** 配置表只选择要保存的初始值，不渲染运行时的单选按钮。 */
+  valuePicker?: boolean;
 }
 
 const emptyUpstreamHint = (
@@ -70,6 +74,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   optionsBlocked = false,
   optionsBlockReason,
   optionsQuerySignature = '',
+  canRepairOptionSource = false,
+  valuePicker = false,
 }) => {
   const { t } = useTranslation();
   const state = useParamInputOptions(inputConfig, undefined, {
@@ -151,8 +157,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
     );
   }
 
-  // 单选没有下拉壳。下拉加载必须继续渲染 Select，裸 Spin 会丢掉宽度并把后面的筛项挤开。
-  if (state.status === 'loading' && inputConfig.control === 'radio') {
+  // 筛选栏上的单选没有下拉壳。加载时继续留出宽度，避免把后面的筛项挤开。
+  if (state.status === 'loading' && inputConfig.control === 'radio' && !valuePicker) {
     return <Spin size="small" />;
   }
 
@@ -169,10 +175,35 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
     );
   }
 
+  const sourceIssue = state.status === 'error' ? state.errorMessage : undefined;
+  const sourceIssueKeys: Record<string, string> = {
+    'option-source-ambiguous': canRepairOptionSource
+      ? 'paramInput.dynamic.optionSourceAmbiguous'
+      : 'paramInput.dynamic.optionSourceAmbiguousReadonly',
+    'option-source-missing': 'paramInput.dynamic.optionSourceMissing',
+    'option-source-forbidden': 'paramInput.dynamic.optionSourceForbidden',
+    'option-source-unavailable': 'paramInput.dynamic.optionSourceUnavailable',
+  };
+  const sourceIssueKey = sourceIssue ? (sourceIssueKeys[sourceIssue] ?? '') : '';
   const options = state.status === 'success' ? state.options : [];
   const optionsLoading = state.status === 'loading';
+  const sourceLocked = Boolean(sourceIssueKey);
 
-  if (inputConfig.control === 'radio') {
+  if (sourceLocked) {
+    return (
+      <div>
+        <Select
+          disabled
+          value={value}
+          style={{ width: '100%', ...style }}
+        />
+        <div className="mt-1 text-xs text-[var(--color-text-2)]">{t(sourceIssueKey)}</div>
+      </div>
+    );
+  }
+
+  // 配置表里的单选只挑选要保存的初始值，落到下面的可搜索下拉。
+  if (inputConfig.control === 'radio' && !valuePicker) {
     return (
       <Radio.Group
         value={value}

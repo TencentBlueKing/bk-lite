@@ -6,7 +6,7 @@
 
 from rest_framework import serializers
 
-from apps.job_mgmt.constants import CredentialSource, JobType, OSType, ScheduleType, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, JobType, OSType, ScheduleType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
@@ -80,6 +80,10 @@ def validate_manual_credentials(attrs: dict, *, require_cloud_region: bool = Fal
                     {"winrm_password": _msg(serializer, "error.winrm_password_required", "Windows targets require a WinRM password")}
                 )
     elif credential_source == CredentialSource.CREDENTIAL:
+        if os_type == OSType.WINDOWS and attrs.get("driver") == ExecutorDriver.SIDECAR:
+            raise serializers.ValidationError(
+                {"driver": _msg(serializer, "error.vault_winrm_requires_ansible", "Windows vault credentials require Ansible")}
+            )
         if not attrs.get("credential_id"):
             raise serializers.ValidationError(
                 {

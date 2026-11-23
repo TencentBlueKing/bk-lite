@@ -18,7 +18,7 @@ class InstanceTaskPermission(BasePermission):
         """
         操作类型的action
         """
-        return ["update", "destroy", "exec_task"]
+        return ["update", "destroy", "exec_task", "set_enabled"]
 
     def has_object_permission(self, request, view, obj):
         rules = get_cmdb_rules(request)

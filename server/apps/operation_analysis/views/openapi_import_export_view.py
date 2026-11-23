@@ -20,6 +20,7 @@ from apps.core.exceptions.base_app_exception import UnauthorizedException
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.operation_analysis.constants.import_export import ObjectType
+from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
@@ -168,6 +169,12 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         groups = self._require_groups(request)
         organization_id = groups[0]
 
+        try:
+            return self._export_authorized(request, scope, object_type, object_ids, organization_id)
+        except ImportExportValidationError as exc:
+            return Response({"result": False, "message": exc.message, "code": exc.code}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _export_authorized(self, request, scope, object_type, object_ids, organization_id):
         with transaction.atomic():
             filtered_ids = ImportExportAuthorizationService.filter_export_object_ids(
                 request,
@@ -451,6 +458,8 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             created_by=username,
             updated_by=username,
             groups=groups,
+            current_team=current_team,
+            is_superuser=bool(getattr(request.user, "is_superuser", False)),
         )
 
         result = import_service.execute()

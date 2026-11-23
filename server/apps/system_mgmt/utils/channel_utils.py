@@ -16,12 +16,15 @@ from urllib.parse import urlparse
 
 import requests
 from django.conf import settings
+from urllib3.fields import RequestField
+from urllib3.filepost import encode_multipart_formdata
 from wechatpy import WeChatClientException
 from wechatpy.enterprise import WeChatClient
 
 import nats_client
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.internal_event_auth import sign_internal_event
+from apps.core.utils.safe_requests import SafeRequestsError, safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.rpc.workflow import MANAGED_NATS_ACTOR, MANAGED_NATS_TRIGGER_SCOPE
 from apps.system_mgmt.models import Channel
@@ -201,20 +204,71 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
         }
 
 
+def _wecom_webhook_url(channel_obj):
+    config = channel_obj.config.copy()
+    channel_obj.decrypt_field("webhook_url", config)
+    if config.get("webhook_url"):
+        return config["webhook_url"]
+    channel_obj.decrypt_field("bot_key", config)
+    return "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?" + urllib.parse.urlencode({"key": config.get("bot_key") or ""})
+
+
+def send_wecom_workflow_file(channel_obj, filename, content):
+    parsed = urllib.parse.urlsplit(_wecom_webhook_url(channel_obj))
+    params = dict(urllib.parse.parse_qsl(parsed.query))
+    if parsed.path != "/cgi-bin/webhook/send" or not params.get("key"):
+        return "unsupported_webhook"
+    # 凭据独立传入，出站策略校验和 DNS 固定使用不含 query 的地址。
+    endpoint = parsed._replace(query="", fragment="")
+    upload_url = endpoint._replace(path="/cgi-bin/webhook/upload_media").geturl()
+    media = RequestField(name="media", data=content, filename=filename)
+    media.make_multipart(content_type="application/octet-stream")
+    media.headers["Content-Disposition"] += f"; filelength={len(content)}"
+    body, content_type = encode_multipart_formdata([media])
+    stage = "upload_failed"
+    try:
+        response = safe_post(
+            upload_url,
+            params={**params, "type": "file"},
+            data=body,
+            headers={"Content-Type": content_type},
+            timeout=30,
+            allow_redirects=False,
+            max_redirects=0,
+        )
+        response.raise_for_status()
+        uploaded = response.json()
+        if (
+            not isinstance(uploaded, dict)
+            or uploaded.get("errcode") != 0
+            or not isinstance(uploaded.get("media_id"), str)
+            or not uploaded["media_id"]
+        ):
+            return stage
+        stage = "file_send_failed"
+        response = safe_post(
+            endpoint.geturl(),
+            params=params,
+            json={"msgtype": "file", "file": {"media_id": uploaded["media_id"]}},
+            timeout=5,
+            allow_redirects=False,
+            max_redirects=0,
+        )
+        response.raise_for_status()
+        receipt = response.json()
+        return "" if isinstance(receipt, dict) and receipt.get("errcode") == 0 else stage
+    except (SSRFError, SafeRequestsError, requests.RequestException, ValueError):
+        return stage
+
+
 def send_by_wecom_bot(channel_obj: Channel, content, receivers):
     if receivers:
         to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}\nTo: {to_user_mentions}"
-    channel_config = channel_obj.config
+    if isinstance(content, str) and len(content.encode("utf-8")) > 4096:
+        return {"result": False, "message": "企微机器人通知正文超过 4096 字节", "retryable": False}
     payload = {"msgtype": "markdown", "markdown": {"content": content}}
-
-    # 优先使用 webhook_url（通用 webhook）
-    channel_obj.decrypt_field("webhook_url", channel_config)
-    webhook_url = channel_config.get("webhook_url")
-    if not webhook_url:
-        channel_obj.decrypt_field("bot_key", channel_config)
-        bot_key = channel_config.get("bot_key")
-        webhook_url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
+    webhook_url = _wecom_webhook_url(channel_obj)
 
     # SSRF 防护：验证 webhook URL 域名
     if not is_valid_webhook_url(webhook_url):

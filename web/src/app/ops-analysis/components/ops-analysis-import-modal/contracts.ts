@@ -8,7 +8,7 @@ export type OpsAnalysisObjectType =
   | 'datasource'
   | 'namespace';
 
-export type ConflictAction = 'skip' | 'overwrite' | 'rename';
+export type ConflictAction = 'skip' | 'overwrite' | 'rename' | 'reuse_target' | 'import_as_new';
 
 export interface PrecheckRequest {
   yaml_content: string;

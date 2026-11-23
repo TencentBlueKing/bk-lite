@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -303,6 +304,7 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 
 	if utils.KeepExisting(downloadRequest.Overwrite) {
 		// scp 没有不覆盖的选项，传输前先在目标机上确认；确认不了就不传。
+		// 这一步仍使用原始私钥和口令：后面的解密只服务于 scp -i。
 		checkResp := executeSSHCommand(ExecuteRequest{
 			Command:        remoteTargetCheckCommand(downloadRequest.TargetPath, downloadRequest.FileName),
 			ExecuteTimeout: remainingBudgetSeconds(deadline),
@@ -336,6 +338,18 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 			}
 			return responseContent, true
 		}
+	}
+
+	if downloadRequest.PrivateKey != "" && downloadRequest.Passphrase != "" {
+		key, err := ssh.ParseRawPrivateKeyWithPassphrase([]byte(downloadRequest.PrivateKey), []byte(downloadRequest.Passphrase))
+		if err != nil {
+			return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "SSH private key or passphrase is invalid or unsupported"), true
+		}
+		identity, err := ssh.MarshalPrivateKey(key, "")
+		if err != nil {
+			return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "SSH private key or passphrase is invalid or unsupported"), true
+		}
+		downloadRequest.PrivateKey = string(pem.EncodeToMemory(identity))
 	}
 
 	stagingBasePath := downloadRequest.LocalPath

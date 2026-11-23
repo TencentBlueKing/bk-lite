@@ -107,6 +107,10 @@ class ScreenDisplayAccessViewSet(viewsets.ViewSet):
     def current_data_sources(self, request):
         return self._forward(request, "data_sources")
 
+    @action(detail=False, methods=["post"], url_path="current/resolve_option_source")
+    def current_resolve_option_source(self, request):
+        return self._forward(request, "resolve_option_source")
+
     @action(detail=False, methods=["post"], url_path="current/application3d/wall")
     def current_application3d_wall(self, request):
         return self._forward(request, "application3d_wall")

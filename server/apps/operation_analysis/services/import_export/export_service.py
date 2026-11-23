@@ -32,7 +32,11 @@ from apps.operation_analysis.services.import_export.view_sets import (
     rewrite_canvas_view_sets_refs_for_yaml,
     rewrite_data_variables,
 )
-from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids_from_filters
+from apps.operation_analysis.services.named_option_datasources import (
+    _filter_option_refs,
+    collect_named_option_datasource_ids_from_filters,
+    raise_if_option_refs_ambiguous,
+)
 from apps.operation_analysis.services.network_status_topology_overlay import overlay_datasource_ids_for_view_sets
 from apps.operation_analysis.services.string_param_multiple_migrate import migrate_filters_payload, migrate_param_items
 
@@ -76,7 +80,14 @@ class ExportService:
         if object_type == ObjectType.NAMESPACE:
             return obj.name
         elif object_type == ObjectType.DATASOURCE:
-            return f"{obj.name}{BUSINESS_KEY_SEPARATOR}{obj.rest_api}"
+            # 跨环境句柄。内置用不可变 build_in_key，用户用 portable_key。名称和接口地址不再当身份。
+            if getattr(obj, "is_build_in", False) and getattr(obj, "build_in_key", None):
+                return f"builtin::{obj.build_in_key}"
+            portable_key = getattr(obj, "portable_key", None)
+            if not portable_key:
+                portable_key = obj.ensure_portable_key(obj.pk)
+                obj.portable_key = portable_key
+            return f"portable::{portable_key}"
         else:
             return f"{object_type.value}{BUSINESS_KEY_SEPARATOR}{obj.name}"
 
@@ -123,7 +134,12 @@ class ExportService:
         )
 
     @staticmethod
-    def convert_datasource_to_yaml(ds: DataSourceAPIModel, *, namespace_keys: list[str] | None = None) -> dict:
+    def convert_datasource_to_yaml(
+        ds: DataSourceAPIModel,
+        *,
+        namespace_keys: list[str] | None = None,
+        ds_key_map: dict | None = None,
+    ) -> dict:
         """将数据源对象转换为YAML结构。
 
         - 公共连接不作为一级对象；引用连接时展开为脱敏内联配置。
@@ -158,26 +174,37 @@ class ExportService:
             connection_config.pop("file", None)
 
         transform_config = ds.transform_config if isinstance(ds.transform_config, dict) else {}
+        params = normalize_date_range_param_values(migrate_param_items(ds.params or [])[0])
+        if ds_key_map:
+            from apps.operation_analysis.services.import_export.datasource_package_identity import rewrite_datasource_bindings
 
-        return ExportService.mask_sensitive_fields(
-            {
-                "key": ExportService.generate_business_key(ds, ObjectType.DATASOURCE),
-                "name": ds.name,
-                "rest_api": ds.rest_api,
-                "source_type": ds.source_type,
-                "connection_config": connection_config,
-                "query_config": query_config,
-                "transform_config": transform_config,
-                "desc": ds.desc or "",
-                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
-                "is_active": ds.is_active,
-                "params": normalize_date_range_param_values(migrate_param_items(ds.params or [])[0]),
-                "tags": tag_names,
-                "chart_type": ds.chart_type or [],
-                "field_schema": ds.field_schema or [],
-                "namespace_keys": namespace_keys,
-            }
-        )
+            params = rewrite_datasource_bindings(params, ds_key_map)
+        identity = None
+        if ds.is_build_in and ds.build_in_key:
+            identity = {"kind": "builtin", "build_in_key": ds.build_in_key}
+        elif ds.portable_key:
+            identity = {"kind": "portable", "portable_key": ds.portable_key}
+
+        payload = {
+            "key": ExportService.generate_business_key(ds, ObjectType.DATASOURCE),
+            "name": ds.name,
+            "rest_api": ds.rest_api,
+            "source_type": ds.source_type,
+            "connection_config": connection_config,
+            "query_config": query_config,
+            "transform_config": transform_config,
+            "desc": ds.desc or "",
+            # [内部预留] is_active 字段仅内部使用，无产品功能依赖
+            "is_active": ds.is_active,
+            "params": params,
+            "tags": tag_names,
+            "chart_type": ds.chart_type or [],
+            "field_schema": ds.field_schema or [],
+            "namespace_keys": namespace_keys,
+        }
+        if identity:
+            payload["identity"] = identity
+        return ExportService.mask_sensitive_fields(payload)
 
     @staticmethod
     def extract_canvas_dependencies(
@@ -225,6 +252,20 @@ class ExportService:
         if isinstance(normalized, dict):
             datasource_ids |= collect_named_option_datasource_ids_from_filters(normalized.get("filters"))
         datasource_ids |= collect_named_option_datasource_ids_from_filters(filters)
+        from apps.operation_analysis.services.import_export.datasource_package_identity import (
+            collect_numeric_source_ids,
+            collect_source_ref_values,
+            unique_builtin_ids_for_refs,
+        )
+
+        datasource_ids |= collect_numeric_source_ids(normalized)
+        datasource_ids |= collect_numeric_source_ids(filters)
+        builtin_refs = collect_source_ref_values(normalized) | collect_source_ref_values(filters)
+        filter_refs = _filter_option_refs(filters)
+        if isinstance(normalized, dict):
+            filter_refs |= _filter_option_refs(normalized.get("filters"))
+        raise_if_option_refs_ambiguous(builtin_refs | filter_refs)
+        datasource_ids |= unique_builtin_ids_for_refs(builtin_refs)
 
         return datasource_ids, namespace_ids
 
@@ -270,7 +311,9 @@ class ExportService:
 
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas, "filters"):
-            base_data["filters"] = migrate_filters_payload(canvas.filters or [])[0]
+            from apps.operation_analysis.services.import_export.datasource_package_identity import rewrite_datasource_bindings
+
+            base_data["filters"] = rewrite_datasource_bindings(migrate_filters_payload(canvas.filters or [])[0], ds_key_map)
 
         if object_type == ObjectType.NETWORK_TOPOLOGY:
             base_data["base_url"] = canvas.base_url
@@ -334,6 +377,9 @@ class ExportService:
         else:
             datasource_ids, namespace_ids = cls._collect_config_objects(object_type, object_ids)
 
+        from apps.operation_analysis.services.import_export.datasource_package_identity import expand_datasource_closure
+
+        datasource_ids = expand_datasource_closure(datasource_ids)
         datasource_namespace_ids: dict[int, set[int]] = {datasource_id: set() for datasource_id in datasource_ids}
         if datasource_ids:
             if lock:
@@ -421,14 +467,14 @@ class ExportService:
 
         ds_key_map = {}
         if collected_datasource_ids:
-            datasources = DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related("tag")
+            datasources = list(DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related("tag"))
             for ds in datasources:
-                ds_key = cls.generate_business_key(ds, ObjectType.DATASOURCE)
-                ds_key_map[ds.id] = ds_key
+                ds_key_map[ds.id] = cls.generate_business_key(ds, ObjectType.DATASOURCE)
+            for ds in datasources:
                 namespace_keys = sorted(
                     ns_key_map[namespace_id] for namespace_id in datasource_namespace_ids.get(ds.id, set()) if namespace_id in ns_key_map
                 )
-                export_data["datasources"].append(cls.convert_datasource_to_yaml(ds, namespace_keys=namespace_keys))
+                export_data["datasources"].append(cls.convert_datasource_to_yaml(ds, namespace_keys=namespace_keys, ds_key_map=ds_key_map))
 
         cls._convert_canvases_to_yaml(scope_type, object_type, object_ids, ds_key_map, ns_key_map, export_data)
 

@@ -93,7 +93,23 @@ assert.equal(
       { id: 9, rest_api: 'cmdb/get_room_list' },
     ],
   ),
-  9,
+  12,
+);
+
+assert.equal(
+  resolveDynamicSourceId(
+    {
+      type: 'dynamic',
+      sourceRef: { type: 'rest_api', value: 'cmdb/get_model_association_options' },
+      valueField: 'model_asst_id',
+      labelField: 'label',
+    },
+    [
+      { id: 11, name: '模型关联列表（按所选模型）', rest_api: 'cmdb/get_model_association_options' },
+      { id: 10, name: '模型关联列表（选项）', rest_api: 'cmdb/get_model_association_options' },
+    ],
+  ),
+  undefined,
 );
 
 assert.equal(

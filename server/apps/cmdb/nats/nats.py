@@ -1271,6 +1271,26 @@ def create_manual_config_files(params):
 
 
 @nats_client.register
+def receive_access_check_result(data: dict):
+    """接收连通性测试终态，入队后立刻回复。落库在 Celery worker。"""
+    from apps.cmdb.services.collect_access_check_service import public_access_check_payload
+    from apps.cmdb.tasks.celery_tasks import apply_access_check_result
+
+    if not isinstance(data, dict):
+        raise ValueError("invalid_request")
+    payload = public_access_check_payload(data)
+    if not payload["check_id"] or not payload["collect_task_id"]:
+        raise ValueError("invalid_request")
+    apply_access_check_result.delay(payload)
+    logger.info(
+        "event=access_check_result_queued check_id=%s task_id=%s",
+        payload["check_id"],
+        payload["collect_task_id"],
+    )
+    return {"accepted": True, "check_id": payload["check_id"]}
+
+
+@nats_client.register
 def receive_scan_credential_result(data: dict):
     """接收扫描一枪的凭据结果；不属于 Stargazer 采集状态投影。"""
     from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService
@@ -2056,7 +2076,7 @@ def network_topology_among_uuids(inst_uuids=None, user_info=None, **kwargs):
 
 @nats_client.register
 def incident_impact_topology(inst_uuids=None, user_info=None, **kwargs):
-    """事故影响拓扑。只查种子上的 run / connect，失败时不把图库异常正文带回调用方。"""
+    """事故影响拓扑。基础图沿 run / connect，一层候选沿种子模型的全部关系。失败时不把图库异常正文带回调用方。"""
     from apps.cmdb.services.incident_impact_topology import query_incident_impact_topology
     from apps.core.logger import safe_exception_info
 

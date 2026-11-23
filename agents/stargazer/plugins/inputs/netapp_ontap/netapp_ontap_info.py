@@ -299,6 +299,43 @@ class NetAppOntapManager:
             mapping.setdefault((name, ""), address)
         return mapping
 
+    async def probe(self):
+        import httpx
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        self._client = httpx.AsyncClient(timeout=self.timeout, verify=self.verify_tls)
+        try:
+            await self._get_json("cluster", required=True)
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        except httpx.TimeoutException:
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code="tcp_connect_timeout",
+            )
+        except httpx.ConnectError as exc:
+            from core.collection.connect_failure import transport_detail
+
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code=transport_detail(exc),
+            )
+        except RuntimeError as exc:
+            if "认证失败" in str(exc):
+                from core.collection.connect_failure import credential_detail
+
+                return AccessProbeResult(
+                    status=AccessProbeStatus.AUTH_FAILED,
+                    error_code=credential_detail(self.username, self.password),
+                )
+            return AccessProbeResult(
+                status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+                error_code="netapp_probe_failed",
+            )
+        finally:
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None
+
     async def list_all_resources(self):
         self._client = httpx.AsyncClient(timeout=self.timeout, verify=self.verify_tls)
         try:

@@ -6,6 +6,7 @@ export const useProviderApi = () => {
 
   interface TestVendorConnectionPayload {
     api_base: string;
+    skip_ssl_verify?: boolean;
     api_key?: string;
     password_changed?: boolean;
     original_id?: number;

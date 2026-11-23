@@ -75,12 +75,18 @@ export default function ShareDashboardPage() {
       ),
     [api.querySharedDataSource, params.sessionId],
   );
+  const resolveOptionSource = useCallback(
+    (body: { sourceId?: number; builtinKey?: string; sourceRef?: string }) =>
+      api.resolveSharedOptionSource(params.sessionId, body),
+    [api.resolveSharedOptionSource, params.sessionId],
+  );
   const shareAccess = useMemo(
     () => ({
       queryDataSource,
       getDataSourceDetails: () => api.getSharedDataSources(params.sessionId),
+      resolveOptionSource,
     }),
-    [api.getSharedDataSources, params.sessionId, queryDataSource],
+    [api.getSharedDataSources, params.sessionId, queryDataSource, resolveOptionSource],
   );
   const networkTopologyRuntime = useMemo(
     () => ({

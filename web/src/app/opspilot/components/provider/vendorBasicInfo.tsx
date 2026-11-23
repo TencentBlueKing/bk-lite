@@ -44,6 +44,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
         name: detail.name,
         vendor_type: detail.vendor_type,
         api_base: detail.api_base,
+        skip_ssl_verify: detail.skip_ssl_verify ?? false,
         api_key: MASKED_API_KEY,
         team: detail.team || [],
         description: detail.description || '',
@@ -68,6 +69,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
       name: values.name,
       vendor_type: values.vendor_type,
       api_base: values.api_base,
+      skip_ssl_verify: values.skip_ssl_verify,
       team: values.team,
       description: values.description,
       enabled: values.enabled,
@@ -95,7 +97,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
 
   const handleTestConnection = async () => {
     try {
-      const fieldsToValidate: Array<keyof ModelVendorPayload> = ['api_base'];
+      const fieldsToValidate: Array<keyof ModelVendorPayload> = ['api_base', 'skip_ssl_verify'];
       if (apiKeyChanged) {
         fieldsToValidate.push('api_key');
       }
@@ -104,6 +106,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
       setTesting(true);
       const result = await testVendorConnection({
         api_base: values.api_base,
+        skip_ssl_verify: values.skip_ssl_verify,
         api_key: apiKeyChanged ? values.api_key : undefined,
         password_changed: apiKeyChanged,
         original_id: apiKeyChanged ? vendorId : vendorId,
@@ -192,6 +195,10 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
               {t('provider.vendor.testConnection')}
             </Button>
           </div>
+        </Form.Item>
+
+        <Form.Item name="skip_ssl_verify" label={t('provider.vendor.skipSslVerify')} valuePropName="checked">
+          <Switch size="small" />
         </Form.Item>
 
         <Form.Item

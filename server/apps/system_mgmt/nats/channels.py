@@ -13,6 +13,7 @@ from apps.core.utils.internal_event_auth import (
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
+from apps.system_mgmt.utils.channel_utils import send_wecom_workflow_file
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
 
@@ -446,6 +447,49 @@ def _workflow_wecom_markdown(value):
     return re.sub(r"([\\\[\]])", r"\\\1", value)
 
 
+def _append_workflow_links(content, links, channel_type):
+    lines = ["附件下载（24 小时内有效）："]
+    for link in links:
+        filename = " ".join(link["filename"].splitlines())
+        url = link["url"]
+        if channel_type == ChannelChoices.EMAIL:
+            lines.append(f'<a href="{html.escape(url, quote=True)}">{html.escape(filename)}</a>')
+        elif channel_type in RICH_TEXT_CHANNEL_TYPES:
+            label = _workflow_wecom_markdown(filename)
+            lines.append(f"[{label}]({url})")
+        else:
+            lines.append(f"{filename}：{url}")
+    separator = "<br>\n" if channel_type == ChannelChoices.EMAIL else "\n"
+    return separator.join([content, *lines])
+
+
+def _deliver_wecom_workflow_files(channel, links, execution_id, team):
+    from apps.workflow.services.artifacts import NotificationFileSizeError, read_notification_artifact
+
+    results = []
+    deadline = time.monotonic() + 120
+    for link in links:
+        result = {"id": link["id"], "filename": link["filename"]}
+        reason = "time_budget_exhausted"
+        if time.monotonic() < deadline:
+            try:
+                filename, data = read_notification_artifact(
+                    artifact_id=link["id"], execution_id=execution_id, team=team, min_bytes=6, max_bytes=20 * 1024 * 1024
+                )
+                if time.monotonic() < deadline:
+                    reason = send_wecom_workflow_file(channel, filename, data)
+            except NotificationFileSizeError:
+                reason = "file_size_unsupported"
+            except Exception:
+                # 正文及下载链接已送达。记录逐文件结果，继续处理下一件附件。
+                reason = "file_unavailable"
+        result["status"] = "link_only" if reason else "sent"
+        if reason:
+            result["reason"] = reason
+        results.append(result)
+    return results
+
+
 @nats_client.register
 def dispatch_notification(
     delivery_key,
@@ -507,6 +551,16 @@ def dispatch_notification(
     ):
         return _notification_failure("invalid_payload", "通知内容无效。")
 
+    workflow_signed = producer == "workflow" and verify_internal_event(
+        "system_mgmt.dispatch_notification", request_payload, internal_auth, caller="workflow"
+    )
+    links = event_payload.get("artifact_links", []) if producer == "workflow" else []
+    if links:
+        if not workflow_signed:
+            return _internal_auth_failure()
+        if channel.channel_type not in (RICH_TEXT_CHANNEL_TYPES | {ChannelChoices.EMAIL, ChannelChoices.CUSTOM_WEBHOOK}):
+            return _notification_failure("invalid_payload", "该渠道不支持附件下载链接。")
+
     if capability["delivery_mode"] == "alert_event_copy":
         producer = producer if producer in TRUSTED_INTERNAL_EVENT_CALLERS else "lite-apm"
         bounded_event_payload = dict(event_payload)
@@ -541,11 +595,7 @@ def dispatch_notification(
         send_title = html.escape(title, quote=False)
         send_recipients = normalized_recipients
     elif channel.channel_type in RICH_TEXT_CHANNEL_TYPES:
-        if (
-            channel.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT
-            and producer == "workflow"
-            and verify_internal_event("system_mgmt.dispatch_notification", request_payload, internal_auth, caller="workflow")
-        ):
+        if channel.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT and workflow_signed:
             content = _workflow_wecom_markdown(body.strip())
         else:
             content = _escape_notification_rich_text(body.strip())
@@ -555,6 +605,11 @@ def dispatch_notification(
         content = body.strip()
         send_title = title
         send_recipients = normalized_recipients
+
+    if links:
+        content = _append_workflow_links(content, links, channel.channel_type)
+        if len(content) > MAX_NOTIFICATION_BODY_LENGTH:
+            return _notification_failure("invalid_payload", "通知标题或正文超出限额")
 
     try:
         send_kwargs = {}
@@ -594,6 +649,9 @@ def dispatch_notification(
             system_mgmt_message(None, "error.notification_invalid_provider_response"),
             retryable=True,
         )
+    if links and channel.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT and response.get("result") is not False:
+        if response.get("errcode") != 0 and response.get("result") is not True:
+            return _notification_failure("delivery_failed", "企微机器人未接受通知正文。")
     if response.get("result") is False:
         if capability["delivery_mode"] == "alert_event_copy" and ack_mode == "per_event_v1":
             event_results = (response.get("data") or {}).get("event_results") or []
@@ -621,6 +679,12 @@ def dispatch_notification(
                 retryable=True,
             )
     result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    if links and channel.channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
+        files = _deliver_wecom_workflow_files(channel, links, event_payload["execution_id"], delivery_organization)
+        sent_count = sum(file["status"] == "sent" for file in files)
+        result["data"] = {"files": files, "files_sent": sent_count, "files_link_only": len(files) - sent_count}
+        if sent_count < len(files):
+            result.update(code="delivered_with_file_fallback", message="正文与下载链接已投递，部分附件仅可通过链接下载。")
     if capability["delivery_mode"] == "alert_event_copy":
         event_results = (response.get("data") or {}).get("event_results") or []
         if event_results:

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
 import { isFreeTextOptionsParam } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
 import TimeSelector from '@/components/time-selector';
-import { Form, Input, Select, DatePicker, InputNumber, Button, Tooltip } from 'antd';
+import { Form, Input, Select, DatePicker, InputNumber, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type {
   FilterBindings,
@@ -114,6 +114,8 @@ interface DataSourceParamsConfigProps {
   globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
+  /** 当前用户能否修好选项来源。文案不授予保存权限。 */
+  canRepairOptionSource?: boolean;
   /** 用来回显「数据变量 · 名称」。引用本身在参数输入设置里选。 */
   dataVariables?: DataVariable[];
 }
@@ -205,6 +207,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
+  canRepairOptionSource = false,
   dataVariables,
 }) => {
   const { t } = useTranslation();
@@ -332,6 +335,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           resolvedFieldQuery={fieldQuery?.resolution}
           fieldQuerySignature={fieldQuery?.signature}
           disabled={isDisabled}
+          canRepairOptionSource={canRepairOptionSource}
         />
       );
     }
@@ -369,6 +373,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         optionsBlocked={optionsQuery?.resolution.blocked}
         optionsBlockReason={optionsQuery?.resolution.blockReason}
         optionsQuerySignature={optionsQuery?.signature}
+        canRepairOptionSource={canRepairOptionSource}
         onOptionsResolved={(resolvedOptions) =>
           onParamOptionsResolved?.(param, resolvedOptions)
         }
@@ -382,7 +387,6 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         const fieldName = [fieldPrefix, param.name];
         const initialValue = getDataSourceFormParamInitialValue(param);
         const labelText = param.alias_name || param.name;
-        const isLongText = labelText.length > 18;
         const isVeryLongText = labelText.length > 30;
         const isConditionFilter = param.type === 'conditionFilter'
           || param.inputConfig?.control === 'conditionFilter';
@@ -393,65 +397,45 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           !readonly;
         const variableValue = isDataVariableRef(formParams?.[param.name]);
 
-        const getLabelStyle = (): React.CSSProperties => {
-          const baseStyle = {
-            lineHeight: '1.4',
-            width: '100%',
-          };
-
-          if (isVeryLongText) {
-            return {
-              ...baseStyle,
-              whiteSpace: 'normal',
-              wordBreak: 'break-word',
-              textAlign: 'left',
-            };
-          }
-          if (isLongText) {
-            return {
-              ...baseStyle,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              textAlign: 'left',
-            };
-          }
-          return {
-            ...baseStyle,
-            whiteSpace: 'nowrap',
-            overflow: 'visible',
-            textAlign: 'left',
-          };
-        };
-
         return (
           <Form.Item
             key={`${selectedDataSource?.id || 'default'}-${param.name}`}
+            className="[&_.ant-form-item-label>label]:flex [&_.ant-form-item-label>label]:h-auto [&_.ant-form-item-label>label]:w-full"
             label={
-              <div className="flex items-center justify-start gap-1">
-                <div style={getLabelStyle()} title={labelText}>
-                  {labelText}
-                </div>
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1">
+                  <span
+                    className={isVeryLongText
+                      ? 'min-w-0 whitespace-normal break-words text-left leading-snug'
+                      : 'min-w-0 truncate text-left leading-snug'}
+                    title={labelText}
+                  >
+                    {labelText}
+                  </span>
+                  {param.desc ? (
+                    <Tooltip title={param.desc}>
+                      <QuestionCircleOutlined className="shrink-0 cursor-help text-sm text-(--color-text-3)" />
+                    </Tooltip>
+                  ) : null}
+                </span>
                 {showInputConfigButton && (
-                  <Tooltip title={t('paramInput.editButton')}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<SettingOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditInputConfig!(param);
-                      }}
-                      className="shrink-0 text-[var(--color-text-2)] hover:text-[var(--color-primary)]"
-                    />
-                  </Tooltip>
+                  <button
+                    type="button"
+                    className="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-sm leading-5 text-(--color-primary)"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onEditInputConfig!(param);
+                    }}
+                  >
+                    {t('paramInput.editButton')}
+                  </button>
                 )}
               </div>
             }
             name={fieldName}
             preserve
             initialValue={!preserveValues && mounted ? initialValue : undefined}
-            tooltip={param.desc || undefined}
             style={{ marginBottom: isVeryLongText ? 20 : 16 }}
             required={Boolean(param.required)}
             rules={variableValue

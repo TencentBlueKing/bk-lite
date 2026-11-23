@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
+from apps.opspilot.metis.llm.common.vendor_tls import sdk_http_options, vendor_skips_ssl_verify
 from apps.opspilot.models import MaterialVersion
 from apps.opspilot.services.wiki.parsed_media_service import persist_embedded_images, rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.parsing import get_parser
@@ -199,9 +200,12 @@ def _vision_options(material):
                 api_base=vision_model.openai_api_base,
                 api_key=vision_model.openai_api_key,
                 vendor_type=_vision_vendor_type(vision_model),
+                skip_ssl_verify=vendor_skips_ssl_verify(vision_model),
             )
         else:
-            client = OpenAI(base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key)
+            client = OpenAI(
+                base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key, **sdk_http_options(vendor_skips_ssl_verify(vision_model))
+            )
     except Exception:
         logger.exception("material %s 图片增强客户端初始化失败 vision_model=%s", material.id, vision_model.id)
         return None, None

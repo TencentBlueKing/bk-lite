@@ -8,7 +8,6 @@ export interface NotificationTemplateChannelFormat {
 
 export const NOTIFICATION_TEMPLATE_CHANNELS: NotificationTemplateChannelFormat[] = [
   { key: 'email', labelKey: 'settings.notificationTemplate.email', editorMode: 'html', previewMode: 'html', hasSubject: true },
-  { key: 'enterprise_wechat', labelKey: 'settings.notificationTemplate.wecomApp', editorMode: 'text', previewMode: 'text', hasSubject: false },
   { key: 'enterprise_wechat_bot', labelKey: 'settings.notificationTemplate.wecom', editorMode: 'markdown', previewMode: 'markdown', hasSubject: false },
   { key: 'dingtalk_bot', labelKey: 'settings.notificationTemplate.dingtalk', editorMode: 'markdown', previewMode: 'markdown', hasSubject: true },
   { key: 'feishu_bot', labelKey: 'settings.notificationTemplate.feishu', editorMode: 'markdown', previewMode: 'markdown', hasSubject: true },
@@ -17,6 +16,12 @@ export const NOTIFICATION_TEMPLATE_CHANNELS: NotificationTemplateChannelFormat[]
   { key: 'nats', labelKey: 'settings.notificationTemplate.opspilot', editorMode: 'text', previewMode: 'text', hasSubject: false },
 ];
 
+// 通知渠道页已经不能新建 enterprise_wechat。保留格式只为打开历史模板内容。
+const LEGACY_NOTIFICATION_TEMPLATE_CHANNELS: NotificationTemplateChannelFormat[] = [
+  { key: 'enterprise_wechat', labelKey: 'settings.notificationTemplate.wecomApp', editorMode: 'text', previewMode: 'text', hasSubject: false },
+];
+
 export const getNotificationTemplateChannel = (channelType: string) => (
   NOTIFICATION_TEMPLATE_CHANNELS.find((item) => item.key === channelType)
+  || LEGACY_NOTIFICATION_TEMPLATE_CHANNELS.find((item) => item.key === channelType)
 );

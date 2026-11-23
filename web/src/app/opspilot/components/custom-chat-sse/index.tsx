@@ -17,6 +17,7 @@ import PlannedExecutionSteps from './PlannedExecutionSteps';
 import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './PlannedExecutionStatus';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
+import WikiMaterialWriteCard from './WikiMaterialWriteCard';
 import UserChoiceCard from './UserChoiceCard';
 import { applyAnsweredUserChoices, stripChoicePromptFromContent } from './userChoiceOptions';
 import DiffReportCard from './DiffReportCard';
@@ -265,6 +266,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         (target.toolCalls && target.toolCalls.length > 0) ||
         (target.userChoiceRequests && target.userChoiceRequests.length > 0) ||
         (target.approvalRequests && target.approvalRequests.length > 0) ||
+        (target.wikiMaterialWrites && target.wikiMaterialWrites.length > 0) ||
         (target.configDiffReports && target.configDiffReports.length > 0) ||
         (target.configAnalysisReports && target.configAnalysisReports.length > 0) ||
         (target.reportFileDownloads && target.reportFileDownloads.length > 0) ||
@@ -778,7 +780,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
+    const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools, wikiMaterialWrites } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
@@ -848,6 +850,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onDecision={handleApprovalDecision}
+                    readOnly={mode === 'display'}
+                  />
+                ))}
+              </div>
+            )}
+            {Array.isArray(wikiMaterialWrites) && wikiMaterialWrites.length > 0 && (
+              <div className="mt-2">
+                {wikiMaterialWrites.map(item => (
+                  <WikiMaterialWriteCard
+                    key={item.material_id}
+                    materialId={item.material_id}
+                    phase={item.phase}
+                    summary={item.summary}
                     readOnly={mode === 'display'}
                   />
                 ))}
@@ -985,6 +1000,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onDecision={handleApprovalDecision}
+                readOnly={mode === 'display'}
+              />
+            ))}
+          </div>
+        );
+      }
+      if (Array.isArray(wikiMaterialWrites) && wikiMaterialWrites.length > 0) {
+        elements.push(
+          <div key="wiki-material-writes" className="mt-2">
+            {wikiMaterialWrites.map(item => (
+              <WikiMaterialWriteCard
+                key={item.material_id}
+                materialId={item.material_id}
+                phase={item.phase}
+                summary={item.summary}
                 readOnly={mode === 'display'}
               />
             ))}

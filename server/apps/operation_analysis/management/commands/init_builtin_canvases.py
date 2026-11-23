@@ -338,6 +338,7 @@ def _load_source_api_document():
                 "key": stable_key,
                 "tags": [tag_names.get(tag, tag) for tag in tags],
                 "namespace_keys": ["默认命名空间"] if item.get("source_type", "nats") == "nats" else [],
+                "identity": {"kind": "builtin", "build_in_key": stable_key},
             }
         )
         datasources.append(item)
@@ -538,6 +539,7 @@ class Command(BaseCommand):
                     datasource_groups=[],
                     existing_canvas_ids=existing_canvas_ids,
                     preserve_existing_canvas_groups=True,
+                    builtin_seed=True,
                 )
 
                 result = import_service.execute()
@@ -583,8 +585,16 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.WARNING("内置定义文件不完整，本次跳过已退役画布与数据源清理"))
 
+                imported_datasource_ids = {
+                    item_result["object_key"]: item_result.get("new_id")
+                    for item_result in result["results"]
+                    if item_result.get("object_type") == "datasource" and item_result.get("new_id")
+                }
                 for item in doc.datasources:
-                    DataSourceAPIModel.objects.filter(name=item.name, rest_api=item.rest_api).update(
+                    datasource_id = imported_datasource_ids.get(item.key)
+                    if not datasource_id:
+                        continue
+                    DataSourceAPIModel.objects.filter(id=datasource_id).update(
                         is_build_in=True,
                         build_in_key=item.key,
                         updated_by="system",

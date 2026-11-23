@@ -92,11 +92,11 @@ def lookup_ci_context(organization_ids, *, inst_uuids=None, ip_addrs=None, model
     for clause in clauses[1:]:
         match |= clause
 
-    org_match = Q()
-    for org_id in organization_ids:
-        org_match |= Q(organization__contains=[org_id])
+    from apps.core.utils.viewset_utils import build_json_membership_query
 
-    rows = CmdbCiContext.objects.filter(org_match, context__in=list(contexts or [])).filter(match).order_by("ci_uuid", "root_uuid")
+    base = CmdbCiContext.objects.filter(context__in=list(contexts or [])).filter(match)
+    org_match = build_json_membership_query(base, "organization", organization_ids)
+    rows = base.filter(org_match).order_by("ci_uuid", "root_uuid")
     found: dict[str, list[dict]] = {}
     for row in rows:
         found.setdefault(row.ci_uuid, []).append(_public_row(row))

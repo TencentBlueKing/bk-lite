@@ -85,7 +85,8 @@ def test_guard_rejection_does_not_end_run(monkeypatch):
     assert middleware.after_model(state, _Runtime({})) is None
 
 
-def test_unattended_choice_does_not_create_pending_question():
+@pytest.mark.parametrize("extra", [{"unattended": True}, {"reply_channel": "WECOM_BOT"}])
+def test_one_way_choice_does_not_create_pending_question(extra):
     middleware = TerminalUserChoiceMiddleware()
     state = {
         "messages": [
@@ -101,7 +102,7 @@ def test_unattended_choice_does_not_create_pending_question():
             )
         ]
     }
-    runtime = _Runtime({"thread_id": "unattended", "graph_request": SimpleNamespace(extra_config={"unattended": True})})
+    runtime = _Runtime({"thread_id": "unattended", "graph_request": SimpleNamespace(extra_config=extra)})
     assert middleware.after_model(state, runtime) is None
     assert consume_pending_question("thread:unattended") is None
 

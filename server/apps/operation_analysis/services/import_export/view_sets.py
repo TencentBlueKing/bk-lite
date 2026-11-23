@@ -1,6 +1,7 @@
 from typing import Any
 
 from apps.operation_analysis.constants.import_export import ObjectType
+from apps.operation_analysis.services.import_export.datasource_package_identity import rewrite_datasource_bindings
 from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 from apps.operation_analysis.services.string_param_multiple_migrate import migrate_canvas_view_sets
 
@@ -26,22 +27,7 @@ def _validate_scene_widget_surfaces(value: Any, object_type: ObjectType) -> None
 
 
 def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
-    if isinstance(value, list):
-        return [_rewrite_datasource_refs(item, key_map) for item in value]
-
-    if not isinstance(value, dict):
-        return value
-
-    cloned = {key: _rewrite_datasource_refs(item, key_map) for key, item in value.items()}
-    value_config = cloned.get("valueConfig")
-    if isinstance(value_config, dict):
-        data_source = value_config.get("dataSource")
-        if data_source in key_map:
-            next_value_config = dict(value_config)
-            next_value_config["dataSource"] = key_map[data_source]
-            cloned["valueConfig"] = next_value_config
-
-    return cloned
+    return rewrite_datasource_bindings(value, key_map)
 
 
 def data_variable_datasource_ids(raw: Any) -> set[int]:
@@ -229,7 +215,7 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
         return {
             "nodes": _rewrite_datasource_refs(view_sets.get("nodes", []), ds_key_map),
             "edges": _rewrite_datasource_refs(view_sets.get("edges", []), ds_key_map),
-            "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
+            "filters": _rewrite_datasource_refs(view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [], ds_key_map),
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -245,7 +231,7 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
             "decorations": view_sets.get("decorations", {}) if isinstance(view_sets.get("decorations", {}), dict) else {},
         }
         if isinstance(view_sets.get("filters"), list):
-            result["filters"] = view_sets.get("filters", [])
+            result["filters"] = _rewrite_datasource_refs(view_sets.get("filters", []), ds_key_map)
         if isinstance(view_sets.get("dataVariables"), list):
             result["dataVariables"] = rewrite_data_variables(view_sets.get("dataVariables"), ds_key_map)
         return result
@@ -253,7 +239,7 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
     if object_type == ObjectType.REPORT:
         return {
             "schema_version": view_sets.get("schema_version", 1),
-            "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
+            "filters": _rewrite_datasource_refs(view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [], ds_key_map),
             "sections": _rewrite_datasource_refs(view_sets.get("sections", []), ds_key_map),
         }
 
@@ -266,7 +252,9 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
             return normalize_report_view_sets(view_sets)
         rewritten = {
             "schema_version": view_sets.get("schema_version", 1),
-            "filters": view_sets.get("filters", []),
+            "filters": _rewrite_datasource_refs(
+                view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [], datasource_key_to_id
+            ),
             "sections": _rewrite_datasource_refs(view_sets.get("sections", []), datasource_key_to_id),
         }
         return normalize_report_view_sets(rewritten)
@@ -280,7 +268,10 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
         return {
             "nodes": _rewrite_datasource_refs(normalized.get("nodes", []), datasource_key_to_id),
             "edges": _rewrite_datasource_refs(normalized.get("edges", []), datasource_key_to_id),
-            "filters": normalized.get("filters", []) if isinstance(normalized.get("filters", []), list) else [],
+            "filters": _rewrite_datasource_refs(
+                normalized.get("filters", []) if isinstance(normalized.get("filters", []), list) else [],
+                datasource_key_to_id,
+            ),
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -296,7 +287,7 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
             "decorations": normalized.get("decorations", {}) if isinstance(normalized.get("decorations", {}), dict) else {},
         }
         if isinstance(normalized.get("filters"), list):
-            result["filters"] = normalized.get("filters", [])
+            result["filters"] = _rewrite_datasource_refs(normalized.get("filters", []), datasource_key_to_id)
         if isinstance(normalized.get("dataVariables"), list):
             result["dataVariables"] = rewrite_data_variables(
                 normalized.get("dataVariables"),
