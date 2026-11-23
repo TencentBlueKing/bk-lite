@@ -22,7 +22,7 @@
       "funnelDetail": "漏斗详情"
     },
     "pipeline": {
-      "controlUnavailable": "RUM 控制面暂不可用，应用目录可能为空。",
+      "controlUnavailable": "RUM 控制面暂不可用，无法确认接入状态。",
       "analyticsUnavailable": "RUM 分析数据面暂不可用，指标与列表可能为空。"
     },
     "common": {
@@ -79,7 +79,7 @@
       "collectionMetadata": "SDK",
       "faroSdk": "Faro SDK",
       "metadataNotReported": "未上报",
-      "waitingForTelemetry": "未接入",
+      "waitingForTelemetry": "等待数据",
       "healthObserving": "观察中",
       "errorRateHint": "错误率 = 出错会话 / 总会话",
       "trendV2": "浏览趋势",
@@ -89,10 +89,10 @@
       "title": "接入",
       "status": "接入状态",
       "statusConnected": "已接入",
-      "statusWaiting": "未接入",
+      "statusWaiting": "等待数据",
       "statusDisabled": "已禁用",
       "filterAll": "全部",
-      "filterWaiting": "未接入",
+      "filterWaiting": "等待数据",
       "filterConnected": "已接入",
       "filterEmpty": "没有符合筛选的应用",
       "lastAccepted": "最近接收",
@@ -212,6 +212,7 @@
     "verdict": {
       "connected": "RUM 已接通",
       "waiting": "等待数据",
+      "unconfirmed": "无法确认接入",
       "disabled": "已禁用",
       "setup": "待完成配置"
     },

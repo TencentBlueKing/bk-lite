@@ -22,7 +22,7 @@
       "funnelDetail": "Funnel detail"
     },
     "pipeline": {
-      "controlUnavailable": "RUM control plane is unavailable; the application catalog may be empty.",
+      "controlUnavailable": "RUM control plane is unavailable, so ingest status cannot be confirmed.",
       "analyticsUnavailable": "RUM analytics is unavailable; metrics and lists may be empty."
     },
     "common": {
@@ -79,7 +79,7 @@
       "collectionMetadata": "SDK",
       "faroSdk": "Faro SDK",
       "metadataNotReported": "Not reported",
-      "waitingForTelemetry": "Not connected",
+      "waitingForTelemetry": "Waiting for data",
       "healthObserving": "Observing",
       "errorRateHint": "Error rate = errored sessions / total sessions",
       "trendV2": "Views trend",
@@ -89,10 +89,10 @@
       "title": "Setup",
       "status": "Ingest status",
       "statusConnected": "Connected",
-      "statusWaiting": "Not connected",
+      "statusWaiting": "Waiting for data",
       "statusDisabled": "Disabled",
       "filterAll": "All",
-      "filterWaiting": "Not connected",
+      "filterWaiting": "Waiting for data",
       "filterConnected": "Connected",
       "filterEmpty": "No applications match this filter",
       "lastAccepted": "Last accepted",
@@ -212,6 +212,7 @@
     "verdict": {
       "connected": "RUM connected",
       "waiting": "Waiting for data",
+      "unconfirmed": "Ingest unconfirmed",
       "disabled": "Disabled",
       "setup": "Setup incomplete"
     },

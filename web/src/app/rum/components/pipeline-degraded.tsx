@@ -13,7 +13,7 @@ export default function PipelineDegradedBanner({
   const { t } = useTranslation();
   const message =
     reason === 'control'
-      ? t('rum.pipeline.controlUnavailable', 'RUM 控制面暂不可用，应用目录可能为空。')
+      ? t('rum.pipeline.controlUnavailable', 'RUM 控制面暂不可用，无法确认接入状态。')
       : t('rum.pipeline.analyticsUnavailable', 'RUM 分析数据面暂不可用，指标与列表可能为空。');
 
   return <Alert type="warning" showIcon message={message} className="mb-3" />;

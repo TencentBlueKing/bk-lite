@@ -264,9 +264,11 @@ export default function ApplicationSetupPage() {
       ? 'disabled'
       : connected
         ? 'connected'
-        : !hasKey
-          ? 'setup'
-          : 'waiting';
+        : app.controlUnavailable
+          ? 'unconfirmed'
+          : !hasKey
+            ? 'setup'
+            : 'waiting';
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto">
@@ -282,9 +284,11 @@ export default function ApplicationSetupPage() {
                   {...toneSemanticPalette(
                     headerVerdict === 'connected'
                       ? 'success'
-                      : headerVerdict === 'waiting'
-                        ? 'info'
-                        : 'neutral',
+                      : headerVerdict === 'unconfirmed'
+                        ? 'warning'
+                        : headerVerdict === 'waiting'
+                          ? 'info'
+                          : 'neutral',
                   )}
                 />
               ) : null

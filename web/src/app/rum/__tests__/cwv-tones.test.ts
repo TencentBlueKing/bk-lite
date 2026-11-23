@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cwvTone,
   formatMs,
+  presentErrorRate,
   toneBarClass,
   toneColor,
   toneDotClass,
@@ -21,6 +22,12 @@ describe('rum cwv tone helpers', () => {
     expect(cwvTone('fcp', 0)).toBe('neutral');
     expect(cwvTone('', 1800)).toBe('neutral');
     expect(cwvTone('web-vital-unknown', 9999)).toBe('neutral');
+  });
+
+  it('hides error rate when the window has no sessions', () => {
+    expect(presentErrorRate(0, 0)).toEqual({ text: '—', tone: 'neutral' });
+    expect(presentErrorRate(12, 0)).toEqual({ text: '0.00%', tone: 'success' });
+    expect(presentErrorRate(12, 0.02)).toEqual({ text: '2.00%', tone: 'warning' });
   });
 
   it('formats milliseconds and empty values', () => {
