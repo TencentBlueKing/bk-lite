@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { presentBar, readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { buildCsvDocument, buildCsvFilename, escapeCsvCell } from '@/app/ops-analysis/utils/csvDocument';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   buildDashboardWidgetMenuKeys,
   resolveScreenItemMenuMode,
@@ -34,6 +37,7 @@ const labels: WidgetCsvLabels = {
   indicator: '指标',
   name: '名称',
   seriesValue: '数据值',
+  other: '其他',
 };
 
 const schema = [
@@ -105,6 +109,28 @@ describe('widget csv rows', () => {
     );
     expect(table.headers).toEqual(['主机', 'CPU 使用率 (核)']);
     expect(table.rows).toEqual([['主机甲', '12核']]);
+  });
+
+  it('limits a bar export to the presented categories', () => {
+    const rawData = [
+      { name: 'low', value: 1 },
+      { name: 'high', value: 5 },
+      { name: 'mid', value: 3 },
+    ];
+    const config: ValueConfig = {
+      chartType: 'bar',
+      displayLimit: 2,
+      sortByValue: true,
+    };
+    const mapping = toLineBarFieldMapping(config);
+    const presented = presentBar(
+      ChartDataTransformer.transformToLineBarData(rawData, mapping),
+      readChartDisplay(config),
+      { rawData, mapping, otherName: labels.other },
+    );
+    const table = buildLineBarCsvTable(rawData, config, labels);
+    expect(table.rows.map((row) => row[0])).toEqual(presented.categories);
+    expect(presented.categories).toEqual(['high', 'mid', '其他']);
   });
 
   it('exports pie slices with the dimension and value headers', () => {

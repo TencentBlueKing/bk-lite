@@ -7,12 +7,12 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
   UnifiedFilterDefinition,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   NodeStyleConfig,
   NodeConfigFormValues,
   TopologyNodeData,
-  ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import {
   extractComparableValue,
@@ -21,6 +21,7 @@ import {
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
 import { useTranslation } from '@/utils/i18n';
+import { chartDisplayControls } from '@/app/ops-analysis/utils/chartDisplay';
 import { applyTopNValueConfig, buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
 import { getColorByThreshold, isFiniteNumber } from '../utils/thresholdUtils';
@@ -481,6 +482,11 @@ export const useGraphNodeOperations = ({
       unitId: values.unitId ?? valueConfig?.unitId,
       valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
     };
+    const displayControls = chartDisplayControls(
+      values.chartType || valueConfig?.chartType,
+    );
+    if (!displayControls.limit) delete nextValueConfig.displayLimit;
+    if (!displayControls.sort) delete nextValueConfig.sortByValue;
     if ((values.chartType || valueConfig?.chartType) === 'topN') {
       delete nextValueConfig.topNLabelField;
       delete nextValueConfig.topNValueField;
@@ -569,7 +575,7 @@ export const useGraphNodeOperations = ({
 
   const handleViewConfigConfirm = useCallback(
     (
-      values: ViewConfigFormValues,
+      values: WidgetConfig,
       unifiedFilterValues?: Record<string, FilterValue>,
       filterDefinitions?: UnifiedFilterDefinition[],
       dataSources?: DatasourceItem[],
@@ -609,7 +615,7 @@ export const useGraphNodeOperations = ({
   );
 
   const handleAddChartNode = useCallback(
-    async (values: ViewConfigFormValues, skipInitialFetch?: boolean) => {
+    async (values: WidgetConfig, skipInitialFetch?: boolean) => {
       if (!graphInstance) {
         return null;
       }

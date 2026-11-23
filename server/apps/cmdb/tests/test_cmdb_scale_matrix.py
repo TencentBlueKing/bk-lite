@@ -67,6 +67,10 @@ class _RecordingGraph:
             rows = [{field: row.get(field) for field in dict.fromkeys(["_id", *kwargs["fields"]])} for row in rows]
         return rows, len(rows)
 
+    def query_edge(self, label, conditions, **kwargs):
+        self.queries.append((list(conditions), kwargs))
+        return []
+
 
 class _EdgeGraph:
     def __init__(self, edges):

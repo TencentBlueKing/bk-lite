@@ -4,6 +4,11 @@ import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import {
+  CHART_DISPLAY_I18N,
+  presentPie,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
+import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
@@ -71,12 +76,24 @@ const OsPie: React.FC<OsPieProps> = ({
   }, []);
 
   const chartData = useMemo(
-    () => ChartDataTransformer.transformToPieData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-      pieScalarFields: config?.pieScalarFields,
-    }),
-    [config?.dimensionField, config?.pieScalarFields, config?.valueField, rawData],
+    () => presentPie(
+      ChartDataTransformer.transformToPieData(rawData, {
+        dimensionField: config?.dimensionField,
+        valueField: config?.valueField,
+        pieScalarFields: config?.pieScalarFields,
+      }),
+      readChartDisplay(config),
+      t(CHART_DISPLAY_I18N.other),
+    ),
+    [
+      config?.dimensionField,
+      config?.displayLimit,
+      config?.pieScalarFields,
+      config?.sortByValue,
+      config?.valueField,
+      rawData,
+      t,
+    ],
   );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value >= 0,

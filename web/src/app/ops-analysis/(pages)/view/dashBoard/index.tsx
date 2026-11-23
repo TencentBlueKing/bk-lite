@@ -16,6 +16,7 @@ import { DataVariableRuntimeProvider, withDatasourceNamespace } from '@/app/ops-
 import { buildDataVariableRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readDataVariables, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
+import { chartDisplayPatch } from '@/app/ops-analysis/utils/chartDisplay';
 import DashboardCanvas from './components/dashboardCanvas';
 import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
 import DashboardToolbar from './components/dashboardToolbar';
@@ -1443,6 +1444,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             topNScalarFields: config.topNScalarFields,
             barMode: config.barMode,
             barMax: config.barMax,
+            ...chartDisplayPatch(config),
             dimensionField: config.dimensionField,
             valueField: config.valueField,
             valueFields: config.valueFields,
@@ -1987,6 +1989,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   topNScalarFields: values.topNScalarFields,
                   barMode: values.barMode,
                   barMax: values.barMax,
+                  ...chartDisplayPatch(values),
                   dimensionField: values.dimensionField,
                   valueField: values.valueField,
                   valueFields: values.valueFields,
