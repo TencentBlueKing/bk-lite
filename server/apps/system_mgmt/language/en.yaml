@@ -318,6 +318,11 @@ action_type:
   delete: Delete
   execute: Execute
   update: Update
+outcome:
+  success: Success
+  failure: Failure
+  accepted: Submitted
+  unrecorded: Not recorded
 status:
   success: Success
   failed: Failed
@@ -342,6 +347,10 @@ export:
   column_app: App
   column_action_type: Action type
   column_summary: Summary
+  column_target_type: Object type
+  column_target_name: Object name
+  column_target_id: Object ID
+  column_outcome: Result
 email:
   password_expiring_subject: Your password will expire soon
   password_expiring_body: '<p>Hello {name},</p><p>Your password will expire in <b>{days}</b> day(s). Please change it soon.</p>'

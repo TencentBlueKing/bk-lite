@@ -266,7 +266,21 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com", target_type="", target_id="", detail=None):
+    def save_operation_log(
+        self,
+        username,
+        source_ip,
+        app,
+        action_type,
+        summary="",
+        domain="domain.com",
+        target_type="",
+        target_id="",
+        detail=None,
+        outcome="",
+        failure_reason="",
+        target_name="",
+    ):
         """
         保存操作日志
         :param username: 用户名
@@ -278,6 +292,9 @@ class SystemMgmt(object):
         :param target_type: 操作目标类型（可选）
         :param target_id: 操作目标ID（可选）
         :param detail: 操作详情 JSON（可选，默认空字典）
+        :param outcome: 执行结果（可选，空表示未记录）
+        :param failure_reason: 失败原因（可选）
+        :param target_name: 操作发生时的对象名称（可选）
         """
         return self.client.run(
             "save_operation_log",
@@ -290,6 +307,9 @@ class SystemMgmt(object):
             target_type=target_type,
             target_id=target_id,
             detail=detail,
+            outcome=outcome,
+            failure_reason=failure_reason,
+            target_name=target_name,
         )
 
     def save_operation_logs(self, logs):

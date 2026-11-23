@@ -1,5 +1,6 @@
 from io import BytesIO
 
+from django.db.models import Q
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from openpyxl import Workbook
@@ -14,6 +15,7 @@ from apps.system_mgmt.models import OperationLog
 from apps.system_mgmt.serializers.operation_log_serializer import OperationLogSerializer
 from apps.system_mgmt.utils.audit_log_export import export_limit_rejection
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
+from apps.system_mgmt.utils.operation_log_utils import resolve_app_display_name
 
 
 class OperationLogFilter(filters.FilterSet):
@@ -35,6 +37,12 @@ class OperationLogFilter(filters.FilterSet):
     # 概要描述筛选（模糊）
     summary = filters.CharFilter(field_name="summary", lookup_expr="icontains")
 
+    # 对象名称或对象 ID
+    target = filters.CharFilter(method="filter_target")
+
+    # 执行结果：success / failure / accepted / unrecorded
+    outcome = filters.CharFilter(method="filter_outcome")
+
     class Meta:
         model = OperationLog
         fields = [
@@ -44,6 +52,8 @@ class OperationLogFilter(filters.FilterSet):
             "username",
             "action_type",
             "summary",
+            "target",
+            "outcome",
         ]
 
     def filter_app_in(self, queryset, name, value):
@@ -55,6 +65,30 @@ class OperationLogFilter(filters.FilterSet):
         if app_list:
             return queryset.filter(app__in=app_list)
         return queryset
+
+    def filter_target(self, queryset, name, value):
+        if not value:
+            return queryset
+        keyword = value.strip()
+        if not keyword:
+            return queryset
+        return queryset.filter(Q(target_name__icontains=keyword) | Q(target_id__icontains=keyword))
+
+    def filter_outcome(self, queryset, name, value):
+        if not value:
+            return queryset
+        mapped = []
+        for item in value.split(","):
+            token = item.strip()
+            if not token:
+                continue
+            if token == "unrecorded":
+                mapped.append(OperationLog.OUTCOME_UNRECORDED)
+            else:
+                mapped.append(token)
+        if not mapped:
+            return queryset
+        return queryset.filter(outcome__in=mapped)
 
 
 class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
@@ -161,6 +195,11 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
             self._export_label("export.column_app", "应用"),
             self._export_label("export.column_action_type", "操作类型"),
             self._export_label("export.column_summary", "概要描述"),
+            self._export_label("export.column_target_type", "对象类型"),
+            self._export_label("export.column_target_name", "对象名称"),
+            self._export_label("export.column_target_id", "对象ID"),
+            self._export_label("export.column_outcome", "执行结果"),
+            self._export_label("export.column_failure_reason", "失败原因"),
         ]
 
         # 写入表头
@@ -178,7 +217,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
             cell.alignment = header_alignment
 
         # 设置列宽
-        column_widths = [20, 20, 22, 18, 25, 15, 50]
+        column_widths = [20, 20, 22, 18, 25, 15, 50, 18, 24, 18, 16, 40]
         for i, width in enumerate(column_widths, 1):
             sheet.column_dimensions[sheet.cell(row=1, column=i).column_letter].width = width
 
@@ -189,17 +228,31 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
             OperationLog.ACTION_DELETE: self.loader.get("action_type.delete") or "删除",
             OperationLog.ACTION_EXECUTE: self.loader.get("action_type.execute") or "执行",
         }
+        outcome_display_map = {
+            OperationLog.OUTCOME_SUCCESS: self.loader.get("outcome.success") or "成功",
+            OperationLog.OUTCOME_FAILURE: self.loader.get("outcome.failure") or "失败",
+            OperationLog.OUTCOME_ACCEPTED: self.loader.get("outcome.accepted") or "提交成功",
+            OperationLog.OUTCOME_UNRECORDED: self.loader.get("outcome.unrecorded") or "未记录",
+        }
+        unrecorded_label = self.loader.get("outcome.unrecorded") or "未记录"
+        logs = list(queryset)
+        serialized_rows = OperationLogSerializer(logs, many=True, context={"request": request}).data
 
         # 写入数据
-        for log in queryset:
+        for log, data in zip(logs, serialized_rows):
             row_data = [
-                log.username,
-                log.domain,
+                data.get("username") or log.username,
+                data.get("domain") or log.domain,
                 log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "-",
-                log.source_ip,
-                log.app or "-",
+                data.get("source_ip") or log.source_ip,
+                data.get("app_name") or resolve_app_display_name(log.app) or "-",
                 action_type_display_map.get(log.action_type, log.action_type),
-                log.summary or "-",
+                data.get("summary") or "-",
+                data.get("target_type") or unrecorded_label,
+                data.get("target_name") or unrecorded_label,
+                data.get("target_id") or unrecorded_label,
+                outcome_display_map.get(data.get("outcome"), unrecorded_label),
+                data.get("failure_reason") or "-",
             ]
             sheet.append(row_data)
 

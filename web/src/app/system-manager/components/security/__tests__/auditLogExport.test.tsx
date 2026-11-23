@@ -105,6 +105,37 @@ describe('OperationLogs export', () => {
     });
     expect(window.URL.createObjectURL).toHaveBeenCalled();
   });
+
+  it('reset reloads the list without the filters that were just cleared', async () => {
+    render(<OperationLogs />);
+    await waitFor(() => {
+      expect(getOperationLogs).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('system.security.operatorPlaceholder'), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('system.security.targetPlaceholder'), {
+      target: { value: 'host-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /common\.search/ }));
+
+    await waitFor(() => {
+      const params = getOperationLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBe('alice');
+      expect(params.target).toBe('host-1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.reset/ }));
+
+    await waitFor(() => {
+      const params = getOperationLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBeUndefined();
+      expect(params.target).toBeUndefined();
+      expect(params.outcome).toBeUndefined();
+      expect(params.action_type).toBeUndefined();
+    });
+  });
 });
 
 describe('UserLoginLogs export', () => {

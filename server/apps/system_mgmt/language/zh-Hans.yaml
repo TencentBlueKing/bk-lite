@@ -287,6 +287,11 @@ action_type:
   delete: 删除
   execute: 执行
   update: 更新
+outcome:
+  success: 成功
+  failure: 失败
+  accepted: 提交成功
+  unrecorded: 未记录
 status:
   success: 成功
   failed: 失败
@@ -311,6 +316,10 @@ export:
   column_app: 应用
   column_action_type: 操作类型
   column_summary: 概要描述
+  column_target_type: 对象类型
+  column_target_name: 对象名称
+  column_target_id: 对象ID
+  column_outcome: 执行结果
 email:
   password_expiring_subject: 密码即将过期提醒
   password_expiring_body: '<p>尊敬的 {name}：</p><p>您的密码将在 <b>{days}</b> 天后过期，请尽快修改密码。</p>'

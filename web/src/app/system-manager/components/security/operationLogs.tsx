@@ -11,17 +11,31 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useClientData } from '@/context/client';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { buildOperationLogParams } from '@/app/system-manager/utils/operationLogParams';
-import { hasOperationDetail } from '@/app/system-manager/utils/operationLogDetail';
+import {
+  UNRECORDED,
+  buildOperationLogDetailView,
+  type OperationLogDetailView,
+  type OperationOutcome,
+} from '@/app/system-manager/utils/operationLogDetail';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 
 const { Search } = Input;
+
+const EMPTY_FILTERS = {
+  username: '',
+  app: '',
+  actionType: '',
+  target: '',
+  outcome: '',
+};
 
 interface OperationLog {
   id: number;
   username: string;
   source_ip: string;
   app: string;
+  app_name?: string;
   action_type: string;
   action_type_display: string;
   summary: string;
@@ -29,7 +43,10 @@ interface OperationLog {
   operation_time: string;
   created_at: string;
   target_type?: string;
+  target_name?: string;
   target_id?: string;
+  outcome?: string;
+  failure_reason?: string;
   detail?: Record<string, any>;
 }
 
@@ -47,21 +64,22 @@ const OperationLogs: React.FC = () => {
     pageSize: 20,
     total: 0,
   });
-  const [filters, setFilters] = useState({
-    username: '',
-    app: '',
-    actionType: '',
-  });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [timeRange, setTimeRange] = useState<number[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailRecord, setDetailRecord] = useState<OperationLog | null>(null);
 
   const { getOperationLogs, exportOperationLogs } = useSecurityApi();
 
-  const fetchOperationLogs = async (page = 1, pageSize = pagination.pageSize) => {
+  const fetchOperationLogs = async (
+    page = 1,
+    pageSize = pagination.pageSize,
+    nextFilters = filters,
+    nextTimeRange = timeRange,
+  ) => {
     setLoading(true);
     try {
-      const params = buildOperationLogParams(filters, timeRange, page, pageSize);
+      const params = buildOperationLogParams(nextFilters, nextTimeRange, page, pageSize);
 
       const response = await getOperationLogs(params);
       setDataSource(response.items || []);
@@ -88,18 +106,12 @@ const OperationLogs: React.FC = () => {
   };
 
   const handleReset = () => {
-    setFilters({
-      username: '',
-      app: '',
-      actionType: '',
-    });
+    setFilters(EMPTY_FILTERS);
     setTimeRange([]);
     if (timeSelectorRef.current?.reset) {
       timeSelectorRef.current.reset();
     }
-    setTimeout(() => {
-      fetchOperationLogs(1, pagination.pageSize);
-    }, 0);
+    fetchOperationLogs(1, pagination.pageSize, EMPTY_FILTERS, []);
   };
 
   const handleTimeChange = (range: number[]) => {
@@ -151,9 +163,56 @@ const OperationLogs: React.FC = () => {
     setDetailRecord(null);
   };
 
-  const detail = detailRecord?.detail || {};
-  const hasDiff =
-    detail.before_data !== undefined || detail.after_data !== undefined;
+  const formatRecorded = (value: string) =>
+    value === UNRECORDED ? t('system.security.outcomeUnrecorded') : value;
+
+  const formatOutcome = (outcome: OperationOutcome) => {
+    if (outcome === 'success') return t('system.security.outcomeSuccess');
+    if (outcome === 'failure') return t('system.security.outcomeFailure');
+    if (outcome === 'accepted') return t('system.security.outcomeAccepted');
+    return t('system.security.outcomeUnrecorded');
+  };
+
+  const renderChangeSection = (view: OperationLogDetailView) => {
+    const { changes } = view;
+    if (changes.kind === 'unrecorded') {
+      return t('system.security.noChangeRecorded');
+    }
+    if (changes.kind === 'hidden' || changes.kind === 'none') {
+      return t('system.security.noChangeContent');
+    }
+    if (changes.kind === 'create') {
+      return (
+        <ReactDiffViewer
+          oldValue=""
+          newValue={JSON.stringify(changes.after, null, 2)}
+          splitView
+        />
+      );
+    }
+    if (changes.kind === 'delete') {
+      return (
+        <ReactDiffViewer
+          oldValue={JSON.stringify(changes.before, null, 2)}
+          newValue=""
+          splitView
+        />
+      );
+    }
+    const beforeObj: Record<string, unknown> = {};
+    const afterObj: Record<string, unknown> = {};
+    changes.fields.forEach((field) => {
+      beforeObj[field.key] = field.before;
+      afterObj[field.key] = field.after;
+    });
+    return (
+      <ReactDiffViewer
+        oldValue={JSON.stringify(beforeObj, null, 2)}
+        newValue={JSON.stringify(afterObj, null, 2)}
+        splitView
+      />
+    );
+  };
 
   const columns = [
     {
@@ -173,14 +232,27 @@ const OperationLogs: React.FC = () => {
       key: 'source_ip',
     },
     {
-      title: t('system.security.operationModule'),
-      dataIndex: 'app',
-      key: 'app',
+      title: t('system.security.appName'),
+      dataIndex: 'app_name',
+      key: 'app_name',
+      render: (_: string, record: OperationLog) => record.app_name || record.app,
     },
     {
       title: t('system.security.operationType'),
       dataIndex: 'action_type_display',
       key: 'action_type_display',
+    },
+    {
+      title: t('system.security.operationObject'),
+      key: 'target',
+      render: (_: unknown, record: OperationLog) =>
+        formatRecorded(buildOperationLogDetailView(record).targetName),
+    },
+    {
+      title: t('system.security.executionResult'),
+      key: 'outcome',
+      render: (_: unknown, record: OperationLog) =>
+        formatOutcome(buildOperationLogDetailView(record).outcome),
     },
     {
       title: t('system.security.operationDetail'),
@@ -193,26 +265,32 @@ const OperationLogs: React.FC = () => {
       key: 'detail',
       width: 100,
       fixed: 'right' as const,
-      render: (_: unknown, record: OperationLog) =>
-        hasOperationDetail(record) ? (
-          <Button type="link" size="small" onClick={() => handleOpenDetail(record)}>
-            {t('common.detail')}
-          </Button>
-        ) : (
-          '--'
-        ),
+      render: (_: unknown, record: OperationLog) => (
+        <Button type="link" size="small" onClick={() => handleOpenDetail(record)}>
+          {t('common.detail')}
+        </Button>
+      ),
     },
   ];
 
+  const detailView = detailRecord ? buildOperationLogDetailView(detailRecord) : null;
+
   return (
     <div className="flex flex-col h-full w-full">
-      {/* Filter Section */}
       <div className="flex-none mb-3">
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 flex-wrap">
           <Search
             placeholder={t('system.security.operatorPlaceholder')}
             value={filters.username}
             onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+            onSearch={handleSearch}
+            allowClear
+            className="w-48"
+          />
+          <Search
+            placeholder={t('system.security.targetPlaceholder')}
+            value={filters.target}
+            onChange={(e) => setFilters({ ...filters, target: e.target.value })}
             onSearch={handleSearch}
             allowClear
             className="w-48"
@@ -241,6 +319,19 @@ const OperationLogs: React.FC = () => {
               { label: t('common.execute'), value: 'execute' },
             ]}
           />
+          <Select
+            placeholder={t('system.security.outcomePlaceholder')}
+            value={filters.outcome || undefined}
+            onChange={(value) => setFilters({ ...filters, outcome: value })}
+            allowClear
+            className="w-48"
+            options={[
+              { label: t('system.security.outcomeSuccess'), value: 'success' },
+              { label: t('system.security.outcomeFailure'), value: 'failure' },
+              { label: t('system.security.outcomeAccepted'), value: 'accepted' },
+              { label: t('system.security.outcomeUnrecorded'), value: 'unrecorded' },
+            ]}
+          />
           <TimeSelector
             ref={timeSelectorRef}
             showTime
@@ -262,7 +353,6 @@ const OperationLogs: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
       <div className="flex-1 min-h-0 relative">
         <CustomTable
           columns={columns}
@@ -283,7 +373,7 @@ const OperationLogs: React.FC = () => {
               fetchOperationLogs(page, nextPageSize);
             },
           }}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1400 }}
         />
       </div>
 
@@ -294,44 +384,68 @@ const OperationLogs: React.FC = () => {
         onClose={handleCloseDetail}
         destroyOnHidden
       >
-        {detailRecord && (
+        {detailRecord && detailView && (
           <div className="flex flex-col gap-4">
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label={t('system.security.targetType')}>
-                {detailRecord.target_type || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.targetId')}>
-                {detailRecord.target_id || '--'}
-              </Descriptions.Item>
-              {detail.scenario && (
-                <Descriptions.Item label={t('system.security.scenario')}>
-                  {detail.scenario}
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.basicInfo')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.operator')}>
+                  {formatRecorded(detailView.operator)}
                 </Descriptions.Item>
-              )}
-              {detail.model_object && (
-                <Descriptions.Item label={t('system.security.modelObject')}>
-                  {detail.model_object}
+                <Descriptions.Item label={t('system.security.operationTime')}>
+                  {detailRecord.operation_time
+                    ? convertToLocalizedTime(detailRecord.operation_time)
+                    : t('system.security.outcomeUnrecorded')}
                 </Descriptions.Item>
-              )}
-              {detail.operator_object && (
-                <Descriptions.Item label={t('system.security.operatorObject')}>
-                  {detail.operator_object}
+                <Descriptions.Item label={t('system.security.appName')}>
+                  {formatRecorded(detailView.appName)}
                 </Descriptions.Item>
-              )}
-            </Descriptions>
+                <Descriptions.Item label={t('system.security.sourceIp')}>
+                  {formatRecorded(detailView.sourceIp)}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
 
-            {hasDiff && (
-              <div>
-                <div className="mb-2 font-medium">
-                  {t('system.security.beforeAfter')}
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.operationObject')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.targetType')}>
+                  {formatRecorded(detailView.targetType)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.targetName')}>
+                  {formatRecorded(detailView.targetName)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.targetId')}>
+                  {formatRecorded(detailView.targetId)}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.executionResult')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.executionResult')}>
+                  {formatOutcome(detailView.outcome)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.failureReason')}>
+                  {detailView.outcome === 'failure'
+                    ? (detailView.failureReason || t('system.security.outcomeUnrecorded'))
+                    : '-'}
+                </Descriptions.Item>
+              </Descriptions>
+              {detailView.showAcceptedHint && (
+                <div className="mt-2 text-[var(--color-text-3)]">
+                  {t('system.security.outcomeAcceptedHint')}
                 </div>
-                <ReactDiffViewer
-                  oldValue={JSON.stringify(detail.before_data ?? {}, null, 2)}
-                  newValue={JSON.stringify(detail.after_data ?? {}, null, 2)}
-                  splitView
-                />
+              )}
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">
+                {t('system.security.beforeAfter')}
               </div>
-            )}
+              {renderChangeSection(detailView)}
+            </div>
           </div>
         )}
       </Drawer>
