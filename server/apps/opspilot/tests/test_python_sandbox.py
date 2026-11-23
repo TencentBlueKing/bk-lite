@@ -225,6 +225,65 @@ def test_skill_command_supports_existing_virtual_skill_paths():
         sandbox.close()
 
 
+def test_skill_command_rewrites_windows_users_workspace_without_re_escape(mocker):
+    """C:\\Users\\... 不得再触发 bad escape \\U，且交给 sh 的路径要用正斜杠。"""
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
+
+    sandbox = mocker.Mock()
+    sandbox.workspace = r"C:\Users\kido\AppData\Local\Temp\opspilot-run-test"
+    sandbox.execute_command.return_value = SimpleNamespace(output="ok", exit_code=0)
+    backend = LocalSkillBackend(sandbox)
+    result = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py projects/demo --quick-generate")
+    assert result.exit_code == 0
+    command = sandbox.execute_command.call_args.args[0]
+    assert command.startswith("python C:/Users/kido/AppData/Local/Temp/opspilot-run-test/skills/ppt-master/")
+    assert r"\Users" not in command
+    assert " /skills/" not in command
+
+
+def test_ppt_execute_rejects_probe_and_export_before_pages_exist():
+    from pathlib import Path
+
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
+
+    sandbox = PythonSandbox()
+    try:
+        backend = LocalSkillBackend(sandbox, ppt_workspace=sandbox.workspace + "/ppt-workspace")
+        listed = backend.execute("ls -la /ppt-workspace/projects/alarm-summary_20261123/svg_output")
+        assert listed.exit_code == 126
+        assert "不要探测目录" in listed.output
+        exported = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py projects/alarm-summary_20261123 --quick-generate")
+        assert exported.exit_code == 126
+        assert "write_file" in exported.output
+        touched = backend.execute("mkdir -p projects && touch projects/from-cwd.txt")
+        assert touched.exit_code == 0, touched.output
+        assert (Path(sandbox.workspace) / "ppt-workspace" / "projects" / "from-cwd.txt").is_file()
+        sandbox.write_workspace_file(sandbox.workspace + "/ppt-workspace/projects/demo/svg_output/01.svg", b"<svg/>")
+        ready = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py projects/demo --quick-generate")
+        assert ready.exit_code != 126
+    finally:
+        sandbox.close()
+
+
+def test_ppt_write_file_is_not_rejected_as_python_inline():
+    from pathlib import Path
+
+    from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
+
+    sandbox = PythonSandbox()
+    try:
+        backend = LocalSkillBackend(sandbox, ppt_workspace=sandbox.workspace + "/ppt-workspace")
+        probed = backend.execute('python -c "print(1)"')
+        assert probed.exit_code == 126
+        assert "不要 python -c" in probed.output
+        written = backend.write("/ppt-workspace/projects/demo/svg_output/01.svg", "<svg xmlns='http://www.w3.org/2000/svg'/>")
+        assert written.error is None, written.error
+        page = Path(sandbox.workspace) / "ppt-workspace" / "projects" / "demo" / "svg_output" / "01.svg"
+        assert page.read_text(encoding="utf-8").startswith("<svg")
+    finally:
+        sandbox.close()
+
+
 def test_formal_skill_builder_uses_same_workspace_as_python(mocker, tmp_path):
     from apps.opspilot.metis.llm.chain.skill_sandbox import SkillSandboxMixin
     from apps.opspilot.services.python_sandbox.skill_backend import LocalSkillBackend
@@ -327,13 +386,31 @@ async def test_run_workspace_cleanup_on_setup_failure_preserves_exception(mocker
     assert "secret-cleanup-sentinel" not in logging.Formatter().format(record)
 
 
+def test_sync_ppt_workspace_copies_a_slide(tmp_path):
+    from pathlib import Path
+
+    from apps.opspilot.services.python_sandbox.ppt import sync_ppt_workspace
+
+    sandbox = PythonSandbox()
+    try:
+        slide = Path(sandbox.workspace) / "ppt-workspace" / "projects" / "demo" / "svg_output"
+        slide.mkdir(parents=True)
+        (slide / "01.svg").write_text("<svg>ok</svg>", encoding="utf-8")
+        sync_ppt_workspace(sandbox, tmp_path)
+    finally:
+        sandbox.close()
+
+    copied = tmp_path / "projects" / "demo" / "svg_output" / "01.svg"
+    assert copied.read_text(encoding="utf-8") == "<svg>ok</svg>"
+
+
 def test_ppt_master_materializes_and_exports_in_local_workspace(mocker, tmp_path, monkeypatch):
     import io
     import zipfile
     from pathlib import Path
 
     from apps.opspilot.metis.llm.chain.skill_sandbox import SkillSandboxMixin
-    from apps.opspilot.services.ppt_master_runtime import discard_ppt_run, inspect_ppt_run, newest_export_pptx, settle_ppt_export
+    from apps.opspilot.services.ppt_master_runtime import discard_ppt_run, inspect_ppt_run, materialize_ppt_export, newest_export_pptx
 
     monkeypatch.setenv("OPSPILOT_PPT_TMP_ROOT", str(tmp_path))
     package_root = Path(__file__).resolve().parents[1] / "support-files" / "skill_packages" / "ppt-master"
@@ -354,7 +431,7 @@ def test_ppt_master_materializes_and_exports_in_local_workspace(mocker, tmp_path
         assert inspect_ppt_run(Path(directory), sandbox=sandbox) == (False, 3)
         host_exec = mocker.patch("apps.opspilot.services.ppt_master_runtime.subprocess.run", side_effect=AssertionError("host exporter used"))
         execution = mocker.spy(sandbox, "execute_command")
-        assert settle_ppt_export(Path(directory), sandbox=sandbox) == "exported", execution.spy_return.output
+        assert materialize_ppt_export(sandbox, Path(directory)) == "exported", execution.spy_return.output
         host_exec.assert_not_called()
         data = newest_export_pptx(Path(directory)).read_bytes()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:

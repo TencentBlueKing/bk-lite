@@ -7,6 +7,7 @@
  * 样式：无深背景、无边框、小字号、简洁紧凑
  */
 
+import { foldPptSkillToolCalls } from '@bk-lite/chat-content/pptSkillToolFold';
 import { BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 
 export type Translate = (
@@ -486,12 +487,23 @@ export const renderAllToolCalls = (
 ): string => {
   if (toolCalls.size === 0) return '';
 
-  const toolsArray = dedupeToolCallsBySignature(Array.from(toolCalls.entries()));
+  const toolsArray = foldPptSkillToolCalls(
+    dedupeToolCallsBySignature(Array.from(toolCalls.entries())).map(([id, info]) => ({ id, ...info })),
+    {
+      name: t('chat.toolCall.pptSkill', 'PPT 技能'),
+      action: t('chat.toolCall.pptSkillAction', '写页面并导出'),
+    },
+  );
   const totalCount = toolsArray.length;
+  const pptSkillName = t('chat.toolCall.pptSkill', 'PPT 技能');
+  const onlyPptSkill = totalCount === 1 && toolsArray[0]?.name === pptSkillName;
+  const headerLabel = onlyPptSkill
+    ? `${pptSkillName} · ${t('chat.toolCall.pptSkillAction', '写页面并导出')}`
+    : t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount });
   const completedCount = toolsArray.filter(
-    ([, info]) => info.status === 'completed' || info.status === 'error'
+    (info) => info.status === 'completed' || info.status === 'error'
   ).length;
-  const hasError = toolsArray.some(([, info]) => info.status === 'error');
+  const hasError = toolsArray.some((info) => info.status === 'error');
   const hasRunning = completedCount < totalCount;
 
   // 组头部状态图标
@@ -502,24 +514,27 @@ export const renderAllToolCalls = (
       : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
 
   // 渲染所有工具项
-  const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info, t)).join('');
+  const toolItems = toolsArray.map((info) => renderToolItem(info.id, info, t)).join('');
 
+  const canOpen = !onlyPptSkill || hasError;
   // 提示文字：工具还在跑 → 执行中；工具都结束但流未收尾 → 正在分析；否则引导展开
-  const hintText = hasRunning
-    ? t('chat.toolCall.running', '执行中...')
-    : isStreaming
-      ? t('chat.toolCall.analyzing', '正在分析工具结果...')
-      : t('chat.toolCall.expandHint', '点击展开查看详情');
+  const hintText = !canOpen
+    ? ''
+    : hasRunning
+      ? t('chat.toolCall.running', '执行中...')
+      : isStreaming
+        ? t('chat.toolCall.analyzing', '正在分析工具结果...')
+        : t('chat.toolCall.expandHint', '点击展开查看详情');
 
   // 流式中默认展开：仍在跑工具或仍在等模型输出
   const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
 
   // 组头部
-  const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>${escapeHtml(t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount }))}</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
+  const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>${escapeHtml(headerLabel)}</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
 
   // 组内容 - 默认收起时用 display:none，避免 CSS 优先级问题
-  const bodyDisplay = shouldExpand ? '' : 'display: none;';
-  const body = `<div class="tool-call-group-body" style="padding-left: 20px; margin-top: 4px; ${bodyDisplay}">${toolItems}</div>`;
+  const bodyDisplay = shouldExpand && (!onlyPptSkill || hasError) ? '' : 'display: none;';
+  const body = `<div class="tool-call-group-body" style="padding-left: 20px; margin-top: 4px; ${bodyDisplay}">${onlyPptSkill && !hasError ? '' : toolItems}</div>`;
 
   // 流式回复中默认展开，回复结束后收起
   const expandedClass = shouldExpand ? ' expanded' : '';
