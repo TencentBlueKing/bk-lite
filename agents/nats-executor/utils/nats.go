@@ -18,6 +18,12 @@ type fileDownloader interface {
 	DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error
 }
 
+type existingFileKeeper interface {
+	DownloadToFileIfAbsent(ctx context.Context, fileKey, targetPath, fileName string) error
+}
+
+var _ existingFileKeeper = (*jetstream.JetStreamClient)(nil)
+
 var newJetStreamClient = func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
 	return jetstream.NewJetStreamClient(nc, bucketName)
 }
@@ -28,6 +34,13 @@ type DownloadFileRequest struct {
 	FileName       string `json:"file_name"`
 	TargetPath     string `json:"target_path"`
 	ExecuteTimeout int    `json:"execute_timeout"`
+	// Overwrite 缺省或为 true 时替换同名文件；只有明确为 false 才保留已有文件。
+	Overwrite *bool `json:"overwrite,omitempty"`
+}
+
+// KeepExisting 报告请求是否明确要求保留已有的同名文件。
+func KeepExisting(overwrite *bool) bool {
+	return overwrite != nil && !*overwrite
 }
 
 func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
@@ -52,7 +65,19 @@ func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
 		return fmt.Errorf("failed to create JetStream client: %w", err)
 	}
 
-	if err := client.DownloadToFile(ctx, req.FileKey, req.TargetPath, req.FileName); err != nil {
+	download := client.DownloadToFile
+	if KeepExisting(req.Overwrite) {
+		keeper, ok := client.(existingFileKeeper)
+		if !ok {
+			return fmt.Errorf("downloader cannot keep existing files")
+		}
+		download = keeper.DownloadToFileIfAbsent
+	}
+
+	if err := download(ctx, req.FileKey, req.TargetPath, req.FileName); err != nil {
+		if errors.Is(err, downloaderr.ErrTargetExists) {
+			return err
+		}
 		switch downloaderr.KindOf(err) {
 		case downloaderr.KindTimeout:
 			return downloaderr.New(downloaderr.KindTimeout, fmt.Errorf("download operation timed out: %w", err))

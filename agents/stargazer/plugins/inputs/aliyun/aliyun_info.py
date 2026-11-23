@@ -323,6 +323,20 @@ class CwAliyun(object):
             collection_task_id=self.collection_task_id,
         )
 
+    def _probe_connection(self):
+        return self.__getattr__("get_connection_result").get_connection_result()
+
+    async def probe(self):
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        result = await asyncio.to_thread(self._probe_connection)
+        if isinstance(result, dict) and result.get("result"):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        return AccessProbeResult(
+            status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+            error_code="aliyun_connection_failed",
+        )
+
     async def list_all_resources(self, **kwargs):
         manager = self.__getattr__("list_all_resources")
         return await manager.list_all_resources(**kwargs)

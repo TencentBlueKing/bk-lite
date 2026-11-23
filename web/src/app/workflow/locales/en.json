@@ -205,7 +205,12 @@
             "memory_context": "Memory Context"
           },
           "output": {
-            "message": "Agent Output"
+            "message": "Agent Output",
+            "artifacts": "Generated Attachments",
+            "artifacts.id": "File ID",
+            "artifacts.filename": "File Name",
+            "artifacts.format": "Format",
+            "artifacts.size": "Size"
           }
         },
         "bklite_intent_classification": {
@@ -945,7 +950,8 @@
       "notificationTitle": "Notification Title",
       "notificationContent": "Notification Content",
       "notificationAttachment": "Attachment",
-      "notificationAttachmentHint": "Optional; drag an upstream report artifact",
+      "wecomNotificationAttachmentHint": "Select or drag files from an upstream node. The WeCom group receives both download links and files.",
+      "notificationAttachmentHint": "Select or drag files from an upstream node to include download links in the notification",
       "sendRealTestNotification": "Send a real test notification?",
       "realNotificationWarning": "This uses a real notification channel in the current organization. Confirm that the channel, recipients, and content are safe for testing.",
       "notificationRecipients": "Recipients",

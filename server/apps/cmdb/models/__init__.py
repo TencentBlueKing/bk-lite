@@ -1,6 +1,7 @@
 from apps.cmdb.models.auto_relation_pending import *  # noqa
 from apps.cmdb.models.change_record import *  # noqa
 from apps.cmdb.models.ci_context import *  # noqa
+from apps.cmdb.models.collect_access_check import CollectAccessCheck, CollectAccessCheckRow  # noqa
 from apps.cmdb.models.collect_model import *  # noqa
 from apps.cmdb.models.collect_reconcile import *  # noqa
 from apps.cmdb.models.collect_task_credential_hit import *  # noqa

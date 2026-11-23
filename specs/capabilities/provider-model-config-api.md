@@ -54,3 +54,7 @@ TBD - created by archiving change provider-model-team-filter. Update Purpose aft
 - **AND** 用户对该供应商有权限
 - **THEN** 页面展示该供应商下所有 LLM/Embed/Rerank/OCR 模型
 - **AND** 不因模型的 team 字段而过滤任何模型
+
+### 供应商 HTTPS 证书校验
+
+供应商默认校验 HTTPS 证书。新增或编辑供应商时可开启“跳过 SSL 证书校验”。测试连接使用表单中当前的开关值。保存后，模型同步和对该供应商的模型调用使用保存的设置。

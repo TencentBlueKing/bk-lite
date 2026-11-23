@@ -2,8 +2,10 @@
 # @File: datasource_models.py
 # @Time: 2025/11/3 16:07
 # @Author: windyzhao
-from django.db import models
-from django.db.models import JSONField
+import uuid
+
+from django.db import models, transaction
+from django.db.models import JSONField, Q
 
 from apps.core.models.group_info import Groups
 from apps.core.models.maintainer_info import MaintainerInfo
@@ -189,6 +191,8 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     field_schema = JSONField(default=list, blank=True, help_text="接口返回字段定义（数据源级配置，表格默认列可使用）")
     is_build_in = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=512, null=True, blank=True, unique=True, verbose_name="内置配置稳定键")
+    # 用户源的跨环境身份。服务器生成，普通接口只读。内置源留空，继续用 build_in_key。
+    portable_key = models.CharField(max_length=64, null=True, blank=True, unique=True, verbose_name="可移植身份")
     # 与前端 hasAppAccess / get_client 的 app 名对齐。仅内置种子写入；空表示不按模块许可隐藏。
     required_app = models.CharField(max_length=64, null=True, blank=True, verbose_name="模块许可")
 
@@ -198,3 +202,32 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         constraints = [
             models.UniqueConstraint(fields=["name", "rest_api"], name="unique_name_rest_api"),
         ]
+
+    @classmethod
+    def ensure_portable_key(cls, pk: int) -> str:
+        """只补空身份。已有钥匙原样返回，不写名称、参数或其他字段。"""
+        with transaction.atomic():
+            row = cls.objects.select_for_update().filter(pk=pk, is_build_in=False).first()
+            if row is None:
+                raise cls.DoesNotExist(f"datasource {pk} has no user identity")
+            if row.portable_key:
+                return row.portable_key
+            candidate = str(uuid.uuid4())
+            updated = (
+                cls.objects.filter(pk=pk, is_build_in=False)
+                .filter(
+                    Q(portable_key__isnull=True) | Q(portable_key=""),
+                )
+                .update(portable_key=candidate)
+            )
+            if updated:
+                return candidate
+            return cls.objects.values_list("portable_key", flat=True).get(pk=pk)
+
+    def save(self, *args, **kwargs):
+        if not self.is_build_in and not self.portable_key:
+            if self.pk and not self._state.adding:
+                self.portable_key = type(self).ensure_portable_key(self.pk)
+            else:
+                self.portable_key = str(uuid.uuid4())
+        super().save(*args, **kwargs)

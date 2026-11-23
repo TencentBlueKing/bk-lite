@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.workflow.views import (
@@ -8,6 +9,7 @@ from apps.workflow.views import (
     WorkflowInteractionViewSet,
     WorkflowTriggerViewSet,
     WorkflowViewSet,
+    download_shared_artifact,
 )
 
 router = DefaultRouter()
@@ -19,4 +21,4 @@ router.register(r"api/interactions", WorkflowInteractionViewSet, basename="workf
 router.register(r"api/triggers", WorkflowTriggerViewSet, basename="workflow-trigger")
 router.register(r"api/artifacts", ExecutionArtifactViewSet, basename="workflow-artifact")
 
-urlpatterns = router.urls
+urlpatterns = [path("api/artifacts/shared/", download_shared_artifact, name="workflow-artifact-shared"), *router.urls]

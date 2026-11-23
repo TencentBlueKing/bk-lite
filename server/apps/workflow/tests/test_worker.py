@@ -443,7 +443,11 @@ def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_
     ],
 )
 def test_agent_reply_channel_follows_exclusive_body_consumers_in_execution_snapshot(extra_inputs, outputs, channel, body, expected):
-    notification = {"name": "bklite_notification", "type": "SIMPLE", "inputParameters": {"notification_type": channel, "body": body}}
+    notification = {
+        "name": "bklite_notification",
+        "type": "SIMPLE",
+        "inputParameters": {"notification_type": channel, "body": body, "artifacts": "${agent.output.artifacts}"},
+    }
     execution = WorkflowExecution(
         workflow_id=1,
         workflow_version=1,

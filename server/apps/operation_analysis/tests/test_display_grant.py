@@ -160,6 +160,157 @@ def test_display_session_reads_declared_data_and_rejects_other_sources(settings,
 
 
 @pytest.mark.django_db
+def test_display_resolves_declared_option_source_without_login(settings):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = SIGNING_KEY
+    declared = DataSourceAPIModel.objects.create(
+        name=f"display-declared-{uuid.uuid4()}",
+        rest_api=f"demo/display-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    foreign = DataSourceAPIModel.objects.create(
+        name=f"display-foreign-{uuid.uuid4()}",
+        rest_api=f"demo/display-foreign-{uuid.uuid4()}",
+        groups=[9],
+        created_by="alice",
+        updated_by="alice",
+    )
+    screen = _screen(view_sets=[{"valueConfig": {"dataSource": declared.id}}])
+    admin = _admin(APIClient(), _sharer())
+    created = _create(admin, screen, 1)
+    token = _token(created.data["url"])
+    television = APIClient()
+    activated = television.post(
+        "/api/v1/operation_analysis/api/screen_display/activate/",
+        {"token": token},
+        format="json",
+    )
+    assert activated.status_code == 200
+
+    allowed = television.post(
+        "/api/v1/operation_analysis/api/screen_display/current/resolve_option_source/",
+        {"sourceId": declared.id},
+        format="json",
+    )
+    assert allowed.status_code == 200
+    assert allowed.data["status"] == "resolved"
+    assert allowed.data["id"] == declared.id
+
+    denied = television.post(
+        "/api/v1/operation_analysis/api/screen_display/current/resolve_option_source/",
+        {"sourceRef": {"type": "rest_api", "value": foreign.rest_api}},
+        format="json",
+    )
+    assert denied.status_code == 200
+    assert denied.data == {"status": "forbidden"}
+    assert "id" not in denied.data
+    assert foreign.name not in str(denied.data)
+
+
+@pytest.mark.django_db
+def test_display_resolves_condition_field_source_declared_on_the_screen(settings, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = SIGNING_KEY
+    seen = {}
+
+    def fake_get_source_data(self, request, pk=None):
+        seen["pk"] = int(pk)
+        seen["data"] = dict(request.data)
+        from rest_framework.response import Response
+
+        return Response({"data": [{"name": "host", "label": "主机"}], "warnings": []})
+
+    monkeypatch.setattr(DataSourceAPIModelViewSet, "get_source_data", fake_get_source_data)
+    chart = DataSourceAPIModel.objects.create(
+        name=f"display-chart-{uuid.uuid4()}",
+        rest_api=f"demo/display-chart-{uuid.uuid4()}",
+        groups=[1],
+        params=[
+            {
+                "name": "filters",
+                "type": "conditionFilter",
+                "filterType": "params",
+                "inputConfig": {
+                    "control": "conditionFilter",
+                    "fields": {
+                        "kind": "dynamic",
+                        "valueField": "name",
+                        "labelField": "label",
+                        "queryParams": {"metric_id": {"ref": "metric_id"}},
+                    },
+                },
+            }
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    fields = DataSourceAPIModel.objects.create(
+        name=f"display-fields-{uuid.uuid4()}",
+        rest_api=f"demo/display-fields-{uuid.uuid4()}",
+        groups=[1],
+        params=[{"name": "metric_id", "type": "string", "filterType": "params"}],
+        created_by="alice",
+        updated_by="alice",
+    )
+    params = chart.params
+    params[0]["inputConfig"]["fields"]["sourceId"] = fields.id
+    chart.params = params
+    chart.save(update_fields=["params"])
+    foreign = DataSourceAPIModel.objects.create(
+        name=f"display-foreign-fields-{uuid.uuid4()}",
+        rest_api=f"demo/display-foreign-fields-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    screen = _screen(view_sets=[{"valueConfig": {"dataSource": chart.id, "dataSourceParams": []}}])
+    admin = _admin(APIClient(), _sharer())
+    created = _create(admin, screen, 1)
+    television = APIClient()
+    activated = television.post(
+        "/api/v1/operation_analysis/api/screen_display/activate/",
+        {"token": _token(created.data["url"])},
+        format="json",
+    )
+    assert activated.status_code == 200
+
+    allowed = television.post(
+        "/api/v1/operation_analysis/api/screen_display/current/resolve_option_source/",
+        {"sourceId": fields.id},
+        format="json",
+    )
+    assert allowed.status_code == 200
+    assert allowed.data == {"status": "resolved", "id": fields.id}
+
+    loaded = television.post(
+        f"/api/v1/operation_analysis/api/screen_display/current/query/{fields.id}/",
+        {"metric_id": "metric-1"},
+        format="json",
+    )
+    assert loaded.status_code == 200
+    assert seen["pk"] == fields.id
+    assert seen["data"]["metric_id"] == "metric-1"
+    assert loaded.data["data"] == [{"name": "host", "label": "主机"}]
+
+    denied = television.post(
+        "/api/v1/operation_analysis/api/screen_display/current/resolve_option_source/",
+        {"sourceId": foreign.id},
+        format="json",
+    )
+    assert denied.data == {"status": "forbidden"}
+    assert foreign.name not in str(denied.data)
+    assert str(foreign.id) not in str(denied.data)
+
+    rejected = television.post(
+        f"/api/v1/operation_analysis/api/screen_display/current/query/{foreign.id}/",
+        {},
+        format="json",
+    )
+    assert rejected.status_code == 403
+    assert foreign.name not in str(rejected.data)
+
+
+@pytest.mark.django_db
 def test_display_data_sources_include_rest_api_for_filter_lookup(settings):
     settings.DASHBOARD_SHARE_SIGNING_KEY = SIGNING_KEY
     datasource = DataSourceAPIModel.objects.create(

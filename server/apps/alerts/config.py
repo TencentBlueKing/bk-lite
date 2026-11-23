@@ -17,6 +17,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.alerts.tasks.tasks.beat_close_alert",
         "schedule": crontab(minute="*/5"),
     },
+    "beat_replay_monitor_shield_events": {
+        "task": "apps.alerts.tasks.tasks.beat_replay_monitor_shield_events",
+        "schedule": crontab(minute="*/5"),
+    },
     "check_and_send_reminders": {
         "task": "apps.alerts.tasks.tasks.check_and_send_reminders",
         "schedule": crontab(minute="*"),

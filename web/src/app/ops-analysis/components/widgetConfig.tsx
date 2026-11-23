@@ -235,6 +235,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onDirtyChange,
   previewSingleStyle,
   previewHost = null,
+  canRepairOptionSource = false,
   onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
@@ -1901,6 +1902,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             dataVariables={dataVariables}
             onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
+            canRepairOptionSource={canRepairOptionSource}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
             }

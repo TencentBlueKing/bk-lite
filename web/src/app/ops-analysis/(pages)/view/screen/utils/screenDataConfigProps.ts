@@ -12,6 +12,7 @@ export interface ScreenDataConfigCompareProps {
   screenFrame?: unknown;
   previewSingleStyle?: unknown;
   previewHost?: unknown;
+  canRepairOptionSource?: unknown;
   dataVariables?: unknown;
   onCreateDataVariable?: unknown;
   dataSourceManager: {
@@ -38,6 +39,7 @@ export const areScreenDataConfigPropsEqual = (
   prev.screenFrame === next.screenFrame &&
   prev.previewSingleStyle === next.previewSingleStyle &&
   prev.previewHost === next.previewHost &&
+  prev.canRepairOptionSource === next.canRepairOptionSource &&
   prev.dataVariables === next.dataVariables &&
   prev.onCreateDataVariable === next.onCreateDataVariable &&
   prev.dataSourceManager.selectedDataSource ===

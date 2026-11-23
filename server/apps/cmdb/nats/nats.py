@@ -1271,6 +1271,26 @@ def create_manual_config_files(params):
 
 
 @nats_client.register
+def receive_access_check_result(data: dict):
+    """接收连通性测试终态，入队后立刻回复。落库在 Celery worker。"""
+    from apps.cmdb.services.collect_access_check_service import public_access_check_payload
+    from apps.cmdb.tasks.celery_tasks import apply_access_check_result
+
+    if not isinstance(data, dict):
+        raise ValueError("invalid_request")
+    payload = public_access_check_payload(data)
+    if not payload["check_id"] or not payload["collect_task_id"]:
+        raise ValueError("invalid_request")
+    apply_access_check_result.delay(payload)
+    logger.info(
+        "event=access_check_result_queued check_id=%s task_id=%s",
+        payload["check_id"],
+        payload["collect_task_id"],
+    )
+    return {"accepted": True, "check_id": payload["check_id"]}
+
+
+@nats_client.register
 def receive_scan_credential_result(data: dict):
     """接收扫描一枪的凭据结果；不属于 Stargazer 采集状态投影。"""
     from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService

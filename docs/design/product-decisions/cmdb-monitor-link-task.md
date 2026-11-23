@@ -1,8 +1,9 @@
 # CMDB ↔ 监控同步任务产品决策记忆
 
-- 最近更新：2026-10-20
+- 最近更新：2026-11-20
 - 正向规格：`specs/changes/cmdb-monitor-link-task/spec.md`（implemented）
 - 反向规格：`specs/changes/monitor-cmdb-link-task/spec.md`（implemented）
+- 成功后续步规格：`specs/changes/cmdb-monitor-success-link/spec.md`（implemented）
 
 ## 产品定位
 
@@ -26,11 +27,14 @@
 - 任务记录延时回收，避免堆积；回收不拆已建立的身份关联。
 - 反向第一期倒内置 `CMDB_MODEL_TO_MONITOR_OBJECT`，未知对象不默认 host；无映射对象不显示入口。
 - 反向禁止列表直调会 upsert 的 `push_to_cmdb`；主机创建钩子保持 best-effort，不替代任务。
+- 资产列表新增、导入新建、监控接入成功后，弹出与列表相同的同步确认，确认后走现有胶水任务。取消只完成刚才的保存。不静默推送，不新做推送 API。
+- 导入只要约本次新建的实例。更新已有实例不进后续同步。超过 100 条只带走前 100 条，与任务上限一致。
 
 ## 实现计划
 
 - 正向：`specs/changes/cmdb-monitor-link-task/plan.md`
 - 反向：`specs/changes/monitor-cmdb-link-task/plan.md`
+- 成功后续步：`specs/changes/cmdb-monitor-success-link/plan.md`
 
 ## 明确后置
 
@@ -61,3 +65,4 @@
 - 2026-10-19 对话：任务独立于 CMDB/监控核心；对端未装或无许可则隐藏入口；任务延时回收。
 - 2026-10-19 对话：接入前先选模板；无全量对象映射时自定义模型手指定对象，不改内置常量。
 - 2026-10-20 对话：反向第一期做关联 + 确认新建；已关联不覆盖字段；倒内置映射、禁止默认 host；不把 `push_to_cmdb` 接到列表。
+- 2026-11-20 对话：导入和单条新增都要有后续推送。成功后直接弹与列表相同的确认框。监控接入成功同样接反向任务。

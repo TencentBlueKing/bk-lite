@@ -2,9 +2,10 @@ from typing import Type, TypeVar
 
 import json_repair
 from langchain_core.output_parsers import PydanticOutputParser
-from apps.core.logger import opspilot_logger as logger
 from openai import OpenAI
 from pydantic import BaseModel
+
+from apps.core.logger import opspilot_logger as logger
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -59,6 +60,8 @@ class StructuredOutputParser:
             if base_url:
                 kwargs["base_url"] = base_url
 
+            if getattr(self.llm, "http_client", None) is not None:
+                kwargs["http_client"] = self.llm.http_client
             self._independent_llm = OpenAI(**kwargs)
 
         return self._independent_llm

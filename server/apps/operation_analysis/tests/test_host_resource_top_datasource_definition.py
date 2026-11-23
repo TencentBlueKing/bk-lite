@@ -27,7 +27,7 @@ def test_host_resource_top_data_source_supports_topn_table_and_metric_switch():
     assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"
     assert instance_ids["inputConfig"]["multiple"] is True
-    assert instance_ids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_host_instance_list"
+    assert instance_ids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "监控主机列表::monitor/get_host_instance_list"
     assert {field["key"] for field in source["field_schema"]} >= {
         "rank",
         "display_name",

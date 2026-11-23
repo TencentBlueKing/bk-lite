@@ -5,6 +5,7 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.monitor_link import BATCH_PUSH_LIMIT
 from apps.cmdb.services.operation_service import OperationService
 from apps.cmdb.services.transfer_authorization import TransferAuthorization
 from apps.cmdb.services.transfer_service import TransferError, fingerprint
@@ -278,6 +279,18 @@ class TransferImport:
             return None, unique_failure
 
     @staticmethod
+    def _append_created_inst_uuid(summary, result):
+        uuids = summary.setdefault("created_inst_uuids", [])
+        if len(uuids) >= BATCH_PUSH_LIMIT:
+            return
+        if not isinstance(result, dict):
+            return
+        inst_uuid = str(result.get("inst_uuid") or "").strip()
+        if not inst_uuid or inst_uuid in uuids:
+            return
+        uuids.append(inst_uuid)
+
+    @staticmethod
     def run(task, stream, context, progress):
         attrs = ModelManage.search_model_attr_v2(task.model_id)
         importer = Import(task.model_id, attrs, [], context.actor.username)
@@ -287,7 +300,14 @@ class TransferImport:
         check = importer.get_check_attr_map()
         identities = list(check["is_only"]) or ["inst_name"]
         attrs_by_id = {item["attr_id"]: item for item in attrs}
-        summary = dict(created=0, updated=0, failed_rows=0, created_relations=0, failed_relations=0)
+        summary = dict(
+            created=0,
+            updated=0,
+            failed_rows=0,
+            created_relations=0,
+            failed_relations=0,
+            created_inst_uuids=[],
+        )
         errors, relations, seen = [], [], set()
         successful = {}
         for offset in range(0, len(rows), 200):
@@ -344,6 +364,8 @@ class TransferImport:
                     progress(index, len(rows), summary, "writing_instances")
                     continue
                 summary["updated" if before else "created"] += 1
+                if not before:
+                    TransferImport._append_created_inst_uuid(summary, result)
                 successful[number] = result
                 candidates.append(result)
                 relations.extend((number, key, name) for key, names in row_relations.items() for name in names)

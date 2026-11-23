@@ -115,7 +115,7 @@ def test_execute_agent_happy_path_and_failure_modes(mocker, monkeypatch):
             "__bklite_context": _context(),
         }
     )
-    assert result == {"message": "inspection complete"}
+    assert result == {"message": "inspection complete", "artifacts": []}
 
     _install_agent_node(monkeypatch, lambda *a, **k: {"success": False, "error_type": "Timeout"})
     with pytest.raises(ValueError, match="智能体执行失败: Timeout"):

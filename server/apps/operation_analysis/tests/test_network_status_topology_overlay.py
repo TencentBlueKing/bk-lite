@@ -123,6 +123,8 @@ def test_canvas_data_source_ids_includes_room_list_for_room3d_without_saved_filt
     from apps.operation_analysis.views.share_view import _canvas_data_source_ids
 
     room_list = _ds("cmdb/get_room_list", name="CMDB 机房列表（选项）")
+    DataSourceAPIModel.objects.filter(pk=room_list.pk).update(build_in_key="CMDB 机房列表::cmdb/get_room_list")
+    room_list.refresh_from_db()
 
     class _Screen:
         view_sets = {

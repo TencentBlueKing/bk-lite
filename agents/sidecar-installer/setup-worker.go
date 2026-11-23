@@ -35,7 +35,6 @@ var (
 const windowsServiceTransitionAttempts = 30
 
 type Config struct {
-	EnvironmentInstallID     string                 `json:"environment_install_id,omitempty"`
 	ServerURL                string                 `json:"server_url"`
 	APIToken                 string                 `json:"api_token"`
 	NodeID                   string                 `json:"node_id"`
@@ -90,7 +89,6 @@ type ClockSkewResult struct {
 }
 
 type PackageConfig struct {
-	SHA256          string `json:"sha256,omitempty"`
 	ID              int    `json:"id"`
 	OS              string `json:"os"`
 	CPUArchitecture string `json:"cpu_architecture"`
@@ -268,18 +266,17 @@ func (reporter *InstallerEventReporter) publish(line string) {
 var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
 
 var (
-	configURL           = flag.String("url", "", "Configuration URL")
-	privateSessionToken = flag.Bool("private-session-token", false, "Send installer session credential in a header")
-	configURLFile       = flag.String("url-file", "", "Read the configuration URL from a file")
-	installDir          = flag.String("install-dir", "", "Installation directory")
-	skipTLS             = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
-	requireHTTPS        = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
-	fetchOnly           = flag.Bool("fetch-only", false, "Only fetch and display config")
-	progressSubject     = flag.String("progress-subject", "", "NATS subject for live installation events")
-	executionID         = flag.String("execution-id", "", "Installation execution ID")
-	taskNodeID          = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
-	executionAttempt    = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
-	executionDeadline   = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
+	configURL         = flag.String("url", "", "Configuration URL")
+	configURLFile     = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir        = flag.String("install-dir", "", "Installation directory")
+	skipTLS           = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS      = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
+	fetchOnly         = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject   = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID       = flag.String("execution-id", "", "Installation execution ID")
+	taskNodeID        = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
+	executionAttempt  = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
+	executionDeadline = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
 )
 
 func main() {
@@ -454,12 +451,6 @@ func run(client *http.Client) {
 			}
 			fatalStepWithOptions("download_package", "Download failed: %v", err, downloadOptions)
 		}
-		if cfg.Package.SHA256 != "" || cfg.EnvironmentInstallID != "" {
-			if err := verifyPackageDigest(zipPath, cfg.Package.SHA256); err != nil {
-				_ = os.Remove(zipPath)
-				fatalStep("download_package", "Package integrity check failed: %v", err)
-			}
-		}
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
 		if !isLinux(cfg.OS) {
 			log("[4/6] Staging and validating files...")
@@ -495,9 +486,9 @@ func run(client *http.Client) {
 			return
 		}
 
-		n, prepareErr := prepareLinuxPackageForConfig(
+		n, prepareErr := prepareLinuxPackageWithProgress(
 			zipPath,
-			cfg,
+			cfg.InstallDir,
 			stopLinuxControllerService,
 			extract,
 			func(step, status, message string) {
@@ -546,13 +537,7 @@ func run(client *http.Client) {
 	log("[5/6] Writing configuration...")
 	emitEvent("configure_runtime", "running", "Configuring installer runtime", nil, 0, 0, "")
 	if isLinux(cfg.OS) {
-		if cfg.EnvironmentInstallID != "" {
-			if err := writeEnvironmentLinuxConfig(cfg); err != nil {
-				fatalStep("configure_runtime", "Environment config write failed: %v", err)
-			}
-		} else {
-			log("      Linux package mode, skipping generated sidecar.yml")
-		}
+		log("      Linux package mode, skipping generated sidecar.yml")
 	} else {
 		if err := writeConfig(cfg); err != nil {
 			fatalStep("configure_runtime", "Config write failed: %v", err)
@@ -822,19 +807,7 @@ func newHTTPClient(skipTLS bool) *http.Client {
 
 func fetchConfig(client *http.Client, url string) (*Config, error) {
 	requestStartedAt := time.Now()
-	var resp *http.Response
-	var err error
-	if *privateSessionToken {
-		request, requestErr := privateSessionRequest(url)
-		if requestErr != nil {
-			return nil, requestErr
-		}
-		privateClient := *client
-		privateClient.CheckRedirect = func(*http.Request, []*http.Request) error { return fmt.Errorf("private session redirect forbidden") }
-		resp, err = privateClient.Do(request)
-	} else {
-		resp, err = client.Get(url)
-	}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -884,12 +857,6 @@ func runLinuxInstaller(cfg *Config) error {
 	if _, err := os.Stat(installScript); err != nil {
 		return fmt.Errorf("install.sh not found at %s", installScript)
 	}
-	if cfg.EnvironmentInstallID != "" {
-		script, err := os.ReadFile(installScript)
-		if err != nil || !bytes.Contains(script, []byte("BK_LITE_CONFIG_PREPARED")) {
-			return fmt.Errorf("controller package does not support environment installation")
-		}
-	}
 	if err := os.Chmod(installScript, 0755); err != nil {
 		return err
 	}
@@ -912,12 +879,6 @@ func runLinuxInstaller(cfg *Config) error {
 	)
 	if apiTokenEnv != "" {
 		cmd.Env = append(os.Environ(), apiTokenEnv)
-	}
-	if cfg.EnvironmentInstallID != "" {
-		if cmd.Env == nil {
-			cmd.Env = os.Environ()
-		}
-		cmd.Env = append(cmd.Env, "BK_LITE_CONFIG_PREPARED=1")
 	}
 	cmd.Dir = cfg.InstallDir
 	// Keep console streaming for operators, and capture the same bytes so failed
@@ -1127,9 +1088,6 @@ func normalizeNATSURL(protocol, servers string) string {
 
 func prepareInstallDirectories(cfg *Config) error {
 	if isLinux(cfg.OS) {
-		if cfg.EnvironmentInstallID != "" {
-			return nil
-		}
 		return prepareDirs(cfg.InstallDir)
 	}
 	installDir := filepath.Clean(cfg.InstallDir)

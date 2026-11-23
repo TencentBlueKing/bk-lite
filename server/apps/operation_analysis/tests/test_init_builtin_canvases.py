@@ -205,7 +205,7 @@ def test_builtin_application_topology_screen_filter_uses_canvas_contract():
                 "control": "select",
                 "optionsSource": {
                     "type": "dynamic",
-                    "sourceRef": {"type": "rest_api", "value": "cmdb/list_application_systems"},
+                    "sourceRef": {"type": "rest_api", "value": "应用系统::cmdb/list_application_systems"},
                     "valueField": "inst_uuid",
                     "labelField": "inst_name",
                 },
@@ -310,13 +310,14 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
         "机房机柜容量::cmdb/get_room_rack_capacity",
         "机房设备类型分布::cmdb/get_room_device_type_distribution",
         "机房活跃告警::cmdb/get_room_active_alarms",
+        "CMDB 机房列表::cmdb/get_room_list",
     }
     items = screen["view_sets"]["items"]
     assert screen["view_sets"]["filters"] == [
         {
             "id": "server_room_id__string",
             "key": "server_room_id",
-            "name": "Room",
+            "name": "机房",
             "type": "string",
             "order": 0,
             "enabled": True,
@@ -325,7 +326,7 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
                 "control": "select",
                 "optionsSource": {
                     "type": "dynamic",
-                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                    "sourceRef": {"type": "rest_api", "value": "CMDB 机房列表::cmdb/get_room_list"},
                     "valueField": "inst_uuid",
                     "labelField": "inst_name",
                 },
@@ -363,7 +364,7 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
         "preset": "hero-3",
         "zIndex": 37,
         "content": "机房运行总览",
-        "textStyle": {"color": "#E6F3FF", "fontSize": 28, "fontWeight": 700},
+        "textStyle": {"color": "#E6F3FF", "fontSize": 30, "fontWeight": 700},
     }
     assert clock == {
         "h": 50,
@@ -1617,8 +1618,24 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
         data_source = value_config.get("dataSource")
         if isinstance(data_source, int):
             value_config["dataSource"] = DataSourceAPIModel.objects.get(id=data_source).build_in_key
-    assert imported_items == room3d_yaml["view_sets"]["items"]
-    assert room3d_screen.view_sets["filters"] == room3d_yaml["view_sets"]["filters"]
+
+    def _restore_option_identity(value):
+        if isinstance(value, list):
+            return [_restore_option_identity(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        restored = {key: _restore_option_identity(item) for key, item in value.items()}
+        source_id = restored.get("sourceId")
+        if isinstance(source_id, int) and "sourceRef" not in restored:
+            row = DataSourceAPIModel.objects.filter(pk=source_id).first()
+            restored.pop("sourceId", None)
+            restored.pop("builtinKey", None)
+            if row is not None and row.build_in_key:
+                restored["sourceRef"] = {"type": "rest_api", "value": row.build_in_key}
+        return restored
+
+    assert _restore_option_identity(imported_items) == room3d_yaml["view_sets"]["items"]
+    assert _restore_option_identity(room3d_screen.view_sets["filters"]) == room3d_yaml["view_sets"]["filters"]
     assert not DataSourceAPIModel.objects.filter(rest_api="cmdb/get_room3d_layout").exists()
     room_list = DataSourceAPIModel.objects.get(rest_api="cmdb/get_room_list", is_build_in=True)
     assert room_list.is_active is True

@@ -120,7 +120,7 @@ def test_zombie_report_yaml_parses_and_binds_table_and_filters():
     inst_filter = next(item for item in view_sets["filters"] if item["key"] == "system_uuids")
     assert inst_filter["type"] == "string"
     assert inst_filter["inputConfig"]["multiple"] is True
-    assert inst_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "cmdb/list_application_systems"
+    assert inst_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "应用系统::cmdb/list_application_systems"
 
     assert set(report.refs.datasource_keys) == {ZOMBIE_SOURCE_KEY, SYSTEM_OPTION_KEY}
     assert {item.key for item in document.datasources} == {ZOMBIE_SOURCE_KEY, SYSTEM_OPTION_KEY}

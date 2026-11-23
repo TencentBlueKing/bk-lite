@@ -31,7 +31,7 @@ def test_metric_series_range_source_binds_instance_ids_and_metric_switch():
     instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
     assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"
-    assert instance_ids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_monitor_instance_list"
+    assert instance_ids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "监控实例列表::monitor/get_monitor_instance_list"
     metric = next(item for item in source["params"] if item["name"] == "metric")
     assert metric["inputConfig"]["componentSwitch"] is True
     assert {item["value"] for item in metric["inputConfig"]["optionsSource"]["staticItems"]} >= {

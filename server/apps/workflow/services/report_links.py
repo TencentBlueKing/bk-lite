@@ -20,20 +20,20 @@ def build_report_download_link(*, artifact_id: str, execution_id: str, team: int
         salt=REPORT_LINK_SALT,
         compress=True,
     )
-    path = f"/workflow/api/artifacts/shared/?{urlencode({'token': token})}"
+    path = f"/api/proxy/workflow/api/artifacts/shared/?{urlencode({'token': token})}"
     base = str(getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
     return f"{base}{path}" if base else path
 
 
 def read_report_download_link(token: str) -> dict[str, Any]:
     if not isinstance(token, str) or not token:
-        raise ValueError("报告下载链接无效")
+        raise ValueError("附件下载链接无效")
     try:
         payload = signing.loads(token, salt=REPORT_LINK_SALT, max_age=REPORT_LINK_TTL_SECONDS)
     except signing.SignatureExpired as error:
-        raise ValueError("报告下载链接已过期") from error
+        raise ValueError("附件下载链接已过期") from error
     except signing.BadSignature as error:
-        raise ValueError("报告下载链接无效") from error
+        raise ValueError("附件下载链接无效") from error
     if (
         not isinstance(payload, dict)
         or not str(payload.get("artifact_id") or "")
@@ -41,5 +41,5 @@ def read_report_download_link(token: str) -> dict[str, Any]:
         or isinstance(payload.get("team"), bool)
         or not isinstance(payload.get("team"), int)
     ):
-        raise ValueError("报告下载链接无效")
+        raise ValueError("附件下载链接无效")
     return payload

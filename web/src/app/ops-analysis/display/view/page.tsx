@@ -61,12 +61,18 @@ export default function ScreenDisplayViewPage() {
       api.queryDisplayDataSource(dataSourceId, requestParams),
     [api.queryDisplayDataSource],
   );
+  const resolveOptionSource = useCallback(
+    (body: { sourceId?: number; builtinKey?: string; sourceRef?: string }) =>
+      api.resolveDisplayOptionSource(body),
+    [api.resolveDisplayOptionSource],
+  );
   const shareAccess = useMemo(
     () => ({
       queryDataSource,
       getDataSourceDetails: () => api.getDisplayDataSources(),
+      resolveOptionSource,
     }),
-    [api.getDisplayDataSources, queryDataSource],
+    [api.getDisplayDataSources, queryDataSource, resolveOptionSource],
   );
 
   if (invalid) {
