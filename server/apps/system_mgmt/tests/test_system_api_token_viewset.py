@@ -319,6 +319,8 @@ def test_create_writes_issue_operation_log_without_secret():
     assert log.app == "system-manager"
     assert log.target_id == str(response.data["id"])
     assert log.summary == "创建系统令牌: ITSM (itsm)"
+    assert log.target_name == "ITSM"
+    assert log.outcome == "success"
     assert log.detail == {"kind": "system", "name": "ITSM", "system_id": "itsm"}
     _assert_log_has_no_secret(log, response.data["api_secret"])
 
@@ -331,6 +333,8 @@ def test_delete_writes_revoke_operation_log_without_secret():
     log = OperationLog.objects.get(target_type="system_api_token", action_type="delete")
     assert log.username == "sys-token-admin"
     assert log.summary == f"删除系统令牌: {token.name} ({token.system_id})"
+    assert log.target_name == token.name
+    assert log.outcome == "success"
     assert log.detail == {"kind": "system", "name": token.name, "system_id": "itsm"}
     assert log.target_id == str(token.pk)
     _assert_log_has_no_secret(log, secret)
@@ -349,5 +353,7 @@ def test_patch_writes_update_operation_log():
     assert response.status_code == 200
     log = OperationLog.objects.get(target_type="system_api_token", action_type="update")
     assert log.summary == f"更新系统令牌: {token.name} ({token.system_id})"
+    assert log.target_name == token.name
+    assert log.outcome == "success"
     assert log.detail == {"kind": "system", "name": token.name, "system_id": "itsm"}
     _assert_log_has_no_secret(log, secret)

@@ -258,7 +258,16 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         if response.status_code == 201:
             channel_name = response.data.get("name", "")
             channel_type = response.data.get("channel_type", "")
-            log_operation(request, "create", "channel", f"新增{channel_type}渠道: {channel_name}")
+            log_operation(
+                request,
+                "create",
+                "channel",
+                f"新增{channel_type}渠道: {channel_name}",
+                target_type="channel",
+                target_id=response.data.get("id"),
+                target_name=channel_name,
+                outcome="success",
+            )
 
         return response
 
@@ -282,7 +291,16 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         if response.status_code == 200:
             channel_name = response.data.get("name", "")
             channel_type = response.data.get("channel_type", "")
-            log_operation(request, "update", "channel", f"编辑{channel_type}渠道: {channel_name}")
+            log_operation(
+                request,
+                "update",
+                "channel",
+                f"编辑{channel_type}渠道: {channel_name}",
+                target_type="channel",
+                target_id=obj.id,
+                target_name=channel_name,
+                outcome="success",
+            )
 
         return response
 
@@ -304,7 +322,16 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "channel", f"删除{channel_type}渠道: {channel_name}")
+            log_operation(
+                request,
+                "delete",
+                "channel",
+                f"删除{channel_type}渠道: {channel_name}",
+                target_type="channel",
+                target_id=obj.id,
+                target_name=channel_name,
+                outcome="success",
+            )
 
         return response
 
@@ -345,7 +372,16 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         obj.save()
 
         # 记录操作日志
-        log_operation(request, "update", "channel", f"编辑{obj.channel_type}渠道: {obj.name}")
+        log_operation(
+            request,
+            "update",
+            "channel",
+            f"编辑{obj.channel_type}渠道: {obj.name}",
+            target_type="channel",
+            target_id=obj.id,
+            target_name=obj.name,
+            outcome="success",
+        )
 
         return JsonResponse({"result": True})
 

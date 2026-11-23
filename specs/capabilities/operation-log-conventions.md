@@ -134,54 +134,99 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 ### system_mgmt 示例
 
+系统管理里已经生效、已经提交或需要留下失败记录的调用，带上对象快照和 `outcome`。成功和提交成功不传 `failure_reason`。
+
 ```python
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
-# 创建
-log_operation(request, "create", "system-manager", f"新增用户: {username}")
+# 已生效
+log_operation(
+    request,
+    "create",
+    "system-manager",
+    f"新增用户: {username} ({display_name})",
+    target_type="user",
+    target_id=user_id,
+    target_name=username,
+    outcome="success",
+)
 
-# 更新
-log_operation(request, "update", "system-manager", f"编辑角色: {role_name}")
+log_operation(
+    request,
+    "update",
+    "system-manager",
+    f"更新角色名称: {role_name}",
+    target_type="role",
+    target_id=role_id,
+    target_name=role_name,
+    outcome="success",
+)
 
-# 删除
-log_operation(request, "delete", "system-manager", f"删除组织: {group_name}")
+log_operation(
+    request,
+    "delete",
+    "system-manager",
+    f"删除角色: {role_name}",
+    target_type="role",
+    target_id=role_id,
+    target_name=role_name,
+    outcome="success",
+)
 
-# 执行
-log_operation(request, "execute", "system-manager", f"开启认证源: {module_name}")
+# 请求已受理，任务尚未执行完
+log_operation(
+    request,
+    "execute",
+    "system-manager",
+    f"开启认证源: {module_name}",
+    target_type="login_module",
+    target_id=module_id,
+    target_name=module_name,
+    outcome="accepted",
+)
+
+# 未生效，且需要留下失败记录。failure_reason 用返回给用户的原因
+log_operation(
+    request,
+    "execute",
+    "system-manager",
+    f"测试集成实例连接: {instance_name}",
+    target_type="integration_instance",
+    target_id=instance_id,
+    target_name=instance_name,
+    outcome="failure",
+    failure_reason=reason,
+)
 ```
 
 ### job_mgmt 示例
 
+作业模块的调用点尚未补 `outcome` 和对象快照。不传 `outcome` 仍会写入，结果为空，表示未记录。
+
 ```python
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
-# 创建
 log_operation(request, "create", "job", f"新增作业: {job_name}")
 
-# 更新
 log_operation(request, "update", "job", f"编辑作业: {job_name}")
 
-# 删除
 log_operation(request, "delete", "job", f"删除作业: {job_name}")
 
-# 执行
 log_operation(request, "execute", "job", f"执行作业: {job_name}")
 ```
 
 ### opspilot 示例
 
+运维助手的调用点同样尚未补 `outcome` 和对象快照。不传 `outcome` 仍会写入，结果为空，表示未记录。
+
 ```python
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
-# 创建
 log_operation(request, "create", "opspilot", f"新增机器人: {bot_name}")
 
-# 更新
 log_operation(request, "update", "opspilot", f"编辑知识库: {kb_name}")
 
-# 删除
 log_operation(request, "delete", "opspilot", f"删除技能: {skill_name}")
 
-# 执行
 log_operation(request, "execute", "opspilot", f"发布机器人: {bot_name}")
 ```

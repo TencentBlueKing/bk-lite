@@ -16,6 +16,7 @@ from apps.system_mgmt.models import (
     GroupDataRule,
     IntegrationInstance,
     IntegrationInstanceStatusChoices,
+    OperationLog,
     SensitiveInfoAuthorization,
     SystemSettings,
     User,
@@ -348,6 +349,10 @@ def test_user_viewset_delete_user_allows_manual_user():
     assert payload == {"result": True}
     assert User.objects.filter(id=user.id).exists() is False
     assert get_user_permission_version(user.username, user.domain) > initial_version
+    log = OperationLog.objects.get(action_type="delete", target_type="user")
+    assert log.outcome == "success"
+    assert log.failure_reason == ""
+    assert log.target_name == user.username
 
 
 @pytest.mark.django_db
@@ -408,6 +413,10 @@ def test_user_viewset_delete_user_rejects_synced_user():
         "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
     }
     assert User.objects.filter(id=user.id).exists() is True
+    log = OperationLog.objects.get(action_type="delete", target_type="user")
+    assert log.outcome == "failure"
+    assert log.failure_reason == payload["message"]
+    assert log.target_name == user.username
 
 
 @pytest.mark.django_db
@@ -476,6 +485,10 @@ def test_user_viewset_delete_user_rejects_mixed_batch_when_any_user_is_synced():
     }
     assert User.objects.filter(id=manual_user.id).exists() is True
     assert User.objects.filter(id=synced_user.id).exists() is True
+    log = OperationLog.objects.get(action_type="delete", target_type="user")
+    assert log.outcome == "failure"
+    assert log.failure_reason == payload["message"]
+    assert set(log.target_name.split(", ")) == {manual_user.username, synced_user.username}
 
 
 @pytest.mark.django_db

@@ -70,14 +70,32 @@ class IMAccountAssociationViewSet(MaintainerViewSet):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
-            log_operation(request, "create", "user_sync", f"新增账号关联: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "create",
+                "user_sync",
+                f"新增账号关联: {response.data.get('name', '')}",
+                target_type="im_account_association",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("user_sync-Edit")
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, partial=True, **kwargs)
         if response.status_code == 200:
-            log_operation(request, "update", "user_sync", f"编辑账号关联: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "update",
+                "user_sync",
+                f"编辑账号关联: {response.data.get('name', '')}",
+                target_type="im_account_association",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("user_sync-Delete")
@@ -91,7 +109,16 @@ class IMAccountAssociationViewSet(MaintainerViewSet):
         except ProtectedError:
             return JsonResponse({"result": False, "code": "ACCOUNT_ASSOCIATION_IN_USE", "message": ACCOUNT_ASSOCIATION_IN_USE}, status=409)
         if response.status_code in (200, 204):
-            log_operation(request, "delete", "user_sync", f"删除账号关联: {name}")
+            log_operation(
+                request,
+                "delete",
+                "user_sync",
+                f"删除账号关联: {name}",
+                target_type="im_account_association",
+                target_id=obj.id,
+                target_name=name,
+                outcome="success",
+            )
         return response
 
     @action(methods=["POST"], detail=True, url_path="update_association")

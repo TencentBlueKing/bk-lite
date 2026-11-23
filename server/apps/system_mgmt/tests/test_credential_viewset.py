@@ -4,7 +4,7 @@ import pytest
 
 from apps.system_mgmt.models import Group
 from apps.system_mgmt.models.credential import Credential, CredentialType
-from apps.system_mgmt.services.credential_service import create_credential
+from apps.system_mgmt.services.credential_service import CredentialServiceError, create_credential
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -84,6 +84,9 @@ def test_create_list_retrieve_never_echo_secret(api_client, authenticated_user, 
     assert body["credential_id"].startswith("crd-sqlhttp-")
     mock_log.assert_called_once()
     assert SECRET not in str(mock_log.call_args)
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert mock_log.call_args.kwargs["target_name"] == "Prod DB"
+    assert mock_log.call_args.kwargs["target_type"] == "credential"
 
     listed = api_client.get(f"{V}/credential/")
     assert listed.status_code == 200
@@ -148,6 +151,10 @@ def test_http_ledger_lists_authorized_orgs_not_consume_share(api_client, authent
     _cookie(api_client, root)
     assert {item["credential_id"] for item in _payload(api_client.get(f"{V}/credential/"))} == expected
     assert api_client.get(f"{V}/credential/{child_id}/").status_code == 200
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        missing = api_client.get(f"{V}/credential/crd-sqlhttp-00000000000000000000000000000000/")
+    assert missing.status_code == 404
+    mock_log.assert_not_called()
 
     _cookie(api_client, child)
     assert {item["credential_id"] for item in _payload(api_client.get(f"{V}/credential/"))} == expected
@@ -175,12 +182,14 @@ def test_create_cannot_assign_parent_without_parent_authorization(api_client, au
     )
     _cookie(api_client, child)
 
-    response = api_client.post(
-        f"{V}/credential/",
-        {"name": "Escalate", "type": sql_type.key, "group_id": root.id, "fields": {"username": "u", "password": SECRET}},
-        format="json",
-    )
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        response = api_client.post(
+            f"{V}/credential/",
+            {"name": "Escalate", "type": sql_type.key, "group_id": root.id, "fields": {"username": "u", "password": SECRET}},
+            format="json",
+        )
     assert response.status_code == 403
+    mock_log.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -264,8 +273,159 @@ def test_child_without_parent_auth_cannot_disable_or_delete_parent_credential(ap
         permissions=["credential-View", "credential-Edit", "credential-Delete"],
     )
     _cookie(api_client, child)
-    disabled = api_client.post(f"{V}/credential/{credential_id}/disable/", {"disabled": True}, format="json")
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        disabled = api_client.post(f"{V}/credential/{credential_id}/disable/", {"disabled": True}, format="json")
+        deleted = api_client.delete(f"{V}/credential/{credential_id}/")
     assert disabled.status_code == 403
-    deleted = api_client.delete(f"{V}/credential/{credential_id}/")
     assert deleted.status_code == 403
     assert Credential.objects.filter(credential_id=credential_id).exists()
+    mock_log.assert_not_called()
+
+
+def _type_payload(key, name="HTTP Type"):
+    return {
+        "key": key,
+        "name": name,
+        "categories": ["database"],
+        "fields": [{"id": "username", "kind": "string", "required": True}, {"id": "password", "kind": "secret", "required": True}],
+    }
+
+
+@pytest.mark.django_db
+def test_credential_service_errors_log_failure_only_for_selected_codes(api_client, authenticated_user, sql_type):
+    owner = _group("http-fail-audit")
+    _actor(authenticated_user, owner)
+    _cookie(api_client, owner)
+
+    with (
+        patch(
+            "apps.system_mgmt.viewset.credential_viewset.create_type",
+            side_effect=CredentialServiceError("conflict"),
+        ),
+        patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log,
+    ):
+        conflict = api_client.post(f"{V}/credential_type/", _type_payload("dupkey", "Second"), format="json")
+    assert conflict.status_code == 409
+    assert conflict.json()["message"] == "conflict"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["failure_reason"] == "conflict"
+    assert mock_log.call_args.kwargs["target_name"] == "Second"
+    assert SECRET not in str(mock_log.call_args)
+    assert "password" not in str(mock_log.call_args.kwargs.get("detail") or {})
+
+    builtin = CredentialType.objects.create(
+        key="builtinhttp",
+        name="Builtin HTTP",
+        categories=["database"],
+        fields=[{"id": "username", "kind": "string", "required": True}],
+        is_builtin=True,
+    )
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        immutable = api_client.put(
+            f"{V}/credential_type/{builtin.key}/",
+            {
+                "key": builtin.key,
+                "name": "Builtin HTTP",
+                "categories": ["changed"],
+                "fields": builtin.fields,
+            },
+            format="json",
+        )
+    assert immutable.status_code == 400
+    assert immutable.json()["message"] == "immutable"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["failure_reason"] == "immutable"
+    assert mock_log.call_args.kwargs["target_name"] == "Builtin HTTP"
+
+    created = api_client.post(
+        f"{V}/credential/",
+        {"name": "In Use DB", "type": sql_type.key, "group_id": owner.id, "fields": {"username": "u", "password": SECRET}},
+        format="json",
+    )
+    assert created.status_code == 201
+    credential_id = created.data["credential_id"]
+
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        in_use_type = api_client.delete(f"{V}/credential_type/{sql_type.key}/")
+    assert in_use_type.status_code == 409
+    assert in_use_type.json()["message"] == "in_use"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["failure_reason"] == "in_use"
+    assert mock_log.call_args.kwargs["target_name"] == sql_type.name
+
+    with (
+        patch(
+            "apps.system_mgmt.viewset.credential_viewset.delete_credential",
+            side_effect=CredentialServiceError("in_use"),
+        ),
+        patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log,
+    ):
+        in_use_cred = api_client.delete(f"{V}/credential/{credential_id}/")
+    assert in_use_cred.status_code == 409
+    assert in_use_cred.json()["message"] == "in_use"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["failure_reason"] == "in_use"
+    assert mock_log.call_args.kwargs["target_name"] == "In Use DB"
+    assert SECRET not in str(mock_log.call_args)
+
+    with (
+        patch(
+            "apps.system_mgmt.viewset.credential_viewset.set_disabled",
+            side_effect=CredentialServiceError("disabled"),
+        ),
+        patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log,
+    ):
+        disabled = api_client.post(f"{V}/credential/{credential_id}/disable/", {"disabled": True}, format="json")
+    assert disabled.status_code == 400
+    assert disabled.json()["message"] == "disabled"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["failure_reason"] == "disabled"
+    assert mock_log.call_args.kwargs["target_name"] == "In Use DB"
+
+    with (
+        patch(
+            "apps.system_mgmt.viewset.credential_viewset.create_credential",
+            side_effect=CredentialServiceError("invalid"),
+        ),
+        patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log,
+    ):
+        invalid = api_client.post(
+            f"{V}/credential/",
+            {"name": "Invalid DB", "type": sql_type.key, "group_id": owner.id, "fields": {"username": "u", "password": SECRET}},
+            format="json",
+        )
+    assert invalid.status_code == 400
+    assert invalid.json()["message"] == "invalid"
+    mock_log.assert_not_called()
+
+    with (
+        patch(
+            "apps.system_mgmt.viewset.credential_viewset.update_credential",
+            side_effect=CredentialServiceError("not_found"),
+        ),
+        patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log,
+    ):
+        missing = api_client.patch(
+            f"{V}/credential/{credential_id}/",
+            {"name": "In Use DB", "fields": {"username": "new"}},
+            format="json",
+        )
+    assert missing.status_code == 404
+    mock_log.assert_not_called()
+
+    with patch("apps.system_mgmt.viewset.credential_viewset.log_operation") as mock_log:
+        ok = api_client.patch(
+            f"{V}/credential/{credential_id}/",
+            {"name": "In Use DB renamed", "fields": {"username": "new"}},
+            format="json",
+        )
+    assert ok.status_code == 200
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert not mock_log.call_args.kwargs.get("failure_reason")
+    assert SECRET not in str(mock_log.call_args)
