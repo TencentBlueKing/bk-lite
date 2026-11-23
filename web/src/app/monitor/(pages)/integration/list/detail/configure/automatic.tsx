@@ -402,17 +402,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [getPolicyGroups, isLoading, objectId, pluginId, currentConfig?.collect_type]);
 
   useEffect(() => {
-    if (!policyGroups.length) return;
-    const current = form.getFieldValue('policy_group_id');
-    if (policyGroups.some((item) => item.id === current)) return;
-    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
-    form.setFieldsValue({
-      policy_group_join: form.getFieldValue('policy_group_join') !== false,
-      policy_group_id: preferred.id
-    });
-  }, [form, policyGroups]);
-
-  useEffect(() => {
     if (isLoading || !pluginId) return;
     const abortController = new AbortController();
     fetchAllMonitorMetrics(
@@ -630,6 +619,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templateType === 'script' ||
     collectType === 'script' ||
     currentConfig?.collect_type === 'script';
+
+  useEffect(() => {
+    if (!policyGroups.length) return;
+    // 策略组规则对着内置指标。脚本采集默认不加入，避免带上对象的默认策略。
+    if (isScriptTemplate) {
+      if (form.getFieldValue('policy_group_join') == null) {
+        form.setFieldsValue({ policy_group_join: false });
+      }
+      return;
+    }
+    const current = form.getFieldValue('policy_group_id');
+    if (policyGroups.some((item) => item.id === current)) return;
+    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
+    form.setFieldsValue({
+      policy_group_join: form.getFieldValue('policy_group_join') !== false,
+      policy_group_id: preferred.id
+    });
+  }, [form, isScriptTemplate, policyGroups]);
 
   useEffect(() => {
     if (!isScriptTemplate || configLoading || !objectId) {
@@ -2058,7 +2065,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
         params.policy_group = {
-          join: values.policy_group_join !== false,
+          join: isScriptTemplate
+            ? values.policy_group_join === true
+            : values.policy_group_join !== false,
           group_id: values.policy_group_id
         };
         if (
@@ -2365,6 +2374,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
         }
         if (
+          isScriptTemplate &&
+          changed.policy_group_join === true &&
+          !all.policy_group_id
+        ) {
+          const preferred =
+            policyGroups.find((item) => item.is_default) || policyGroups[0];
+          if (preferred) {
+            form.setFieldsValue({ policy_group_id: preferred.id });
+          }
+        }
+        if (
           Object.prototype.hasOwnProperty.call(
             changed,
             COLLECTION_POLICY_FIELD
@@ -2447,12 +2467,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }))}
         />
       </Form.Item>
-      <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
-        {t(
-          'monitor.integrations.policyGroupExistingKept',
-          '只作用于本次新建的实例。已经接入的实例保持原策略组。'
-        )}
-      </div>
+      {policyGroupJoin !== false ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.policyGroupExistingKept',
+            '只作用于本次新建的实例。已经接入的实例保持原策略组。'
+          )}
+        </div>
+      ) : null}
       {policyGroupNote?.kind === 'no-plugin-rules' ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
           {t(
