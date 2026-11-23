@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React from 'react';
+import React, { StrictMode } from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DataVariable } from '@/app/ops-analysis/utils/dataVariable';
@@ -191,5 +191,39 @@ describe('DataVariableRuntimeProvider', () => {
     });
     expect(fetchState.getSourceDataByApiId.mock.calls[0]?.[0]).toBe(130);
     expect(view.getByTestId('ready').textContent).toBe('true');
+  });
+
+  it('aborts the old variable request on a real unmount and keeps the new one', async () => {
+    const signals: AbortSignal[] = [];
+    fetchState.getSourceDataByApiId.mockImplementation(
+      (_id: number, _params: unknown, options?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+        const signal = options?.signal;
+        if (!signal) return;
+        signals.push(signal);
+        signal.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), { name: 'CanceledError', code: 'ERR_CANCELED' }));
+        }, { once: true });
+      }),
+    );
+    const tree = (id: string) => (
+      <StrictMode>
+        <div key={id}>
+          <DataVariableRuntimeProvider
+            variables={variables}
+            referencedValues={{ uuids: { dataVariableId: 'dv_region' } }}
+            filterValues={{}}
+            scopeKey={id}
+          >
+            <Probe />
+          </DataVariableRuntimeProvider>
+        </div>
+      </StrictMode>
+    );
+    const view = render(tree('a'));
+    await waitFor(() => expect(signals.some((signal) => !signal.aborted)).toBe(true));
+    const previous = signals.filter((signal) => !signal.aborted);
+    view.rerender(tree('b'));
+    await waitFor(() => expect(previous.every((signal) => signal.aborted)).toBe(true));
+    expect(signals.some((signal) => !signal.aborted)).toBe(true);
   });
 });

@@ -92,7 +92,7 @@ describe('option query cascade', () => {
     );
 
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: 'room-1' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: 'room-1' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
     await waitFor(() => {
       expect(onApplyInitial).toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe('option query cascade', () => {
       />,
     );
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: 'room-b' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: 'room-b' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
   });
 

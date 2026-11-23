@@ -2,6 +2,7 @@ import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/d
 import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   classifyOptionSource,
   extractDataSourceItems,
@@ -57,7 +58,7 @@ const identityErrorMessage = (status: string | undefined): string => (
 );
 
 interface OptionsApi {
-  getDataSourceList: (params?: unknown) => Promise<unknown>;
+  getDataSourceList: (params?: unknown, signal?: AbortSignal) => Promise<unknown>;
   getSourceDataByApiId: (
     id: number,
     params?: unknown,
@@ -67,7 +68,7 @@ interface OptionsApi {
     sourceId?: number;
     builtinKey?: string;
     sourceRef?: string;
-  }) => Promise<{ status?: string; id?: number }>;
+  }, signal?: AbortSignal) => Promise<{ status?: string; id?: number }>;
 }
 
 const typedOption = (option: InputOption) => [option.label, typeof option.value, option.value];
@@ -174,15 +175,20 @@ export const createParamInputOptionsLoader = (
   let generation = 0;
   let currentKey: string | undefined;
   let currentLoad: ParamInputOptionsLoad | undefined;
+  let currentSignal: AbortSignal | undefined;
   let settled = false;
 
   const load = (
     config?: InputControlConfig,
     request?: ParamInputOptionsRequest,
+    signal?: AbortSignal,
   ): ParamInputOptionsLoad => {
     const key = buildOptionsLoadSignature(config, request);
-    if (key === currentKey && currentLoad) return currentLoad;
+    if (key === currentKey && currentLoad && !currentSignal?.aborted && !signal?.aborted) {
+      return currentLoad;
+    }
     currentKey = key;
+    currentSignal = signal;
     settled = false;
     const requestGeneration = ++generation;
 
@@ -211,8 +217,13 @@ export const createParamInputOptionsLoader = (
     const promise = (async (): Promise<ParamInputOptionsState | null> => {
       const loaderOptions = getLoaderOptions?.();
       const requestOptions: SourceDataRequestOptions | undefined =
-        loaderOptions?.suppressErrorNotification
-          ? { suppressErrorNotification: true }
+        loaderOptions?.suppressErrorNotification || signal
+          ? {
+            ...(loaderOptions?.suppressErrorNotification
+              ? { suppressErrorNotification: true as const }
+              : {}),
+            ...(signal ? { signal } : {}),
+          }
           : undefined;
       const fallbackErrorMessage = loaderOptions?.fallbackErrorMessage ?? '';
       try {
@@ -226,7 +237,7 @@ export const createParamInputOptionsLoader = (
               sourceId,
               builtinKey: source.builtinKey,
               sourceRef: source.sourceRef?.value,
-            });
+            }, signal);
             if (requestGeneration !== generation) return null;
             if (identity.status !== 'resolved' || typeof identity.id !== 'number') {
               settled = true;
@@ -240,6 +251,7 @@ export const createParamInputOptionsLoader = (
             resolvedThroughIdentity = true;
           } catch (error) {
             if (requestGeneration !== generation) return null;
+            if (signal?.aborted || isTransportCanceled(error)) throw error;
             if (error instanceof Error && error.message === 'option-source-resolver-unavailable') {
               resolverUnavailable = true;
             } else {
@@ -256,7 +268,7 @@ export const createParamInputOptionsLoader = (
           if (namedInKnown?.status === 'resolved') sourceId = namedInKnown.id;
         }
         if (resolverUnavailable && sourceId === undefined && source.sourceRef) {
-          const response = await api.getDataSourceList({ page_size: -1 });
+          const response = await api.getDataSourceList({ page_size: -1 }, signal);
           const sourceItems = Array.isArray(response)
             ? response
             : extractDataSourceItems(response);
@@ -323,6 +335,14 @@ export const createParamInputOptionsLoader = (
         return resolved(options);
       } catch (error) {
         if (requestGeneration !== generation) return null;
+        if (signal?.aborted || isTransportCanceled(error)) {
+          if (currentSignal === signal) {
+            currentKey = undefined;
+            currentLoad = undefined;
+            currentSignal = undefined;
+          }
+          return null;
+        }
         settled = true;
         const httpStatus = readHttpStatus(error);
         if (httpStatus === 403 || httpStatus === 404) {
@@ -350,6 +370,7 @@ export const createParamInputOptionsLoader = (
     generation += 1;
     currentKey = undefined;
     currentLoad = undefined;
+    currentSignal = undefined;
     settled = false;
   };
 

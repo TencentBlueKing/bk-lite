@@ -19,7 +19,7 @@ export interface ReportProps {
   renderMode?: boolean;
   renderFilterValues?: Record<string, FilterValue>;
   renderDataSourceIds?: number[];
-  getReportDetailOverride?: (id: string | number) => Promise<ReportDetail>;
+  getReportDetailOverride?: (id: string | number, signal?: AbortSignal) => Promise<ReportDetail>;
 }
 
 export interface ReportDetail {

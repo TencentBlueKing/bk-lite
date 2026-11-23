@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
 import { createParamInputOptionsLoader } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
@@ -25,6 +25,40 @@ type GetSourceDataByApiId = (
 ) => Promise<ReturnType<typeof asSourceData>>;
 
 describe('paramInputOptionsLoader runtime errors', () => {
+  it('drops an aborted resolve without an error state and still reports a real failure', async () => {
+    const controller = new AbortController();
+    let resolveSignal: AbortSignal | undefined;
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async () => asSourceData([]));
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId,
+      resolveOptionSource: (_body, signal) => new Promise((_resolve, reject) => {
+        resolveSignal = signal;
+        signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), { name: 'CanceledError', code: 'ERR_CANCELED' }));
+        }, { once: true });
+      }),
+    });
+    const pending = loader.load(dynamicConfig, undefined, controller.signal).promise;
+    await Promise.resolve();
+    expect(resolveSignal).toBe(controller.signal);
+    controller.abort();
+    assert.equal(await pending, null);
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
+
+    const failed = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId: async () => {
+        throw new HandledRequestError('未找到可用命名空间');
+      },
+    });
+    assert.deepEqual(await failed.load(dynamicConfig).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: '未找到可用命名空间',
+    });
+  });
+
   it('preserves business errorMessage when options request fails', async () => {
     const loader = createParamInputOptionsLoader({
       getDataSourceList: async () => [],

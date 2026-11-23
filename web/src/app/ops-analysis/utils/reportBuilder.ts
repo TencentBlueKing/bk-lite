@@ -356,3 +356,16 @@ export const syncReportFiltersFromSections = (
     sections,
   };
 };
+
+/** 取消或已经切到别的报表时保持当前草稿，只有这次查找仍属于当前报表才重写过滤和绑定。 */
+export const nextReportViewSetsAfterLookup = (
+  current: ReportViewSets,
+  loaded: DatasourceItem[] | null,
+  requestCanvasId: string | number | undefined,
+  currentCanvasId: string | number | undefined,
+): ReportViewSets => {
+  if (loaded == null || String(requestCanvasId ?? '') !== String(currentCanvasId ?? '')) {
+    return current;
+  }
+  return syncReportFiltersFromSections(current, loaded);
+};
