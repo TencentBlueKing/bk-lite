@@ -133,7 +133,7 @@ def test_conflict_is_left_untouched():
 
     text = _run("--apply")
 
-    assert "parked-1\told-host\t1\tconflict:live-1" in text
+    assert "parked-1\told-host\t1\tconflict:live-1\tnode=none" in text
     assert "summary\tcandidates=1\trestored=0\tconflicts=1\tdry-run=false" in text
     parked.refresh_from_db()
     live.refresh_from_db()
@@ -141,6 +141,35 @@ def test_conflict_is_left_untouched():
     assert parked.is_deleted is True
     assert parked.is_active is False
     assert config.executor_node_removed is False
+    assert live.is_deleted is False
+    assert live.is_active is True
+
+
+@pytest.mark.django_db
+def test_conflict_report_keeps_existing_node_identity_and_does_not_write():
+    obj = _object()
+    live = _instance(obj, instance_id="live-1", name="live-host", is_deleted=False, is_active=True)
+    parked = _instance(obj, instance_id="parked-1", name="old-host")
+    parked.node_id = "node-9"
+    parked.save(update_fields=["node_id"])
+    config = _config(parked, config_id="cfg-1")
+
+    dry_run = _run()
+    applied = _run("--apply")
+
+    line = "parked-1\told-host\t1\tconflict:live-1\tnode=node-9"
+    assert line in dry_run
+    assert "summary\tcandidates=1\trestorable=0\tconflicts=1\tdry-run=true" in dry_run
+    assert line in applied
+    assert "summary\tcandidates=1\trestored=0\tconflicts=1\tdry-run=false" in applied
+    parked.refresh_from_db()
+    live.refresh_from_db()
+    config.refresh_from_db()
+    assert parked.is_deleted is True
+    assert parked.is_active is False
+    assert parked.node_id == "node-9"
+    assert config.executor_node_removed is False
+    assert config.executor_node_id == ""
     assert live.is_deleted is False
     assert live.is_active is True
 

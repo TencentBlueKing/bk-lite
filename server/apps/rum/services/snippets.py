@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from apps.rum.constants import (
     BKLITE_RUM_SDK_VERSION,
@@ -17,6 +18,19 @@ def _quoted(value: str) -> str:
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
+def _format_rate(rate: float) -> str:
+    return format(rate, "g")
+
+
+def _coerce_session_sampling_rate(raw: object) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValidationError("sessionSamplingRate must be between 0 and 1")
+    rate = float(raw)
+    if not math.isfinite(rate) or rate < 0 or rate > 1:
+        raise ValidationError("sessionSamplingRate must be between 0 and 1")
+    return rate
+
+
 def _cdn_endpoint_base(collect_url: str, replay_url: str) -> str:
     collect_base = collect_url.removesuffix("/collect").rstrip("/")
     replay_base = replay_url.removesuffix("/replay").rstrip("/")
@@ -24,6 +38,9 @@ def _cdn_endpoint_base(collect_url: str, replay_url: str) -> str:
 
 
 def apply_snippet_defaults(data: dict, sdk_cdn_url: str) -> dict:
+    raw_session_rate = data.get("sessionSamplingRate", None)
+    if raw_session_rate is None:
+        raw_session_rate = 1.0
     out = {
         "application": (data.get("application") or "").strip(),
         "environment": (data.get("environment") or "").strip(),
@@ -33,6 +50,7 @@ def apply_snippet_defaults(data: dict, sdk_cdn_url: str) -> dict:
         "replayUrl": (data.get("replayUrl") or "").strip(),
         "sdkCdnUrl": (data.get("sdkCdnUrl") or "").strip() or sdk_cdn_url.strip(),
         "replay": dict(data.get("replay") or {}),
+        "sessionSamplingRate": raw_session_rate,
     }
     replay = out["replay"]
     replay["enabled"] = bool(replay.get("enabled"))
@@ -56,20 +74,41 @@ def validate_snippet_input(data: dict) -> None:
         rate = data["replay"]["samplingRate"]
         if rate <= 0 or rate > 1:
             raise ValidationError("replay samplingRate must be between 0 and 1")
+    data["sessionSamplingRate"] = _coerce_session_sampling_rate(data["sessionSamplingRate"])
 
 
-def build_snippet(data: dict, sdk_cdn_url: str) -> dict[str, str]:
+def build_snippet(data: dict, sdk_cdn_url: str) -> dict:
     prepared = apply_snippet_defaults(data, sdk_cdn_url)
     validate_snippet_input(prepared)
+    npm_main, npm_advanced = _module_snippet(prepared, react=False)
+    react_main, react_advanced = _module_snippet(prepared, react=True)
+    cdn_main, cdn_advanced = _cdn_snippet(prepared)
     return {
-        "npm": _module_snippet(prepared, react=False),
-        "react": _module_snippet(prepared, react=True),
-        "generic": _module_snippet(prepared, react=False),
-        "cdn": _cdn_snippet(prepared),
+        "npm": npm_main,
+        "react": react_main,
+        "generic": npm_main,
+        "cdn": cdn_main,
+        "advanced": {
+            "npm": npm_advanced,
+            "react": react_advanced,
+            "generic": npm_advanced,
+            "cdn": cdn_advanced,
+        },
     }
 
 
-def _module_snippet(input_data: dict, *, react: bool) -> str:
+def _snippet_text(lines: list[str]) -> str:
+    return "\n".join(lines) + "\n"
+
+
+def _module_snippet(input_data: dict, *, react: bool) -> tuple[str, str]:
+    advanced = _version_pin_lines(input_data, react=react)
+    advanced.append("")
+    advanced.extend(_view_patch_lines(react=react))
+    return _snippet_text(_init_lines(input_data, react=react)), _snippet_text(advanced)
+
+
+def _version_pin_lines(input_data: dict, *, react: bool) -> list[str]:
     packages = [
         f"bklite-rum-sdk@{BKLITE_RUM_SDK_VERSION}",
         f"@grafana/faro-web-sdk@{FARO_WEB_SDK_VERSION}",
@@ -107,8 +146,11 @@ def _module_snippet(input_data: dict, *, react: bool) -> str:
         lines.append(f"    {_quoted(key)}: {_quoted(version)}{suffix}")
     lines.append("  }")
     lines.append("}")
-    lines.append("")
+    return lines
 
+
+def _init_lines(input_data: dict, *, react: bool) -> list[str]:
+    lines: list[str] = []
     imports = [
         "import { initializeFaro, getWebInstrumentations } from '@grafana/faro-web-sdk'",
         "import { TracingInstrumentation } from '@grafana/faro-web-tracing'",
@@ -151,7 +193,8 @@ def _module_snippet(input_data: dict, *, react: bool) -> str:
     if input_data["release"]:
         lines.append(f"{indent}    release: {_quoted(input_data['release'])},")
     lines.append(f"{indent}  }},")
-    lines.append(f"{indent}  sessionTracking: {{ enabled: true, samplingRate: 1 }},")
+    session_rate = _format_rate(input_data["sessionSamplingRate"])
+    lines.append(f"{indent}  sessionTracking: {{ enabled: true, samplingRate: {session_rate} }},")
     lines.append(f"{indent}  pageTracking: {{ generatePageId: () => crypto.randomUUID() }},")
     lines.append(f"{indent}  transports: [")
     lines.append(f"{indent}    new CoreRumTransport({{")
@@ -167,8 +210,7 @@ def _module_snippet(input_data: dict, *, react: bool) -> str:
     if react:
         lines.append(f"{indent}    new ReactIntegration(),")
     if input_data["replay"]["enabled"]:
-        rate = input_data["replay"]["samplingRate"]
-        rate_literal = f"{rate:g}"
+        rate_literal = _format_rate(input_data["replay"]["samplingRate"])
         lines.append(f"{indent}    new ReplayInstrumentation({{")
         lines.append(f"{indent}      samplingRate: {rate_literal},")
         lines.append(f"{indent}      beforeSend: sanitizeReplayEvent,")
@@ -184,50 +226,62 @@ def _module_snippet(input_data: dict, *, react: bool) -> str:
     lines.append(f"{indent}}})")
 
     if react:
-        lines.append("  if (faro) {")
-        lines.append("    faro.api.setView({ name: logicalViewNameForPathname(location.pathname) })")
         if input_data["replay"]["enabled"]:
+            lines.append("  if (faro) {")
             lines.extend(_replay_scope_coordinator("    "))
-        lines.append("  }")
+            lines.append("  }")
         lines.append("  return faro")
         lines.append("}")
+    elif input_data["replay"]["enabled"]:
         lines.append("")
-        lines.append("export function FaroRouteView() {")
-        lines.append("  const pathname = useLocation().pathname")
-        lines.append("")
-        lines.append("  useEffect(() => {")
-        lines.append("    getFaro()?.api.setView({ name: logicalViewNameForPathname(pathname) })")
-        lines.append("  }, [pathname])")
-        lines.append("")
-        lines.append("  return null")
-        lines.append("}")
-        lines.append("")
-        lines.append("// Render <FaroRouteView /> once inside your React Router shell.")
-    else:
-        if input_data["replay"]["enabled"]:
-            lines.append("")
-            lines.extend(_replay_scope_coordinator(""))
-        lines.append("")
-        lines.append("if (faro) {")
-        lines.append("  function syncViewFromLocation() {")
-        lines.append("    faro?.api.setView({ name: logicalViewNameForPathname(location.pathname) })")
-        lines.append("  }")
-        lines.append("  syncViewFromLocation()")
-        lines.append("  ;['pushState', 'replaceState'].forEach((method) => {")
-        lines.append("    const original = history[method].bind(history)")
-        lines.append("    history[method] = (...args) => {")
-        lines.append("      const result = original(...args)")
-        lines.append("      syncViewFromLocation()")
-        lines.append("      return result")
-        lines.append("    }")
-        lines.append("  })")
-        lines.append("  window.addEventListener('popstate', syncViewFromLocation)")
-        lines.append("}")
-    lines.append("")
-    lines.append("function logicalViewNameForPathname(pathname: string): string {")
-    lines.append("  return pathname || '/'")
-    lines.append("}")
-    return "\n".join(lines) + "\n"
+        lines.extend(_replay_scope_coordinator(""))
+    return lines
+
+
+def _view_patch_lines(*, react: bool) -> list[str]:
+    if react:
+        return [
+            "if (faro) {",
+            "  faro.api.setView({ name: logicalViewNameForPathname(location.pathname) })",
+            "}",
+            "",
+            "export function FaroRouteView() {",
+            "  const pathname = useLocation().pathname",
+            "",
+            "  useEffect(() => {",
+            "    getFaro()?.api.setView({ name: logicalViewNameForPathname(pathname) })",
+            "  }, [pathname])",
+            "",
+            "  return null",
+            "}",
+            "",
+            "// Render <FaroRouteView /> once inside your React Router shell.",
+            "",
+            "function logicalViewNameForPathname(pathname: string): string {",
+            "  return pathname || '/'",
+            "}",
+        ]
+    return [
+        "if (faro) {",
+        "  function syncViewFromLocation() {",
+        "    faro?.api.setView({ name: logicalViewNameForPathname(location.pathname) })",
+        "  }",
+        "  syncViewFromLocation()",
+        "  ;['pushState', 'replaceState'].forEach((method) => {",
+        "    const original = history[method].bind(history)",
+        "    history[method] = (...args) => {",
+        "      const result = original(...args)",
+        "      syncViewFromLocation()",
+        "      return result",
+        "    }",
+        "  })",
+        "  window.addEventListener('popstate', syncViewFromLocation)",
+        "}",
+        "",
+        "function logicalViewNameForPathname(pathname: string): string {",
+        "  return pathname || '/'",
+        "}",
+    ]
 
 
 def _replay_scope_coordinator(indent: str) -> list[str]:
@@ -246,7 +300,7 @@ def _replay_scope_coordinator(indent: str) -> list[str]:
     ]
 
 
-def _cdn_snippet(input_data: dict) -> str:
+def _cdn_snippet(input_data: dict) -> tuple[str, str]:
     sdk = input_data["sdkCdnUrl"]
     replay_asset = sdk
     for suffix in ("/bklite-rum-sdk.js", "/bklite-rum-sdk.cdn.js", "/core-rum-sdk.js", "/core-rum-sdk.cdn.js"):
@@ -255,7 +309,8 @@ def _cdn_snippet(input_data: dict) -> str:
             break
     replay_literal = "false"
     if input_data["replay"]["enabled"]:
-        replay_literal = f"{{ samplingRate: {input_data['replay']['samplingRate']:g} }}"
+        replay_literal = f"{{ samplingRate: {_format_rate(input_data['replay']['samplingRate'])} }}"
+    session_rate = _format_rate(input_data["sessionSamplingRate"])
     lines = [
         f'<script src="{sdk}" crossorigin="anonymous"></script>',
     ]
@@ -272,10 +327,11 @@ def _cdn_snippet(input_data: dict) -> str:
     lines.append("    },")
     lines.append(f"    endpoint: {_quoted(_cdn_endpoint_base(input_data['collectUrl'], input_data['replayUrl']))},")
     lines.append(f"    apiKey: {_quoted(input_data['browserKey'])},")
+    lines.append(f"    sessionTracking: {{ enabled: true, samplingRate: {session_rate} }},")
     lines.append(f"    replay: {replay_literal},")
     lines.append("  })")
     lines.append("</script>")
-    return "\n".join(lines) + "\n"
+    return _snippet_text(lines), ""
 
 
 def parse_analytics_range(value: str | None) -> tuple[str, bool]:

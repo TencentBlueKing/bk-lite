@@ -451,6 +451,8 @@ def test_ppt_execute_rejects_workspace_traversal(tmp_path):
     assert denied_relative.exit_code == 126
     inner.execute.assert_not_called()
 
+    (workspace / "projects" / "demo" / "svg_output").mkdir(parents=True)
+    (workspace / "projects" / "demo" / "svg_output" / "01.svg").write_text("<svg/>", encoding="utf-8")
     allowed = backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py /ppt-workspace/projects/demo --quick-generate")
     assert allowed.exit_code == 0
     command = inner.execute.call_args.args[0]

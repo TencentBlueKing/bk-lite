@@ -16,6 +16,8 @@ BUILTIN_IMPORT_PREFIX = "apps.system_mgmt.providers.builtin"
 ENTERPRISE_BUILTIN_IMPORT_PREFIX = "apps.system_mgmt.enterprise.providers.builtin"
 _SKIP_DIR_NAMES = {"__pycache__"}
 _REQUIRED_PACK_FILES = ("__init__.py", "adapters/client.py", "adapters/base_connection.py")
+_CHANNEL_PACK_FILES = ("__init__.py", "adapters/send.py")
+_NOTIFICATION_CHANNEL = "notification_channel"
 
 _providers_loaded = False
 _providers_load_lock = RLock()
@@ -32,10 +34,24 @@ def iter_pack_directories(root: Path) -> list[Path]:
     return children
 
 
-def validate_pack_layout(pack_dir: Path) -> None:
-    missing = [relative for relative in _REQUIRED_PACK_FILES if not (pack_dir / relative).is_file()]
+def validate_pack_layout(pack_dir: Path, *, notification_channel: bool = False) -> None:
+    required = _CHANNEL_PACK_FILES if notification_channel else _REQUIRED_PACK_FILES
+    missing = [relative for relative in required if not (pack_dir / relative).is_file()]
     if missing:
         raise ValueError(f"Provider pack '{pack_dir.name}' is missing {', '.join(missing)}")
+
+
+def _manifest_declares_notification_channel(raw_manifest) -> bool:
+    if isinstance(raw_manifest, ProviderManifest):
+        return raw_manifest.get_capability(_NOTIFICATION_CHANNEL) is not None
+    capabilities = getattr(raw_manifest, "capabilities", None)
+    if capabilities is None and isinstance(raw_manifest, dict):
+        capabilities = raw_manifest.get("capabilities") or []
+    for item in capabilities or []:
+        key = item.get("key") if isinstance(item, dict) else getattr(item, "key", None)
+        if key == _NOTIFICATION_CHANNEL:
+            return True
+    return False
 
 
 def discover_provider_packs(
@@ -67,18 +83,14 @@ def discover_enterprise_builtin_provider_packs() -> list[tuple[str, Path]]:
 def _require_adapter_key_prefix(manifest_key: str, adapter_key: str) -> None:
     required_prefix = f"{manifest_key}."
     if not adapter_key.startswith(required_prefix):
-        raise ValueError(
-            f"Adapter key '{adapter_key}' must start with '{required_prefix}'"
-        )
+        raise ValueError(f"Adapter key '{adapter_key}' must start with '{required_prefix}'")
 
 
 def _resolve_adapter_import_path(module_path: str, adapter_path: str, pack_dir: Path | None) -> str:
     if pack_dir is None:
         return adapter_path
     if adapter_path == module_path or adapter_path.startswith(f"{module_path}."):
-        raise ValueError(
-            f"Provider pack '{pack_dir.name}' must use a pack-relative adapter path, not '{adapter_path}'"
-        )
+        raise ValueError(f"Provider pack '{pack_dir.name}' must use a pack-relative adapter path, not '{adapter_path}'")
     return f"{module_path}.{adapter_path}"
 
 
@@ -112,22 +124,24 @@ def _register_provider_module(
     *,
     expected_key: str | None = None,
 ):
-    if pack_dir is not None:
-        validate_pack_layout(pack_dir)
-
     module = import_module(module_path)
     raw_manifest = getattr(module, "PROVIDER_MANIFEST", None)
     if raw_manifest is None:
         raise ValueError(f"Provider module '{module_path}' does not expose PROVIDER_MANIFEST")
 
-    manifest = (
-        raw_manifest if isinstance(raw_manifest, ProviderManifest) else ProviderManifest.model_validate(raw_manifest)
-    )
+    # 重新加载没有上传 purpose。manifest 含 notification_channel 才走渠道包文件规则。
+    if pack_dir is not None:
+        notification_channel = _manifest_declares_notification_channel(raw_manifest)
+        validate_pack_layout(pack_dir, notification_channel=notification_channel)
+
+    manifest = raw_manifest if isinstance(raw_manifest, ProviderManifest) else ProviderManifest.model_validate(raw_manifest)
+    if pack_dir is not None and manifest.get_capability(_NOTIFICATION_CHANNEL) is not None:
+        from apps.system_mgmt.services.notification_channel_pack import validate_loaded_channel_pack
+
+        validate_loaded_channel_pack(manifest, pack_dir)
     directory_key = expected_key if expected_key is not None else (pack_dir.name if pack_dir is not None else None)
     if directory_key is not None and directory_key != manifest.key:
-        raise ValueError(
-            f"Provider pack directory '{directory_key}' must match manifest key '{manifest.key}'"
-        )
+        raise ValueError(f"Provider pack directory '{directory_key}' must match manifest key '{manifest.key}'")
     if _already_registered_provider(manifest.key):
         raise ValueError(f"Provider '{manifest.key}' is already registered")
 
@@ -156,9 +170,7 @@ def _register_provider_module(
         adapter_pairs.append(
             (
                 base_key,
-                import_string(
-                    _resolve_adapter_import_path(module_path, manifest.base_connection_adapter_path, pack_dir)
-                ),
+                import_string(_resolve_adapter_import_path(module_path, manifest.base_connection_adapter_path, pack_dir)),
             )
         )
 
@@ -172,9 +184,7 @@ def _register_provider_module(
             capability_adapter_registry._adapters.pop(adapter_key, None)
         raise
 
-    logger.debug(
-        f"Loaded provider manifest '{manifest.key}' with {len(manifest.capabilities)} capabilities"
-    )
+    logger.debug(f"Loaded provider manifest '{manifest.key}' with {len(manifest.capabilities)} capabilities")
 
 
 def _try_load_pack(

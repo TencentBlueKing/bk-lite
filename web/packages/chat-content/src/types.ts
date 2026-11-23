@@ -48,6 +48,13 @@ export interface WikiSearchExplanation {
   fusion?: string;
 }
 
+export interface WikiMaterialWrite {
+  material_id: number;
+  phase: 'writing' | 'published' | 'needs_decision' | 'failed';
+  summary: string;
+  received_at: number;
+}
+
 export interface WikiCitation {
   n?: number;
   kb_id?: number;

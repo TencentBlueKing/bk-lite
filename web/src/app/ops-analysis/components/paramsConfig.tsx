@@ -114,6 +114,8 @@ interface DataSourceParamsConfigProps {
   globalFilterValues?: Record<string, FilterValue>;
   onEditInputConfig?: (param: ParamItem) => void;
   onParamOptionsResolved?: (param: ParamItem, options: InputOption[]) => void;
+  /** 当前用户能否修好选项来源。文案不授予保存权限。 */
+  canRepairOptionSource?: boolean;
   /** 用来回显「数据变量 · 名称」。引用本身在参数输入设置里选。 */
   dataVariables?: DataVariable[];
 }
@@ -205,6 +207,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   globalFilterValues,
   onEditInputConfig,
   onParamOptionsResolved,
+  canRepairOptionSource = false,
   dataVariables,
 }) => {
   const { t } = useTranslation();
@@ -332,6 +335,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           resolvedFieldQuery={fieldQuery?.resolution}
           fieldQuerySignature={fieldQuery?.signature}
           disabled={isDisabled}
+          canRepairOptionSource={canRepairOptionSource}
         />
       );
     }
@@ -369,6 +373,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         optionsBlocked={optionsQuery?.resolution.blocked}
         optionsBlockReason={optionsQuery?.resolution.blockReason}
         optionsQuerySignature={optionsQuery?.signature}
+        canRepairOptionSource={canRepairOptionSource}
         onOptionsResolved={(resolvedOptions) =>
           onParamOptionsResolved?.(param, resolvedOptions)
         }

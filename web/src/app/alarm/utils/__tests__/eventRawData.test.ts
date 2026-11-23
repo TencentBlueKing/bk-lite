@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { presentEventRawData } from '../eventRawData';
+import { presentEventRawData, shieldReplaySourceEventId } from '../eventRawData';
 
 describe('presentEventRawData', () => {
   it('把事件丰富结果附在原始数据展示副本上', () => {
@@ -32,5 +32,16 @@ describe('presentEventRawData', () => {
       enrichment: { cmdb: { owner: 'alice' } },
       assignee: ['alice'],
     });
+  });
+});
+
+describe('shieldReplaySourceEventId', () => {
+  it('从屏蔽重放标记里取出原事件编号', () => {
+    expect(shieldReplaySourceEventId({ lifecycle_generation: 'shield-replay:EVENT-abc' })).toBe('EVENT-abc');
+  });
+
+  it('普通事件没有来源编号', () => {
+    expect(shieldReplaySourceEventId({ lifecycle_generation: 'delivery-1' })).toBeNull();
+    expect(shieldReplaySourceEventId(null)).toBeNull();
   });
 });

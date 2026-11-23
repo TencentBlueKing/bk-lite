@@ -25,7 +25,7 @@ import {
 } from '@/app/rum/api';
 import CustomTable from '@/components/custom-table';
 import ExportButton from '@/app/rum/components/export-button';
-import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
+import PipelineDegradedBanner, { RumDegradedEmpty } from '@/app/rum/components/pipeline-degraded';
 import {
   RumDualWorkbench,
   RumFilterBlock,
@@ -34,10 +34,11 @@ import {
 import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
+import { buildSessionsListQuery } from '@/app/rum/sessions/lib/sessions-query';
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import RumPageError from '@/app/rum/components/rum-page-error';
-import { degradationReason } from '@/app/rum/lib/degradation';
+import { degradationBanners, listEmptyUsesAnalyticsCopy } from '@/app/rum/lib/degradation';
 import { resolveRumPageState } from '@/app/rum/lib/page-state';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import {
@@ -75,6 +76,7 @@ export default function RumSessionsPage() {
 
   const [sort, setSort] = useState<SortKey>('impact');
   const [sessionId, setSessionId] = useState(searchParams.get('sessionId') || '');
+  const [userId, setUserId] = useState(searchParams.get('userId') || '');
   const [page, setPage] = useState<RumSessionListPage | null>(null);
   const [trend, setTrend] = useState<RumSessionTrendPoint[]>([]);
   const [apps, setApps] = useState<string[]>([]);
@@ -85,21 +87,23 @@ export default function RumSessionsPage() {
   const hasReplay = searchParams.get('hasReplay') === '1';
   const route = (searchParams.get('route') || '').trim();
 
-  const query = useMemo(() => {
-    const out: Record<string, string> = {
-      range,
-      orderBy: sort,
-      limit: String(pageSize),
-      offset: String((pageNo - 1) * pageSize),
-      traffic,
-    };
-    if (application) out.application = application;
-    if (sessionId.trim()) out.sessionId = sessionId.trim();
-    if (hasError) out.hasError = '1';
-    if (hasReplay) out.hasReplay = '1';
-    if (route) out.route = route;
-    return out;
-  }, [range, sort, pageNo, pageSize, traffic, application, sessionId, hasError, hasReplay, route]);
+  const query = useMemo(
+    () =>
+      buildSessionsListQuery({
+        range,
+        orderBy: sort,
+        pageNo,
+        pageSize,
+        traffic,
+        application,
+        sessionId,
+        userId,
+        hasError,
+        hasReplay,
+        route,
+      }),
+    [range, sort, pageNo, pageSize, traffic, application, sessionId, userId, hasError, hasReplay, route],
+  );
 
   const load = useCallback(async () => {
     setPending(true);
@@ -160,7 +164,8 @@ export default function RumSessionsPage() {
   const errored = page?.summary?.errored || 0;
   const medianDuration =
     page?.summary && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
-  const degrade = degradationReason(page);
+  const banners = degradationBanners(page);
+  const analyticsEmpty = listEmptyUsesAnalyticsCopy(page);
   const chrome = resolveRumPageState({
     // Refetch (range / filter change) must also enter loading chrome; otherwise
     // stale rows stay on screen with no feedback while the network is in flight.
@@ -284,7 +289,13 @@ export default function RumSessionsPage() {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t('rum.sessions.title', '会话')}</h1>
 
-      {degrade ? <div className="mb-2 shrink-0"><PipelineDegradedBanner reason={degrade} /></div> : null}
+      {banners.length > 0 ? (
+        <div className="mb-2 shrink-0">
+          {banners.map((reason) => (
+            <PipelineDegradedBanner key={reason} reason={reason} />
+          ))}
+        </div>
+      ) : null}
 
       <RumDualWorkbench
         asideTitle={t('rum.sessions.quickFilter', '快速筛选')}
@@ -309,6 +320,20 @@ export default function RumSessionsPage() {
                 value={application || undefined}
                 onChange={(value) => setApplication(value || '')}
                 options={apps.map((name) => ({ value: name, label: name }))}
+              />
+            </RumFilterBlock>
+            <RumFilterBlock title={t('rum.sessions.userId', '用户 ID')}>
+              <Input
+                allowClear
+                size="small"
+                className="w-full"
+                placeholder={t('rum.sessions.userId', '用户 ID')}
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                onPressEnter={() => {
+                  setParams({ userId: userId.trim() || null, page: null });
+                  void load();
+                }}
               />
             </RumFilterBlock>
             <div className="space-y-2.5 border-t border-[var(--color-fill-2)] pt-3">
@@ -371,7 +396,16 @@ export default function RumSessionsPage() {
                   <div className="mb-1.5 text-[11px] text-[var(--color-text-3)]">
                     {t('rum.sessions.trend', '会话趋势')}
                   </div>
-                  <SessionTrendChart points={trend} compact hideTitle />
+                  <SessionTrendChart
+                    points={trend}
+                    compact
+                    hideTitle
+                    emptyText={
+                      analyticsEmpty
+                        ? t('rum.pipeline.emptyAnalytics', '分析数据面暂不可用，列表暂时为空。')
+                        : undefined
+                    }
+                  />
                 </div>
               ) : null}
 
@@ -424,7 +458,11 @@ export default function RumSessionsPage() {
 
               {!pending && sessions.length === 0 ? (
                 <div className="flex min-h-0 flex-1 items-center justify-center">
-                  <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                  {analyticsEmpty ? (
+                    <RumDegradedEmpty reason="analytics" />
+                  ) : (
+                    <Empty description={t('rum.sessions.empty', '没有匹配的会话')} />
+                  )}
                 </div>
               ) : sessions.length > 0 ? (
                 <div className="min-h-0 min-w-0 flex-1">

@@ -30,12 +30,23 @@ export const readPlaybackInitialDetail = <T,>(
   return seeded.detail as T;
 };
 
-/** 播放态优先用切入确认拿到的详情；没有注入时才请求。刷新周期不走这条详情请求。 */
+const abortError = (): Error => {
+  const error = new Error('The operation was aborted');
+  error.name = 'AbortError';
+  return error;
+};
+
+/**
+ * 播放态优先用切入确认拿到的详情；没有注入时才请求。刷新周期不走这条详情请求。
+ * fetchDetail 必须使用共享飞行的 signal。callerSignal 只解除这一位使用者，
+ * 最后一位离开才 abort 物理请求。
+ */
 export const loadPlaybackCanvasDetail = async <T,>(
   seeded: PlaybackInitialDetail | null,
   resourceType: CanvasType,
   id: string | number,
-  fetchDetail: () => Promise<T>,
+  fetchDetail: (signal: AbortSignal) => Promise<T>,
+  callerSignal?: AbortSignal,
 ): Promise<T> => {
   const initial = readPlaybackInitialDetail<T>(seeded, resourceType, id);
   const canvasId = Number(id);
@@ -45,12 +56,16 @@ export const loadPlaybackCanvasDetail = async <T,>(
     }
     return initial;
   }
+  if (callerSignal?.aborted) {
+    throw abortError();
+  }
   if (!Number.isFinite(canvasId)) {
-    return fetchDetail();
+    return fetchDetail(callerSignal ?? new AbortController().signal);
   }
   return fetchSharedCanvasDetail(
     resourceType,
     canvasId,
-    () => fetchDetail(),
+    (signal) => fetchDetail(signal),
+    callerSignal,
   ) as Promise<T>;
 };

@@ -227,6 +227,34 @@ def ppt_probe_reason(command: str) -> str:
     return ""
 
 
+_PPT_BEFORE_PAGE_SCRIPTS = (
+    "project_manager.py",
+    "text_measure.py",
+    "svg_quality_checker.py",
+    "attribution_guard.py",
+    "svg_to_pptx.py",
+)
+
+
+def workspace_has_svg_pages(root: Path) -> bool:
+    if not isinstance(root, Path) or not root.is_dir():
+        return False
+    return any(path.is_file() for path in root.glob("projects/*/svg_output/*.svg"))
+
+
+def ppt_pages_missing_reason(command: str, *, has_pages: bool) -> str:
+    """页面还没写出来时，技能包自带的初始化、测量、检查和导出都先拦住。"""
+    if has_pages:
+        return ""
+    text = str(command or "")
+    if not any(name in text for name in _PPT_BEFORE_PAGE_SCRIPTS):
+        return ""
+    return (
+        "svg_output 还没有页面。不要 init，不要 text_measure，不要 svg_quality_checker，不要导出。"
+        "立刻用 write_file 把每一页 SVG 写到 /ppt-workspace/projects/<工程名>/svg_output/。写完就停止，平台会导出 pptx。"
+    )
+
+
 _ROLE_VALUE_RE = re.compile(r"--role\s+(?![\"'])(\S+(?:\s+(?!-)[^\s:]+)*:\d+(?::bold)?)")
 _BARE_AMP_RE = re.compile(r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9A-Fa-f]+);)")
 _ILLEGAL_XML_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
@@ -422,7 +450,7 @@ def apply_ppt_continuation_packages(extra_config: object, message: str, *, model
 def execution_guidance(workspace: str) -> str:
     directory = str(workspace or "").strip() or "（本对话没有持久工作目录，停下来说明无法保存工程）"
     stamp = Path(directory).name if directory and "没有持久" not in directory else ""
-    stamp_line = f"目录名时间戳是 {stamp}，平台已记录，不要自己再生成或探测。" if stamp else ""
+    stamp_line = f"目录名时间戳是 {stamp}，平台已记录，不要自己再生成或探测。" if stamp.isdigit() else ""
     return (
         "【ppt-master】技能目录只读，位于 /skills/ppt-master。"
         f"本轮空目录已由平台建好：{directory}。{stamp_line}"
@@ -604,6 +632,14 @@ def settle_ppt_export(workspace: Path, sandbox=None) -> str:
     return "exported"
 
 
+def materialize_ppt_export(sandbox, workspace: Path) -> str:
+    """把沙箱里的页面同步出来并导出。已经有 pptx 时不再编译一次。"""
+    from apps.opspilot.services.python_sandbox.ppt import sync_ppt_workspace
+
+    sync_ppt_workspace(sandbox, workspace)
+    return settle_ppt_export(workspace, sandbox=sandbox)
+
+
 def project_name_from_export(pptx_path: Path) -> str:
     # projects/<工程名>/exports/<file>.pptx；直接落在时间戳目录里时用文件名。
     if pptx_path.parent.name == "exports":
@@ -656,9 +692,7 @@ def publish_latest_export(graph_request: object, prior_filenames: list[str] | No
     from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url, create_workflow_attachment_asset
 
     extra = getattr(graph_request, "extra_config", None)
-    created_by = ""
-    if isinstance(extra, dict):
-        created_by = str(extra.get("user_id") or "")
+    context = extra if isinstance(extra, dict) else {}
     attachment_id = uuid4().hex[:12]
     try:
         asset = create_workflow_attachment_asset(
@@ -667,8 +701,9 @@ def publish_latest_export(graph_request: object, prior_filenames: list[str] | No
             filename=filename,
             content_bytes=content,
             mime_type=_PPTX_MIME,
-            source_node_id="ppt-master",
-            created_by=created_by,
+            source_node_id=str(context.get("node_id") or "ppt-master"),
+            flow_id=str(context.get("flow_id") or ""),
+            created_by=str(context.get("user_id") or ""),
         )
     except Exception as exc:
         logger.warning("ppt export register failed error_type=%s", type(exc).__name__)

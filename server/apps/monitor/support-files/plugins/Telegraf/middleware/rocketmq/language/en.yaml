@@ -1,0 +1,44 @@
+RocketMQ:
+  name: RocketMQ
+  desc: Collects RocketMQ broker throughput, CommitLog disk usage, current topic
+    and consumer-group offsets, consume backlog, and dead-letter topic offsets.
+monitor_object:
+  RocketMQ: RocketMQ
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  RocketMQ:
+    bklite_rocketmq_up:
+      name: Collection Status
+      desc: Whether collection is alive. 1 means alive and 0 means not alive.
+    bklite_rocketmq_broker_tps:
+      name: Broker Write TPS
+      desc: Messages written to the broker per second.
+    bklite_rocketmq_broker_qps:
+      name: Broker Read TPS
+      desc: Messages read from the broker per second.
+    bklite_rocketmq_broker_commitlog_disk_ratio:
+      name: CommitLog Disk Usage
+      desc: Percentage of disk occupied by the broker CommitLog.
+    bklite_rocketmq_producer_offset:
+      name: Topic Current Offset
+      desc: Current offset of the topic.
+    bklite_rocketmq_consumer_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset of the consumer group on the topic.
+    bklite_rocketmq_consumer_tps:
+      name: Consume TPS
+      desc: Messages consumed per second.
+    bklite_rocketmq_group_diff:
+      name: Consumer Backlog
+      desc: Number of messages on the topic that the consumer group has not consumed.
+    bklite_rocketmq_group_dlq:
+      name: Dead-Letter Topic Offset
+      desc: Current offset of the consumer group's dead-letter topic. The topic name
+        is %DLQ% followed by the group name.
+monitor_object_metric_group:
+  RocketMQ:
+    Collection: Collection
+    Broker: Broker
+    Topic: Topic
+    Consumer: Consumer

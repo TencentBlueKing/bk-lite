@@ -529,10 +529,12 @@ def test_generate_business_key_variants():
     from types import SimpleNamespace
 
     ns = SimpleNamespace(name="ns-a")
-    ds = SimpleNamespace(name="ds-a", rest_api="monitor/q")
+    ds = SimpleNamespace(name="ds-a", rest_api="monitor/q", is_build_in=False, portable_key="user-key")
+    builtin = SimpleNamespace(name="内置", rest_api="monitor/q", is_build_in=True, build_in_key="内置::monitor/q")
     db = SimpleNamespace(name="db-a")
     assert ExportService.generate_business_key(ns, ObjectType.NAMESPACE) == "ns-a"
-    assert ExportService.generate_business_key(ds, ObjectType.DATASOURCE) == "ds-a::monitor/q"
+    assert ExportService.generate_business_key(ds, ObjectType.DATASOURCE) == "portable::user-key"
+    assert ExportService.generate_business_key(builtin, ObjectType.DATASOURCE) == "builtin::内置::monitor/q"
     assert ExportService.generate_business_key(db, ObjectType.DASHBOARD) == "dashboard::db-a"
 
 
@@ -717,9 +719,10 @@ def test_export_canvas_dashboard_with_datasource_dependency():
     # 依赖收敛：引用的数据源被一并导出
     assert parsed["meta"]["object_counts"]["datasources"] == 1
     db_yaml = parsed["dashboards"][0]
-    # view_sets 中的 dataSource 被改写为业务键
-    assert db_yaml["view_sets"][0]["valueConfig"]["dataSource"] == "ds-a::monitor/q"
-    assert "ds-a::monitor/q" in db_yaml["refs"]["datasource_keys"]
+    handle = f"portable::{ds.portable_key}"
+    assert db_yaml["view_sets"][0]["valueConfig"]["dataSource"] == handle
+    assert handle in db_yaml["refs"]["datasource_keys"]
+    assert parsed["datasources"][0]["identity"] == {"kind": "portable", "portable_key": ds.portable_key}
 
 
 @pytest.mark.django_db

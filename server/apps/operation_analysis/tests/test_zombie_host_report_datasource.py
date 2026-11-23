@@ -85,7 +85,7 @@ def test_zombie_host_report_source_binds_cmdb_systems_time_and_thresholds():
     assert system_uuids["type"] == "string"
     assert system_uuids["filterType"] == "filter"
     assert system_uuids["inputConfig"]["multiple"] is True
-    assert system_uuids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "cmdb/list_application_systems"
+    assert system_uuids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "应用系统::cmdb/list_application_systems"
     assert system_uuids["inputConfig"]["optionsSource"]["valueField"] == "inst_uuid"
     assert system_uuids["inputConfig"]["optionsSource"]["labelField"] == "display_name"
 

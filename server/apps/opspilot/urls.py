@@ -153,6 +153,16 @@ urlpatterns += [
         views.execute_chat_flow_dingtalk,
         name="execute_chat_flow_dingtalk",
     ),
+    path(
+        r"chat_wiki_material/<int:material_id>/outcome/",
+        views.chat_wiki_material_outcome,
+        name="chat_wiki_material_outcome",
+    ),
+    path(
+        r"chat_wiki_material/<int:material_id>/decide/",
+        views.chat_wiki_material_decide,
+        name="chat_wiki_material_decide",
+    ),
     # 智能体渠道发布
     path(
         r"skill_channel/platform/width/",

@@ -67,6 +67,45 @@ describe('告警丰富出参投影', () => {
     expect(screen.queryByDisplayValue('business_system')).toBeNull();
   });
 
+  it('第一次只返回应用组时会再拉一次，回来后刷新系统字段展示', async () => {
+    api.getCmdbContextFields
+      .mockResolvedValueOnce({
+        groups: [
+          {
+            model_id: 'application',
+            model_name: '应用',
+            fields: [{ source: 'application.inst_name', attr_name: '应用名称' }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        groups: [
+          {
+            model_id: 'application',
+            model_name: '应用',
+            fields: [{ source: 'application.inst_name', attr_name: '应用名称' }],
+          },
+          {
+            model_id: 'system',
+            model_name: '应用系统',
+            fields: [{ source: 'system.operator', attr_name: '运维人员' }],
+          },
+        ],
+      });
+    render(
+      <OperateModal
+        open
+        onClose={() => undefined}
+        currentRow={{
+          ...baseRow,
+          output_projection: [{ source: 'system.operator' }],
+        }}
+      />
+    );
+    await waitFor(() => expect(api.getCmdbContextFields).toHaveBeenCalledTimes(2));
+    expect(await screen.findByDisplayValue('运维人员 (system.operator)')).toBeTruthy();
+  });
+
   it('CMDB 不可用时仍可编辑投影', async () => {
     api.getCmdbContextFields.mockRejectedValue(new Error('cmdb down'));
     render(<OperateModal open onClose={() => undefined} />);

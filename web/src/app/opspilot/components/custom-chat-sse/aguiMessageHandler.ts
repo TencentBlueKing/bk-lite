@@ -34,7 +34,8 @@ import {
   ReportFileDownload,
   SkillViewItem,
   UserChoiceRequest,
-  WikiCitation
+  WikiCitation,
+  WikiMaterialWrite
 } from '@/app/opspilot/types/global';
 import {
   closeActiveToolCallPanel,
@@ -132,6 +133,7 @@ export class AGUIMessageHandler {
   private agentStepProgressList: AgentStepProgressData[] = [];
   private skillViews: SkillViewItem[] = [];
   private wikiCitations: WikiCitation[] = [];
+  private wikiMaterialWrites: WikiMaterialWrite[] = [];
   private plannedExecutionState: PlannedExecutionState = createPlannedExecutionState();
   private plannedExecutionStatus: PlannedExecutionStatusValue | null = null;
   private onContextUsage?: (usage: LlmContextUsage) => void;
@@ -231,6 +233,7 @@ export class AGUIMessageHandler {
               : msgItem.repairCommands,
             skillViews: this.skillViews.length > 0 ? this.skillViews : msgItem.skillViews,
             wikiCitations: this.wikiCitations.length > 0 ? this.wikiCitations : msgItem.wikiCitations,
+            wikiMaterialWrites: this.wikiMaterialWrites.length > 0 ? this.wikiMaterialWrites : msgItem.wikiMaterialWrites,
             plannedExecutionSteps: this.snapshotPlannedSteps() ?? msgItem.plannedExecutionSteps,
             plannedExecutionStatus: this.plannedExecutionStatus,
             toolCalls: this.snapshotToolCalls() ?? msgItem.toolCalls,
@@ -704,6 +707,16 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
+  handleWikiMaterialWrite(value: { material_id?: number; phase?: string; summary?: string }) {
+    this.wikiMaterialWrites = applyChatContentEvent(
+      { wikiMaterialWrites: this.wikiMaterialWrites },
+      'wiki_material_write',
+      value,
+      Date.now(),
+    ).wikiMaterialWrites || [];
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
   /**
    * 处理审批请求事件
    */
@@ -1080,6 +1093,8 @@ export class AGUIMessageHandler {
           this.handleSkillView(customValue as SkillViewValue);
         } else if (customName === 'wiki_citations' && customValue) {
           this.handleWikiCitations(customValue as { citations?: WikiCitation[] });
+        } else if (customName === 'wiki_material_write' && customValue) {
+          this.handleWikiMaterialWrite(customValue as { material_id?: number; phase?: string; summary?: string });
         } else if (customName === CONTEXT_USAGE_EVENT && customValue) {
           const usage = parseLlmContextUsage(customValue);
           if (usage) {

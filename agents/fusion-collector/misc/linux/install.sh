@@ -4,9 +4,6 @@
 # 用途: 安装和配置 Fusion Collector Sidecar 服务
 #
 
-set -eu
-umask 077
-
 # 显示使用方法
 show_usage() {
     echo "用法: $0 {server_url} {server_api_token} {zone} {teams} [node_name] [node_id] [cpu_architecture]"
@@ -72,7 +69,6 @@ install_service() {
         printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
     }
 
-    if [ "${BK_LITE_CONFIG_PREPARED:-0}" != 1 ]; then
     ESCAPED_SERVER_URL=$(escape_sed_replacement "$SERVER_URL")
     ESCAPED_SERVER_API_TOKEN=$(escape_sed_replacement "$SERVER_API_TOKEN")
     ESCAPED_ZONE=$(escape_sed_replacement "$ZONE")
@@ -90,19 +86,6 @@ install_service() {
     sed -i "s|__TAGS__|$TAGS|g" /opt/fusion-collectors/sidecar.yml
     sed -i "s|__NODE__NAME__|$ESCAPED_NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
 
-    fi
-    chmod 600 /opt/fusion-collectors/sidecar.yml
-    if [ -f /opt/fusion-collectors/node-id ]; then chmod 600 /opt/fusion-collectors/node-id; fi
-    if [ -n "${BK_LITE_PLATFORM_CA_FILE:-}" ]; then
-        mkdir -p /opt/fusion-collectors/certs /etc/systemd/system/bk-sidecar.service.d
-        cp -- "$BK_LITE_PLATFORM_CA_FILE" /opt/fusion-collectors/certs/platform-ca.crt
-        chmod 600 /opt/fusion-collectors/certs/platform-ca.crt
-        cat > /etc/systemd/system/bk-sidecar.service.d/environment-ca.conf <<'CA_CONFIG'
-[Service]
-Environment="SSL_CERT_FILE=/opt/fusion-collectors/certs/platform-ca.crt"
-CA_CONFIG
-    fi
-
     # 拷贝服务文件并启用
     systemctl stop sidecar.service >/dev/null 2>&1 || true
     systemctl disable sidecar.service >/dev/null 2>&1 || true
@@ -110,11 +93,13 @@ CA_CONFIG
 
     cp -f "$service_source" /etc/systemd/system/bk-sidecar.service
     systemctl daemon-reload
-    if ! systemctl enable --now bk-sidecar.service || ! systemctl is-active --quiet bk-sidecar.service; then
-        echo "错误: 服务启动失败，请检查 bk-sidecar 日志" >&2
-        return 1
+    systemctl enable --now bk-sidecar.service
+
+    if [ $? -eq 0 ]; then
+        echo "服务已成功启动并设置为开机自启动"
+    else
+        echo "警告: 服务启动过程中出现问题，请检查系统日志"
     fi
-    echo "服务已成功启动并设置为开机自启动"
 }
 
 # 主函数

@@ -293,9 +293,28 @@ def _fetch_scoped_instances(client, model_id, uuids, authorized_team_ids, remain
     return {str(key): value for key, value in res.items() if isinstance(value, dict)}
 
 
+def _root_uuid_sort_key(member) -> tuple:
+    root = str((member or {}).get("root_uuid") or "").strip()
+    return (root == "", root)
+
+
+def _service_name_fields(member, instances_by_scope) -> dict:
+    app_uuid = str((member or {}).get("root_uuid") or "").strip()
+    system_uuid = str((member or {}).get("system_uuid") or "").strip()
+    app = instances_by_scope.get("application", {}).get(app_uuid) or {}
+    system = instances_by_scope.get("system", {}).get(system_uuid) or {}
+    fields = {"_cmdb_root_uuid": app_uuid}
+    if isinstance(app.get("inst_name"), str):
+        fields["application.inst_name"] = app["inst_name"]
+    if isinstance(system.get("inst_name"), str):
+        fields["system.inst_name"] = system["inst_name"]
+    return fields
+
+
 def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeout, failed_keys):
     scopes = [scope for scope in (config.get("_ci_context_scopes") or []) if scope in _CONTEXT_MODEL_ID]
-    if not scopes:
+    service_lookup = bool(config.get("_cmdb_service_lookup"))
+    if not scopes and not service_lookup:
         return
     uuid_by_key = {}
     for key in keys:
@@ -321,8 +340,13 @@ def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeou
         failed_keys.update(related_keys)
         return
 
+    fetch_scopes = list(scopes)
+    if service_lookup:
+        for scope in ("application", "system"):
+            if scope not in fetch_scopes:
+                fetch_scopes.append(scope)
     instances_by_scope = {}
-    for scope in scopes:
+    for scope in fetch_scopes:
         uuid_field = _CONTEXT_SCOPE_UUID[scope]
         scoped_uuids = []
         for members in members_by_ci.values():
@@ -352,19 +376,27 @@ def _overlay_ci_context(client, result, keys, key_meta, config, remaining_timeou
         members = members_by_ci.get(inst_uuid) or []
         if not members or not isinstance(inst, dict):
             continue
-        expanded = []
-        for member in members:
-            row = dict(inst)
-            for scope in scopes:
-                scoped_uuid = str((member or {}).get(_CONTEXT_SCOPE_UUID[scope]) or "").strip()
-                row.update(
-                    _prefix_instance_fields(
-                        _CONTEXT_SCOPE_PREFIX[scope],
-                        instances_by_scope.get(scope, {}).get(scoped_uuid) or {},
+        if scopes:
+            expanded = []
+            for member in members:
+                row = dict(inst)
+                for scope in scopes:
+                    scoped_uuid = str((member or {}).get(_CONTEXT_SCOPE_UUID[scope]) or "").strip()
+                    row.update(
+                        _prefix_instance_fields(
+                            _CONTEXT_SCOPE_PREFIX[scope],
+                            instances_by_scope.get(scope, {}).get(scoped_uuid) or {},
+                        )
                     )
-                )
-            expanded.append(row)
-        result[key] = expanded
+                if service_lookup:
+                    row.update(_service_name_fields(member, instances_by_scope))
+                expanded.append(row)
+            result[key] = expanded
+            continue
+        chosen = min(members, key=_root_uuid_sort_key)
+        row = dict(inst)
+        row.update(_service_name_fields(chosen, instances_by_scope))
+        result[key] = [row]
 
 
 def _bounded_query_timeout(query_timeout) -> int:

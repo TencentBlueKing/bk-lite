@@ -15,6 +15,7 @@ from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user
 from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
 from apps.opspilot.utils.pending_question import (
     KIND_USER_CHOICE,
+    allows_user_questions,
     build_choice_request,
     collect_evidence_messages,
     format_choice_text,
@@ -167,7 +168,7 @@ class TerminalUserChoiceMiddleware(AgentMiddleware):
         configurable = _configurable(runtime)
         request = configurable.get("graph_request")
         extra = getattr(request, "extra_config", None) or {}
-        if isinstance(extra, dict) and extra.get("unattended") is True:
+        if not allows_user_questions(extra):
             return None
         config = getattr(runtime, "config", None)
         for call in calls:

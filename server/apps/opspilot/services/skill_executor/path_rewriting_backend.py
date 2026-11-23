@@ -44,10 +44,12 @@ from apps.opspilot.services.ppt_master_runtime import (
     command_uses_ppt_master,
     command_with_workspace_cwd,
     newest_export_pptx,
+    ppt_pages_missing_reason,
     ppt_probe_reason,
     quote_measurement_roles,
     release_svg_quality_gate,
     repair_workspace_svgs,
+    workspace_has_svg_pages,
 )
 
 # 匹配 ``/skills/`` 开头、连续路径字符(不含 shell 特殊字符)的子串
@@ -744,6 +746,14 @@ class PathRewritingBackend(SandboxBackendProtocol):
             return
         self._on_ppt_exported()
 
+    def _deny_ppt_pages_missing(self, command: str) -> Any | None:
+        if self._ppt_workspace is None:
+            return None
+        reason = ppt_pages_missing_reason(command, has_pages=workspace_has_svg_pages(self._ppt_workspace))
+        if not reason:
+            return None
+        return SimpleNamespace(output=reason, exit_code=_SANDBOX_DENY_EXIT_CODE, truncated=False)
+
     def _deny_ppt_probe(self, command: str) -> Any | None:
         if self._ppt_workspace is None:
             return None
@@ -769,6 +779,10 @@ class PathRewritingBackend(SandboxBackendProtocol):
             denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
             self._log_execute_result(command, command, denied)
             return denied
+        missing_pages = self._deny_ppt_pages_missing(original)
+        if missing_pages is not None:
+            self._log_execute_result(command, command, missing_pages)
+            return missing_pages
         self._ensure_sandbox_dirs(rewritten)
         self._repair_ppt_svgs(command)
         with self._exec_lock:
@@ -796,6 +810,10 @@ class PathRewritingBackend(SandboxBackendProtocol):
             denied = _sandbox_deny_result(exc, ppt=self._ppt_workspace is not None or command_uses_ppt_master(command))
             self._log_execute_result(command, command, denied)
             return denied
+        missing_pages = self._deny_ppt_pages_missing(original)
+        if missing_pages is not None:
+            self._log_execute_result(command, command, missing_pages)
+            return missing_pages
         self._ensure_sandbox_dirs(rewritten)
         self._repair_ppt_svgs(command)
         await asyncio.to_thread(self._exec_lock.acquire)

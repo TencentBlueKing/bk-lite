@@ -4,6 +4,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import { buildTableQueryParams } from '@/app/ops-analysis/utils/tablePagination';
@@ -539,6 +540,10 @@ export const fetchWidgetData = async ({
     const result = await getSourceDataByApiId(config.dataSource, finalRequestParams);
     return result.data;
   } catch (err: any) {
+    if (isTransportCanceled(err)) {
+      if (throwError) throw err;
+      return null;
+    }
     console.error('获取数据失败:', err);
     if (throwError) {
       throw err;

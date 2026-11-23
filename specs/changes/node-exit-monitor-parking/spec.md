@@ -47,7 +47,7 @@ Status: implemented
 
 ### 节点回来
 
-- 同一节点 ID 心跳重建：`sidecar.py` 的 `_notify_collectors_node_returned` 在 `create_default_config` 之后（与 `_consume_deferred_module_push` 同处，事务外），失败不阻断心跳。监控按 `executor_node_id` 找配置，经 `NodeMgmt(is_local_client=True)` 挂到该节点，清快照，把主机实例 `node_id` 写回，并回填 `Node.monitor_id`。日志按 `removed_collector_node_id` 同样挂回。环境安装身份已登记被拒绝的情况不处理。
+- 同一节点 ID 心跳重建：`sidecar.py` 的 `_notify_collectors_node_returned` 在 `create_default_config` 之后（与 `_consume_deferred_module_push` 同处，事务外），失败不阻断心跳。监控按 `executor_node_id` 找配置，经 `NodeMgmt(is_local_client=True)` 挂到该节点，清快照，把主机实例 `node_id` 写回，并回填 `Node.monitor_id`。日志按 `removed_collector_node_id` 同样挂回。
 - 重装后同云区域、同 IP 节点推送：ingest 命中已有实例且主机 Telegraf/host 配置全部带已删除标记时，在 ingest 事务外把停采主机配置挂到新节点并清标记。挂回失败会让该次推送报错。
 - 主机接入页再接同 IP：已有实例主机配置全部带已删除标记时，挂到所选节点，不报已存在、不物理删除。
 - 日志、数据库等另建采集不按 IP 自动挂回。
@@ -58,7 +58,7 @@ Status: implemented
 
 ### 存量与删除项
 
-- 存量命令 `python manage.py restore_node_exit_parked_hosts`：默认 dry-run；`--apply` 把 `is_deleted=True,is_active=False` 且有 `CollectConfig`、同对象同 IP 同云区域无活实例的行恢复为活实例，并把配置标 `executor_node_removed=True`。冲突只报告。局限：候选不区分软删来源；两条同 IP 软删行之间不判冲突。
+- 存量命令 `python manage.py restore_node_exit_parked_hosts`：默认 dry-run；`--apply` 把 `is_deleted=True,is_active=False` 且有 `CollectConfig`、同对象同 IP 同云区域无活实例的行恢复为活实例，并把配置标 `executor_node_removed=True`。冲突只报告、不落库；节点列仍用同一套身份，两边都没有才是 `node=none`。局限：候选不区分软删来源；两条同 IP 软删行之间不判冲突。
 - 删除 `module_ingest.py` 的 `_retired_by_node_exit`（不再对软删行另建 uuid）、`_handle_lifecycle` 的 node_mgmt 软删分支（node_mgmt 来源 lifecycle 直接 skipped）、`module_push.py` 的 `best_effort_retire_linked` / `parse_retire_linked_flag`、前端 `retireLinkedConfirm`。`retire_linked` 查询参数被忽略。
 - 更新 `legacy-ard-modules-monitor.md`、`legacy-ard-modules-node-mgmt.md`、`legacy-ard-modules-cmdb.md` 中与节点退役软删监控相关的句子。
 

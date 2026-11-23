@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import WithSideMenuLayout from '@/components/sub-layout';
 import TopSection from '@/components/top-section';
-import { ChannelType, ChannelTypeMap } from '@/app/system-manager/types/channel'
+import { ChannelTypeMap } from '@/app/system-manager/types/channel';
 
 const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
   const { t } = useTranslation();
@@ -13,9 +13,9 @@ const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const router = useRouter();
 
-  const id = (searchParams?.get('id') || 'email') as ChannelType;
-  const name = searchParams?.get('name') || null;
-  const desc = searchParams?.get('desc') || null;
+  const id = searchParams?.get('id') || 'email';
+  const name = searchParams?.get('name') || '';
+  const desc = searchParams?.get('desc') || '';
 
   const handleBackButtonClick = () => {
     const pathSegments = pathname ? pathname.split('/').filter(Boolean) : [];
@@ -45,16 +45,27 @@ const ChannelDetailLayout = ({ children }: { children: React.ReactNode }) => {
       title: t('system.channel.nats'),
       desc: t('system.channel.natsDesc'),
       icon: 'dongzuo1'
+    },
+    sms: {
+      title: t('system.channel.sms'),
+      desc: t('system.channel.smsDesc'),
+      icon: 'wendaduihua'
+    },
+    voice: {
+      title: t('system.channel.voice'),
+      desc: t('system.channel.voiceDesc'),
+      icon: 'dadianhua'
     }
-  }
+  };
 
+  const builtin = typeMap[id as keyof ChannelTypeMap];
   const topSection = (
     <TopSection
-      title={typeMap[id]?.title || t('system.channel.email')}
-      content={typeMap[id]?.desc || t('system.channel.emailDesc')}
-      iconType={typeMap[id]?.icon || 'youjian'}
+      title={name || builtin?.title || id}
+      content={desc || builtin?.desc || ''}
+      iconType={builtin?.icon || 'wendaduihua'}
     />
-  )
+  );
 
   return (
     <WithSideMenuLayout

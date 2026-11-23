@@ -14,13 +14,14 @@ export const useReportApi = () => {
 
   const getReportDetail = useCallback(async (
     id: string | number,
+    signal?: AbortSignal,
   ): Promise<ReportDetail> => {
     if (shareDetailOverride) {
       return (await shareDetailOverride()) as ReportDetail;
     }
-    return loadPlaybackCanvasDetail(playbackDetail, 'report', id, () => (
-      get<ReportDetail>(`/operation_analysis/api/report/${id}/`)
-    ));
+    return loadPlaybackCanvasDetail(playbackDetail, 'report', id, (requestSignal) => (
+      get<ReportDetail>(`/operation_analysis/api/report/${id}/`, { signal: requestSignal })
+    ), signal);
   }, [get, playbackDetail, shareDetailOverride]);
 
   const saveReportViewSets = useCallback(

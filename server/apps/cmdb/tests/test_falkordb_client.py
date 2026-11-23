@@ -173,6 +173,21 @@ def test_format_search_params_supports_node_id_cursor():
     assert 12 in params.values()
 
 
+def test_format_search_params_bool_false_includes_missing_property():
+    c = _client()
+    cond, params = c.format_search_params([{"field": "auto_collect", "type": "bool", "value": False}])
+    assert cond == "((n.auto_collect = $bool1 OR n.auto_collect IS NULL))"
+    assert False in params.values()
+    assert True not in params.values()
+
+
+def test_format_search_params_bool_true_stays_equality():
+    c = _client()
+    cond, params = c.format_search_params([{"field": "auto_collect", "type": "bool", "value": True}])
+    assert cond == "(n.auto_collect = $bool1)"
+    assert True in params.values()
+
+
 def test_format_final_params_only_permission():
     c = _client()
     assert c.format_final_params([], permission_params="n.org = 1") == "n.org = 1"

@@ -10,9 +10,9 @@ import { CoreRumTransport } from './transport';
 
 /**
  * CDN onboarding facade. `initCoreRum` wires the platform-owned defaults for
- * the no-build CDN path: ordinary telemetry at 100%, default view = pathname
- * with route synchronization, bounded CoreRumTransport, and (optionally) a
- * privacy-baselined Session Replay.
+ * the no-build CDN path: session sampling from sessionTracking.samplingRate
+ * (default 1), default view = pathname with route synchronization, bounded
+ * CoreRumTransport, and (optionally) a privacy-baselined Session Replay.
  *
  * It returns the native Faro instance — it is not a private SDK and does not
  * replace Faro instrumentation.
@@ -28,6 +28,8 @@ export interface InitCoreRumConfig {
   endpoint: string;
   apiKey: string;
   replay?: false | { samplingRate?: number };
+  /** Session sample rate. Omitted means 1. This is not replay sampling. */
+  sessionTracking?: { samplingRate?: number };
   /** Browser origins that may receive W3C trace context (optional). */
   propagateTraceHeaderCorsUrls?: string[];
 }
@@ -42,6 +44,11 @@ declare global {
     initCoreRum?: (config: InitCoreRumConfig) => Faro;
     __coreRumReplay?: CoreRumReplayGlobals;
   }
+}
+
+function sessionTrackingRate(config: InitCoreRumConfig): number {
+  const rate = config.sessionTracking?.samplingRate;
+  return typeof rate === 'number' && Number.isFinite(rate) ? rate : 1;
 }
 
 const REPLAY_MASK_TEXT = '.faro-mask, [data-faro-mask], [contenteditable]';
@@ -83,7 +90,7 @@ export function initCoreRum(config: InitCoreRumConfig): Faro {
       environment: config.app.environment,
       release: config.app.release,
     },
-    sessionTracking: { enabled: true, samplingRate: 1 },
+    sessionTracking: { enabled: true, samplingRate: sessionTrackingRate(config) },
     pageTracking: { generatePageId: () => crypto.randomUUID() },
     transports: [
       new CoreRumTransport({

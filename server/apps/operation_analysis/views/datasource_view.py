@@ -47,6 +47,7 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 )
 from apps.operation_analysis.services.data_connection import ConnectionResolveError, resolve_datasource_connection
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
+from apps.operation_analysis.services.option_source_identity import resolve_option_source
 from apps.operation_analysis.services.table_query_list import apply_query_list_to_payload
 from apps.operation_analysis.services.user_messages import oa_message
 from apps.operation_analysis.views.data_connection_view import extract_inline_connection
@@ -731,6 +732,35 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return DataSourceDetailSerializer
 
         return super().get_serializer_class()
+
+    @HasPermission("data_source-View")
+    @action(detail=False, methods=["post"], url_path="resolve_option_source")
+    def resolve_option_source_view(self, request, *args, **kwargs):
+        """按全表候选解析选项来源。不返回无权候选的名称或路径。"""
+        body = request.data if isinstance(request.data, dict) else {}
+        source_id = body.get("sourceId")
+        if source_id in ("", None):
+            source_id = None
+        else:
+            try:
+                source_id = int(source_id)
+            except (TypeError, ValueError):
+                return _build_error_response(
+                    oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                    status.HTTP_400_BAD_REQUEST,
+                )
+        source_ref = body.get("sourceRef")
+        ref_value = source_ref.get("value") if isinstance(source_ref, dict) else source_ref
+        current_team = self._parse_current_team_cookie(request)
+        return Response(
+            resolve_option_source(
+                source_id=source_id,
+                builtin_key=body.get("builtinKey"),
+                source_ref=ref_value if isinstance(ref_value, str) else None,
+                current_team=current_team,
+                is_superuser=bool(getattr(request.user, "is_superuser", False)),
+            )
+        )
 
     @HasPermission("data_source-View")
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")

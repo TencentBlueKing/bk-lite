@@ -190,20 +190,20 @@ CMDB 实例 UUID 结构迁移为 Django `0045_instance_uuid_transition`（仅 sc
 instances/结果快照、Operation snapshot/未成功 Outbox；不迁变更历史 JSON 与
 系统操作日志）：
 
+- 维护命令：`migrate_cmdb_instance_uuid_runtime --dry-run|--apply|--verify`（编排 CMDB + OA）
 - 维护命令：`migrate_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
 - 维护命令：`migrate_oa_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
-- 运行期任务：`apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime`
 
 部署链路约定：
 
-- `batch_init` **只**调用 `ensure_uuid_migration_periodic_task()` 并
-  `migrate_cmdb_instance_uuid_runtime.delay()`（消息入队，等 Worker 起来后执行）；
+- `batch_init` **只**调用 `disable_uuid_migration_periodic_task()`，删除历史
+  `cmdb_instance_uuid_migration` Beat 条目；**不** `delay`、**不**同步 `--apply`；
 - **禁止**在 `batch_init` / `startup.sh` 同步执行 `--apply` 并阻断 `supervisord`；
-- Worker/Beat 起来后幂等 `--apply`；失败只打日志并由 `*/5` 周期任务重试；
+- 存量清洗改为维护窗口手工执行 `migrate_cmdb_instance_uuid_runtime`；
 - 图实例和图关联边分开记完成。两边都完成后，清洗命令直接返回，不再分页读实例，也不再把全部关联边装进内存。只剩边未完成时，做一次边收尾，并按需加载端点 UUID；
 - 运营分析各模型阶段都完成后，不再预加载全图 UUID；
 - 采集结果快照在阶段完成后，只处理更新时间晚于该阶段记录的采集任务；
-- 多 Worker 用缓存锁互斥；`*/5` 周期任务保留，用来接下中途失败。阶段完成后命令本身不再全表扫描。
+- 多进程用缓存锁互斥。Celery 任务名仅消化升级前已入队的消息，不再注册周期任务。
 
 大流量切换仍可用维护窗口停写后手动 `--apply/--verify` 留证据；见
 `docs/operations/cmdb-instance-uuid-cutover.md`。

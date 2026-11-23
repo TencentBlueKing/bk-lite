@@ -45,13 +45,18 @@ export interface RumSnippetInput {
   replayUrl: string;
   sdkCdnUrl?: string;
   replay: { enabled: boolean; samplingRate?: number };
+  sessionSamplingRate?: number;
 }
 
-export interface RumSnippetSet {
+export interface RumSnippetStack {
   npm: string;
   react: string;
   generic: string;
   cdn: string;
+}
+
+export interface RumSnippetSet extends RumSnippetStack {
+  advanced: RumSnippetStack;
 }
 
 export type RumMeta = {

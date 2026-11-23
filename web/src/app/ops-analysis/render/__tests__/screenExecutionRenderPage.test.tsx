@@ -129,6 +129,32 @@ describe('ScreenExecutionRenderPageContent ready contract', () => {
     window.removeEventListener(DASHBOARD_RENDER_EVENT, onSignal);
   });
 
+  it('does not mark the screen ready or failed when the datasource lookup is cancelled', async () => {
+    loadCanvasDataSources.mockResolvedValue(null);
+    const signals: string[] = [];
+    const onSignal = (event: Event) => {
+      signals.push((event as CustomEvent).detail.type);
+    };
+    window.addEventListener(DASHBOARD_RENDER_EVENT, onSignal);
+
+    render(
+      <ScreenExecutionRenderPageContent
+        executionId={11}
+        initialRenderInput={baseRenderInput as never}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(loadCanvasDataSources).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(signals).toEqual([]);
+    expect(canvasProps).toHaveLength(0);
+    expect(document.querySelector('[data-dashboard-render-root="true"]')).toBeNull();
+
+    window.removeEventListener(DASHBOARD_RENDER_EVENT, onSignal);
+  });
+
   it('passes the subscription room snapshot into the screen canvas', async () => {
     const roomId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const renderInput = {

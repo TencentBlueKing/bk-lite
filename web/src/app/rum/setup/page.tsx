@@ -92,7 +92,12 @@ export default function RumSetupIndexPage() {
     return apps
       .filter((app) => {
         const status = rumIngestStatus(app);
-        if (!matchesRumIngestFilter(status, filter)) return false;
+        const unconfirmed = Boolean(app.controlUnavailable) && status === 'waiting';
+        if (unconfirmed) {
+          if (filter !== 'all') return false;
+        } else if (!matchesRumIngestFilter(status, filter)) {
+          return false;
+        }
         if (!needle) return true;
         return app.application.toLowerCase().includes(needle);
       })
@@ -105,9 +110,10 @@ export default function RumSetupIndexPage() {
 
   const table = useRumClientPager(visible, `${filter}|${search}`);
 
-  function statusLabel(status: RumIngestStatus): string {
+  function statusLabel(status: RumIngestStatus, unconfirmed: boolean): string {
+    if (unconfirmed && status === 'waiting') return t('rum.verdict.unconfirmed', '无法确认接入');
     if (status === 'connected') return t('rum.setup.statusConnected', '已接入');
-    if (status === 'waiting') return t('rum.setup.statusWaiting', '未接入');
+    if (status === 'waiting') return t('rum.setup.statusWaiting', '等待数据');
     return t('rum.setup.statusDisabled', '已禁用');
   }
 
@@ -125,7 +131,13 @@ export default function RumSetupIndexPage() {
       width: 112,
       render: (_, app) => {
         const status = rumIngestStatus(app);
-        return <SemanticBadge label={statusLabel(status)} {...toneSemanticPalette(rumIngestStatusTone(status))} />;
+        const unconfirmed = Boolean(app.controlUnavailable) && status === 'waiting';
+        return (
+          <SemanticBadge
+            label={statusLabel(status, unconfirmed)}
+            {...toneSemanticPalette(unconfirmed ? 'warning' : rumIngestStatusTone(status))}
+          />
+        );
       },
     },
     {
@@ -179,7 +191,7 @@ export default function RumSetupIndexPage() {
                 onChange={(key) => setFilter(key as RumIngestFilter)}
                 options={[
                   { value: 'all', label: t('rum.setup.filterAll', '全部') },
-                  { value: 'waiting', label: t('rum.setup.filterWaiting', '未接入') },
+                  { value: 'waiting', label: t('rum.setup.filterWaiting', '等待数据') },
                   { value: 'connected', label: t('rum.setup.filterConnected', '已接入') },
                 ]}
               />

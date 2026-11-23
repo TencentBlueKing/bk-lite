@@ -12,6 +12,14 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from apps.opspilot.models import WorkflowAttachmentAsset
+from apps.opspilot.services.attachment_theme import FONT as _FONT
+from apps.opspilot.services.attachment_theme import HEADER_FILL as _HEADER_FILL
+from apps.opspilot.services.attachment_theme import MUTED as _MUTED
+from apps.opspilot.services.attachment_theme import RULE as _RULE
+from apps.opspilot.services.attachment_theme import SECTION as _SECTION
+from apps.opspilot.services.attachment_theme import TABLE_HEADER as _TABLE_HEADER
+from apps.opspilot.services.attachment_theme import TEXT as _TEXT
+from apps.opspilot.services.attachment_theme import TITLE as _TITLE
 from apps.opspilot.services.attachment_theme import build_docx_bytes as _build_docx_bytes
 from apps.opspilot.services.attachment_theme import build_pdf_bytes as _build_pdf_bytes
 from apps.opspilot.services.attachment_theme import build_xlsx_bytes as _build_xlsx_bytes
@@ -453,6 +461,11 @@ def _block_text(value) -> str:
     return _inline_text(value)
 
 
+_PPT_CALLOUT_TITLES = frozenset({"核心结论", "执行摘要", "决议"})
+_PPT_COVER_LINES = 4
+_PPT_BODY_LINES = 4
+
+
 def _pptx_slides(content: str, title: str) -> list[dict]:
     """一级、二级标题各成一页；列表、段落和表格行放进当前页。"""
     slides: list[dict] = []
@@ -460,7 +473,7 @@ def _pptx_slides(content: str, title: str) -> list[dict]:
 
     def start(slide_title: str) -> None:
         nonlocal current
-        current = {"title": (slide_title or title or " ").strip() or " ", "bullets": []}
+        current = {"title": (slide_title or title or " ").strip() or " ", "lines": [], "tables": []}
         slides.append(current)
 
     if _should_prefix_title(content, title):
@@ -473,24 +486,110 @@ def _pptx_slides(content: str, title: str) -> list[dict]:
         if current is None:
             start(title)
         if kind == "heading":
-            current["bullets"].append(_block_text(block[2]))
+            current["lines"].append(_block_text(block[2]))
         elif kind in {"ul", "ol"}:
-            current["bullets"].extend(_block_text(item) for item in block[1])
+            current["lines"].extend(_block_text(item) for item in block[1])
         elif kind == "paragraph":
-            current["bullets"].append(_block_text(block[1]))
+            current["lines"].append(_block_text(block[1]))
         elif kind == "code":
-            current["bullets"].append(block[1])
+            current["lines"].append(block[1])
         elif kind == "table":
+            header = [_block_text(cell) for cell in block[1]]
+            width = len(header)
+            rows = [header]
             for row in block[2]:
-                left = _block_text(row[0]) if row else ""
-                right = _block_text(row[1]) if len(row) > 1 else ""
-                current["bullets"].append(f"{left}：{right}" if right else left)
+                cells = [_block_text(cell) for cell in row]
+                rows.append(cells[:width] + [""] * max(0, width - len(cells)))
+            current["tables"].append(rows)
     if not slides:
         start(title)
-    return slides
+    return _expand_pptx_slides(slides)
 
 
-def _apply_pptx_run_font(run, font_name: str = "微软雅黑") -> None:
+def _pipe_row(line: str) -> list[str] | None:
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    if len(cells) < 3 or not all(cells):
+        return None
+    return cells
+
+
+def _partition_lines(lines: list[str]) -> list[tuple]:
+    """连续且列数相同的竖线行收成一张表。单独一行仍是正文。"""
+    blocks = []
+    text: list[str] = []
+
+    def flush() -> None:
+        if text:
+            blocks.append(("lines", text[:], False))
+            text.clear()
+
+    index = 0
+    while index < len(lines):
+        row = _pipe_row(lines[index])
+        if row is None:
+            text.append(lines[index])
+            index += 1
+            continue
+        width = len(row)
+        rows = []
+        while index < len(lines):
+            nxt = _pipe_row(lines[index])
+            if nxt is None or len(nxt) != width:
+                break
+            rows.append(nxt)
+            index += 1
+        if len(rows) >= 2:
+            flush()
+            blocks.append(("table", rows, False))
+        else:
+            text.append(" | ".join(rows[0]))
+    flush()
+    return blocks
+
+
+def _expand_pptx_slides(slides: list[dict]) -> list[dict]:
+    """第一页是封面。结论页单独成页。表格按页切开，表头在每一页重复。"""
+    expanded = []
+    for index, slide in enumerate(slides):
+        lines = [line.strip() for line in slide["lines"] if str(line).strip()]
+        blocks = _partition_lines(lines)
+        for table in slide["tables"]:
+            blocks.append(("table", table, True))
+        if not blocks:
+            role = "cover" if index == 0 else "callout" if slide["title"] in _PPT_CALLOUT_TITLES else "points"
+            expanded.append({"role": role, "title": slide["title"], "lines": [], "table": None, "header": False})
+            continue
+        first = True
+        for kind, payload, has_header in blocks:
+            if kind == "lines":
+                pending = payload
+                while pending:
+                    role = "cover" if index == 0 and first else "callout" if slide["title"] in _PPT_CALLOUT_TITLES else "points"
+                    limit = _PPT_COVER_LINES if role == "cover" else _PPT_BODY_LINES
+                    expanded.append({"role": role, "title": slide["title"], "lines": pending[:limit], "table": None, "header": False})
+                    pending = pending[limit:]
+                    first = False
+                continue
+            rows = payload
+            head = rows[:1] if has_header else []
+            body = rows[1:] if has_header else rows
+            step = 7
+            chunks = [body[start : start + step] for start in range(0, len(body), step)] or [[]]
+            for chunk in chunks:
+                expanded.append(
+                    {
+                        "role": "points",
+                        "title": slide["title"],
+                        "lines": [],
+                        "table": head + chunk,
+                        "header": has_header and bool(head),
+                    }
+                )
+            first = False
+    return expanded
+
+
+def _apply_pptx_run_font(run, font_name: str = _FONT) -> None:
     from pptx.oxml.ns import qn
 
     run.font.name = font_name
@@ -503,31 +602,130 @@ def _apply_pptx_run_font(run, font_name: str = "微软雅黑") -> None:
         element.set("typeface", font_name)
 
 
+def _pptx_run(paragraph, text: str, size: int, color: str, *, bold: bool = False) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.util import Pt
+
+    run = paragraph.add_run()
+    run.text = text
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.color.rgb = RGBColor.from_string(color)
+    _apply_pptx_run_font(run)
+
+
+def _pptx_box(slide, left, top, width, height):
+    shape = slide.shapes.add_textbox(left, top, width, height)
+    shape.text_frame.word_wrap = True
+    return shape.text_frame
+
+
+def _pptx_bar(slide, left, top, width, height, color: str) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+
+    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = RGBColor.from_string(color)
+    shape.line.fill.background()
+
+
+def _pptx_table(slide, rows: list[list[str]], has_header: bool) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.util import Emu, Inches, Pt
+
+    column_count = max(len(row) for row in rows)
+    padded = [row + [""] * (column_count - len(row)) for row in rows]
+    table_width = Inches(12.4)
+    shape = slide.shapes.add_table(len(padded), column_count, Inches(0.45), Inches(1.55), table_width, Inches(min(5.3, 0.46 * len(padded))))
+    table = shape.table
+    column_width = int(table_width / column_count)
+    for index in range(column_count):
+        table.columns[index].width = Emu(column_width)
+    for row_index, row in enumerate(padded):
+        header = has_header and row_index == 0
+        for column_index, value in enumerate(row):
+            cell = table.cell(row_index, column_index)
+            cell.text = value
+            cell.text_frame.word_wrap = True
+            for paragraph in cell.text_frame.paragraphs:
+                paragraph.space_after = Pt(0)
+                for run in paragraph.runs:
+                    run.font.size = Pt(12)
+                    run.font.bold = header
+                    run.font.color.rgb = RGBColor.from_string(_TITLE if header else _TEXT)
+                    _apply_pptx_run_font(run)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor.from_string(_HEADER_FILL if header else "FFFFFF")
+
+
+def _pptx_lines(frame, lines: list[str], size: int, color: str, *, bullet: bool) -> None:
+    from pptx.util import Pt
+
+    for index, line in enumerate(lines):
+        paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+        paragraph.space_after = Pt(12)
+        _pptx_run(paragraph, f"• {line}" if bullet else line, size, color)
+
+
 def _build_pptx_bytes(content: str, title: str) -> bytes:
     # 显著启动成本：python-pptx 仅在生成幻灯片时需要，不得随 Django setup 加载。
     from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Emu, Inches
 
     presentation = Presentation()
-    layout = presentation.slide_layouts[1]
-    for slide_data in _pptx_slides(content, title):
-        slide = presentation.slides.add_slide(layout)
-        slide.shapes.title.text = slide_data["title"][:200]
-        text_frame = slide.placeholders[1].text_frame
-        bullets = slide_data["bullets"] or [""]
-        text_frame.text = bullets[0][:1000]
-        for paragraph in text_frame.paragraphs:
-            for run in paragraph.runs:
-                _apply_pptx_run_font(run)
-        for item in bullets[1:]:
-            paragraph = text_frame.add_paragraph()
-            paragraph.text = item[:1000]
-            paragraph.level = 0
-            for run in paragraph.runs:
-                _apply_pptx_run_font(run)
-        if slide.shapes.title is not None:
-            for paragraph in slide.shapes.title.text_frame.paragraphs:
-                for run in paragraph.runs:
-                    _apply_pptx_run_font(run)
+    presentation.slide_width = Inches(13.333)
+    presentation.slide_height = Inches(7.5)
+    blank = presentation.slide_layouts[6]
+    slides = _pptx_slides(content, title)
+    total = len(slides)
+    for number, slide_data in enumerate(slides, start=1):
+        slide = presentation.slides.add_slide(blank)
+        role = slide_data["role"]
+        if role == "callout":
+            background = slide.background.fill
+            background.solid()
+            background.fore_color.rgb = RGBColor.from_string(_TABLE_HEADER)
+            _pptx_bar(slide, Inches(0.7), Inches(1.15), Inches(11.9), Inches(5.5), "FFFFFF")
+        elif role == "cover":
+            _pptx_bar(slide, Emu(0), Emu(0), Inches(0.16), presentation.slide_height, _TITLE)
+        else:
+            _pptx_bar(slide, Emu(0), Emu(0), presentation.slide_width, Inches(0.1), _SECTION)
+        title_box = _pptx_box(
+            slide,
+            Inches(0.7),
+            Inches(1.9 if role == "cover" else 1.45 if role == "callout" else 0.4),
+            Inches(11.6),
+            Inches(1.5 if role == "cover" else 0.8),
+        )
+        _pptx_run(
+            title_box.paragraphs[0], slide_data["title"][:80], 40 if role == "cover" else 28, _TITLE if role != "callout" else _SECTION, bold=True
+        )
+        if role == "points":
+            _pptx_bar(slide, Inches(0.7), Inches(1.35), Inches(2.2), Inches(0.04), _RULE)
+        if slide_data["table"]:
+            _pptx_table(slide, slide_data["table"], slide_data["header"])
+        elif slide_data["lines"]:
+            body = _pptx_box(
+                slide,
+                Inches(0.7 if role != "callout" else 1.0),
+                Inches(3.6 if role == "cover" else 2.5 if role == "callout" else 1.7),
+                Inches(11.4),
+                Inches(3.2),
+            )
+            _pptx_lines(
+                body,
+                slide_data["lines"],
+                20 if role == "cover" else 22 if role == "callout" else 20,
+                _MUTED if role == "cover" else _TEXT,
+                bullet=role != "cover",
+            )
+        if role != "cover":
+            footer = _pptx_box(slide, Inches(10.4), Inches(7.05), Inches(2.3), Inches(0.3))
+            footer.paragraphs[0].alignment = PP_ALIGN.RIGHT
+            _pptx_run(footer.paragraphs[0], f"{number} / {total}", 12, _MUTED)
     buffer = BytesIO()
     presentation.save(buffer)
     return buffer.getvalue()

@@ -5,13 +5,13 @@ from urllib.error import HTTPError
 import pytest
 
 from apps.rum.services.analytics import UnavailableAnalytics
-
-pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.errors import ErrorsService, MemoryIssueStore, MemorySourcemapStore, match_issue_status
 from apps.rum.services.settings import RumRuntimeSettings
 from apps.rum.services.sourcemap import OUTCOME_MISSING_RELEASE, OUTCOME_RESOLVED, restore_frames
+
+pytestmark = pytest.mark.django_db
 
 
 def _settings() -> RumRuntimeSettings:
@@ -52,6 +52,7 @@ def test_list_errors_degrades_without_analytics():
         issues=MemoryIssueStore(),
     ).list_errors("tester", {"range": "24h"})
     assert page["analyticsUnavailable"] is True
+    assert "controlUnavailable" not in page
     assert page["issues"] == []
 
 
@@ -89,6 +90,7 @@ def test_list_errors_degrades_when_query_fails(caplog):
             issues=MemoryIssueStore(),
         ).list_errors("tester", {"range": "24h"})
     assert page["analyticsUnavailable"] is True
+    assert "controlUnavailable" not in page
     assert page["issues"] == []
     record = next(item for item in caplog.records if item.name == "rum")
     assert record.exc_info is None
@@ -106,6 +108,7 @@ def test_error_detail_degrades_when_query_fails(caplog):
             issues=MemoryIssueStore(),
         ).error_detail("tester", "fp-1", {"range": "24h"})
     assert page["analyticsUnavailable"] is True
+    assert "controlUnavailable" not in page
     assert page["fingerprint"] == ""
     record = next(item for item in caplog.records if item.name == "rum")
     assert record.exc_info is None
@@ -179,3 +182,87 @@ def test_restore_frames_invalid_map():
         "map-1",
     )
     assert result["outcome"] == "invalid_map"
+
+
+class _RecordingErrors:
+    def __init__(self, issues=None, *, available=True):
+        self.issues = list(issues or [])
+        self._available = available
+        self.calls = []
+
+    def available(self):
+        return self._available
+
+    def list_error_issues(self, tenant_id, opts):
+        self.calls.append(("list", opts))
+        return {"issues": list(self.issues)}
+
+    def error_detail(self, tenant_id, fingerprint, opts):
+        self.calls.append(("detail", fingerprint, opts))
+        return {"fingerprint": fingerprint, "occurrences": [{"id": "1"}], "signals": []}
+
+
+class _ClosedErrors(_RecordingErrors):
+    def __init__(self):
+        super().__init__(available=False)
+
+    def list_error_issues(self, tenant_id, opts):
+        raise AssertionError("list_error_issues should not run when analytics is unavailable")
+
+    def error_detail(self, tenant_id, fingerprint, opts):
+        raise AssertionError("error_detail should not run when analytics is unavailable")
+
+
+def test_error_reads_use_postgres_app_when_control_is_down():
+    control = MemoryControl()
+    _seed_app(control)
+    analytics = _RecordingErrors(issues=[{"fingerprint": "fp-1", "application": "checkout"}])
+    service = ErrorsService(control=UnavailableControl(), analytics=analytics, issues=MemoryIssueStore())
+    page = service.list_errors("tester", {"range": "24h"})
+    detail = service.error_detail("tester", "fp-1", {"range": "24h"})
+    assert analytics.calls[0][1]["applications"] == ["checkout"]
+    assert analytics.calls[1][0] == "detail"
+    assert analytics.calls[1][2]["applications"] == ["checkout"]
+    assert page["issues"][0]["fingerprint"] == "fp-1"
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+    assert detail["fingerprint"] == "fp-1"
+    assert detail["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in detail
+
+    empty = _RecordingErrors()
+    empty_service = ErrorsService(control=UnavailableControl(), analytics=empty, issues=MemoryIssueStore())
+    page = empty_service.list_errors("tester", {"range": "24h"})
+    assert empty.calls[0][1]["applications"] == ["checkout"]
+    assert page["issues"] == []
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+
+
+def test_error_reads_keep_both_flags_when_control_and_analytics_are_down():
+    control = MemoryControl()
+    _seed_app(control)
+    analytics = _ClosedErrors()
+    service = ErrorsService(control=UnavailableControl(), analytics=analytics, issues=MemoryIssueStore())
+    page = service.list_errors("tester", {"range": "24h"})
+    detail = service.error_detail("tester", "fp-1", {"range": "24h"})
+    assert page["controlUnavailable"] is True
+    assert page["analyticsUnavailable"] is True
+    assert page["issues"] == []
+    assert detail["controlUnavailable"] is True
+    assert detail["analyticsUnavailable"] is True
+    assert detail["fingerprint"] == ""
+    assert analytics.calls == []
+
+
+def test_error_reads_skip_analytics_when_control_is_down_and_postgres_has_no_app():
+    analytics = _RecordingErrors(issues=[{"fingerprint": "fp-1"}])
+    service = ErrorsService(control=UnavailableControl(), analytics=analytics, issues=MemoryIssueStore())
+    page = service.list_errors("tester", {"range": "24h"})
+    detail = service.error_detail("tester", "fp-1", {"range": "24h"})
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+    assert page["issues"] == []
+    assert detail["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in detail
+    assert analytics.calls == []

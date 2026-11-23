@@ -55,12 +55,17 @@ class SkillSandboxMixin:
     @staticmethod
     async def _publish_ppt_master_export(graph_request, prior_filenames, config=None, sandbox=None) -> None:
         if sandbox is not None:
-            from apps.opspilot.services.ppt_master_runtime import current_ppt_run
-            from apps.opspilot.services.python_sandbox.ppt import sync_ppt_workspace
+            from apps.opspilot.services.ppt_master_runtime import current_ppt_run, materialize_ppt_export
 
             workspace = current_ppt_run(graph_request)
             if workspace is not None:
-                await asyncio.to_thread(sync_ppt_workspace, sandbox, workspace)
+                status = await asyncio.to_thread(materialize_ppt_export, sandbox, workspace)
+                if status == "exported":
+                    setattr(graph_request, "_ppt_export_ready", True)
+                    setattr(graph_request, "_ppt_user_notice", "")
+                elif not str(getattr(graph_request, "_ppt_user_notice", "") or ""):
+                    notice = "页面已经写好，但导出没有生成 pptx。" if status == "compile_failed" else "页面 SVG 没有写出来，所以没有导出 pptx。"
+                    setattr(graph_request, "_ppt_user_notice", notice)
         # 登记附件会写数据库。ASGI 请求里直接调用会抛 SynchronousOnlyOperation，下载卡片就出不来。
         await sync_to_async(publish_latest_export, thread_sensitive=True)(graph_request, prior_filenames)
         event = getattr(graph_request, "_ppt_download_event", None)

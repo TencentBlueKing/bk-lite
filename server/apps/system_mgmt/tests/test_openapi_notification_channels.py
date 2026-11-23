@@ -220,9 +220,7 @@ def test_send_parameter_descriptions_follow_acting_user_locale(tenants):
     assert email_parameters["channel_id"] == f'Always set this to {tenants.a.email.id}, for the "{tenants.a.email.name}" channel.'
     assert email_parameters["channel_type"] == "Always set this to email."
     assert email_parameters["title"] == "Email subject. Can be left empty."
-    assert email_parameters["content"] == (
-        "Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags."
-    )
+    assert email_parameters["content"] == ("Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.")
     assert email_parameters["receivers"].startswith("Platform user ID strings")
     assert webhook_parameters["channel_id"] == f'Always set this to {tenants.a.webhook.id}, for the "{tenants.a.webhook.name}" channel.'
     assert webhook_parameters["channel_type"] == "Always set this to custom_webhook."
@@ -699,3 +697,55 @@ def test_unknown_send_field_is_rejected(tenants):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_sms_channel_catalog_entry_uses_title_body_and_platform_user_ids():
+    from apps.core.openapi.registry import default_registry
+    from apps.system_mgmt.openapi_api import _EXTERNAL_NOTIFICATION_CHANNEL_TYPES, _openapi_notification_channel
+
+    channel = Channel.objects.create(
+        name="短信A",
+        channel_type=ChannelChoices.SMS,
+        description="告警短信",
+        team=[1],
+        config={"secret_key": "secret-sentinel", "provider": "tencent"},
+    )
+
+    assert ChannelChoices.SMS in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES
+    assert ChannelChoices.VOICE in _EXTERNAL_NOTIFICATION_CHANNEL_TYPES
+    item = _openapi_notification_channel(channel, "zh-Hans")
+    assert item["channel_type"] == "sms"
+    assert item["recipient_mode"] == "system_user"
+    parameters = {parameter["name"]: parameter for parameter in item["send_parameters"]}
+    assert list(parameters) == ["channel_id", "channel_type", "title", "content", "receivers", "template_params"]
+    assert parameters["template_params"]["required"] is False
+    assert parameters["template_params"]["type"] == "array"
+    assert "template_params" in parameters["title"]["description"]
+    assert "template_params" in parameters["content"]["description"]
+    assert "必须传字符串数组" in parameters["template_params"]["description"]
+    assert "没有登记变量时省略或传空" in parameters["template_params"]["description"]
+    assert "JSON 对象" not in parameters["template_params"]["description"]
+
+    aliyun = Channel.objects.create(
+        name="阿里云短信",
+        channel_type=ChannelChoices.SMS,
+        description="告警短信",
+        team=[1],
+        config={"provider": "aliyun", "access_key_secret": "secret-sentinel"},
+    )
+    aliyun_parameters = {parameter["name"]: parameter for parameter in _openapi_notification_channel(aliyun, "zh-Hans")["send_parameters"]}
+    assert aliyun_parameters["template_params"]["type"] == "object"
+    assert "必须传 JSON 对象" in aliyun_parameters["template_params"]["description"]
+    assert "没有登记变量时省略或传空" in aliyun_parameters["template_params"]["description"]
+    assert "字符串数组" not in aliyun_parameters["template_params"]["description"]
+    assert "用户 ID" in parameters["receivers"]["description"]
+    assert "secret-sentinel" not in json.dumps(item, ensure_ascii=False)
+    send = next(
+        endpoint
+        for endpoint in default_registry.endpoints()
+        if endpoint.path == "system-mgmt/notification-channels/send" and endpoint.method == "POST"
+    )
+    assert "阿里云传 JSON 对象" in send.summary
+    assert "腾讯云传字符串数组" in send.summary
+    assert "没有登记变量时省略或传空" in send.summary
+    assert "邮件等其他渠道可以不传" in send.summary

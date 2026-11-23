@@ -6,8 +6,11 @@ import asyncio
 import os
 import socket
 import threading
+import time
+import uuid
 from dataclasses import dataclass
 
+from core.collection.access_check import access_row_count, emit_access_check_batches
 from core.collection.capacity_observer import CapacityUsageReporter, with_capacity_utilization
 from core.collection.constants import (
     DEFAULT_COLLECTION_REDIS_PREFIX,
@@ -206,6 +209,10 @@ class CollectionApplication:
         resource_sampler=None,
     ) -> None:
         self.settings = settings or CollectionApplicationSettings()
+        self._access_check_lock = asyncio.Lock()
+        self._access_check_active = 0
+        self._access_check_limit = int(os.getenv("ACCESS_CHECK_MAX_ACTIVE", "4"))
+        self._access_check_tasks: set[asyncio.Task] = set()
         self._schedule = schedule
         self._scan_publisher = None
         self._redis = redis_client
@@ -375,7 +382,8 @@ class CollectionApplication:
     async def shutdown(self) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.settings.shutdown_grace_seconds
-        await self.runtime.shutdown(grace_seconds=self.settings.shutdown_grace_seconds)
+        await self._stop_access_checks(deadline)
+        await self.runtime.shutdown(grace_seconds=max(0.0, deadline - loop.time()))
         await self._scheduler.shutdown()
         await self._publisher.shutdown(grace_seconds=max(0.0, deadline - loop.time()))
         await close_shared_nats()
@@ -551,6 +559,176 @@ class CollectionApplication:
             _capacity_value(snapshot, "cgroup_cpu_throttled_seconds_delta", "秒"),
             _capacity_value(snapshot, "cgroup_cpu_throttled_periods_delta", "次"),
         )
+
+    async def admit_access_check(self, request: CollectionRequest) -> dict:
+        """接纳连通性测试并立刻返回。探测在登记过的任务里继续。"""
+        async with self._access_check_lock:
+            if self._access_check_active >= self._access_check_limit:
+                return {"status": "busy", "error_code": "check_busy"}
+            self._access_check_active += 1
+        task = asyncio.get_running_loop().create_task(self._complete_access_check(request))
+        self._access_check_tasks.add(task)
+        task.add_done_callback(self._access_check_tasks.discard)
+        return {"status": "accepted", "error_code": ""}
+
+    async def _complete_access_check(self, request: CollectionRequest) -> None:
+        try:
+
+            async def publish(status, rows):
+                return await self._publish_access_check_terminal(request, status, "", rows)
+
+            await emit_access_check_batches(
+                self._run_access_check(request),
+                publish,
+                total=access_row_count(request),
+            )
+        except asyncio.CancelledError:
+            await self._publish_access_check_terminal(
+                request,
+                "failed",
+                "stargazer_unavailable",
+                (),
+                attempts=1,
+                timeout=2,
+            )
+            raise
+        except Exception as exc:  # noqa: BLE001 - 终态由回程表达，不把异常正文送出
+            logger.error(
+                "event=access_check_failed %s failed_stage=access_check error_type=%s",
+                _run_log_identity(request),
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            await self._publish_access_check_terminal(request, "failed", "stargazer_unavailable", ())
+        finally:
+            async with self._access_check_lock:
+                self._access_check_active = max(0, self._access_check_active - 1)
+
+    async def _stop_access_checks(self, deadline: float) -> None:
+        pending = [task for task in self._access_check_tasks if not task.done()]
+        if not pending:
+            return
+        timeout = max(0.0, deadline - asyncio.get_running_loop().time())
+        _done, not_done = await asyncio.wait(pending, timeout=timeout)
+        for task in not_done:
+            task.cancel()
+        if not_done:
+            await asyncio.wait(not_done, timeout=3)
+
+    async def _publish_access_check_terminal(
+        self,
+        request: CollectionRequest,
+        status: str,
+        error_code: str,
+        rows,
+        attempts: int | None = None,
+        timeout: float = 10,
+    ) -> bool:
+        from core.infra.control_transport import get_control_transport
+
+        check_id = str(request.params.get("check_id") or "")
+        payload = {
+            "collect_task_id": str(request.params.get("collect_task_id") or ""),
+            "check_id": check_id,
+            "status": status,
+            "error_code": error_code,
+            "rows": [
+                {
+                    "target": row.target,
+                    "credential_id": row.credential_id,
+                    "credential_name": row.credential_name,
+                    "conclusion": row.conclusion,
+                    "detail_code": row.detail_code,
+                    "attempted": row.attempted,
+                }
+                for row in rows
+            ],
+        }
+        total = attempts if attempts is not None else max(1, int(self.settings.publish_max_attempts))
+        for attempt in range(total):
+            try:
+                response = await get_control_transport().request_collection_callback(
+                    "receive_access_check_result",
+                    payload,
+                    timeout=timeout,
+                )
+                result = response.get("result") if isinstance(response, dict) else None
+                if (
+                    isinstance(response, dict)
+                    and response.get("success")
+                    and isinstance(result, dict)
+                    and result.get("accepted")
+                    and str(result.get("check_id") or "") == check_id
+                ):
+                    return True
+            except Exception as exc:  # noqa: BLE001 - 下一次重试或放弃
+                logger.error(
+                    "event=access_check_callback_failed check_id=%s failed_stage=callback error_type=%s",
+                    check_id or "-",
+                    type(exc).__name__,
+                )
+            if attempt + 1 < total:
+                await asyncio.sleep(0.2)
+        logger.error(
+            "event=access_check_callback_failed check_id=%s failed_stage=callback error_type=not_accepted",
+            check_id or "-",
+        )
+        return False
+
+    async def _run_access_check(self, request: CollectionRequest):
+        plugin = self._plugin_factory.resolve(request)
+        prepare_plugin = getattr(plugin, "prepare", None)
+        if callable(prepare_plugin):
+            await prepare_plugin(request)
+        prepared_executor_config = getattr(plugin, "prepared_executor_config", None)
+        if prepared_executor_config is None:
+            request = await apply_yaml_target_policy_async(request)
+            plan = self._execution_plan_resolver.resolve(request)
+        else:
+            request = apply_executor_target_policy(request, prepared_executor_config)
+            plan = self._execution_plan_resolver.resolve(
+                request,
+                executor_config=prepared_executor_config,
+            )
+        access_probe = None
+        if callable(getattr(plugin, "probe", None)) and getattr(plugin, "supports_access_probe", True):
+            access_probe = plugin
+        executor = TargetCollectionExecutor(
+            preflight=self._preflight,
+            access_probe=access_probe,
+            plugin=plugin,
+            publisher=self._publisher,
+            credential_policy=self._credential_policy,
+            activity_tracker=self._target_activity,
+            metrics=self._metrics,
+            settings=self._target_executor_settings,
+            plan=plan,
+            scheduler=None,
+        )
+        lease = RunLease(
+            task_id=request.task_id,
+            request_digest=request.digest,
+            owner_id="access-check",
+            fence=0,
+            expires_at=time.time() + 600,
+            attempt_id=uuid.uuid4().hex,
+        )
+        try:
+            async for rows in executor.execute_access_check(request, lease):
+                yield rows
+        finally:
+            close_plugin = getattr(plugin, "close", None)
+            if callable(close_plugin):
+                try:
+                    await close_plugin()
+                except Exception as exc:  # noqa: BLE001 - 清理失败不覆盖探测结果
+                    logger.error(
+                        "event=access_check_plugin_close_failed %s plugin_ref=%s failed_stage=plugin_close error_type=%s",
+                        _run_log_identity(request),
+                        safe_log_value(request.plugin_ref),
+                        type(exc).__name__,
+                        exc_info=safe_exception_info(exc),
+                    )
 
     async def _execute(self, request: CollectionRequest, lease: RunLease):
         plugin = self._plugin_factory.resolve(request)

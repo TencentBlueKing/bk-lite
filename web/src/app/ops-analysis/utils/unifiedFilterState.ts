@@ -7,7 +7,6 @@ import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterVa
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
-import { isDynamicOptionFilter } from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import {
   coerceFilterValuesForDefinitions,
   coerceValueForMultiple,
@@ -166,8 +165,13 @@ export const syncFilterValuesWithDefinitions = (
       return;
     }
 
-    // 动态选项的默认值可能属于别的组织，等选项列表回来后再套用。
-    if (isDynamicOptionFilter(definition)) return;
+    // 0、false、空串和空数组都是已写入的值，不能当成“还没选”再套默认值。
+    if (
+      Object.prototype.hasOwnProperty.call(updatedValues, definition.id)
+      && updatedValues[definition.id] === null
+    ) {
+      return;
+    }
 
     updatedValues[definition.id] = definition.defaultValue;
   });

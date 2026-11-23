@@ -18,12 +18,12 @@ import { RumSingleWorkbench } from '@/app/rum/components/rum-dual-workbench';
 import { RumMetricGrid } from '@/app/rum/components/rum-metric-card';
 import RumPermission from '@/app/rum/components/rum-permission';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
-import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
+import PipelineDegradedBanner, { RumDegradedEmpty } from '@/app/rum/components/pipeline-degraded';
 import ExportButton from '@/app/rum/components/export-button';
 import { RumKpiSkeleton, RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import { cwvTone, formatMs, toneSemanticPalette } from '@/app/rum/lib/cwv';
-import { degradationReason } from '@/app/rum/lib/degradation';
+import { degradationBanners, listEmptyUsesAnalyticsCopy } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
@@ -136,7 +136,8 @@ export default function RumReleasesPage() {
 
   const rows = page?.releases || [];
   const table = useRumClientPager(rows, `${range}|${application}|${traffic}`);
-  const degrade = degradationReason(page);
+  const banners = degradationBanners(page);
+  const analyticsEmpty = listEmptyUsesAnalyticsCopy(page);
   const summary = useMemo(() => {
     let errorCount = 0;
     let newIssues = 0;
@@ -388,7 +389,13 @@ export default function RumReleasesPage() {
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t('rum.releases.title', '部署追踪')}</h1>
-      {degrade ? <div className="mb-2 shrink-0"><PipelineDegradedBanner reason={degrade} /></div> : null}
+      {banners.length > 0 ? (
+        <div className="mb-2 shrink-0">
+          {banners.map((reason) => (
+            <PipelineDegradedBanner key={reason} reason={reason} />
+          ))}
+        </div>
+      ) : null}
 
       <RumSingleWorkbench
         toolbar={
@@ -463,16 +470,20 @@ export default function RumReleasesPage() {
             </>
           ) : rows.length === 0 ? (
             <div className="flex min-h-0 flex-1 items-center justify-center">
-              <Empty
-                description={
-                  <div className="flex flex-col gap-1">
-                    <span>{t('rum.releases.empty', '没有版本样本')}</span>
-                    <span className="text-xs text-[var(--color-text-3)]">
-                      {t('rum.releases.emptyHint', '选择应用与时间范围后再试。')}
-                    </span>
-                  </div>
-                }
-              />
+              {analyticsEmpty ? (
+                <RumDegradedEmpty reason="analytics" />
+              ) : (
+                <Empty
+                  description={
+                    <div className="flex flex-col gap-1">
+                      <span>{t('rum.releases.empty', '没有版本样本')}</span>
+                      <span className="text-xs text-[var(--color-text-3)]">
+                        {t('rum.releases.emptyHint', '选择应用与时间范围后再试。')}
+                      </span>
+                    </div>
+                  }
+                />
+              )}
             </div>
           ) : rows.length > 0 ? (
             <>

@@ -1,4 +1,26 @@
 import useApiClient from '@/utils/request';
+
+export interface NotificationChannelPackField {
+  key: string;
+  label: string;
+  field_type: string;
+  required: boolean;
+  secret: boolean;
+  default?: unknown;
+  placeholder?: string;
+  help_text?: string;
+  options?: Array<{ value: string; label: string }>;
+}
+
+export interface NotificationChannelPack {
+  key: string;
+  name: string;
+  description: string;
+  delivery: 'template' | 'body';
+  parameter_mode: 'ordered' | 'named' | null;
+  instance_template: NotificationChannelPackField[];
+}
+
 export const useChannelApi = () => {
   const { get, post, put, del } = useApiClient();
 
@@ -56,6 +78,11 @@ export const useChannelApi = () => {
     });
   }
 
+  async function getNotificationChannelPacks(): Promise<NotificationChannelPack[]> {
+    const rows = await get<NotificationChannelPack[]>('/system_mgmt/channel/notification_channel_packs/');
+    return Array.isArray(rows) ? rows : [];
+  }
+
   return {
     getChannelData,
     getNotificationTagCatalog,
@@ -66,5 +93,6 @@ export const useChannelApi = () => {
     getChannelTemp,
     testChannel,
     getGroupAccountAssociationOptions,
+    getNotificationChannelPacks,
   }
 }

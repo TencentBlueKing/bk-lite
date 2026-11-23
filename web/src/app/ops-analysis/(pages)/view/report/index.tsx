@@ -34,6 +34,7 @@ import {
   normalizeReportViewSets,
   removeReportSection,
   reorderReportSection,
+  nextReportViewSetsAfterLookup,
   syncReportFiltersFromSections,
   updateReportSection,
 } from '@/app/ops-analysis/utils/reportBuilder';
@@ -170,6 +171,9 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   const [addingComponent, setAddingComponent] = useState(false);
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const loadGuardRef = useRef(createReportLoadGuard());
+  const selectedReportIdRef = useRef(selectedReport?.data_id);
+  selectedReportIdRef.current = selectedReport?.data_id;
+  const detailAbortRef = useRef<AbortController | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
   const chartTheme = getOpsChartTheme(themeName);
@@ -269,6 +273,9 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   }, [playbackDetail, playbackMode, selectedReport?.data_id, shareOrganizationSeed, t]);
 
   const loadReport = useCallback(async () => {
+    detailAbortRef.current?.abort();
+    const detailController = new AbortController();
+    detailAbortRef.current = detailController;
     const requestId = beginReportLoad(loadGuardRef.current);
     const reportId = selectedReport?.data_id;
     if (!reportId) {
@@ -307,7 +314,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
 
     setLoading(true);
     try {
-      const detail = await getReportDetailRef.current(reportId);
+      const detail = await getReportDetailRef.current(reportId, detailController.signal);
       if (!isCurrentReportLoad(loadGuardRef.current, requestId)) return;
       const normalized = normalizeReportViewSets(detail.view_sets, t);
       setSavedViewSets(normalized);
@@ -380,6 +387,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     emittedRenderSignalRef.current = false;
     void loadReport();
     return () => {
+      detailAbortRef.current?.abort();
       invalidateReportLoads(loadGuardRef.current);
     };
   }, [loadReport]);
@@ -544,9 +552,16 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     setDraftViewSets(synced);
     setFilterValues((previous) => syncFilterValuesWithDefinitions(synced.filters, previous));
 
+    const requestCanvasId = selectedReport?.data_id;
     void loadCanvasDataSources(nextIds).then((loadedDataSources) => {
       setDraftViewSets((previous) => {
-        const next = syncReportFiltersFromSections(previous, loadedDataSources);
+        const next = nextReportViewSetsAfterLookup(
+          previous,
+          loadedDataSources,
+          requestCanvasId,
+          selectedReportIdRef.current,
+        );
+        if (next === previous) return previous;
         setFilterValues((current) => syncFilterValuesWithDefinitions(next.filters, current));
         return next;
       });
@@ -571,9 +586,16 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     setDraftViewSets(synced);
     setFilterValues((previous) => syncFilterValuesWithDefinitions(synced.filters, previous));
 
+    const requestCanvasId = selectedReport?.data_id;
     void loadCanvasDataSources(nextIds).then((loadedDataSources) => {
       setDraftViewSets((previous) => {
-        const next = syncReportFiltersFromSections(previous, loadedDataSources);
+        const next = nextReportViewSetsAfterLookup(
+          previous,
+          loadedDataSources,
+          requestCanvasId,
+          selectedReportIdRef.current,
+        );
+        if (next === previous) return previous;
         setFilterValues((current) => syncFilterValuesWithDefinitions(next.filters, current));
         return next;
       });
@@ -776,6 +798,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       onSearch={handleFilterSearch}
       onReset={handleFilterSearch}
       onApplyInitial={setAppliedFilterValues}
+      canEditCanvas={hasPermission(['EditChart'])}
       popupZIndex={isFullscreen ? 1200 : undefined}
     />
   ) : null;
@@ -952,6 +975,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
           dataSourceManager={dataSourceManager}
           filterDefinitions={draftViewSets.filters}
           unifiedFilterValues={filterValues}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           onConfirm={confirmComponentConfig}
           onClose={() => {
             setConfigOpen(false);
@@ -967,6 +991,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
           definitions={draftViewSets.filters}
           layoutItems={filterLayoutItems}
           dataSources={dataSourceManager.dataSources}
+          canRepairOptionSource={hasPermission(['EditChart'])}
         />
         {selectedReport?.data_id != null && (
           <DashboardSubscriptionModal

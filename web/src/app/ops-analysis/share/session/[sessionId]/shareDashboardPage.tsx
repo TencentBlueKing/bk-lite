@@ -17,6 +17,7 @@ import { ShareOrganizationProvider } from '@/app/ops-analysis/context/shareOrgan
 import { ShareNetworkTopologyRuntimeProvider } from '@/app/ops-analysis/context/shareNetworkTopologyRuntime';
 import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { useTranslation } from '@/utils/i18n';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
 import type { NetworkTopologyConfig, NetworkTopologyLink } from '@/app/ops-analysis/types/networkTopology';
@@ -32,10 +33,17 @@ export default function ShareDashboardPage() {
   const [invalid, setInvalid] = useState(false);
 
   useEffect(() => {
-    if (!params.sessionId) return;
-    api.getSharedCanvas(params.sessionId)
-      .then(setCanvas)
-      .catch(() => setInvalid(true));
+    if (!params.sessionId) return undefined;
+    const controller = new AbortController();
+    api.getSharedCanvas(params.sessionId, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCanvas(next);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isTransportCanceled(error)) return;
+        setInvalid(true);
+      });
+    return () => controller.abort();
   }, [api.getSharedCanvas, params.sessionId]);
 
   const selectedItem = useMemo<DirItem | null>(
@@ -65,7 +73,7 @@ export default function ShareDashboardPage() {
     (
       dataSourceId: number,
       requestParams?: unknown,
-      options?: { suppressErrorNotification?: boolean },
+      options?: { suppressErrorNotification?: boolean; signal?: AbortSignal },
     ) =>
       api.querySharedDataSource(
         params.sessionId,
@@ -75,22 +83,37 @@ export default function ShareDashboardPage() {
       ),
     [api.querySharedDataSource, params.sessionId],
   );
+  const resolveOptionSource = useCallback(
+    (
+      body: { sourceId?: number; builtinKey?: string; sourceRef?: string },
+      signal?: AbortSignal,
+    ) => api.resolveSharedOptionSource(params.sessionId, body, signal),
+    [api.resolveSharedOptionSource, params.sessionId],
+  );
   const shareAccess = useMemo(
     () => ({
       queryDataSource,
-      getDataSourceDetails: () => api.getSharedDataSources(params.sessionId),
+      getDataSourceDetails: (_ids: Array<number | string>, signal?: AbortSignal) => (
+        api.getSharedDataSources(params.sessionId, signal)
+      ),
+      resolveOptionSource,
     }),
-    [api.getSharedDataSources, params.sessionId, queryDataSource],
+    [api.getSharedDataSources, params.sessionId, queryDataSource, resolveOptionSource],
   );
   const networkTopologyRuntime = useMemo(
     () => ({
       getMetricValues: (
         items: Parameters<typeof api.getSharedNetworkTopologyMetricValues>[1],
-      ) => api.getSharedNetworkTopologyMetricValues(params.sessionId, items),
+        signal?: AbortSignal,
+      ) => api.getSharedNetworkTopologyMetricValues(params.sessionId, items, signal),
       getLinkRuntime: (payload: {
         link: NetworkTopologyLink;
         nodes: NetworkTopologyConfig['nodes'];
-      }) => api.getSharedNetworkTopologyLinkRuntime(params.sessionId, payload),
+      }, signal?: AbortSignal) => api.getSharedNetworkTopologyLinkRuntime(
+        params.sessionId,
+        payload,
+        signal,
+      ),
     }),
     [
       api.getSharedNetworkTopologyLinkRuntime,

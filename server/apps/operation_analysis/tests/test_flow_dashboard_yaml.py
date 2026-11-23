@@ -108,7 +108,7 @@ def test_sample_yaml_parses_and_binds_flow_sources():
 
     host_filter = next(item for item in dashboard.filters if item["id"] == "instance_ids__string")
     assert host_filter["inputConfig"]["multiple"] is True
-    assert host_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_monitor_instance_list"
+    assert host_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "监控实例列表::monitor/get_monitor_instance_list"
 
     for item in widgets:
         bindings = item["valueConfig"]["filterBindings"]

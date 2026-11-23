@@ -53,6 +53,8 @@ import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
 import {
   canOpenMonitorLink,
   canSyncMonitor,
+  buildCmdbToMonitorFollowUp,
+  resolveImportFollowUpOffer,
   isSystemLinkAttr,
   resolveListDisplayFieldKeys,
   buildExternalIdLines,
@@ -840,17 +842,28 @@ const AssetDataContent = () => {
     handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys.map((k) => String(k))));
   };
 
-  const batchSyncMonitorConfirm = () => {
-    const instUuids = selectedRowKeys.map((k) => String(k));
-    if (!instUuids.length) return;
+  const confirmMonitorFollowUp = (rawIds: unknown[], createdCount?: number) => {
+    const offer = buildCmdbToMonitorFollowUp(
+      clientData,
+      clientLoading,
+      modelId,
+      rawIds,
+      createdCount,
+    );
+    if (!offer) return false;
     confirm({
-      title: t('Model.systemLinkageBatchConfirm', '', { count: instUuids.length }),
+      title: offer.overflow
+        ? t('Model.systemLinkageFollowUpOverflow', '', {
+          count: offer.ids.length,
+          total: offer.ids.length + offer.overflow,
+        })
+        : t('Model.systemLinkageBatchConfirm', '', { count: offer.ids.length }),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       centered: true,
       async onOk() {
         try {
-          const task = await createCmdbMonitorTask(instUuids);
+          const task = await createCmdbMonitorTask(offer.ids);
           const taskId = String(task?.id || '').trim();
           if (!taskId) {
             message.error(t('Model.systemLinkageSyncFailed'));
@@ -862,6 +875,11 @@ const AssetDataContent = () => {
         }
       },
     });
+    return true;
+  };
+
+  const batchSyncMonitorConfirm = () => {
+    confirmMonitorFollowUp(selectedRowKeys.map((k) => String(k)));
   };
 
   // 导出菜单项
@@ -902,11 +920,15 @@ const AssetDataContent = () => {
     },
   ];
 
-  const updateFieldList = async (id?: string) => {
+  const updateFieldList = async (id?: string, associate?: boolean) => {
     await fetchData();
     const instCount = await getModelInstanceCount().catch(() => null);
     if (instCount) setModelInstCount(instCount);
-    if (id) showInstanceModal({ inst_uuid: id });
+    if (associate && id) {
+      showInstanceModal({ inst_uuid: id });
+      return;
+    }
+    if (id) confirmMonitorFollowUp([id]);
   };
 
   const showAttrModal = (type: 'add' | 'edit' | 'batchEdit', row = {}) => {
@@ -1417,6 +1439,13 @@ const AssetDataContent = () => {
 
   const transfers = useTransferTasks(transferOpen, (task) => {
     if (task.model_id === modelId) void updateFieldList();
+    const offer = resolveImportFollowUpOffer({
+      task,
+      currentModelId: modelId,
+      clientData,
+      clientLoading,
+    });
+    if (offer) confirmMonitorFollowUp(offer.ids, offer.ids.length + offer.overflow);
   }, transferPageActive);
   const pendingTransfers = transfers.tasks.filter(task => ['queued', 'running'].includes(task.status)).length;
   const onTransferSubmitted = (task: TransferTask) => {
