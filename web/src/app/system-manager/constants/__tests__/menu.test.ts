@@ -64,7 +64,7 @@ const STABLE_SETTING_URLS = [
 ] as const;
 
 describe('系统管理菜单文案与二级顺序', () => {
-  it.each(['zh', 'en'] as const)('%s 一级顺序、用户页签和安全治理分组可观察', (locale) => {
+  it.each(['zh', 'en'] as const)('%s 一级顺序、用户页签和安全管理分组可观察', (locale) => {
     const items = menu[locale];
     const userMenu = items.find((item) => item.name === 'Organization');
     const securityMenu = items.find((item) => item.name === 'Security');
@@ -80,7 +80,7 @@ describe('系统管理菜单文案与二级顺序', () => {
         : ['Organization Structure', 'Login Auth', 'User Sync', 'User Fields'],
     );
 
-    expect(securityMenu?.title).toBe(locale === 'zh' ? '安全治理' : 'Security Governance');
+    expect(securityMenu?.title).toBe(locale === 'zh' ? '安全管理' : 'Security');
     expect(securityMenu?.url).toBe('/system-manager/user/security-settings');
     expect(securityMenu?.icon).toBe('guanlipingju');
     expect(securityMenu).not.toHaveProperty('hasDetail');
@@ -130,7 +130,7 @@ describe('系统管理菜单文案与二级顺序', () => {
     ]);
   });
 
-  it('企业版敏感信息挂到安全治理，门户与许可仍追加到平台管理', () => {
+  it('企业版敏感信息挂到安全管理，门户与许可仍追加到平台管理', () => {
     const zhPatch = enterpriseMenus.zh_patches.find((item) => item.target === 'Setting');
     const enPatch = enterpriseMenus.en_patches.find((item) => item.target === 'Setting');
 
