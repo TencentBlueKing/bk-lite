@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Tabs, Tooltip } from 'antd';
+import { Button, Collapse, Tabs, Tooltip } from 'antd';
 import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
 
 import { RumCodeSkeleton } from '@/app/rum/components/rum-skeleton';
@@ -13,15 +13,18 @@ const TABS: TabKey[] = ['npm', 'react', 'cdn', 'generic'];
 
 export default function SnippetTabs({
   codeByTab,
+  advancedByTab,
   labels,
 }: {
   codeByTab: Record<TabKey, string>;
+  advancedByTab: Record<TabKey, string>;
   labels: Record<TabKey, string>;
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>('npm');
   const [copied, setCopied] = useState(false);
   const code = codeByTab[tab] || '';
+  const advanced = advancedByTab[tab] || '';
   const copyLabel = copied ? t('rum.common.copied', '已复制') : t('rum.common.copy', '复制');
 
   async function copy() {
@@ -58,6 +61,24 @@ export default function SnippetTabs({
       ) : (
         <RumCodeSkeleton />
       )}
+      <Collapse
+        size="small"
+        items={[
+          {
+            key: 'advanced',
+            label: (
+              <span className="text-xs font-semibold text-[var(--color-text-3)]">
+                {t('rum.detail.advancedSnippet', '高级，版本锁定与路由补丁')}
+              </span>
+            ),
+            children: (
+              <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border border-[var(--color-border-2)] bg-[var(--color-fill-2)] p-3 text-xs leading-relaxed">
+                <code>{advanced}</code>
+              </pre>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
