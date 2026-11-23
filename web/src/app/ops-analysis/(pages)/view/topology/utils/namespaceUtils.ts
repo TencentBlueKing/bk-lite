@@ -15,6 +15,7 @@ import {
 import {
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { chartDisplayPatch } from '@/app/ops-analysis/utils/chartDisplay';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export { syncFilterValuesWithDefinitions };
@@ -312,6 +313,13 @@ export const buildValueConfig = (
   }
   if (values.interaction) {
     valueConfig.interaction = values.interaction;
+  }
+  const displayPatch = chartDisplayPatch(values);
+  if (displayPatch.displayLimit !== undefined) {
+    valueConfig.displayLimit = displayPatch.displayLimit;
+  }
+  if (displayPatch.sortByValue !== undefined) {
+    valueConfig.sortByValue = displayPatch.sortByValue;
   }
   return valueConfig;
 };

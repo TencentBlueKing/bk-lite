@@ -7,6 +7,11 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type { DatasourceItem, ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import {
+  CHART_DISPLAY_I18N,
+  presentBar,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
 import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
@@ -58,8 +63,16 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
     [config, dataSource?.field_schema],
   );
   const chartData = useMemo(
-    () => ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
-    [fieldMapping, rawData],
+    () => presentBar(
+      ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
+      readChartDisplay(config),
+      {
+        rawData,
+        mapping: fieldMapping,
+        otherName: t(CHART_DISPLAY_I18N.other),
+      },
+    ),
+    [config?.displayLimit, config?.sortByValue, fieldMapping, rawData, t],
   );
   const isDataReady = chartData.categories.length > 0;
 
