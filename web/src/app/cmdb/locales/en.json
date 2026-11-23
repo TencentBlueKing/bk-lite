@@ -423,6 +423,7 @@
         "systemLinkageSyncFailed": "Unable to establish the monitor association. Try again later.",
         "systemLinkageBatchSync": "Establish monitor association",
         "systemLinkageBatchConfirm": "Sync {count} selected assets to monitor? A task will auto-link existing objects, then send the rest to monitor access.",
+        "systemLinkageFollowUpOverflow": "{total} assets were created. The first {count} will sync to monitor now. Sync the rest from the list.",
         "systemLinkageBatchSummary": "{ok} succeeded, {already_linked} already linked, {not_found} not found, {conflict} conflicted, {failed} failed",
         "systemLinkageManualBind": "Manually link",
         "systemLinkageUnbind": "Unlink",

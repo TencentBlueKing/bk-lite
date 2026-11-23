@@ -320,6 +320,25 @@ def splice_evidence_messages(
     return list(messages[:insert_at]) + list(evidence) + list(messages[insert_at:])
 
 
+def allows_user_questions(extra: dict | None) -> bool:
+    """能否在当前会话等待收件人回复，与工具审批策略独立。"""
+    return not isinstance(extra, dict) or (extra.get("unattended") is not True and extra.get("reply_channel") != "WECOM_BOT")
+
+
+def is_numbered_question(text: str) -> bool:
+    """识别询问后跟编号选项的消息，保留普通报告里的编号分项。"""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for heading, first, second in zip(lines, lines[1:], lines[2:]):
+        if not first.startswith(("1.", "1、")) or not second.startswith(("2.", "2、")):
+            continue
+        options = (first[2:].strip().casefold(), second[2:].strip().casefold())
+        if options in {("是", "否"), ("yes", "no"), ("确认", "取消")}:
+            return True
+        if any(word in heading.casefold() for word in ("请选择", "请确认", "你希望", "您希望", "选择哪", "please choose", "please select", "would you like")):
+            return True
+    return False
+
+
 def is_choice_prompt_text(text: str) -> bool:
     lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
     if any(line.startswith("1.") or line.startswith("1、") for line in lines):

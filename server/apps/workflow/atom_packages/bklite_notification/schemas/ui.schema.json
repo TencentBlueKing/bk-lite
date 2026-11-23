@@ -5,5 +5,5 @@
   "title": {"ui:label": "通知标题", "ui:help": "邮件通知必填"},
   "body": {"ui:label": "通知内容", "ui:widget": "textarea"},
   "report_artifact": {"ui:label": "附件", "ui:help": "可选。拖入上游文档生成节点的 artifact，通知中发送 24 小时下载链接"},
-  "artifacts": {"ui:label": "Office 附件", "ui:help": "可引用上游文档生成节点的 artifact", "ui:advanced": true}
+  "artifacts": {"ui:label": "附件列表", "ui:help": "引用上游智能体输出的 artifacts，最多 10 个文件"}
 }

@@ -116,6 +116,37 @@ const rack: UnifiedFilterDefinition = {
 };
 
 describe('UnifiedFilterBar options query', () => {
+  it('clears an unmatched static value after the stored values sync', async () => {
+    const onApplyInitial = vi.fn();
+    render(
+      <UnifiedFilterBar
+        definitions={[{
+          ...area,
+          defaultValue: 'missing',
+          inputConfig: {
+            control: 'select',
+            optionsSource: {
+              type: 'static',
+              staticItems: [
+                { label: '一区', value: 'a1' },
+                { label: '二区', value: 'a2' },
+              ],
+            },
+          },
+        }]}
+        values={{ area: 'missing' }}
+        onApplyInitial={onApplyInitial}
+      />,
+    );
+
+    await vi.waitFor(() => {
+      expect(onApplyInitial).toHaveBeenCalled();
+    });
+    expect(onApplyInitial.mock.calls.at(-1)?.[0]?.area).toBeNull();
+    expect(screen.queryByText('missing')).toBeNull();
+    expect(screen.getByText('分区')).toBeTruthy();
+  });
+
   it('keeps the text draft immediate, debounces option reloads, and still searches with the draft', async () => {
     vi.useFakeTimers();
     getSourceDataByApiId.mockResolvedValue({
@@ -145,7 +176,7 @@ describe('UnifiedFilterBar options query', () => {
       await vi.advanceTimersByTimeAsync(300);
     });
     expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-    expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: '东区' }, undefined);
+    expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { room_id: '东区' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     fireEvent.change(input, { target: { value: '' } });
     expect(input).toHaveProperty('value', '');
@@ -175,6 +206,6 @@ describe('UnifiedFilterBar options query', () => {
       await Promise.resolve();
     });
     expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-    expect(getSourceDataByApiId).toHaveBeenCalledWith(10, { area_id: 'a2' }, undefined);
+    expect(getSourceDataByApiId).toHaveBeenCalledWith(10, { area_id: 'a2' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 });

@@ -10,11 +10,20 @@ describe('cmdb owner handover menu', () => {
       const management = menu[lang].find(
         (entry: { name?: string }) => entry.name === 'Management'
       );
-      const item = management?.children?.find(
+      const children = management?.children ?? [];
+      const item = children.find(
+        (entry: { url?: string }) => entry.url === '/cmdb/assetManage/ownerHandover'
+      );
+      const customReportingIndex = children.findIndex(
+        (entry: { url?: string }) => entry.url === '/cmdb/assetManage/customReporting'
+      );
+      const handoverIndex = children.findIndex(
         (entry: { url?: string }) => entry.url === '/cmdb/assetManage/ownerHandover'
       );
       expect(item?.name).toBe('model_management');
       expect(item?.title).toBe(lang === 'zh' ? '负责人交接' : 'Owner Handover');
+      expect(customReportingIndex).toBeGreaterThanOrEqual(0);
+      expect(handoverIndex).toBe(customReportingIndex + 1);
     }
   });
 });

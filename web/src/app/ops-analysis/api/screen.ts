@@ -8,13 +8,13 @@ export const useScreenApi = () => {
   const shareDetailOverride = useShareCanvasDetailOverride();
   const playbackDetail = usePlaybackInitialDetail();
 
-  const getScreenDetail = useCallback(async (id: string | number) => {
+  const getScreenDetail = useCallback(async (id: string | number, signal?: AbortSignal) => {
     if (shareDetailOverride) {
       return shareDetailOverride();
     }
-    return loadPlaybackCanvasDetail(playbackDetail, 'screen', id, () => (
-      get(`/operation_analysis/api/screen/${id}/`)
-    ));
+    return loadPlaybackCanvasDetail(playbackDetail, 'screen', id, (requestSignal) => (
+      get(`/operation_analysis/api/screen/${id}/`, { signal: requestSignal })
+    ), signal);
   }, [get, playbackDetail, shareDetailOverride]);
 
   const saveScreen = useCallback(async (id: string | number, data: any) => {

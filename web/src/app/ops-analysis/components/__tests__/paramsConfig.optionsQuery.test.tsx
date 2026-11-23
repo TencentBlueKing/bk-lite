@@ -183,13 +183,13 @@ describe('DataSourceParamsConfig options query', () => {
 
     fireEvent.change(regionInput(), { target: { value: 'east' } });
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { region_id: 'east' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { region_id: 'east' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
 
     getSourceDataByApiId.mockClear();
     fireEvent.change(regionInput(), { target: { value: 'west' } });
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { region_id: 'west' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(9, { region_id: 'west' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
     view.unmount();
   });
@@ -209,7 +209,7 @@ describe('DataSourceParamsConfig options query', () => {
       />,
     );
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(12, { room_id: 'canvas-room' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(12, { room_id: 'canvas-room' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
     view.unmount();
 
@@ -224,7 +224,7 @@ describe('DataSourceParamsConfig options query', () => {
       />,
     );
     await waitFor(() => {
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(12, { room_id: 'typed-room' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(12, { room_id: 'typed-room' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
   });
 
@@ -275,6 +275,9 @@ describe('DataSourceParamsConfig options query', () => {
 
     const readZone = () => JSON.parse(screen.getByTestId('form-params').textContent || '{}') as Record<string, unknown>;
     expect(readZone().zone_id).toBe('zone-stale');
+    await waitFor(() => {
+      expect(getSourceDataByApiId).toHaveBeenCalled();
+    });
 
     finish({ data: [], warnings: [] });
     await waitFor(() => {
@@ -360,7 +363,7 @@ describe('DataSourceParamsConfig options query', () => {
         await vi.advanceTimersByTimeAsync(1);
       });
       expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(15, { keyword: '机柜' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(15, { keyword: '机柜' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
       fireEvent.change(query, { target: { value: '机柜2' } });
       fireEvent.change(query, { target: { value: '' } });
@@ -428,7 +431,7 @@ describe('DataSourceParamsConfig options query', () => {
         await vi.advanceTimersByTimeAsync(300);
       });
       expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(16, { limit: 12 }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(16, { limit: 12 }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     } finally {
       vi.useRealTimers();
     }
@@ -495,7 +498,7 @@ describe('DataSourceParamsConfig options query', () => {
         await Promise.resolve();
       });
       expect(getSourceDataByApiId).toHaveBeenCalledTimes(1);
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(17, { area_id: 'a2' }, undefined);
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(17, { area_id: 'a2' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     } finally {
       vi.useRealTimers();
     }
@@ -575,7 +578,7 @@ describe('DataSourceParamsConfig options query', () => {
         page: 1,
         page_size: 100,
         monitor_object_id: ['17', '18'],
-      }, undefined);
+      }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
     expect(getSourceDataByApiId).not.toHaveBeenCalledWith(
       9,

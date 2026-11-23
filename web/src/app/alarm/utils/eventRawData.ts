@@ -20,3 +20,18 @@ export function presentEventRawData(record: EventRawRecord): unknown {
     assignee,
   };
 }
+
+const SHIELD_REPLAY_PREFIX = 'shield-replay:';
+
+export function shieldReplaySourceEventId(raw: unknown): string | null {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+  const generation = (raw as Record<string, unknown>).lifecycle_generation;
+  if (typeof generation !== 'string' || !generation.startsWith(SHIELD_REPLAY_PREFIX)) {
+    return null;
+  }
+  const sourceEventId = generation.slice(SHIELD_REPLAY_PREFIX.length).trim();
+  return sourceEventId || null;
+}
+

@@ -294,6 +294,7 @@
         "systemLinkageSyncFailed": "建立监控关联失败，请稍后重试。",
         "systemLinkageBatchSync": "建立监控关联",
         "systemLinkageBatchConfirm": "确认将选中的 {count} 个资产同步到监控？将生成任务：先自动关联已有对象，对不上的再去监控接入。",
+        "systemLinkageFollowUpOverflow": "本次新建 {total} 个资产。将先同步前 {count} 个到监控，其余可在列表继续勾选。",
         "systemLinkageBatchSummary": "成功 {ok}，已关联跳过 {already_linked}，未找到 {not_found}，冲突 {conflict}，失败 {failed}",
         "systemLinkageManualBind": "手动关联",
         "systemLinkageUnbind": "解除关联",

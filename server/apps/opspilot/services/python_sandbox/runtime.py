@@ -22,6 +22,32 @@ class SandboxUnavailable(RuntimeError):
     """The task workspace or local execution process is unavailable."""
 
 
+_WINDOWS_SH_CANDIDATES = (
+    r"C:\Program Files\Git\bin\sh.exe",
+    r"C:\Program Files\Git\usr\bin\sh.exe",
+    r"C:\Program Files (x86)\Git\bin\sh.exe",
+    r"%LOCALAPPDATA%\Programs\Git\bin\sh.exe",
+)
+
+
+def resolve_posix_shell() -> str | None:
+    """Locate a POSIX sh for execute_command.
+
+    Windows Server starts often inherit a stale PATH without Git's sh.exe.
+    Fall back to the common Git for Windows locations before failing.
+    """
+    found = shutil.which("sh")
+    if found:
+        return found
+    if os.name != "nt":
+        return None
+    for candidate in _WINDOWS_SH_CANDIDATES:
+        path = Path(os.path.expandvars(candidate))
+        if path.is_file():
+            return str(path)
+    return None
+
+
 _PYTHON_RUNNER = """import ast, pathlib, sys
 code = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
 tree = ast.parse(code, mode='exec')
@@ -137,6 +163,9 @@ class PythonSandbox:
             UV_CACHE_DIR=f"{root}/.cache/uv",
             OPSPILOT_WORKSPACE=root,
         )
+        if os.name == "nt":
+            # pathlib.Path.home() reads USERPROFILE. Point it at this run so imports do not look up the real profile.
+            env["USERPROFILE"] = root
         env["PATH"] = os.pathsep.join([f"{root}/.local/bin", f"{root}/.packages/bin", str(Path(sys.executable).parent), env.get("PATH", os.defpath)])
         env.update(extra or {})
         return env
@@ -246,7 +275,7 @@ class PythonSandbox:
 
         if not isinstance(command, str) or not command.strip():
             return ExecuteResponse(output="命令不能为空", exit_code=1, truncated=False)
-        shell = shutil.which("sh")
+        shell = resolve_posix_shell()
         if shell is None:
             raise SandboxUnavailable("Server 环境未安装 sh，请安装兼容的 Shell")
         return self._run([shell, "-c", command], timeout=timeout, env=env)

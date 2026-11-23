@@ -5,6 +5,11 @@ import {
   canOpenMonitorLink,
   canOpenCmdbLink,
   builtinCmdbModelId,
+  buildLinkFollowUpOffer,
+  buildCmdbToMonitorFollowUp,
+  buildMonitorToCmdbFollowUp,
+  resolveImportFollowUpOffer,
+  LINK_FOLLOW_UP_LIMIT,
   isPlatformTreeModel,
   showNodeId,
   resolveMonitorLinkMessage,
@@ -209,5 +214,87 @@ describe('systemLinkage', () => {
       occupiedLabel: undefined,
     });
     expect(parseMonitorBindConflict(new Error('plain'))).toEqual({});
+  });
+
+  it('builds a follow-up offer from unique ids and caps at 100', () => {
+    expect(buildLinkFollowUpOffer([])).toBeNull();
+    expect(buildLinkFollowUpOffer(['', '  ', null])).toBeNull();
+    expect(buildLinkFollowUpOffer([' a ', 'a', 'b'])).toEqual({ ids: ['a', 'b'], overflow: 0 });
+    const many = Array.from({ length: LINK_FOLLOW_UP_LIMIT + 5 }, (_, index) => `id-${index}`);
+    expect(buildLinkFollowUpOffer(many)).toEqual({
+      ids: many.slice(0, LINK_FOLLOW_UP_LIMIT),
+      overflow: 5,
+    });
+    expect(buildLinkFollowUpOffer(many.slice(0, LINK_FOLLOW_UP_LIMIT), 150)).toEqual({
+      ids: many.slice(0, LINK_FOLLOW_UP_LIMIT),
+      overflow: 50,
+    });
+  });
+
+  it('hides cmdb-to-monitor follow-up unless the list entry would show', () => {
+    const licensed = [{ name: 'cmdb' }, { name: 'monitor' }] as never;
+    expect(buildCmdbToMonitorFollowUp(licensed, false, 'host', ['u-1'])).toEqual({
+      ids: ['u-1'],
+      overflow: 0,
+    });
+    expect(buildCmdbToMonitorFollowUp(licensed, true, 'host', ['u-1'])).toBeNull();
+    expect(buildCmdbToMonitorFollowUp(licensed, false, 'k8s_cluster', ['u-1'])).toBeNull();
+    expect(buildCmdbToMonitorFollowUp([{ name: 'cmdb' }] as never, false, 'host', ['u-1'])).toBeNull();
+  });
+
+  it('hides monitor-to-cmdb follow-up unless the object is mapped and licensed', () => {
+    const licensed = [{ name: 'cmdb' }, { name: 'monitor' }] as never;
+    expect(buildMonitorToCmdbFollowUp(licensed, false, 'Host', ['m-1'])).toEqual({
+      ids: ['m-1'],
+      overflow: 0,
+    });
+    expect(buildMonitorToCmdbFollowUp(licensed, false, 'Weblogic', ['m-1'])).toBeNull();
+    expect(buildMonitorToCmdbFollowUp(licensed, true, 'Host', ['m-1'])).toBeNull();
+  });
+
+  it('offers import follow-up only after a finished import with created uuids', () => {
+    const licensed = [{ name: 'cmdb' }, { name: 'monitor' }] as never;
+    const base = {
+      type: 'import',
+      status: 'succeeded',
+      model_id: 'host',
+      summary: { created: 2, created_inst_uuids: ['u-1', 'u-2'] },
+    };
+    expect(resolveImportFollowUpOffer({
+      task: base,
+      currentModelId: 'host',
+      clientData: licensed,
+      clientLoading: false,
+    })).toEqual({ ids: ['u-1', 'u-2'], overflow: 0 });
+    expect(resolveImportFollowUpOffer({
+      task: { ...base, status: 'partial_success', summary: { created: 120, created_inst_uuids: ['u-1'] } },
+      currentModelId: 'host',
+      clientData: licensed,
+      clientLoading: false,
+    })).toEqual({ ids: ['u-1'], overflow: 119 });
+    expect(resolveImportFollowUpOffer({
+      task: { ...base, status: 'failed' },
+      currentModelId: 'host',
+      clientData: licensed,
+      clientLoading: false,
+    })).toBeNull();
+    expect(resolveImportFollowUpOffer({
+      task: { ...base, type: 'export' },
+      currentModelId: 'host',
+      clientData: licensed,
+      clientLoading: false,
+    })).toBeNull();
+    expect(resolveImportFollowUpOffer({
+      task: base,
+      currentModelId: 'switch',
+      clientData: licensed,
+      clientLoading: false,
+    })).toBeNull();
+    expect(resolveImportFollowUpOffer({
+      task: { ...base, summary: { created: 2 } },
+      currentModelId: 'host',
+      clientData: licensed,
+      clientLoading: false,
+    })).toBeNull();
   });
 });

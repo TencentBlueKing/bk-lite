@@ -12,6 +12,8 @@ class ChannelChoices(models.TextChoices):
     FEISHU_BOT = "feishu_bot", "Feishu Bot"
     DINGTALK_BOT = "dingtalk_bot", "DingTalk Bot"
     CUSTOM_WEBHOOK = "custom_webhook", "Custom Webhook"
+    SMS = "sms", "SMS"
+    VOICE = "voice", "Voice"
 
 
 class Channel(MaintainerInfo, EncryptMixin):

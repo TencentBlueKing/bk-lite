@@ -1,5 +1,9 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import {
+  sourceDataRequestConfig,
+  type SourceDataRequestOptions,
+} from '@/app/ops-analysis/api/dataSource';
 import { CANVAS_TYPE_REGISTRY } from '@/app/ops-analysis/constants/canvasTypes';
 import type {
   CanvasShareLinkDto,
@@ -7,22 +11,51 @@ import type {
   SharedCanvasDto,
 } from '@/app/ops-analysis/types/dashboardShare';
 
-/** 未登录也可调用：不走 Bearer 拦截器，避免永久 token 进入登录 callbackUrl 前无法 prepare。 */
-export async function prepareShareToken(token: string): Promise<{ state: string }> {
-  const response = await fetch(
-    '/api/proxy/operation_analysis/api/dashboard_share/prepare/',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-      credentials: 'include',
+const shareInflight = new Map<string, Promise<unknown>>();
+const SHARE_RESULT_RETAIN_MS = 2000;
+
+/** 重叠调用共用一次请求。成功结果只留短暂窗口，盖住完成后才挂上的第二次 effect。 */
+export function shareSingleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const existing = shareInflight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = run().then(
+    (value) => {
+      setTimeout(() => {
+        if (shareInflight.get(key) === promise) shareInflight.delete(key);
+      }, SHARE_RESULT_RETAIN_MS);
+      return value;
+    },
+    (error: unknown) => {
+      if (shareInflight.get(key) === promise) shareInflight.delete(key);
+      throw error;
     },
   );
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.result === false) {
-    throw new Error(payload?.message || 'prepare share failed');
-  }
-  return (payload?.data ?? payload) as { state: string };
+  shareInflight.set(key, promise);
+  return promise;
+}
+
+export function resetShareSingleFlightForTests() {
+  shareInflight.clear();
+}
+
+/** 未登录也可调用：不走 Bearer 拦截器，避免永久 token 进入登录 callbackUrl 前无法 prepare。 */
+export function prepareShareToken(token: string): Promise<{ state: string }> {
+  return shareSingleFlight(`prepare:${token}`, async () => {
+    const response = await fetch(
+      '/api/proxy/operation_analysis/api/dashboard_share/prepare/',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+        credentials: 'include',
+      },
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.result === false) {
+      throw new Error(payload?.message || 'prepare share failed');
+    }
+    return (payload?.data ?? payload) as { state: string };
+  });
 }
 
 export const useCanvasShareApi = () => {
@@ -41,13 +74,16 @@ export const useCanvasShareApi = () => {
 
   const exchangeShare = useCallback(
     (payload: { token?: string; state?: string }) =>
-      post('/operation_analysis/api/dashboard_share/exchange/', payload),
+      shareSingleFlight(
+        `exchange:${payload.state || payload.token || ''}`,
+        () => post('/operation_analysis/api/dashboard_share/exchange/', payload),
+      ),
     [post],
   );
 
   const getSharedCanvas = useCallback(
-    (sessionId: string): Promise<SharedCanvasDto> =>
-      get(`/operation_analysis/api/dashboard_share/session/${sessionId}/`),
+    (sessionId: string, signal?: AbortSignal): Promise<SharedCanvasDto> =>
+      get(`/operation_analysis/api/dashboard_share/session/${sessionId}/`, signal ? { signal } : undefined),
     [get],
   );
 
@@ -56,22 +92,43 @@ export const useCanvasShareApi = () => {
       sessionId: string,
       dataSourceId: number,
       params?: unknown,
-      options?: { suppressErrorNotification?: boolean },
+      options?: SourceDataRequestOptions,
     ) =>
       post(
         `/operation_analysis/api/dashboard_share/session/${sessionId}/query/${dataSourceId}/`,
         params,
-        options?.suppressErrorNotification
-          ? { suppressErrorNotification: true }
-          : undefined,
+        sourceDataRequestConfig(options),
       ),
     [post],
   );
 
   const getSharedDataSources = useCallback(
-    (sessionId: string) =>
-      get(`/operation_analysis/api/dashboard_share/session/${sessionId}/data_sources/`),
+    (sessionId: string, signal?: AbortSignal) =>
+      get(
+        `/operation_analysis/api/dashboard_share/session/${sessionId}/data_sources/`,
+        signal ? { signal } : undefined,
+      ),
     [get],
+  );
+
+  const resolveSharedOptionSource = useCallback(
+    (
+      sessionId: string,
+      body: { sourceId?: number; builtinKey?: string; sourceRef?: string },
+      signal?: AbortSignal,
+    ) =>
+      post(
+        `/operation_analysis/api/dashboard_share/session/${sessionId}/resolve_option_source/`,
+        {
+          sourceId: body.sourceId,
+          builtinKey: body.builtinKey,
+          sourceRef: body.sourceRef
+            ? { type: 'rest_api', value: body.sourceRef }
+            : undefined,
+        },
+        { suppressErrorNotification: true, ...(signal ? { signal } : {}) },
+      ) as Promise<{ status?: string; id?: number }>,
+    [post],
   );
 
   const getSharedNetworkTopologyMetricValues = useCallback(
@@ -86,10 +143,12 @@ export const useCanvasShareApi = () => {
         display_mode?: 'aggregate' | 'dimension';
         aggregate_type?: 'sum' | 'max' | 'min' | 'mean' | 'last';
       }>,
+      signal?: AbortSignal,
     ) =>
       post(
         `/operation_analysis/api/dashboard_share/session/${sessionId}/network_topology/metric_values/`,
         { items },
+        signal ? { signal } : undefined,
       ),
     [post],
   );
@@ -101,10 +160,12 @@ export const useCanvasShareApi = () => {
         link: unknown;
         nodes?: unknown;
       },
+      signal?: AbortSignal,
     ) =>
       post(
         `/operation_analysis/api/dashboard_share/session/${sessionId}/network_topology/link_runtime/`,
         payload,
+        signal ? { signal } : undefined,
       ),
     [post],
   );
@@ -115,6 +176,7 @@ export const useCanvasShareApi = () => {
     getSharedCanvas,
     querySharedDataSource,
     getSharedDataSources,
+    resolveSharedOptionSource,
     getSharedNetworkTopologyMetricValues,
     getSharedNetworkTopologyLinkRuntime,
   };

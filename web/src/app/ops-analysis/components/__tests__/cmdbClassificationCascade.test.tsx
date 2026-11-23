@@ -235,7 +235,7 @@ describe('cmdb classification cascade', () => {
     );
 
     await waitFor(() => {
-      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'compute' }, undefined);
+      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'compute' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
       expect(readParams().model_id).toBe('host');
       expect((readParams().filters as { items: unknown[] }).items).toHaveLength(1);
     });
@@ -248,7 +248,7 @@ describe('cmdb classification cascade', () => {
       expect(next.model_id).toBeNull();
       expect((next.filters as { items: unknown[] }).items).toEqual([]);
     });
-    expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'space' }, undefined);
+    expect(api.getSourceDataByApiId).toHaveBeenCalledWith(2, { classification_id: 'space' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('loads associations from the start model and clears them with the classification', async () => {
@@ -359,7 +359,7 @@ describe('cmdb classification cascade', () => {
     );
 
     await waitFor(() => {
-      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(4, { model_id: 'host' }, undefined);
+      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(4, { model_id: 'host' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
       expect(readParams().model_asst_id).toBe('host_belong_app');
       expect((readParams().end_filters as { items: unknown[] }).items).toHaveLength(1);
     });

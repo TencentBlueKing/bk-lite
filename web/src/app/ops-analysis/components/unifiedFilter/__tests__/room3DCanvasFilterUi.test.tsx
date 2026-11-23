@@ -146,8 +146,11 @@ describe('room3D canvas filter UI', () => {
     await openRoomSelect();
     expect(await screen.findByText('二号机房')).not.toBeNull();
     await waitFor(() => {
-      expect(getDataSourceList).toHaveBeenCalledWith({ page_size: -1 });
-      expect(getSourceDataByApiId).toHaveBeenCalledWith(17, {}, undefined);
+      expect(getDataSourceList).toHaveBeenCalledWith(
+        { page_size: -1 },
+        expect.any(AbortSignal),
+      );
+      expect(getSourceDataByApiId).toHaveBeenCalledWith(17, {}, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
     expect(onSearch).not.toHaveBeenCalled();
     expect(screen.queryByText('旧字段')).toBeNull();

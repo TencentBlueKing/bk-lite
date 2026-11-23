@@ -41,6 +41,17 @@ export const useAssetMenuItems = (): MenuProps['items'] => {
         ),
         key: 'batchUpdateCollectConfig',
       },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['Edit']}
+          >
+            {t('monitor.integrations.batchRedispatchCollectConfig')}
+          </PermissionWrapper>
+        ),
+        key: 'batchRedispatchCollectConfig',
+      },
     ],
     [t]
   );

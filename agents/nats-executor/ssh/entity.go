@@ -40,6 +40,8 @@ type DownloadFileRequest struct {
 	Passphrase     string `json:"passphrase"`  // 私钥密码短语（可选）
 	FastFail       bool   `json:"fast_fail,omitempty"`
 	ExecuteTimeout int    `json:"execute_timeout"`
+	// Overwrite 缺省或为 true 时替换远程同名文件；只有明确为 false 才保留已有文件。
+	Overwrite *bool `json:"overwrite,omitempty"`
 }
 
 type UploadFileRequest struct {

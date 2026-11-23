@@ -396,13 +396,14 @@ class AtomExecution(TimeInfo):
 class ExecutionArtifact(TimeInfo, MaintainerInfo):
     class Kind(models.TextChoices):
         INSPECTION_REPORT = "INSPECTION_REPORT", "巡检报告"
+        AGENT_ATTACHMENT = "AGENT_ATTACHMENT", "智能体附件"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     execution = models.ForeignKey(WorkflowExecution, on_delete=models.CASCADE, related_name="artifacts")
     atom_execution = models.ForeignKey(AtomExecution, on_delete=models.SET_NULL, null=True, blank=True, related_name="artifacts")
     team = models.JSONField(default=list)
     kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.INSPECTION_REPORT)
-    format = models.CharField(max_length=8, choices=(("docx", "Word"), ("xlsx", "Excel")))
+    format = models.CharField(max_length=8)
     object_key = models.CharField(max_length=500, unique=True)
     filename = models.CharField(max_length=255)
     content_type = models.CharField(max_length=120)

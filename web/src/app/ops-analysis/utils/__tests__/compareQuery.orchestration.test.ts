@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { fetchCompareData } from '@/app/ops-analysis/utils/compareQuery';
 import { RuntimeRequestCancelledError } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
+import { createTransportCancelError } from '@/utils/requestCancellation';
 
 describe('compare query orchestration validity', () => {
   it('does not start baseline after the orchestration becomes stale', async () => {
@@ -31,5 +32,30 @@ describe('compare query orchestration validity', () => {
     })).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
 
     expect(startedParams).toHaveLength(1);
+  });
+
+  it('does not send the baseline query after the current query is canceled', async () => {
+    let calls = 0;
+    await expect(fetchCompareData({
+      dataSourceId: 7,
+      config: {
+        compare: true,
+        dataSourceParams: [{
+          name: 'range',
+          alias_name: 'range',
+          type: 'timeRange',
+          value: [
+            Date.parse('2026-08-14T00:00:00.000Z'),
+            Date.parse('2026-08-14T01:00:00.000Z'),
+          ],
+        }],
+      },
+      getSourceDataByApiId: async () => {
+        calls += 1;
+        throw createTransportCancelError();
+      },
+    })).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+
+    expect(calls).toBe(1);
   });
 });

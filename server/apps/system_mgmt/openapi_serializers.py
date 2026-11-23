@@ -64,6 +64,7 @@ class SystemMgmtNotificationSendSerializer(OpenAPIRequestSerializer):
         min_length=1,
         max_length=100,
     )
+    template_params = serializers.JSONField(required=False, allow_null=True)
     group_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     include_children = StrictBooleanField(required=False, default=False)
 

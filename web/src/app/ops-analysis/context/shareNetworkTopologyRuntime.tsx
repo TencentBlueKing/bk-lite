@@ -15,11 +15,12 @@ export interface SharedNetworkTopologyRuntimeAccess {
       display_mode?: 'aggregate' | 'dimension';
       aggregate_type?: 'sum' | 'max' | 'min' | 'mean' | 'last';
     }>,
+    signal?: AbortSignal,
   ) => Promise<{ items?: NetworkMetricRuntime[] }>;
   getLinkRuntime: (payload: {
     link: NetworkTopologyLink;
     nodes: NetworkTopologyConfig['nodes'];
-  }) => Promise<{
+  }, signal?: AbortSignal) => Promise<{
     link?: NetworkLinkRuntime | null;
     node_interface_summary?: Record<
       string,

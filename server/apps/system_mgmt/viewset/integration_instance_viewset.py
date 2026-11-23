@@ -58,10 +58,7 @@ def build_test_connection_response(result):
 def build_pending_capability_status(instance):
     manifest = get_provider_registry().get(instance.provider_key)
     capability_keys = [capability.key for capability in manifest.capabilities] if manifest else (instance.capability_status or {}).keys()
-    return {
-        capability_key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-        for capability_key in capability_keys
-    }
+    return {capability_key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION for capability_key in capability_keys}
 
 
 class IntegrationInstanceFilter(FilterSet):
@@ -204,7 +201,11 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
     @HasPermission("integration_center-View")
     def providers(self, request, *args, **kwargs):
         locale = request_locale(request)
-        data = [localize_public_manifest(manifest, locale) for manifest in get_provider_registry().list()]
+        data = [
+            localize_public_manifest(manifest, locale)
+            for manifest in get_provider_registry().list()
+            if manifest.get_capability("notification_channel") is None
+        ]
         return Response(data)
 
     @action(methods=["GET"], detail=True)
@@ -255,9 +256,7 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         else:
             obj.status = payload.get("instance_status", IntegrationInstanceStatusChoices.VERIFICATION_FAILED)
             obj.capability_status = (
-                build_pending_capability_status(obj)
-                if not result.success
-                else payload.get("capability_status", obj.capability_status)
+                build_pending_capability_status(obj) if not result.success else payload.get("capability_status", obj.capability_status)
             )
         obj.save(update_fields=["status", "capability_status", "updated_at"])
 
@@ -287,14 +286,13 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         instances = []
         locale = request_locale(request)
         for item in queryset.order_by("name", "id"):
-            if (
-                item.capability_enabled.get(capability) is True
-                and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY
-            ):
-                instances.append({
-                    "id": item.id,
-                    "name": item.name,
-                    "provider_key": item.provider_key,
-                    "provider_name": resolve_registered_provider_name(item.provider_key, locale),
-                })
+            if item.capability_enabled.get(capability) is True and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY:
+                instances.append(
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "provider_key": item.provider_key,
+                        "provider_name": resolve_registered_provider_name(item.provider_key, locale),
+                    }
+                )
         return Response(instances)

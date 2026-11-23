@@ -73,6 +73,11 @@ class Event(models.Model):
         default=EventStatus.RECEIVED,
         help_text="事件状态",
     )
+    shield_settled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="监控源屏蔽事件已了结时间；空表示仍待窗口结束后重放",
+    )
     assignee = JSONField(default=list, blank=True, help_text="事件责任人")
     # note = models.TextField(null=True, blank=True, help_text="事件备注")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
@@ -82,6 +87,14 @@ class Event(models.Model):
         db_table = "alerts_event"
         indexes = [
             models.Index(fields=["source", "received_at"]),
+            models.Index(
+                fields=["status", "push_source_id", "action", "shield_settled_at", "id"],
+                name="event_shield_replay_idx",
+            ),
+            models.Index(
+                fields=["source", "push_source_id", "external_id", "action"],
+                name="event_recovery_match_idx",
+            ),
             # 注意: JSONField 索引在部分数据库（如达梦）上不支持，通过 migrate_patch 处理
             models.Index(fields=["labels"], name="event_labels_gin"),
         ]

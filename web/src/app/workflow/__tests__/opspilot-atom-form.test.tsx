@@ -6,6 +6,8 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeAll, vi } from 'vitest';
 
+import { buildDataReferenceOptions } from '../lib/data-references';
+import { WORKFLOW_REFERENCE_MIME } from '../components/schema-node-form';
 import { OpsPilotAtomForm } from '../components/opspilot-atom-form';
 import type { JsonSchema } from '../lib/types';
 
@@ -216,10 +218,58 @@ describe('OpsPilot 风格原子表单', () => {
     const attachmentHelp = attachmentItem?.querySelector('[aria-label="question-circle"]');
     expect(attachmentHelp).not.toBeNull();
     await userEvent.hover(attachmentHelp!);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('可选，拖入上游报告产物');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('选择或拖入上游生成的附件，通知中将附上下载链接');
     expect(screen.queryByText('邮件通知会自动附带本次工作流运行中生成的全部附件，无需手动选择。')).toBeNull();
     expect(await screen.findByText('管理员 (admin)')).not.toBeNull();
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ recipients: ['1'] }));
+  });
+
+  it.each(['EMAIL', 'WECOM_BOT', 'FEISHU_BOT', 'DINGTALK_BOT', 'CUSTOM_WEBHOOK'])('%s 可选择智能体附件列表，也可拖入单文档并清除', async (channel) => {
+    const file: JsonSchema = { type: 'object', properties: { id: { type: 'string' }, filename: { type: 'string' } } };
+    const files: JsonSchema = { type: 'array', title: '生成的附件', items: file };
+    const references = buildDataReferenceOptions({
+      name: 'attachments', schemaVersion: 2, version: 1, tasks: ['agent', 'report', 'notify'].map((name) => ({
+        name, taskReferenceName: name, type: 'SIMPLE', inputParameters: {},
+      })),
+    }, 'notify', [
+      { key: 'agent', name: '智能体', category: '', description: '', output_schema: { properties: { artifacts: files, warnings: { type: 'array', items: { type: 'string' } } } } },
+      { key: 'report', name: '文档生成', category: '', description: '', output_schema: { properties: { artifact: file } } },
+    ], {});
+    const schema: JsonSchema = { properties: {
+      notification_type: { type: 'string', enum: [channel] },
+      artifacts: { type: 'array' }, report_artifact: { type: 'object' },
+    } };
+    const onChange = vi.fn();
+    const initial = { notification_type: channel };
+    const form = (value: Record<string, unknown>) => <App><OpsPilotAtomForm
+      atomKey="bklite_notification" schema={schema} value={value} references={references}
+      workflowId={1} nodeTitle="对外通知" readOnly={false} onChange={onChange} onNodeTitleChange={vi.fn()}
+    /></App>;
+    const { rerender } = render(form(initial));
+    expect(screen.getAllByText('附件')).toHaveLength(1);
+    const getAttachmentField = () => screen.getByText('附件').closest('.ant-form-item')!;
+    if (channel === 'WECOM_BOT') {
+      await userEvent.hover(getAttachmentField().querySelector('[aria-label="question-circle"]')!);
+      expect((await screen.findByRole('tooltip')).textContent).toContain('企微群会收到下载链接和文件');
+    }
+    fireEvent.mouseDown(getAttachmentField().querySelector('input')!);
+    expect(screen.queryByText('智能体 · warnings')).toBeNull();
+    fireEvent.click(await screen.findByText('智能体 · 生成的附件'));
+    const arrayBinding = { ...initial, artifacts: '${agent.output.artifacts}' };
+    expect(onChange).toHaveBeenCalledWith(arrayBinding);
+    rerender(form(arrayBinding));
+    expect(screen.getByDisplayValue('${agent.output.artifacts}')).not.toBeNull();
+
+    const doc = '${report.output.artifact}';
+    fireEvent.drop(getAttachmentField().querySelector('[data-testid="workflow-reference-dropzone"]')!, {
+      dataTransfer: { types: [WORKFLOW_REFERENCE_MIME], getData: () => doc },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ ...initial, report_artifact: doc });
+    rerender(form({ ...initial, report_artifact: doc }));
+    expect(screen.getByDisplayValue(doc)).not.toBeNull();
+    expect(screen.queryByText(/失效引用/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '清除字段引用' }));
+    expect(onChange).toHaveBeenLastCalledWith(initial);
   });
 
   it('内置发起人表达式回显为当前登录用户，不写入用户编号', async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -26,6 +26,7 @@ const testState = vi.hoisted(() => {
     loaderOptions: undefined as
       | { suppressErrorNotification?: boolean; fallbackErrorMessage?: string }
       | undefined,
+    getSourceDataByApiId: vi.fn(),
   };
 });
 
@@ -60,7 +61,7 @@ vi.mock('@/app/ops-analysis/api/dataSource', async () => {
   return {
     ...actual,
     useDataSourceApi: () => ({
-      getSourceDataByApiId: vi.fn(),
+      getSourceDataByApiId: testState.getSourceDataByApiId,
       getDataSourceList: vi.fn(),
     }),
   };
@@ -105,6 +106,9 @@ vi.mock('@/app/ops-analysis/components/widgetRegistry', () => ({
 }));
 
 import WidgetWrapper from '../widgetDataRenderer';
+import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import { DashboardRuntimeScheduler } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
+import { createTransportCancelError } from '@/utils/requestCancellation';
 
 const pieDatasource: DatasourceItem = {
   id: 42,
@@ -152,6 +156,7 @@ afterEach(() => {
   cleanup();
   testState.messageError.mockClear();
   testState.fetchCompareData.mockReset();
+  testState.getSourceDataByApiId.mockReset();
   testState.optionState = {
     status: 'idle',
     options: [],
@@ -1167,5 +1172,553 @@ describe('WidgetWrapper component switch options runtime', () => {
     expect(screen.queryByText(businessError)).toBeNull();
     expect(testState.fetchCompareData).toHaveBeenCalled();
     expect(testState.messageError).not.toHaveBeenCalled();
+  });
+
+  it('does not query when recovered options drop the saved value', async () => {
+    const businessError = '未找到可用命名空间';
+    testState.optionState = {
+      status: 'error',
+      options: [],
+      errorMessage: businessError,
+    };
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'A', value: 1 }],
+      baselineData: null,
+    });
+
+    const { rerender } = render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: topNDatasource.id, dataSourceParams: [switchParam] }}
+        dataSource={topNDatasource}
+        reloadVersion="0:0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(businessError)).toBeTruthy();
+    });
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
+    expect(testState.messageError).not.toHaveBeenCalled();
+
+    testState.optionState = {
+      status: 'success',
+      options: [{ value: 'room-2', label: 'Room 2' }],
+      resultKey: 'other',
+    };
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: topNDatasource.id, dataSourceParams: [switchParam] }}
+        dataSource={topNDatasource}
+        reloadVersion="1:0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.noData')).toBeTruthy();
+    });
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('chart-renderer')).toBeNull();
+    expect(testState.messageError).not.toHaveBeenCalled();
+  });
+
+  it('does not refill a selection the user cleared after options fail and recover', async () => {
+    const multipleParam: ParamItem = {
+      ...switchParam,
+      inputConfig: { ...switchParam.inputConfig, multiple: true },
+    };
+    const datasource: DatasourceItem = { ...topNDatasource, params: [multipleParam] };
+    testState.optionState = {
+      status: 'success',
+      options: [{ value: 'room-1', label: 'Room 1' }],
+      resultKey: 'ok',
+    };
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'A', value: 1 }],
+      baselineData: null,
+    });
+
+    const { rerender } = render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: datasource.id, dataSourceParams: [multipleParam] }}
+        dataSource={datasource}
+        reloadVersion="0:0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chart-renderer')).toBeTruthy();
+    });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Backspace', code: 'Backspace' });
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.noData')).toBeTruthy();
+    });
+    const callsAfterClear = testState.fetchCompareData.mock.calls.length;
+
+    testState.optionState = {
+      status: 'error',
+      options: [],
+      errorMessage: '未找到可用命名空间',
+    };
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: datasource.id, dataSourceParams: [multipleParam] }}
+        dataSource={datasource}
+        reloadVersion="1:0"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('未找到可用命名空间')).toBeTruthy();
+    });
+    expect(testState.fetchCompareData.mock.calls.length).toBe(callsAfterClear);
+    expect(testState.messageError).not.toHaveBeenCalled();
+
+    testState.optionState = {
+      status: 'success',
+      options: [{ value: 'room-1', label: 'Room 1' }],
+      resultKey: 'again',
+    };
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: datasource.id, dataSourceParams: [multipleParam] }}
+        dataSource={datasource}
+        reloadVersion="2:0"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.noData')).toBeTruthy();
+    });
+    expect(testState.fetchCompareData.mock.calls.length).toBe(callsAfterClear);
+    expect(screen.queryByTestId('chart-renderer')).toBeNull();
+  });
+
+  it('does not select the first option when the saved switch value is empty', async () => {
+    const unsetParam: ParamItem = { ...switchParam, value: undefined };
+    const datasource: DatasourceItem = { ...topNDatasource, params: [unsetParam] };
+    testState.optionState = {
+      status: 'success',
+      options: [{ value: 'room-1', label: 'Room 1' }],
+      resultKey: 'ok',
+    };
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'A', value: 1 }],
+      baselineData: null,
+    });
+
+    render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: datasource.id, dataSourceParams: [unsetParam] }}
+        dataSource={datasource}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.noData')).toBeTruthy();
+    });
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
+  });
+
+  it('stops querying when recovered options are empty', async () => {
+    testState.optionState = {
+      status: 'success',
+      options: [{ value: 'room-1', label: 'Room 1' }],
+      resultKey: 'ok',
+    };
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'A', value: 1 }],
+      baselineData: null,
+    });
+
+    const { rerender } = render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: topNDatasource.id, dataSourceParams: [switchParam] }}
+        dataSource={topNDatasource}
+        reloadVersion="0:0"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('chart-renderer')).toBeTruthy();
+    });
+    const callsBeforeEmpty = testState.fetchCompareData.mock.calls.length;
+
+    testState.optionState = {
+      status: 'success',
+      options: [],
+      resultKey: 'empty',
+    };
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="topN"
+        config={{ dataSource: topNDatasource.id, dataSourceParams: [switchParam] }}
+        dataSource={topNDatasource}
+        reloadVersion="1:0"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('dashboard.noData')).toBeTruthy();
+    });
+    expect(testState.fetchCompareData.mock.calls.length).toBe(callsBeforeEmpty);
+    expect(screen.queryByTestId('chart-renderer')).toBeNull();
+  });
+
+  it('aborts an in-flight request when the canvas id changes and does not start another', async () => {
+    const signals: AbortSignal[] = [];
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    testState.getSourceDataByApiId.mockImplementation(
+      (_id: number, _params: unknown, options?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+        const signal = options?.signal;
+        if (!signal) return;
+        signals.push(signal);
+        if (signal.aborted) {
+          reject(createTransportCancelError());
+          return;
+        }
+        signal.addEventListener('abort', () => reject(createTransportCancelError()), { once: true });
+      }),
+    );
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    const { rerender } = render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="pie"
+        config={{ dataSource: pieDatasource.id }}
+        dataSource={pieDatasource}
+      />,
+    );
+
+    await waitFor(() => expect(signals).toHaveLength(1));
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-2"
+        widgetId="widget-1"
+        chartType="pie"
+        config={{ dataSource: pieDatasource.id }}
+        dataSource={pieDatasource}
+      />,
+    );
+
+    await waitFor(() => expect(signals[0]?.aborted).toBe(true));
+    expect(testState.fetchCompareData).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('网络异常')).toBeNull();
+    expect(screen.queryByText('dashboard.dataFetchFailed')).toBeNull();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('keeps a shared in-flight request when another widget on the new canvas joins it', async () => {
+    const signals: AbortSignal[] = [];
+    let resolveShared: ((value: { data: Array<{ name: string; value: number }> }) => void) | undefined;
+    testState.getSourceDataByApiId.mockImplementation(
+      (_id: number, _params: unknown, options?: { signal?: AbortSignal }) => new Promise((resolve) => {
+        if (options?.signal) signals.push(options.signal);
+        resolveShared = resolve;
+      }),
+    );
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    const { rerender } = render(
+      <DashboardRuntimeSchedulerProvider>
+        <WidgetWrapper
+          dashboardId="dashboard-1"
+          widgetId="widget-shared"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+        <WidgetWrapper
+          dashboardId="dashboard-1"
+          widgetId="widget-other"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+      </DashboardRuntimeSchedulerProvider>,
+    );
+
+    await waitFor(() => expect(testState.getSourceDataByApiId).toHaveBeenCalledTimes(1));
+    rerender(
+      <DashboardRuntimeSchedulerProvider>
+        <WidgetWrapper
+          dashboardId="dashboard-2"
+          widgetId="widget-shared"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+        <WidgetWrapper
+          dashboardId="dashboard-1"
+          widgetId="widget-other"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+      </DashboardRuntimeSchedulerProvider>,
+    );
+
+    await Promise.resolve();
+    expect(signals[0]?.aborted).toBe(false);
+    resolveShared?.({ data: [{ name: 'shared', value: 1 }] });
+    await waitFor(() => {
+      expect(screen.getAllByTestId('chart-renderer').some((node) => node.textContent?.includes('shared'))).toBe(true);
+    });
+  });
+
+  it('drops a finished scheduler consumer and still aborts the one left in flight', async () => {
+    const releaseConsumer = vi.spyOn(DashboardRuntimeScheduler.prototype, 'releaseConsumer');
+    const signals: AbortSignal[] = [];
+    const pending: Array<{
+      signal: AbortSignal;
+      resolve: (value: { data: Array<{ name: string; value: number }> }) => void;
+    }> = [];
+    testState.getSourceDataByApiId.mockImplementation(
+      (_id: number, _params: unknown, options?: { signal?: AbortSignal }) => new Promise((resolve) => {
+        const signal = options?.signal;
+        if (!signal) return;
+        signals.push(signal);
+        pending.push({ signal, resolve });
+      }),
+    );
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    try {
+      const { rerender } = render(
+        <DashboardRuntimeSchedulerProvider>
+          <WidgetWrapper
+            dashboardId="dashboard-1"
+            widgetId="widget-1"
+            chartType="pie"
+            config={{ dataSource: pieDatasource.id }}
+            dataSource={pieDatasource}
+            reloadVersion="0:0"
+          />
+        </DashboardRuntimeSchedulerProvider>,
+      );
+
+      await waitFor(() => expect(pending).toHaveLength(1));
+      rerender(
+        <DashboardRuntimeSchedulerProvider>
+          <WidgetWrapper
+            dashboardId="dashboard-1"
+            widgetId="widget-1"
+            chartType="pie"
+            config={{ dataSource: pieDatasource.id }}
+            dataSource={pieDatasource}
+            reloadVersion="1:0"
+          />
+        </DashboardRuntimeSchedulerProvider>,
+      );
+      await waitFor(() => expect(pending).toHaveLength(2));
+      await act(async () => {
+        pending[0].resolve({ data: [{ name: 'first-late', value: 1 }] });
+      });
+      expect(releaseConsumer).not.toHaveBeenCalled();
+      expect(signals[0]?.aborted).toBe(false);
+      expect(signals[1]?.aborted).toBe(false);
+
+      rerender(
+        <DashboardRuntimeSchedulerProvider>
+          <WidgetWrapper
+            dashboardId="dashboard-2"
+            widgetId="widget-1"
+            chartType="pie"
+            config={{ dataSource: pieDatasource.id }}
+            dataSource={pieDatasource}
+            reloadVersion="1:0"
+          />
+        </DashboardRuntimeSchedulerProvider>,
+      );
+      await waitFor(() => expect(signals[1]?.aborted).toBe(true));
+      expect(releaseConsumer).toHaveBeenCalledTimes(1);
+      expect(signals[0]?.aborted).toBe(false);
+      expect(screen.queryByText('网络异常')).toBeNull();
+      expect(screen.queryByText('dashboard.dataFetchFailed')).toBeNull();
+    } finally {
+      releaseConsumer.mockRestore();
+    }
+  });
+
+  it('drops a failed scheduler consumer before the next canvas change', async () => {
+    const releaseConsumer = vi.spyOn(DashboardRuntimeScheduler.prototype, 'releaseConsumer');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    testState.getSourceDataByApiId.mockRejectedValue(new HandledRequestError('取数失败'));
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    try {
+      const { rerender } = render(
+        <DashboardRuntimeSchedulerProvider>
+          <WidgetWrapper
+            dashboardId="dashboard-1"
+            widgetId="widget-1"
+            chartType="pie"
+            config={{ dataSource: pieDatasource.id }}
+            dataSource={pieDatasource}
+          />
+        </DashboardRuntimeSchedulerProvider>,
+      );
+      await waitFor(() => {
+        expect(screen.getByText('取数失败')).toBeTruthy();
+      });
+      await Promise.resolve();
+
+      rerender(
+        <DashboardRuntimeSchedulerProvider>
+          <WidgetWrapper
+            dashboardId="dashboard-2"
+            widgetId="widget-1"
+            chartType="pie"
+            config={{ dataSource: pieDatasource.id }}
+            dataSource={pieDatasource}
+          />
+        </DashboardRuntimeSchedulerProvider>,
+      );
+      await Promise.resolve();
+      expect(releaseConsumer).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      releaseConsumer.mockRestore();
+    }
+  });
+
+  it('does not release a scheduler consumer when StrictMode replays the effect', async () => {
+    const releaseConsumer = vi.spyOn(DashboardRuntimeScheduler.prototype, 'releaseConsumer');
+    testState.getSourceDataByApiId.mockResolvedValue({
+      data: [{ name: 'strict', value: 1 }],
+    });
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    try {
+      render(
+        <React.StrictMode>
+          <DashboardRuntimeSchedulerProvider>
+            <WidgetWrapper
+              dashboardId="dashboard-1"
+              widgetId="widget-1"
+              chartType="pie"
+              config={{ dataSource: pieDatasource.id }}
+              dataSource={pieDatasource}
+            />
+          </DashboardRuntimeSchedulerProvider>
+        </React.StrictMode>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('chart-renderer').textContent).toContain('strict');
+      });
+      expect(testState.fetchCompareData).toHaveBeenCalledTimes(1);
+      expect(releaseConsumer).not.toHaveBeenCalled();
+    } finally {
+      releaseConsumer.mockRestore();
+    }
+  });
+
+  it('aborts the screen request after StrictMode when the outer canvas key changes', async () => {
+    const signals: AbortSignal[] = [];
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    testState.getSourceDataByApiId.mockImplementation(
+      (_id: number, _params: unknown, options?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+        const signal = options?.signal;
+        if (!signal) return;
+        signals.push(signal);
+        if (signal.aborted) {
+          reject(createTransportCancelError());
+          return;
+        }
+        signal.addEventListener('abort', () => reject(createTransportCancelError()), { once: true });
+      }),
+    );
+    testState.fetchCompareData.mockImplementation(async (input: {
+      dataSourceId: number;
+      getSourceDataByApiId: (id: number, params?: unknown) => Promise<{ data: unknown }>;
+    }) => {
+      const current = await input.getSourceDataByApiId(input.dataSourceId, {});
+      return { currentData: current.data, baselineData: null };
+    });
+
+    const Screen = ({ id }: { id: string }) => (
+      <div key={id}>
+        <WidgetWrapper
+          dashboardId={id}
+          widgetId="widget-1"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+      </div>
+    );
+
+    const { rerender } = render(
+      <React.StrictMode>
+        <Screen id="screen-a" />
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(signals.some((signal) => !signal.aborted)).toBe(true));
+    const previous = signals.filter((signal) => !signal.aborted);
+
+    rerender(
+      <React.StrictMode>
+        <Screen id="screen-b" />
+      </React.StrictMode>,
+    );
+
+    await waitFor(() => expect(previous.every((signal) => signal.aborted)).toBe(true));
+    await waitFor(() => expect(signals.some((signal) => !signal.aborted)).toBe(true));
+    expect(screen.queryByText('网络异常')).toBeNull();
+    expect(screen.queryByText('dashboard.dataFetchFailed')).toBeNull();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

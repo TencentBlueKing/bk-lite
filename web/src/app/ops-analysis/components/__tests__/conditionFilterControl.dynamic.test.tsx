@@ -78,7 +78,9 @@ describe('dynamic condition fields', () => {
     render(<Harness />);
 
     await waitFor(() => {
-      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(3, { model_id: 'host' });
+      expect(api.getSourceDataByApiId).toHaveBeenCalledWith(3, { model_id: 'host' }, {
+        suppressErrorNotification: true,
+      });
     });
     fireEvent.click(screen.getByRole('button', { name: 'dashboard.conditionFilter.add' }));
     const field = await screen.findByTestId('condition-field');

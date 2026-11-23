@@ -158,11 +158,7 @@ def test_identify_conflicts_empty_groups_builtin_datasource_is_name_conflict():
 
     global_conflict = conflicts["global-builtin-top::monitor/get_host_resource_top"]
     assert global_conflict["reason"] == ConflictReason.NAME_CONFLICT
-    assert global_conflict["suggested_actions"] == [
-        ConflictAction.SKIP.value,
-        ConflictAction.OVERWRITE.value,
-        ConflictAction.RENAME.value,
-    ]
+    assert global_conflict["suggested_actions"] == [ConflictAction.RENAME.value]
 
     restricted = conflicts["restricted-builtin::monitor/restricted"]
     assert restricted["reason"] == ConflictReason.NO_PERMISSION_CONFLICT

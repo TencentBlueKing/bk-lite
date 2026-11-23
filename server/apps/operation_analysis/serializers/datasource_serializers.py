@@ -149,6 +149,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "field_schema",
             "is_build_in",
             "build_in_key",
+            "portable_key",
             "required_app",
             "namespaces",
             "tag",
@@ -156,6 +157,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         extra_kwargs = {
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
+            "portable_key": {"read_only": True},
             "required_app": {"read_only": True},
             "connection": {"required": False, "allow_null": True},
             "connection_overrides": {"required": False},

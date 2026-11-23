@@ -8,6 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
 import { presentEventRawData } from '@/app/alarm/utils/eventRawData';
+import ShieldReplayNote from '@/app/alarm/components/shield-replay-note';
 import { useStateMap } from '@/app/alarm/constants/alarm';
 import { EventTableItem } from '@/app/alarm/types/integration';
 import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
@@ -96,6 +97,12 @@ const EventTable: React.FC<EventTableProps> = ({
       dataIndex: 'title',
       key: 'title',
       width: 230,
+      render: (text: string, record: EventTableItem) => (
+        <div>
+          <div>{text || '--'}</div>
+          <ShieldReplayNote raw={record.raw_data} />
+        </div>
+      ),
     },
     {
       title: t('alarms.object'),
@@ -178,6 +185,7 @@ const EventTable: React.FC<EventTableProps> = ({
         onClose={() => setRawVisible(false)}
         maskClosable={false}
       >
+        <ShieldReplayNote raw={rawData} className="mb-3 text-sm text-[var(--color-text-3)]" />
         <pre
           style={{
             whiteSpace: 'pre-wrap',

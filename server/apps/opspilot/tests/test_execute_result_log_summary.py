@@ -146,7 +146,9 @@ def test_ppt_workspace_cwd_applies_to_export_command(tmp_path):
     inner = MagicMock()
     inner.execute.return_value = SimpleNamespace(output="ok\n", exit_code=0, truncated=False)
     workspace = tmp_path / "ws"
-    workspace.mkdir()
+    page = workspace / "projects" / "demo" / "svg_output"
+    page.mkdir(parents=True)
+    (page / "01.svg").write_text("<svg/>", encoding="utf-8")
     backend = PathRewritingBackend(inner, tmp_path / "sandbox", ppt_workspace=workspace)
     backend.execute("python /skills/ppt-master/scripts/svg_to_pptx.py projects/demo --quick-generate")
     command = inner.execute.call_args.args[0]
@@ -162,14 +164,17 @@ def test_ppt_workspace_virtual_path_is_relative_to_cwd(tmp_path):
     inner = MagicMock()
     inner.execute.return_value = SimpleNamespace(output="ok\n", exit_code=0, truncated=False)
     workspace = tmp_path / "ws"
-    workspace.mkdir()
+    page = workspace / "projects" / "demo" / "svg_output"
+    page.mkdir(parents=True)
+    (page / "01.svg").write_text("<svg/>", encoding="utf-8")
     backend = PathRewritingBackend(inner, tmp_path / "sandbox", ppt_workspace=workspace)
     backend.execute(
         'python /skills/ppt-master/scripts/text_measure.py calibrate /ppt-workspace/projects/guangzhou-food --role "title:Microsoft YaHei:44"'
     )
     command = inner.execute.call_args.args[0]
-    assert "/ppt-workspace/" not in command
-    assert "projects/guangzhou-food" in command
+    normalized = command.replace("\\", "/")
+    assert "/ppt-workspace/" not in normalized
+    assert "projects/guangzhou-food" in normalized
     assert str(workspace) in command
 
 
@@ -203,8 +208,11 @@ def test_successful_svg_export_marks_ready(tmp_path):
     inner.execute.return_value = SimpleNamespace(output="exported\n", exit_code=0, truncated=False)
     workspace = tmp_path / "ws"
     export_dir = workspace / "projects" / "demo" / "exports"
+    page_dir = workspace / "projects" / "demo" / "svg_output"
     export_dir.mkdir(parents=True)
+    page_dir.mkdir(parents=True)
     (export_dir / "demo.pptx").write_bytes(b"PK")
+    (page_dir / "01.svg").write_text("<svg/>", encoding="utf-8")
     ready = {"called": False}
 
     def _mark() -> None:

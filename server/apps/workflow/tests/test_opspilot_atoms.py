@@ -43,11 +43,22 @@ def test_workflow_notification_audience_reaches_system_prompt_without_rewriting_
     invoke = mocker.patch.object(ChatService, "invoke_chat", return_value=({"success": True, "message": "完成"}, None, None))
     message = "查一下当前有哪些活动告警"
     context = {**_context(), "reply_channel": reply_channel}
-    assert execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context}) == {"message": "完成"}
+    assert execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context}) == {"message": "完成", "artifacts": []}
     request = invoke.call_args.args[0]
     assert request["user_message"] == message
     assert "根据事实作答。" in request["skill_prompt"]
     assert ("企业微信群" in request["skill_prompt"]) is bool(reply_channel)
+    mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
+    formatted, _, _ = ChatService.format_chat_server_kwargs(request, model)
+    assert formatted["extra_config"].get("reply_channel") == reply_channel
+    assert formatted["extra_config"]["trigger_type"] == "interactive"
+
+    invoke.return_value = ({"success": True, "message": "PDF 报告已生成，是否将其保存为附件？\n1. 是\n2. 否"}, None, None)
+    if reply_channel:
+        with pytest.raises(ValueError, match="等待用户选择"):
+            execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})
+        invoke.return_value = ({"success": True, "message": "哪些对象有告警？\n1. 数据库 4 条\n2. 主机 2 条"}, None, None)
+    assert execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})["message"] == invoke.return_value[0]["message"]
 
 
 @pytest.mark.django_db
@@ -71,7 +82,8 @@ def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_
     mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
     seen = {}
 
-    def invoke(params):
+    def invoke(params, *, execution_timeout_seconds):
+        assert execution_timeout_seconds == 600
         formatted, _, _ = ChatService.format_chat_server_kwargs(params, model)
         seen.update(formatted.get("extra_config") or {})
         return {"success": True, "message": "处理完成"}, None, None
@@ -79,8 +91,9 @@ def test_workflow_agent_runs_with_trigger_appropriate_auto_mode(mocker, trigger_
     mocker.patch.object(ChatService, "invoke_chat", side_effect=invoke)
     context = {**_context(), "trigger_type": trigger_type, "task_reference": "agent-a"}
     result = execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})
-    assert result == {"message": "处理完成"}
+    assert result == {"message": "处理完成", "artifacts": []}
     assert seen.get("unattended", False) is expected
+    assert seen["flow_id"] == context["workflow_id"]
     assert seen["trigger_type"] == approval_trigger
 
 
@@ -122,7 +135,8 @@ def test_workflow_agent_queries_active_alerts_as_execution_caller(mocker, action
         )
     tool_results = []
 
-    def invoke(params):
+    def invoke(params, *, execution_timeout_seconds):
+        assert execution_timeout_seconds == 600
         formatted, _, _ = ChatService.format_chat_server_kwargs(params, model)
         tool_results.append(alerts_list_alerts.invoke({"status": "active"}, config={"configurable": formatted["extra_config"]}))
         return {"success": True, "message": "完成"}, None, None
@@ -171,7 +185,8 @@ def test_workflow_agent_forwards_supplied_caller_identity_and_does_not_invent_on
     mocker.patch("apps.opspilot.services.chat_service.consume_pending_question", return_value=None)
     captured = {}
 
-    def invoke(params):
+    def invoke(params, *, execution_timeout_seconds):
+        assert execution_timeout_seconds == 600
         captured.clear()
         captured.update(params)
         return {"success": True, "message": "处理完成"}, None, None
@@ -267,7 +282,8 @@ def test_agent_and_intent_atoms_reuse_opspilot_nodes_with_clean_contract(mocker)
         }
     )
 
-    assert agent_result == {"message": "inspection complete"}
+    assert agent_result == {"message": "inspection complete", "artifacts": []}
+    assert agent_execute.call_args.kwargs["execution_timeout_seconds"] == 600
     assert agent_execute.call_args.args[0] == "workflow_agent"
     assert agent_execute.call_args.args[1]["data"]["config"]["agent"] == skill.id
     assert agent_execute.call_args.args[1]["data"]["config"]["uploadedFiles"] == [{"name": "runbook.md", "content": "check disk"}]
@@ -392,3 +408,101 @@ def test_agent_bound_to_disabled_vendor_is_rejected_before_execution(mocker):
     catalog = available_atom_catalog(7)
     agent_ids = catalog["bklite_agent"]["input_schema"]["properties"]["agent_id"]["enum"]
     assert agent_ids == [available_skill.id]
+
+
+@pytest.mark.django_db
+def test_agent_attachment_outputs_match_downloaded_files_and_stay_in_scope(mocker, monkeypatch, tmp_path):
+    from datetime import timedelta
+
+    from django.contrib.auth import get_user_model
+    from django.core.files.storage import FileSystemStorage
+    from django.utils import timezone
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.opspilot.models import WorkflowAttachmentAsset
+    from apps.opspilot.services.workflow_attachment_service import create_workflow_attachment_asset
+    from apps.workflow.management.commands.run_workflow_worker import _build_runtime_inputs
+    from apps.workflow.models import AtomExecution, ExecutionArtifact, Workflow, WorkflowExecution
+    from apps.workflow.services.agent_artifacts import register_agent_artifacts
+    from apps.workflow.tests.test_artifacts import MemoryStore
+    from apps.workflow.views import ExecutionArtifactViewSet
+
+    workflow = Workflow.objects.create(name="告警日报", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7], started_by="alice", domain="example.com")
+    atom = AtomExecution.objects.create(
+        execution=execution, task_reference="report", atom_key="bklite_agent", started_at=timezone.now(), status=AtomExecution.Status.RUNNING
+    )
+    storage = FileSystemStorage(location=tmp_path)
+    monkeypatch.setattr(WorkflowAttachmentAsset._meta.get_field("file"), "storage", storage)
+
+    def upload(*, filename, content_bytes, mime_type):
+        from django.core.files.base import ContentFile
+
+        return storage.save(filename, ContentFile(content_bytes))
+
+    mocker.patch("apps.opspilot.services.workflow_attachment_service._upload_workflow_attachment_bytes", side_effect=upload)
+    store = MemoryStore()
+    mocker.patch("apps.workflow.services.agent_artifacts.WorkflowObjectStore", return_value=store)
+    mocker.patch("apps.workflow.views.WorkflowObjectStore", return_value=store)
+    mocker.patch("apps.workflow.views.log_operation")
+
+    def asset(attachment_id, *, filename="report.pdf", content=b"%PDF-1.4", **overrides):
+        return create_workflow_attachment_asset(
+            **{
+                "execution_id": str(execution.pk),
+                "flow_id": str(workflow.pk),
+                "source_node_id": atom.task_reference,
+                "attachment_id": attachment_id,
+                "filename": filename,
+                "mime_type": "application/pdf" if filename.endswith(".pdf") else "text/plain",
+                "content_bytes": content,
+                **overrides,
+            }
+        )
+
+    asset("other-node", source_node_id="other")
+    asset("other-execution", execution_id="different")
+    asset("other-flow", flow_id="different")
+    previous = asset("prior-attempt")
+    WorkflowAttachmentAsset.objects.filter(pk=previous.pk).update(created_at=atom.started_at - timedelta(minutes=1))
+
+    def generate(*args, execution_timeout_seconds):
+        asset("one", filename="活动告警.pdf", content=b"%PDF-1.4\nexample")
+        asset("two", filename="summary.txt", content=b"summary", flow_id="")  # 早期源记录的 flow_id 为空。
+        return {"message": "已生成文件"}
+
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.nodes.agent.agent.AgentNode.execute", side_effect=generate)
+    mocker.patch("apps.workflow.services.opspilot_atoms._scoped_skill", return_value=mocker.Mock(id=11))
+    inputs = _build_runtime_inputs(
+        inputs={"agent_id": 11, "message": "生成告警日报"},
+        atom_execution=atom,
+        task_type="bklite_agent",
+        execution=execution,
+    )
+    result = execute_agent(inputs)
+    files = result["artifacts"]
+    assert result["message"] == "已生成文件"
+    assert [file["filename"] for file in files] == ["活动告警.pdf", "summary.txt"]
+    assert all(set(file) == {"id", "filename", "format", "size"} for file in files)
+    assert list(ExecutionArtifact.objects.values_list("atom_execution_id", "kind", "team")) == [
+        (atom.pk, ExecutionArtifact.Kind.AGENT_ATTACHMENT, [7]),
+        (atom.pk, ExecutionArtifact.Kind.AGENT_ATTACHMENT, [7]),
+    ]
+    put = mocker.spy(store, "put")
+    assert register_agent_artifacts(atom, store=store) == files
+    put.assert_not_called()
+
+    # 临时源删除后，执行详情的下载仍能返回独立保存的原始内容。
+    for source in WorkflowAttachmentAsset.objects.filter(attachment_id__in=["one", "two"]):
+        source.file.delete(save=False)
+        source.delete()
+    user = get_user_model().objects.create(username="report-admin", domain="example.com", is_superuser=True)
+    for file, payload in zip(files, (b"%PDF-1.4\nexample", b"summary"), strict=True):
+        request = APIRequestFactory().get(f"/workflow/api/artifacts/{file['id']}/download/")
+        request.COOKIES["current_team"] = "7"
+        force_authenticate(request, user=user)
+        response = ExecutionArtifactViewSet.as_view({"get": "download"})(request, pk=file["id"])
+        assert response.status_code == 200
+        assert response["Content-Disposition"].startswith("attachment;")
+        assert b"".join(response.streaming_content) == payload
+        assert file["size"] == len(payload)

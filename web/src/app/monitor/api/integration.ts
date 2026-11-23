@@ -326,6 +326,7 @@ const useIntegrationApi = () => {
         instance_ids: React.Key[];
         monitor_plugin_id?: React.Key;
         discard_hand_edited?: boolean;
+        force_redispatch?: boolean;
       }) => {
         return await post(
           '/monitor/api/node_mgmt/update_collect_template_configs/',

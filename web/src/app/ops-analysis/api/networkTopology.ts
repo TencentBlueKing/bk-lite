@@ -108,13 +108,15 @@ export const useNetworkTopologyApi = () => {
   });
 
   const getNetworkTopologyDetail = useCallback(
-    async (id: string | number) => {
+    async (id: string | number, signal?: AbortSignal) => {
       if (shareDetailOverride) {
         return (await shareDetailOverride()) as NetworkTopologyDetail;
       }
-      return loadPlaybackCanvasDetail(playbackDetail, 'networkTopology', id, () => (
-        get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`)
-      ));
+      return loadPlaybackCanvasDetail(playbackDetail, 'networkTopology', id, (requestSignal) => (
+        get<NetworkTopologyDetail>(`/operation_analysis/api/network_topology/${id}/`, {
+          signal: requestSignal,
+        })
+      ), signal);
     },
     [get, playbackDetail, shareDetailOverride],
   );
@@ -151,7 +153,7 @@ export const useNetworkTopologyApi = () => {
 
   /** 读取画布 view_sets JSON(后端实际为 `/config`)。 */
   const getViewSets = useCallback(
-    async (id: string | number) => {
+    async (id: string | number, signal?: AbortSignal) => {
       if (shareDetailOverride) {
         const detail = (await shareDetailOverride()) as SharedCanvasDto;
         const viewSets = detail?.view_sets;
@@ -170,6 +172,7 @@ export const useNetworkTopologyApi = () => {
       }
       return get<NetworkTopologyConfig>(
         `/operation_analysis/api/network_topology/${id}/config/`,
+        signal ? { signal } : undefined,
       );
     },
     [get, playbackDetail, shareDetailOverride],
@@ -268,7 +271,7 @@ export const useNetworkTopologyApi = () => {
 
   /** 节点指标 —— 后端编码 node_ref 后放在 URL 段。 */
   const getNodeMetrics = useCallback(
-    (canvasId: string | number, nodeRef: Record<string, unknown>) => {
+    (canvasId: string | number, nodeRef: Record<string, unknown>, signal?: AbortSignal) => {
       rejectNetworkTopologyEditApiInShareMode(shareAccess, 'getNodeMetrics');
       return get<{
         items?: Array<{
@@ -283,6 +286,7 @@ export const useNetworkTopologyApi = () => {
         status?: string;
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/nodes/${encodeNodeRef(nodeRef)}/metrics/`,
+        signal ? { signal } : undefined,
       );
     },
     [get, shareAccess],
@@ -325,13 +329,15 @@ export const useNetworkTopologyApi = () => {
         display_mode?: "aggregate" | "dimension";
         aggregate_type?: "sum" | "max" | "min" | "mean" | "last";
       }>,
+      signal?: AbortSignal,
     ) => {
       if (shareRuntime) {
-        return shareRuntime.getMetricValues(items);
+        return shareRuntime.getMetricValues(items, signal);
       }
       return post<{ items?: NetworkMetricRuntime[] }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/metric_values/`,
         { items },
+        signal ? { signal } : undefined,
       );
     },
     [post, shareRuntime],
@@ -344,9 +350,10 @@ export const useNetworkTopologyApi = () => {
         link: NetworkTopologyLink;
         nodes: NetworkTopologyConfig['nodes'];
       },
+      signal?: AbortSignal,
     ) => {
       if (shareRuntime) {
-        return shareRuntime.getLinkRuntime(payload);
+        return shareRuntime.getLinkRuntime(payload, signal);
       }
       return post<{
         link?: NetworkLinkRuntime | null;
@@ -358,6 +365,7 @@ export const useNetworkTopologyApi = () => {
       }>(
         `/operation_analysis/api/network_topology/${canvasId}/weops/link_runtime/`,
         payload,
+        signal ? { signal } : undefined,
       );
     },
     [post, shareRuntime],
