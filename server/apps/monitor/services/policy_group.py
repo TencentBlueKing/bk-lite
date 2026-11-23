@@ -7,7 +7,9 @@ from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.monitor.constants.alert_policy import AlertConstants
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import (
     CollectConfig,
     Metric,
@@ -380,6 +382,18 @@ def _sync_rule_editor_baselines(
         PolicyBaselineService(policy).refresh()
 
 
+def _templates_with_relations(templates):
+    pending_ids = [
+        template.id
+        for template in templates
+        if template.pk is not None and not (PolicyTemplate.plugin.is_cached(template) and PolicyTemplate.monitor_object.is_cached(template))
+    ]
+    if not pending_ids:
+        return list(templates)
+    loaded = {item.id: item for item in PolicyTemplate.objects.filter(id__in=pending_ids).select_related("plugin", "monitor_object")}
+    return [loaded.get(template.id, template) if template.pk is not None else template for template in templates]
+
+
 class PolicyGroupService:
     """策略组成员决定的唯一写入入口。"""
 
@@ -396,15 +410,12 @@ class PolicyGroupService:
                 created_by=operator,
                 updated_by=operator,
             )
-            for template in templates:
-                if template.monitor_object_id != monitor_object.id:
-                    raise BaseAppException("模板不属于该监控对象")
-                PolicyGroupService._create_rule(group, template, operator)
+            PolicyGroupService._create_rules(group, templates, operator)
             return group
 
     @staticmethod
     def set_templates(group, templates, operator="system"):
-        """按目标模板集合同步组内规则。新增走 _create_rule 和 sync_coverage，移除走 _retire_policy。"""
+        """按目标模板集合同步组内规则。新增走 _create_rules 和 sync_coverage，移除走 _retire_policy。"""
         existing_rules = list(group.rules.select_related("policy", "plugin"))
         desired = []
         seen = set()
@@ -424,7 +435,7 @@ class PolicyGroupService:
         detection = group_detection_state(existing_rules)
         sibling = existing_rules[0].policy if existing_rules else None
         with transaction.atomic():
-            created = [PolicyGroupService._create_rule(group, template, operator) for template in incoming]
+            created = PolicyGroupService._create_rules(group, incoming, operator)
             if created and sibling is not None:
                 PolicyGroupService._stamp_new_rules_from_group(created, sibling, operator)
                 if detection.get("schedule_uniform") and detection.get("schedule"):
@@ -600,35 +611,101 @@ class PolicyGroupService:
             PolicyGroupService._apply_scan_dispatch(rule.policy, previously_covered=previously_covered)
 
     @staticmethod
-    def _create_rule(group, template, operator):
-        recipe = PolicyService.recipe_fields_from_template(template)
-        policy = MonitorPolicy.objects.create(
-            monitor_object=group.monitor_object,
-            name=template.name[:100],
-            organizations=[group.organization],
-            source={"type": "instance", "values": []},
-            collect_type=template.plugin.collect_type or "",
-            enable=True,
-            notice=True,
-            notice_users=[],
-            handlers=[],
-            source_template=None,
-            created_by=operator,
-            updated_by=operator,
-            **recipe,
-            schedule=PolicyService._default_duration((template.config or {}).get("schedule")),
+    def _create_rules(group, templates, operator):
+        templates = list(templates)
+        for template in templates:
+            if template.monitor_object_id != group.monitor_object_id:
+                raise BaseAppException("模板不属于该监控对象")
+        if not templates:
+            return []
+        templates = _templates_with_relations(templates)
+        policies = []
+        with PolicyService.cached_runtime_metrics(group.monitor_object):
+            for template in templates:
+                recipe = PolicyService.recipe_fields_from_template(template)
+                policies.append(
+                    MonitorPolicy(
+                        monitor_object=group.monitor_object,
+                        name=template.name[:100],
+                        organizations=[group.organization],
+                        source={"type": "instance", "values": []},
+                        collect_type=template.plugin.collect_type or "",
+                        enable=True,
+                        notice=True,
+                        notice_users=[],
+                        handlers=[],
+                        source_template=None,
+                        created_by=operator,
+                        updated_by=operator,
+                        **recipe,
+                        schedule=PolicyService._default_duration((template.config or {}).get("schedule")),
+                    )
+                )
+        policies = bulk_create_with_primary_keys(
+            MonitorPolicy.objects,
+            policies,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
-        PolicyOrganization.objects.create(policy=policy, organization=group.organization, created_by=operator, updated_by=operator)
-        PolicyGroupService.ensure_scan_task(policy)
-        return PolicyGroupRule.objects.create(
-            group=group,
-            plugin=template.plugin,
-            source_template=template,
-            policy=policy,
-            name=template.name[:100],
-            created_by=operator,
-            updated_by=operator,
+        PolicyOrganization.objects.bulk_create(
+            [
+                PolicyOrganization(
+                    policy=policy,
+                    organization=group.organization,
+                    created_by=operator,
+                    updated_by=operator,
+                )
+                for policy in policies
+            ],
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
+        PolicyGroupService._create_scan_tasks(policies)
+        return bulk_create_with_primary_keys(
+            PolicyGroupRule.objects,
+            [
+                PolicyGroupRule(
+                    group=group,
+                    plugin=template.plugin,
+                    source_template=template,
+                    policy=policy,
+                    name=template.name[:100],
+                    created_by=operator,
+                    updated_by=operator,
+                )
+                for template, policy in zip(templates, policies)
+            ],
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+        )
+
+    @staticmethod
+    def _create_scan_tasks(policies):
+        """按最终开关批量建扫描任务。bulk_create 不走 PeriodicTask.save，末尾写一次 Beat 变更标记。"""
+        if not policies:
+            return
+        from django_celery_beat.models import PeriodicTask, PeriodicTasks
+
+        from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+        view = MonitorPolicyViewSet()
+        crontabs = {}
+        tasks = []
+        for policy in policies:
+            schedule = PolicyService._default_duration(policy.schedule)
+            schedule_key = (schedule.get("type"), schedule.get("value"))
+            crontab = crontabs.get(schedule_key)
+            if crontab is None:
+                crontab = view.format_crontab(schedule)
+                crontabs[schedule_key] = crontab
+            tasks.append(
+                PeriodicTask(
+                    name=f"scan_policy_task_{policy.id}",
+                    task="apps.monitor.tasks.monitor_policy.scan_policy_task",
+                    args=json.dumps([policy.id]),
+                    crontab=crontab,
+                    enabled=bool(policy.enable) and source_has_dispatch_targets(policy.source),
+                )
+            )
+        PeriodicTask.objects.bulk_create(tasks, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+        PeriodicTasks.update_changed()
 
     @staticmethod
     def _detach(membership, operator):
@@ -709,7 +786,7 @@ class PolicyGroupService:
             PolicyTemplate.objects.filter(
                 template_type=PolicyTemplate.TYPE_BUILTIN,
                 monitor_object=monitor_object,
-            ).select_related("plugin")
+            ).select_related("plugin", "monitor_object")
         )
         if not templates:
             return None
