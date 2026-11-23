@@ -34,6 +34,7 @@ import {
 import RumIconAction from '@/app/rum/components/rum-icon-action';
 import RumRangeSegmented from '@/app/rum/components/rum-range-segmented';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
+import { buildSessionsListQuery } from '@/app/rum/sessions/lib/sessions-query';
 import SessionTrendChart from '@/app/rum/sessions/ui/session-trend-chart';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import RumPageError from '@/app/rum/components/rum-page-error';
@@ -75,6 +76,7 @@ export default function RumSessionsPage() {
 
   const [sort, setSort] = useState<SortKey>('impact');
   const [sessionId, setSessionId] = useState(searchParams.get('sessionId') || '');
+  const [userId, setUserId] = useState(searchParams.get('userId') || '');
   const [page, setPage] = useState<RumSessionListPage | null>(null);
   const [trend, setTrend] = useState<RumSessionTrendPoint[]>([]);
   const [apps, setApps] = useState<string[]>([]);
@@ -85,21 +87,23 @@ export default function RumSessionsPage() {
   const hasReplay = searchParams.get('hasReplay') === '1';
   const route = (searchParams.get('route') || '').trim();
 
-  const query = useMemo(() => {
-    const out: Record<string, string> = {
-      range,
-      orderBy: sort,
-      limit: String(pageSize),
-      offset: String((pageNo - 1) * pageSize),
-      traffic,
-    };
-    if (application) out.application = application;
-    if (sessionId.trim()) out.sessionId = sessionId.trim();
-    if (hasError) out.hasError = '1';
-    if (hasReplay) out.hasReplay = '1';
-    if (route) out.route = route;
-    return out;
-  }, [range, sort, pageNo, pageSize, traffic, application, sessionId, hasError, hasReplay, route]);
+  const query = useMemo(
+    () =>
+      buildSessionsListQuery({
+        range,
+        orderBy: sort,
+        pageNo,
+        pageSize,
+        traffic,
+        application,
+        sessionId,
+        userId,
+        hasError,
+        hasReplay,
+        route,
+      }),
+    [range, sort, pageNo, pageSize, traffic, application, sessionId, userId, hasError, hasReplay, route],
+  );
 
   const load = useCallback(async () => {
     setPending(true);
@@ -316,6 +320,20 @@ export default function RumSessionsPage() {
                 value={application || undefined}
                 onChange={(value) => setApplication(value || '')}
                 options={apps.map((name) => ({ value: name, label: name }))}
+              />
+            </RumFilterBlock>
+            <RumFilterBlock title={t('rum.sessions.userId', '用户 ID')}>
+              <Input
+                allowClear
+                size="small"
+                className="w-full"
+                placeholder={t('rum.sessions.userId', '用户 ID')}
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                onPressEnter={() => {
+                  setParams({ userId: userId.trim() || null, page: null });
+                  void load();
+                }}
               />
             </RumFilterBlock>
             <div className="space-y-2.5 border-t border-[var(--color-fill-2)] pt-3">

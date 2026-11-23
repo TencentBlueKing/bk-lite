@@ -241,6 +241,7 @@
       "landingPage": "Landing page",
       "landingPageUnknown": "Unknown landing page",
       "user": "User",
+      "userId": "User ID",
       "anonymous": "Anonymous",
       "viewsCount": "Views",
       "duration": "Duration",
