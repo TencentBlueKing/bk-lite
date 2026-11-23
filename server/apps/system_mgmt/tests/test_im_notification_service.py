@@ -22,6 +22,7 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.providers.builtin.feishu.adapters.im_notification import FeishuIMNotificationAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.services.im_notification_service import (
+    CHANNEL_STATUS_NEEDS_RESYNC,
     CHANNEL_STATUS_READY,
     EXTERNAL_CALL_FAILED,
     EXTERNAL_SEND_FAILED,
@@ -199,6 +200,113 @@ def test_execute_im_notification_sync_run_marks_failed_when_nobody_matches(chann
     assert channel.account_association.status == "needs_resync"
     assert channel.status == "needs_resync"
     assert not IMNotificationUserMapping.objects.filter(account_association=channel.account_association).exists()
+
+
+def _sync_directory(channel, directory):
+    run_id = create_account_association_sync_run(channel.account_association_id)["data"]["run_id"]
+    payload = CapabilityExecutionResult.success_result("ok", payload={"external_users": directory})
+    with patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", return_value=payload):
+        assert execute_im_notification_sync_run(run_id)["result"] is True
+    channel.refresh_from_db()
+    return IMNotificationSyncRun.objects.get(id=run_id)
+
+
+def _pin_feishu_user(channel, user):
+    channel.account_association.external_receive_field = "open_id"
+    channel.account_association.save(update_fields=["external_receive_field"])
+    source_run = _sync_directory(channel, [])
+    return IMNotificationUserMapping.objects.create(
+        account_association=channel.account_association,
+        user=user,
+        external_identity_key="open_id",
+        external_identity_value="ou_manual",
+        external_receive_key="open_id",
+        external_snapshot={"open_id": "ou_manual"},
+        match_context={"source": "manual", "sync_run_id": source_run.id},
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("directory", [[], [{"user_id": "u_manual", "open_id": "ou_manual", "email": "no-match@example.com"}]])
+def test_sync_preserves_manual_mapping_even_without_automatic_matches(channel, user, directory):
+    manual = _pin_feishu_user(channel, user)
+
+    for _ in range(2):
+        run = _sync_directory(channel, directory)
+        mapping = channel.account_association.user_mappings.get()
+        assert mapping.pk == manual.pk
+        assert mapping.external_snapshot == {"open_id": "ou_manual"}
+        assert mapping.match_context == manual.match_context
+        assert channel.status == CHANNEL_STATUS_READY
+        assert run.matched_count == len(directory)
+        assert run.unmatched_count == 0
+
+
+@pytest.mark.django_db
+def test_sync_does_not_replace_manual_target_or_map_it_to_another_user(channel, user):
+    manual = _pin_feishu_user(channel, user)
+    other = User.objects.create(username="other", email="other@example.com")
+    unrelated = User.objects.create(username="unrelated", email="unrelated@example.com")
+    stale = IMNotificationUserMapping.objects.create(
+        account_association=channel.account_association,
+        user=other,
+        external_identity_key="user_id",
+        external_identity_value="old",
+        external_receive_key="open_id",
+        external_snapshot={"open_id": "ou_old"},
+    )
+    run = _sync_directory(
+        channel,
+        [
+            {"user_id": "u_manual", "open_id": "ou_manual", "email": other.email},
+            {"user_id": "u_wrong", "open_id": "ou_wrong", "email": user.email},
+            {"user_id": "u_unrelated", "open_id": "ou_unrelated", "email": unrelated.email},
+        ],
+    )
+
+    assert set(channel.account_association.user_mappings.values_list("user_id", flat=True)) == {user.id, unrelated.id}
+    assert channel.account_association.user_mappings.get(user=user).pk == manual.pk
+    assert not channel.account_association.user_mappings.filter(pk=stale.pk).exists()
+    assert run.matched_count == 2
+    assert run.conflict_count == 1
+    assert run.payload["conflict_issues"][0]["reason"] == "manual_mapping_conflict"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("changed_config", ["integration_instance", "external_receive_field"])
+def test_sync_does_not_activate_manual_mapping_with_incompatible_destination_config(channel, user, changed_config):
+    _pin_feishu_user(channel, user)
+    if changed_config == "integration_instance":
+        channel.account_association.integration_instance = IntegrationInstance.objects.create(
+            name="another-feishu", provider_key="feishu", enabled=True, status="ready", capability_status={"im_notification": "ready"}
+        )
+    else:
+        channel.account_association.external_receive_field = "user_id"
+    channel.account_association.save(update_fields=[changed_config])
+
+    _sync_directory(channel, [])
+
+    assert channel.status == CHANNEL_STATUS_NEEDS_RESYNC
+    assert not channel.account_association.user_mappings.exists()
+
+
+@pytest.mark.django_db
+def test_in_flight_sync_does_not_reactivate_old_destination_after_config_change(channel, user):
+    manual = _pin_feishu_user(channel, user)
+    run_id = create_account_association_sync_run(channel.account_association_id)["data"]["run_id"]
+
+    def change_destination(*_args, **_kwargs):
+        channel.account_association.external_receive_field = "user_id"
+        channel.account_association.save(update_fields=["external_receive_field"])
+        return CapabilityExecutionResult.success_result("ok", payload={"external_users": []})
+
+    with patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", side_effect=change_destination):
+        assert execute_im_notification_sync_run(run_id)["result"] is True
+
+    channel.refresh_from_db()
+    assert channel.account_association.external_receive_field == "user_id"
+    assert channel.status == CHANNEL_STATUS_NEEDS_RESYNC
+    assert channel.account_association.user_mappings.get().pk == manual.pk
 
 
 @pytest.mark.django_db
