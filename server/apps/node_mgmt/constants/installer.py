@@ -148,3 +148,20 @@ class InstallerConstants:
 
     WINDOWS_INSTALLER_S3_PATH = _installer_alias_path("windows")
     LINUX_INSTALLER_S3_PATH = _installer_alias_path("linux")
+
+    BULK_STATUS_ACTIVE = "active"
+    BULK_STATUS_EXPIRED = "expired"
+    BULK_STATUS_REVOKED = "revoked"
+    BULK_STATUS_DISABLED = "disabled"
+    BULK_ATTEMPT_INSTALLING = "installing"
+    BULK_ATTEMPT_INSTALLED = "installed"
+    BULK_ATTEMPT_DUPLICATE = "duplicate"
+    BULK_ATTEMPT_FAILED = "failed"
+    BULK_ATTEMPT_TIMEOUT = "timeout"
+    BULK_DEFAULT_EXPIRE_HOURS = 24
+    BULK_MAX_EXPIRE_HOURS = 24 * 7
+    BULK_MIN_SUCCESS_COUNT = 1
+    BULK_MAX_SUCCESS_COUNT = 100000
+    BULK_FAILURE_MULTIPLIER = 5
+    BULK_PROGRESS_ITEM_LIMIT = 200
+    BULK_TIMEOUT_RELEASE_LIMIT = 100
