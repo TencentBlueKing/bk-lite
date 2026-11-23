@@ -17,6 +17,9 @@ const (
 	KindIO         Kind = "io"
 )
 
+// ErrTargetExists 表示请求要求保留已有文件，而目标位置已经有同名文件，本次没有写入。
+var ErrTargetExists = errors.New("target file already exists")
+
 type Error struct {
 	Kind Kind
 	Err  error
