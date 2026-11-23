@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { foldPptSkillToolCalls } from '@bk-lite/chat-content/pptSkillToolFold';
 import { useTranslation } from '@/utils/i18n';
 import { argsWithResolvedKeywords } from './toolCallRenderer';
 
@@ -144,26 +145,44 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
 const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming }) => {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const finishedCount = toolCalls.filter(t => t.status === 'completed' || t.status === 'error').length;
-  const hasError = toolCalls.some(t => t.status === 'error');
-  const totalCount = toolCalls.length;
+  const visibleCalls = useMemo(
+    () => foldPptSkillToolCalls(toolCalls, {
+      name: t('chat.toolCall.pptSkill', 'PPT 技能'),
+      action: t('chat.toolCall.pptSkillAction', '写页面并导出'),
+    }),
+    [toolCalls, t],
+  );
+  const finishedCount = visibleCalls.filter(tool => tool.status === 'completed' || tool.status === 'error').length;
+  const hasError = visibleCalls.some(tool => tool.status === 'error');
+  const totalCount = visibleCalls.length;
+  const pptSkillName = t('chat.toolCall.pptSkill', 'PPT 技能');
+  const onlyPptSkill = totalCount === 1 && visibleCalls[0]?.name === pptSkillName;
+  const headerLabel = onlyPptSkill
+    ? `${pptSkillName} · ${t('chat.toolCall.pptSkillAction', '写页面并导出')}`
+    : t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount });
   const hasRunning = finishedCount < totalCount;
   // 工具都跑完但本轮还在流式输出，说明正在等模型解读结果
   const awaitingAnalysis = !hasRunning && Boolean(isStreaming);
   const shouldAutoExpand = isStreaming || hasRunning;
 
   const isExpanded = shouldAutoExpand || expanded;
+  const canOpen = !onlyPptSkill || hasError;
+  const showItems = isExpanded && canOpen;
 
   return (
     <div className="my-1">
       <div
-        onClick={() => !shouldAutoExpand && setExpanded(!expanded)}
-        className="tool-group-header my-0.5 inline-flex cursor-pointer select-none items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--color-text-3)]"
+        onClick={() => canOpen && !shouldAutoExpand && setExpanded(!expanded)}
+        className={`tool-group-header my-0.5 inline-flex select-none items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--color-text-3)] ${canOpen ? 'cursor-pointer' : 'cursor-default'}`}
       >
-        <span className={[
-          'inline-flex h-3 w-3 items-center justify-center text-[8px] transition-transform duration-200',
-          isExpanded ? 'rotate-90' : 'rotate-0',
-        ].join(' ')}>▶</span>
+        {canOpen ? (
+          <span className={[
+            'inline-flex h-3 w-3 items-center justify-center text-[8px] transition-transform duration-200',
+            isExpanded ? 'rotate-90' : 'rotate-0',
+          ].join(' ')}>▶</span>
+        ) : (
+          <span className="inline-flex h-3 w-3" />
+        )}
         <span className="inline-flex items-center">
           {hasRunning ? (
             <ToolSpinner />
@@ -173,8 +192,8 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
             <span className="text-xs text-[var(--color-success)]">✓</span>
           )}
         </span>
-        <span>{t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount })}</span>
-        {!shouldAutoExpand && (
+        <span>{headerLabel}</span>
+        {canOpen && !shouldAutoExpand && (
           <span className="text-[var(--color-text-4)]">
             {expanded
               ? t('chat.toolCall.collapseHint', '点击收起')
@@ -190,9 +209,9 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
           </span>
         )}
       </div>
-      {isExpanded && (
+      {showItems && (
         <div className="mt-1">
-          {toolCalls.map(tool => (
+          {visibleCalls.map(tool => (
             <ToolItem key={tool.id} tool={tool} />
           ))}
         </div>

@@ -5,8 +5,6 @@ from urllib.error import HTTPError
 import pytest
 
 from apps.rum.services.analytics import UnavailableAnalytics
-
-pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.errors import MemorySourcemapStore
@@ -14,6 +12,8 @@ from apps.rum.services.releases import MemoryBaselineStore, MemoryCredentialStor
 from apps.rum.services.settings import RumRuntimeSettings
 from apps.rum.services.sourcemap import asset_fingerprint
 from apps.rum.services.validation import ValidationError
+
+pytestmark = pytest.mark.django_db
 
 
 def _settings() -> RumRuntimeSettings:
@@ -63,6 +63,7 @@ def test_list_releases_degrades_without_analytics():
     page = _service(control, analytics=UnavailableAnalytics()).list_releases("tester", {"range": "24h", "application": "checkout"})
     assert page["releases"] == []
     assert page["analyticsUnavailable"] is True
+    assert "controlUnavailable" not in page
 
 
 def test_list_releases_degrades_when_query_fails(caplog):
@@ -88,6 +89,7 @@ def test_list_releases_degrades_when_query_fails(caplog):
         )
     assert page["releases"] == []
     assert page["analyticsUnavailable"] is True
+    assert "controlUnavailable" not in page
     record = next(item for item in caplog.records if item.name == "rum")
     assert record.exc_info is None
     assert record.getMessage() == "rum releases list analytics failed failed_stage=list_releases error_type=HTTPError"
@@ -197,3 +199,63 @@ def test_ci_ingest_rejects_bad_token():
         assert False
     except Exception as exc:
         assert getattr(exc, "code", "") == "forbidden"
+
+
+class _RecordingReleases:
+    def __init__(self, releases=None, *, available=True):
+        self.releases = list(releases or [])
+        self._available = available
+        self.calls = []
+
+    def available(self):
+        return self._available
+
+    def list_releases(self, tenant_id, opts):
+        self.calls.append(opts)
+        return {"releases": list(self.releases)}
+
+
+class _ClosedReleases(_RecordingReleases):
+    def __init__(self):
+        super().__init__(available=False)
+
+    def list_releases(self, tenant_id, opts):
+        raise AssertionError("list_releases should not run when analytics is unavailable")
+
+
+def test_list_releases_uses_postgres_app_when_control_is_down():
+    control = MemoryControl()
+    _seed_app(control)
+    analytics = _RecordingReleases(releases=[{"release": "1.2.0", "application": "checkout"}])
+    page = _service(UnavailableControl(), analytics=analytics).list_releases("tester", {"range": "24h"})
+    assert analytics.calls[0]["applications"] == ["checkout"]
+    assert page["releases"][0]["release"] == "1.2.0"
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+
+    empty = _RecordingReleases()
+    page = _service(UnavailableControl(), analytics=empty).list_releases("tester", {"range": "24h"})
+    assert empty.calls[0]["applications"] == ["checkout"]
+    assert page["releases"] == []
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+
+
+def test_list_releases_keeps_both_flags_when_control_and_analytics_are_down():
+    control = MemoryControl()
+    _seed_app(control)
+    analytics = _ClosedReleases()
+    page = _service(UnavailableControl(), analytics=analytics).list_releases("tester", {"range": "24h"})
+    assert page["controlUnavailable"] is True
+    assert page["analyticsUnavailable"] is True
+    assert page["releases"] == []
+    assert analytics.calls == []
+
+
+def test_list_releases_skips_analytics_when_control_is_down_and_postgres_has_no_app():
+    analytics = _RecordingReleases(releases=[{"release": "1.2.0"}])
+    page = _service(UnavailableControl(), analytics=analytics).list_releases("tester", {"range": "24h"})
+    assert page["releases"] == []
+    assert page["controlUnavailable"] is True
+    assert "analyticsUnavailable" not in page
+    assert analytics.calls == []

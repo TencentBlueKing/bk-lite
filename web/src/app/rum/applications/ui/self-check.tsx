@@ -74,9 +74,15 @@ export default function SelfCheck({ application }: { application: string }) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {verdict ? (
             <SemanticBadge
-              label={t(`rum.verdict.${verdict}`)}
+              label={t(`rum.verdict.${summaryKey === 'unreachable' ? 'unconfirmed' : verdict}`)}
               {...toneSemanticPalette(
-                verdict === 'connected' ? 'success' : verdict === 'disabled' ? 'neutral' : 'info',
+                summaryKey === 'unreachable'
+                  ? 'warning'
+                  : verdict === 'connected'
+                    ? 'success'
+                    : verdict === 'disabled'
+                      ? 'neutral'
+                      : 'info',
               )}
             />
           ) : null}

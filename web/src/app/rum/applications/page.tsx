@@ -40,9 +40,8 @@ import {
   appExperienceTone,
   CWV_THRESHOLDS,
   cwvTone,
-  errorRateTone,
   formatMs,
-  formatPct,
+  presentErrorRate,
   toneColor,
   toneDotClass,
   toneSemanticPalette,
@@ -221,7 +220,9 @@ export default function RumApplicationsPage() {
         if (!app.sdkVersion && !app.environment && !app.release) {
           return (
             <span className="text-[var(--color-text-3)]">
-              {t('rum.applications.waitingForTelemetry', '未接入')}
+              {page?.controlUnavailable
+                ? t('rum.verdict.unconfirmed', '无法确认接入')
+                : t('rum.applications.waitingForTelemetry', '等待数据')}
             </span>
           );
         }
@@ -283,11 +284,11 @@ export default function RumApplicationsPage() {
       key: 'errorRate',
       width: 96,
       render: (_, app) => {
-        const eTone = errorRateTone(app.errorRate);
+        const presented = presentErrorRate(app.sessions, app.errorRate);
         return (
           <Tooltip title={t('rum.applications.errorRateHint', '错误率 = 出错会话 / 总会话')}>
-            <span className={`font-mono tabular-nums ${toneTextClass(eTone)}`}>
-              {formatPct(app.errorRate)}
+            <span className={`font-mono tabular-nums ${toneTextClass(presented.tone)}`}>
+              {presented.text}
             </span>
           </Tooltip>
         );

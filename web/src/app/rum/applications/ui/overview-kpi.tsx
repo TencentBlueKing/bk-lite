@@ -2,7 +2,7 @@
 
 import type { RumApplicationHealthItem } from '@/app/rum/api';
 import { RumMetricGrid } from '@/app/rum/components/rum-metric-card';
-import { appExperienceTone, cwvTone, formatMs, formatPct } from '@/app/rum/lib/cwv';
+import { appExperienceTone, cwvTone, formatMs, presentErrorRate } from '@/app/rum/lib/cwv';
 import { countText, maxKnown, sumKnown } from '@/app/rum/lib/metrics';
 import { useTranslation } from '@/utils/i18n';
 
@@ -18,7 +18,8 @@ export function OverviewKpi({
   onOpenErrors?: () => void;
 }) {
   const { t } = useTranslation();
-  const errPct = Math.min(1, Math.max(0, row.errorRate)) * 100;
+  const errorRate = presentErrorRate(row.sessions, row.errorRate);
+  const errorsKnown = row.sessions > 0 && row.errors != null;
   return (
     <RumMetricGrid
       cells={[
@@ -35,13 +36,13 @@ export function OverviewKpi({
         {
           value: countText(row.errors),
           label: t('rum.analytics.kpiErrors', '错误'),
-          tone: row.errors == null ? undefined : row.errors > 0 ? 'danger' : 'success',
+          tone: !errorsKnown ? undefined : (row.errors ?? 0) > 0 ? 'danger' : 'success',
           onClick: onOpenErrors,
         },
         {
-          value: formatPct(row.errorRate),
+          value: errorRate.text,
           label: t('rum.overview.kpiErrorRate', '错误率'),
-          tone: errPct > 5 ? 'danger' : errPct > 0 ? 'warning' : 'success',
+          tone: errorRate.tone,
         },
         {
           value: formatMs(row.lcpP75),

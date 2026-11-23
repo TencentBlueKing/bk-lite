@@ -6,7 +6,7 @@ import {
   BarChartOutlined,
   EditOutlined,
 } from '@ant-design/icons';
-import { Button, Empty, Input, Popconfirm, Switch, Tooltip } from 'antd';
+import { Button, Empty, Input, InputNumber, Popconfirm, Switch, Tooltip } from 'antd';
 
 import {
   useRumQueries,
@@ -64,6 +64,7 @@ export default function ApplicationSetupPage() {
 
   const [environment, setEnvironment] = useState('production');
   const [release, setRelease] = useState('');
+  const [sessionSamplingRate, setSessionSamplingRate] = useState(1);
   const [replayEnabled, setReplayEnabled] = useState(false);
   const [snippets, setSnippets] = useState<RumSnippetSet | null>(null);
   const [snippetError, setSnippetError] = useState('');
@@ -152,6 +153,7 @@ export default function ApplicationSetupPage() {
       replayUrl,
       sdkCdnUrl: sdkCdnUrl || undefined,
       replay: replayEnabled ? { enabled: true } : { enabled: false, samplingRate: 0 },
+      sessionSamplingRate,
     })
       .then((set) => {
         if (!cancelled) {
@@ -168,7 +170,7 @@ export default function ApplicationSetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [app, environment, release, replayEnabled, collectUrl, replayUrl, sdkCdnUrl, buildSnippets, t]);
+  }, [app, environment, release, sessionSamplingRate, replayEnabled, collectUrl, replayUrl, sdkCdnUrl, buildSnippets, t]);
 
   const saveOrigins = useCallback(async () => {
     if (!app) return;
@@ -264,9 +266,11 @@ export default function ApplicationSetupPage() {
       ? 'disabled'
       : connected
         ? 'connected'
-        : !hasKey
-          ? 'setup'
-          : 'waiting';
+        : app.controlUnavailable
+          ? 'unconfirmed'
+          : !hasKey
+            ? 'setup'
+            : 'waiting';
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto">
@@ -282,9 +286,11 @@ export default function ApplicationSetupPage() {
                   {...toneSemanticPalette(
                     headerVerdict === 'connected'
                       ? 'success'
-                      : headerVerdict === 'waiting'
-                        ? 'info'
-                        : 'neutral',
+                      : headerVerdict === 'unconfirmed'
+                        ? 'warning'
+                        : headerVerdict === 'waiting'
+                          ? 'info'
+                          : 'neutral',
                   )}
                 />
               ) : null
@@ -493,10 +499,10 @@ export default function ApplicationSetupPage() {
               <p className="text-xs text-[var(--color-text-3)]">
                 {t(
                   'rum.detail.installHint',
-                  '普通遥测始终全量上报。选择技术栈，将片段放入站点入口后部署并访问一次。',
+                  '会话采样率写入 sessionTracking.samplingRate，默认为 1。选择技术栈，将片段放入站点入口后部署并访问一次。',
                 )}
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-medium tracking-wide text-[var(--color-text-3)]">
                     {t('rum.detail.environment', '环境')}
@@ -517,6 +523,24 @@ export default function ApplicationSetupPage() {
                     placeholder={t('rum.detail.releasePlaceholder', '例如 1.0.0')}
                     disabled={!hasKey}
                     onChange={(event) => setRelease(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium tracking-wide text-[var(--color-text-3)]">
+                    {t('rum.detail.sessionSamplingRate', '会话采样率')}
+                  </label>
+                  <InputNumber
+                    className="w-full"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={sessionSamplingRate}
+                    disabled={!hasKey}
+                    onChange={(value) => {
+                      if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) {
+                        setSessionSamplingRate(value);
+                      }
+                    }}
                   />
                 </div>
                 <div className="space-y-1">
@@ -545,6 +569,12 @@ export default function ApplicationSetupPage() {
                     react: snippets.react,
                     cdn: snippets.cdn,
                     generic: snippets.generic,
+                  }}
+                  advancedByTab={{
+                    npm: snippets.advanced.npm,
+                    react: snippets.advanced.react,
+                    cdn: snippets.advanced.cdn,
+                    generic: snippets.advanced.generic,
                   }}
                   labels={{
                     npm: t('rum.detail.tabNpm', 'NPM（推荐）'),

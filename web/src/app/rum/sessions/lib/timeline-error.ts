@@ -66,3 +66,10 @@ export function presentTimelineError(
     route: route || null,
   };
 }
+
+/** APM trace detail path. Blank ids are not links; no locale prefix or query. */
+export function rumTraceHref(traceId: string | null | undefined): string | null {
+  const id = traceId?.trim() ?? '';
+  if (!id) return null;
+  return `/apm/explore/traces/${encodeURIComponent(id)}`;
+}

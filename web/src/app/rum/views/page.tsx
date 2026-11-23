@@ -10,7 +10,7 @@ import {
   type RumViewAggregateRow,
   type RumViewListPage,
 } from '@/app/rum/api';
-import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
+import PipelineDegradedBanner, { RumDegradedEmpty } from '@/app/rum/components/pipeline-degraded';
 import ExportButton from '@/app/rum/components/export-button';
 import {
   RumDualWorkbench,
@@ -23,7 +23,7 @@ import { cwvTone, formatMs, toneSemanticPalette, toneTextClass, type CwvTone } f
 import { countText } from '@/app/rum/lib/metrics';
 import { AGGREGATE_OTHER_ROUTE, rumRouteLabel } from '@/app/rum/views/lib/route-label';
 import SemanticBadge from '@/components/semantic-badge';
-import { degradationReason } from '@/app/rum/lib/degradation';
+import { degradationBanners, listEmptyUsesAnalyticsCopy } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { useRumClientPager } from '@/app/rum/lib/table-pagination';
@@ -137,7 +137,8 @@ export default function RumViewsPage() {
   const table = useRumClientPager(sorted, `${range}|${application}|${mode}|${release}|${sort}|${routeQuery}|${traffic}`);
   const summary = page?.summary || { lcpP75: 0, inpP75: 0, clsP75: 0 };
   const showErrors = rows.some((row) => row.errors !== undefined);
-  const degrade = degradationReason(page);
+  const banners = degradationBanners(page);
+  const analyticsEmpty = listEmptyUsesAnalyticsCopy(page);
 
   function SortHead({ label, k }: { label: string; k: SortKey }) {
     const active = sort === k;
@@ -317,7 +318,13 @@ export default function RumViewsPage() {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t('rum.views.title', '视图与性能')}</h1>
 
-      {degrade ? <div className="mb-2 shrink-0"><PipelineDegradedBanner reason={degrade} /></div> : null}
+      {banners.length > 0 ? (
+        <div className="mb-2 shrink-0">
+          {banners.map((reason) => (
+            <PipelineDegradedBanner key={reason} reason={reason} />
+          ))}
+        </div>
+      ) : null}
 
       <RumDualWorkbench
         asideTitle={t('rum.views.dimensionTitle', '视图维度')}
@@ -439,16 +446,20 @@ export default function RumViewsPage() {
               />
             ) : sorted.length === 0 ? (
               <div className="flex min-h-0 flex-1 items-center justify-center">
-                <Empty
-                  description={
-                    <div>
-                      <p className="m-0 text-sm font-semibold">{t('rum.views.empty', '没有视图样本')}</p>
-                      <p className="mt-1 text-xs text-[var(--color-text-3)]">
-                        {t('rum.views.emptyHint', '选择应用与时间范围后再试。')}
-                      </p>
-                    </div>
-                  }
-                />
+                {analyticsEmpty ? (
+                  <RumDegradedEmpty reason="analytics" />
+                ) : (
+                  <Empty
+                    description={
+                      <div>
+                        <p className="m-0 text-sm font-semibold">{t('rum.views.empty', '没有视图样本')}</p>
+                        <p className="mt-1 text-xs text-[var(--color-text-3)]">
+                          {t('rum.views.emptyHint', '选择应用与时间范围后再试。')}
+                        </p>
+                      </div>
+                    }
+                  />
+                )}
               </div>
             ) : sorted.length > 0 ? (
               <div className="min-h-0 min-w-0 flex-1">
