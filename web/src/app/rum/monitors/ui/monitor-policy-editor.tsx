@@ -16,6 +16,7 @@ import { RumBone } from '@/app/rum/components/rum-skeleton';
 import { rumErrorMessage } from '@/app/rum/lib/error-message';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import NotificationTargetFields from '@/app/rum/monitors/ui/notification-target-fields';
+import { previewOutgoingTitle } from '@/app/rum/monitors/ui/preview-title';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 
@@ -51,21 +52,6 @@ const METRIC_DEFAULTS: Record<string, { warn: string; critical: string }> = {
 const controlClass = 'w-full max-w-[560px]';
 const sentenceSelectClass = '!w-[176px] !max-w-[176px]';
 const sentenceInputClass = '!w-[140px] !max-w-[140px]';
-
-function previewOutgoingTitle(
-  application: string,
-  metric: string,
-  severity: string,
-  critical: string,
-  comparator: string,
-): string {
-  const object = application.trim() || '—';
-  const kind = metric.trim() || '—';
-  const sev = severity.trim() || '—';
-  const n = Number(critical);
-  const value = Number.isFinite(n) ? String(n) : '—';
-  return `[${sev}] ${object} ${kind}=${value}（阈 ${comparator}${value}）`;
-}
 
 export default function MonitorPolicyEditor({ monitorId }: { monitorId?: string }) {
   const { t } = useTranslation();
@@ -383,6 +369,7 @@ export default function MonitorPolicyEditor({ monitorId }: { monitorId?: string 
                 }))}
                 className={sentenceSelectClass}
               />
+              <span className="text-[var(--color-text-3)]">{t('rum.monitors.critical', '严重阈值')}</span>
               <Input
                 aria-label={t('rum.monitors.critical', '严重阈值')}
                 value={critical}
@@ -538,7 +525,17 @@ export default function MonitorPolicyEditor({ monitorId }: { monitorId?: string 
               <aside className="min-w-0 min-[1280px]:sticky min-[1280px]:top-4">
                 <h2 className="mb-2 text-sm font-semibold">{t('rum.monitors.preview', '通知预览')}</h2>
                 <p className="break-all font-mono text-xs leading-5 text-[var(--color-text-1)]">
-                  {previewOutgoingTitle(application, metric, severity, critical, comparator)}
+                  {previewOutgoingTitle({
+                    application,
+                    severityLabel: t(`rum.monitors.severity.${severity}`, severity),
+                    metricLabel: metricName,
+                    warnLabel: t('rum.monitors.warn', '警告阈值'),
+                    criticalLabel: t('rum.monitors.critical', '严重阈值'),
+                    warn,
+                    critical,
+                    comparator,
+                    unit: unitSuffix,
+                  })}
                 </p>
               </aside>
             </div>
