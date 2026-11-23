@@ -36,6 +36,7 @@ import {
   collectionPolicyHabitKey,
   collectionPolicyHabitValue,
   extractCollectInstanceIds,
+  resolveAccessCmdbFollowUp,
   isCollectionPolicyUiField,
   omitCollectionPolicyField,
   parseRememberedPushAlertCenter,
@@ -54,6 +55,8 @@ import {
   IntegrationMonitoredObject
 } from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
+import { useModuleLinkApi } from '@/app/module-link/api';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { fillOptionalFormFields, usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
@@ -247,6 +250,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
   const userContext = useUserInfoContext();
+  const { clientData, loading: clientLoading } = useClientData();
+  const { createMonitorCmdbTask } = useModuleLinkApi();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
@@ -2109,11 +2114,51 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       } else {
         message.success(t('common.addSuccess'));
       }
-      if (didPersistMetrics) {
-        goPersistedMetrics();
-      } else {
+      const leaveAfterAccess = () => {
+        if (didPersistMetrics) {
+          goPersistedMetrics();
+          return;
+        }
         goIntegrationList();
+      };
+      const offer = resolveAccessCmdbFollowUp({
+        clientData,
+        clientLoading,
+        objectName,
+        collectResult,
+        collectParams: params,
+      });
+      if (offer) {
+        Modal.confirm({
+          title: offer.overflow
+            ? t('monitor.integrations.syncToCmdbFollowUpOverflow', '', {
+              count: offer.ids.length,
+              total: offer.ids.length + offer.overflow,
+            })
+            : t('monitor.integrations.syncToCmdbConfirm', '', {
+              count: offer.ids.length,
+            }),
+          okText: t('common.confirm'),
+          cancelText: t('common.cancel'),
+          centered: true,
+          async onOk() {
+            try {
+              const task = await createMonitorCmdbTask(offer.ids, objectName);
+              const taskId = String(task?.id || '').trim();
+              if (!taskId) {
+                message.error(t('monitor.integrations.syncToCmdbFailed'));
+                return;
+              }
+              router.push(`/module-link/monitor-cmdb/tasks/${taskId}`);
+            } catch {
+              message.error(t('monitor.integrations.syncToCmdbFailed'));
+            }
+          },
+          onCancel: leaveAfterAccess,
+        });
+        return;
       }
+      leaveAfterAccess();
     } catch (error: any) {
       const errorText =
         error?.response?.data?.message ||

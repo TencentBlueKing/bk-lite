@@ -21,7 +21,9 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
-import { Target, WinRMScheme } from '@/app/job/types';
+import type { UploadFile } from 'antd';
+import type { Target, TargetFormData, WinRMScheme } from '@/app/job/types';
+import CredentialPicker from '@/components/credential-picker';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchActionBar from '@/components/search-action-bar';
@@ -35,6 +37,13 @@ const TARGET_DATA_COLUMN_COUNT = 7;
 const MIN_TARGET_DATA_COLUMN_WIDTH = 120;
 const TARGET_ACTION_COLUMN_WIDTH = 120;
 const SAVED_SECRET = '********';
+const MANUAL = 'manual';
+
+type TargetEditor = Omit<TargetFormData, 'credential_source' | 'credential_id' | 'ssh_key_file' | 'cloud_region_id'> & {
+  credentialChoice: string;
+  ssh_key_file?: UploadFile[];
+  cloud_region_id: number;
+};
 
 const TargetPage = () => {
   const { t } = useTranslation();
@@ -49,7 +58,7 @@ const TargetPage = () => {
   } = useJobApi();
   const { getCloudList } = useCloudRegionApi();
 
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<TargetEditor>();
   const [data, setData] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKey, setSearchKey] = useState('');
@@ -75,7 +84,12 @@ const TargetPage = () => {
   const [sshPasswordVersion, setSshPasswordVersion] = useState(0);
   const [winrmPasswordVersion, setWinrmPasswordVersion] = useState(0);
   const osType = Form.useWatch('os_type', form) || 'linux';
-  const editingCredential = editingTarget?.ssh_credential_type;
+  const credentialChoice = Form.useWatch('credentialChoice', form);
+  const manual = credentialChoice === MANUAL;
+  const boundTarget = editingTarget?.credential_source === 'credential' && editingTarget.os_type === osType
+    ? editingTarget : null;
+  const unusableBound = Boolean(boundTarget && boundTarget.credential_available === false
+    && boundTarget.credential_id === credentialChoice);
 
   const winrmSchemeOptions = useMemo(
     () => ([
@@ -219,6 +233,7 @@ const TargetPage = () => {
     form.resetFields();
     form.setFieldsValue({
       os_type: 'linux',
+      credentialChoice: MANUAL,
       driver: 'ansible',
       ssh_port: 22,
       ssh_user: 'root',
@@ -226,7 +241,6 @@ const TargetPage = () => {
       winrm_port: 5985,
       winrm_scheme: 'http',
       winrm_user: '',
-      winrm_cert_validation: true,
     });
     setSshCredentialType('password');
     setKeepExistingKey(false);
@@ -242,6 +256,7 @@ const TargetPage = () => {
     form.setFieldsValue({
       name: record.name,
       os_type: record.os_type,
+      credentialChoice: record.credential_source === 'credential' ? record.credential_id : MANUAL,
       cloud_region_id: record.cloud_region_id,
       ip: record.ip,
       team: record.team || [],
@@ -249,67 +264,62 @@ const TargetPage = () => {
       ssh_port: record.ssh_port || 22,
       ssh_user: record.ssh_user || 'root',
       ssh_credential_type: record.ssh_credential_type || 'password',
-      ssh_password: record.has_ssh_password ? SAVED_SECRET : undefined,
+      ssh_password: record.credential_source === MANUAL && record.has_ssh_password ? SAVED_SECRET : undefined,
       winrm_port: record.winrm_port || 5985,
       winrm_scheme: (record.winrm_scheme as WinRMScheme) || 'http',
       winrm_user: record.winrm_user || '',
-      winrm_password: record.has_winrm_password ? SAVED_SECRET : undefined,
-      winrm_cert_validation: record.winrm_cert_validation ?? true,
+      winrm_password: record.credential_source === MANUAL && record.has_winrm_password ? SAVED_SECRET : undefined,
     });
-    const credentialType = (record.ssh_credential_type || 'password') as 'key' | 'password';
+    const credentialType = record.ssh_credential_type || 'password';
     setSshCredentialType(credentialType);
-    setKeepExistingKey(credentialType === 'key' && record.has_ssh_key);
+    setKeepExistingKey(record.credential_source === MANUAL && credentialType === 'key' && record.has_ssh_key);
     setSshPasswordVersion((version) => version + 1);
     setWinrmPasswordVersion((version) => version + 1);
     setModalOpen(true);
   };
 
-  const selectedKeyFile = (values: Record<string, any>): File | undefined => {
-    const upload = values.ssh_key_file;
-    return upload?.fileList?.[0]?.originFileObj
-      || upload?.file?.originFileObj
-      || upload?.file;
+  const connectionPayload = (values: TargetEditor) => {
+    const body = new FormData();
+    const useManual = values.credentialChoice === MANUAL;
+    body.append('ip', values.ip);
+    body.append('os_type', values.os_type);
+    body.append('driver', values.driver);
+    body.append('cloud_region_id', String(values.cloud_region_id));
+    body.append('credential_source', useManual ? 'manual' : 'credential');
+    body.append('credential_id', useManual ? '' : values.credentialChoice);
+    if (values.os_type === 'windows') {
+      body.append('winrm_port', String(values.winrm_port));
+      body.append('winrm_scheme', values.winrm_scheme);
+      body.append('winrm_cert_validation', String(editingTarget?.winrm_cert_validation ?? true));
+      if (editingTarget?.winrm_transport) body.append('winrm_transport', editingTarget.winrm_transport);
+      if (useManual) {
+        body.append('winrm_user', values.winrm_user);
+        if (values.winrm_password && values.winrm_password !== SAVED_SECRET) {
+          body.append('winrm_password', values.winrm_password);
+        }
+      }
+    } else {
+      body.append('ssh_port', String(values.ssh_port ?? 22));
+      if (useManual) {
+        body.append('ssh_user', values.ssh_user);
+        body.append('ssh_credential_type', values.ssh_credential_type);
+        if (values.ssh_credential_type === 'password') {
+          if (values.ssh_password && values.ssh_password !== SAVED_SECRET) body.append('ssh_password', values.ssh_password);
+        } else {
+          const keyFile = values.ssh_key_file?.[0]?.originFileObj;
+          if (keyFile) body.append('ssh_key_file', keyFile);
+        }
+      }
+    }
+    return body;
   };
-
-  const resolveWinrmCertValidation = (values: Record<string, any>): boolean => (
-    values.winrm_cert_validation
-    ?? editingTarget?.winrm_cert_validation
-    ?? true
-  );
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setConfirmLoading(true);
-      const formData = new FormData();
+      const formData = connectionPayload(values);
       formData.append('name', values.name);
-      formData.append('ip', values.ip);
-      formData.append('os_type', values.os_type);
-      if (values.cloud_region_id !== undefined && values.cloud_region_id !== null) {
-        formData.append('cloud_region_id', String(values.cloud_region_id));
-      }
-      formData.append('driver', values.driver);
-      formData.append('credential_source', 'manual');
-      formData.append('credential_id', '');
-      if (values.os_type === 'windows') {
-        formData.append('winrm_port', String(values.winrm_port));
-        formData.append('winrm_scheme', values.winrm_scheme || 'http');
-        formData.append('winrm_user', values.winrm_user || '');
-        if (values.winrm_password && values.winrm_password !== SAVED_SECRET) {
-          formData.append('winrm_password', values.winrm_password);
-        }
-        formData.append('winrm_cert_validation', String(resolveWinrmCertValidation(values)));
-      } else {
-        formData.append('ssh_port', String(values.ssh_port));
-        formData.append('ssh_user', values.ssh_user || '');
-        formData.append('ssh_credential_type', values.ssh_credential_type || 'password');
-        if (values.ssh_credential_type === 'password' && values.ssh_password && values.ssh_password !== SAVED_SECRET) {
-          formData.append('ssh_password', values.ssh_password);
-        } else if (values.ssh_credential_type === 'key') {
-          const keyFile = selectedKeyFile(values);
-          if (keyFile) formData.append('ssh_key_file', keyFile);
-        }
-      }
       if (Array.isArray(values.team) && values.team.length > 0) {
         formData.append('team', JSON.stringify(values.team));
       }
@@ -334,33 +344,7 @@ const TargetPage = () => {
     try {
       const values = await form.validateFields();
       setTestLoading(true);
-      const keyFile = selectedKeyFile(values);
-      const formData = new FormData();
-      formData.append('ip', values.ip);
-      formData.append('driver', values.driver);
-      formData.append('cloud_region_id', String(values.cloud_region_id));
-      formData.append('os_type', values.os_type);
-      formData.append('credential_source', 'manual');
-      if (values.os_type === 'windows') {
-        formData.append('winrm_port', String(values.winrm_port));
-        formData.append('winrm_scheme', values.winrm_scheme);
-        formData.append('winrm_user', values.winrm_user);
-        if (values.winrm_password !== SAVED_SECRET) {
-          formData.append('winrm_password', values.winrm_password);
-        }
-        formData.append('winrm_cert_validation', String(resolveWinrmCertValidation(values)));
-      } else {
-        formData.append('ssh_port', String(values.ssh_port));
-        formData.append('ssh_user', values.ssh_user);
-        formData.append('ssh_credential_type', values.ssh_credential_type);
-        if (values.ssh_credential_type === 'password') {
-          if (values.ssh_password !== SAVED_SECRET) {
-            formData.append('ssh_password', values.ssh_password);
-          }
-        } else if (keyFile) {
-          formData.append('ssh_key_file', keyFile);
-        }
-      }
+      const formData = connectionPayload(values);
       const res = editingTarget
         ? await testSavedTargetConnection(editingTarget.id, formData)
         : await testTargetConnection(formData);
@@ -440,13 +424,21 @@ const TargetPage = () => {
       key: 'credential',
       width: targetDataColumnWidth,
       render: (_: unknown, record: Target) => {
-        const hasCredential = record.ssh_user || record.ssh_port;
+        if (record.credential_source === 'credential') {
+          const unavailable = record.credential_available === false;
+          const label = unavailable ? t('job.credentialUnavailable') : t('job.systemCredentials');
+          return (
+            <Tag color={unavailable ? 'error' : 'blue'} className="!m-0">
+              {record.credential_name ? `${label} · ${record.credential_name}` : label}
+            </Tag>
+          );
+        }
+        const configured = record.os_type === 'windows'
+          ? record.winrm_user && record.has_winrm_password
+          : record.ssh_user && (record.ssh_credential_type === 'key' ? record.has_ssh_key : record.has_ssh_password);
         return (
-          <Tag
-            color={hasCredential ? 'success' : 'error'}
-            className="!m-0"
-          >
-            {hasCredential ? t('job.credentialConfigured') : t('job.credentialNotConfigured')}
+          <Tag color={configured ? 'success' : 'default'} className="!m-0">
+            {t(configured ? 'job.credentialManual' : 'job.credentialNotConfigured')}
           </Tag>
         );
       },
@@ -575,7 +567,7 @@ const TargetPage = () => {
             label={t('job.operatingSystem')}
             rules={[{ required: true }]}
           >
-            <Radio.Group>
+            <Radio.Group onChange={() => form.setFieldValue('credentialChoice', MANUAL)}>
               <Radio value="linux">{t('job.linux')}</Radio>
               <Radio value="windows">{t('job.windows')}</Radio>
             </Radio.Group>
@@ -633,6 +625,40 @@ const TargetPage = () => {
             {t('job.driverHelp')}
           </div>
 
+          {modalOpen && (
+            <Form.Item
+              name="credentialChoice"
+              label={t('job.credential')}
+              rules={[
+                { required: true, message: t('job.selectCredential') },
+                {
+                  validator: (_, choice) => boundTarget && boundTarget.credential_available === false && choice === boundTarget.credential_id
+                    ? Promise.reject(new Error(t('job.chooseAvailableCredential')))
+                    : Promise.resolve(),
+                },
+              ]}
+              extra={unusableBound ? t('job.chooseAvailableCredential') : undefined}
+            >
+              <CredentialPicker
+                key={osType}
+                category="host"
+                type={osType === 'windows' ? 'winrm' : 'ssh'}
+                manualOption={{
+                  value: MANUAL,
+                  label: t('job.credentialManual'),
+                  searchText: t('job.credentialManual'),
+                  groupLabel: t('job.systemCredentials'),
+                  emptyText: t('job.noCredentials'),
+                }}
+                boundOption={boundTarget?.credential_id ? {
+                  credentialId: boundTarget.credential_id,
+                  name: boundTarget.credential_name || t('job.credentialUnavailable'),
+                  unavailable: boundTarget.credential_available === false,
+                } : undefined}
+              />
+            </Form.Item>
+          )}
+
           {osType === 'windows' ? (
             <>
               <Form.Item
@@ -651,25 +677,29 @@ const TargetPage = () => {
                 <InputNumber min={1} max={65535} className="w-full" />
               </Form.Item>
 
-              <Form.Item
-                name="winrm_user"
-                label={t('job.username')}
-                rules={[{ required: true }]}
-              >
-                <Input />
-              </Form.Item>
+              {manual && (
+                <>
+                  <Form.Item
+                    name="winrm_user"
+                    label={t('job.username')}
+                    rules={[{ required: true }]}
+                  >
+                    <Input />
+                  </Form.Item>
 
-              <Form.Item
-                name="winrm_password"
-                label={t('job.password')}
-                rules={[{ required: true, message: t('job.passwordPlaceholder') }]}
-              >
-                <Password
-                  key={`winrm-password-${winrmPasswordVersion}`}
-                  placeholder={t('job.passwordPlaceholder')}
-                  clickToEdit={Boolean(editingTarget?.has_winrm_password && editingTarget.os_type === 'windows')}
-                />
-              </Form.Item>
+                  <Form.Item
+                    name="winrm_password"
+                    label={t('job.password')}
+                    rules={[{ required: true, message: t('job.passwordPlaceholder') }]}
+                  >
+                    <Password
+                      key={`winrm-password-${winrmPasswordVersion}`}
+                      placeholder={t('job.passwordPlaceholder')}
+                      clickToEdit={Boolean(editingTarget?.credential_source === MANUAL && editingTarget.has_winrm_password && editingTarget.os_type === 'windows')}
+                    />
+                  </Form.Item>
+                </>
+              )}
 
               <Alert
                 type="warning"
@@ -696,81 +726,87 @@ const TargetPage = () => {
                 <InputNumber min={1} max={65535} className="w-full" />
               </Form.Item>
 
-              <Form.Item
-                name="ssh_user"
-                label={t('job.sshUser')}
-                rules={[{ required: true }]}
-              >
-                <Input placeholder="root" />
-              </Form.Item>
-
-              <Form.Item
-                name="ssh_credential_type"
-                label={t('job.sshCredential')}
-                required
-              >
-                <Radio.Group
-                  onChange={(e) => {
-                    const nextType = e.target.value as 'key' | 'password';
-                    setSshCredentialType(nextType);
-                    setKeepExistingKey(nextType === 'key' && Boolean(editingTarget?.has_ssh_key));
-                  }}
-                >
-                  <Radio value="key">{t('job.sshKey')}</Radio>
-                  <Radio value="password">{t('job.sshPassword')}</Radio>
-                </Radio.Group>
-              </Form.Item>
-
-              {sshCredentialType === 'password' ? (
-                <Form.Item
-                  name="ssh_password"
-                  rules={[{ required: true, message: t('job.sshPasswordPlaceholder') }]}
-                >
-                  <Password
-                    key={`ssh-password-${sshPasswordVersion}`}
-                    placeholder={t('job.sshPasswordPlaceholder')}
-                    clickToEdit={Boolean(
-                      editingTarget?.has_ssh_password
-                      && editingTarget.os_type === 'linux'
-                      && editingCredential === 'password'
-                    )}
-                  />
-                </Form.Item>
-              ) : (
-                keepExistingKey ? (
-                  <div className="mb-4 flex items-center justify-between rounded-md border border-[var(--color-border-1)] px-3 py-2">
-                    <span>{t('job.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('job.privateKeyFile') })}</span>
-                    <Button
-                      type="text"
-                      size="small"
-                      aria-label={t('job.replaceKey')}
-                      icon={<CloseOutlined />}
-                      onClick={() => {
-                        setKeepExistingKey(false);
-                        form.setFieldValue('ssh_key_file', undefined);
-                      }}
-                    />
-                  </div>
-                ) : (
+              {manual && (
+                <>
                   <Form.Item
-                    name="ssh_key_file"
-                    label={t('job.privateKeyFile')}
-                    rules={[{ required: true, message: t('job.selectKeyFile') }]}
+                    name="ssh_user"
+                    label={t('job.sshUser')}
+                    rules={[{ required: true }]}
                   >
-                    <Dragger
-                      maxCount={1}
-                      beforeUpload={() => false}
-                      accept=".pem,.key,.pub"
-                    >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text text-sm">
-                        {t('job.selectKeyFile')}
-                      </p>
-                    </Dragger>
+                    <Input placeholder="root" />
                   </Form.Item>
-                )
+
+                  <Form.Item
+                    name="ssh_credential_type"
+                    label={t('job.sshCredential')}
+                    required
+                  >
+                    <Radio.Group
+                      onChange={(e) => {
+                        const nextType = e.target.value === 'key' ? 'key' : 'password';
+                        setSshCredentialType(nextType);
+                        setKeepExistingKey(nextType === 'key' && Boolean(editingTarget?.credential_source === MANUAL && editingTarget.has_ssh_key));
+                      }}
+                    >
+                      <Radio value="key">{t('job.sshKey')}</Radio>
+                      <Radio value="password">{t('job.sshPassword')}</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+
+                  {sshCredentialType === 'password' ? (
+                    <Form.Item
+                      name="ssh_password"
+                      rules={[{ required: true, message: t('job.sshPasswordPlaceholder') }]}
+                    >
+                      <Password
+                        key={`ssh-password-${sshPasswordVersion}`}
+                        placeholder={t('job.sshPasswordPlaceholder')}
+                        clickToEdit={Boolean(
+                          editingTarget?.credential_source === MANUAL && editingTarget.has_ssh_password
+                          && editingTarget.os_type === 'linux'
+                          && editingTarget.ssh_credential_type === 'password'
+                        )}
+                      />
+                    </Form.Item>
+                  ) : (
+                    keepExistingKey ? (
+                      <div className="mb-4 flex items-center justify-between rounded-md border border-[var(--color-border-1)] px-3 py-2">
+                        <span>{t('job.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('job.privateKeyFile') })}</span>
+                        <Button
+                          type="text"
+                          size="small"
+                          aria-label={t('job.replaceKey')}
+                          icon={<CloseOutlined />}
+                          onClick={() => {
+                            setKeepExistingKey(false);
+                            form.setFieldValue('ssh_key_file', undefined);
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <Form.Item
+                        name="ssh_key_file"
+                        valuePropName="fileList"
+                        getValueFromEvent={(event) => event.fileList}
+                        label={t('job.privateKeyFile')}
+                        rules={[{ required: true, message: t('job.selectKeyFile') }]}
+                      >
+                        <Dragger
+                          maxCount={1}
+                          beforeUpload={() => false}
+                          accept=".pem,.key,.pub"
+                        >
+                          <p className="ant-upload-drag-icon">
+                            <InboxOutlined />
+                          </p>
+                          <p className="ant-upload-text text-sm">
+                            {t('job.selectKeyFile')}
+                          </p>
+                        </Dragger>
+                      </Form.Item>
+                    )
+                  )}
+                </>
               )}
 
               <Alert

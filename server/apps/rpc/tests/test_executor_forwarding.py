@@ -4,13 +4,12 @@
 并传入正确的 _timeout（部分方法用 _resolve_rpc_timeout 加 grace）。
 替换各子客户端的 run 为 patch.object 记录器，不触达真实 NATS。
 """
-import pydantic.root_model  # noqa
-
 from unittest.mock import patch
 
+import pydantic.root_model  # noqa
 import pytest
 
-from apps.rpc.executor import Executor, RPC_TIMEOUT_GRACE_SECONDS, _resolve_rpc_timeout
+from apps.rpc.executor import RPC_TIMEOUT_GRACE_SECONDS, Executor, _resolve_rpc_timeout
 
 pytestmark = pytest.mark.unit
 
@@ -55,7 +54,11 @@ def test_execute_ssh_组装最小请求并加grace超时():
         ex.execute_ssh("uptime", "10.0.0.1", "root", timeout=20)
     args, kwargs = run.call_args
     assert args[1] == {
-        "command": "uptime", "host": "10.0.0.1", "port": 22, "user": "root", "execute_timeout": 20,
+        "command": "uptime",
+        "host": "10.0.0.1",
+        "port": 22,
+        "user": "root",
+        "execute_timeout": 20,
     }
     assert kwargs["_timeout"] == _resolve_rpc_timeout(20)
 
@@ -64,8 +67,14 @@ def test_execute_ssh_带密码与私钥():
     ex = Executor("inst-1")
     with patch.object(ex.ssh_client, "run", return_value={}) as run:
         ex.execute_ssh(
-            "ls", "h", "u", password="pw", private_key="KEY", passphrase="pp",
-            connection_test=True, port=2222,
+            "ls",
+            "h",
+            "u",
+            password="pw",
+            private_key="KEY",
+            passphrase="pp",
+            connection_test=True,
+            port=2222,
         )
     rd = run.call_args.args[1]
     assert rd["password"] == "pw"
@@ -86,7 +95,11 @@ def test_execute_ssh_stream_设置流字段():
     ex = Executor("inst-1")
     with patch.object(ex.ssh_client, "run", return_value={}) as run:
         ex.execute_ssh_stream(
-            "tail", "h", "u", execution_id="e1", stream_log_topic="t1",
+            "tail",
+            "h",
+            "u",
+            execution_id="e1",
+            stream_log_topic="t1",
         )
     rd = run.call_args.args[1]
     assert rd["stream_logs"] is True
@@ -110,8 +123,12 @@ def test_download_to_local_组装请求():
         ex.download_to_local("bucket", "key", "f.txt", "/tmp/f", timeout=15, overwrite=False)
     args, kwargs = run.call_args
     assert args[1] == {
-        "bucket_name": "bucket", "file_key": "key", "file_name": "f.txt",
-        "target_path": "/tmp/f", "execute_timeout": 15, "overwrite": False,
+        "bucket_name": "bucket",
+        "file_key": "key",
+        "file_name": "f.txt",
+        "target_path": "/tmp/f",
+        "execute_timeout": 15,
+        "overwrite": False,
     }
     assert kwargs["_timeout"] == 15
 
@@ -131,7 +148,8 @@ def test_download_to_remote_默认local_path与overwrite():
 def test_download_to_remote_fast_fail():
     ex = Executor("inst-1")
     with patch.object(ex.download_to_remote_client, "run", return_value={}) as run:
-        ex.download_to_remote("b", "k", "f", "/r", "h", "u", fast_fail=True, private_key="K")
+        ex.download_to_remote("b", "k", "f", "/r", "h", "u", fast_fail=True, private_key="K", with_status=True)
+    assert run.call_args.kwargs["_raw"] is True
     rd = run.call_args.args[1]
     assert rd["fast_fail"] is True
     assert rd["private_key"] == "K"

@@ -8,14 +8,16 @@ from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
 
 class OcrManager:
     @classmethod
-    def load_ocr(cls, ocr_type: str, model: Optional[str] = None, base_url: Optional[str] = None, api_key: Optional[str] = None):
+    def load_ocr(
+        cls, ocr_type: str, model: Optional[str] = None, base_url: Optional[str] = None, api_key: Optional[str] = None, skip_ssl_verify: bool = False
+    ):
         ocr = None
 
         if ocr_type == "olm_ocr":
-            ocr = OlmOcr(base_url=base_url or "", api_key=api_key or "", model=model or "olmOCR-7B-0225-preview")
+            ocr = OlmOcr(base_url=base_url or "", api_key=api_key or "", model=model or "olmOCR-7B-0225-preview", skip_ssl_verify=skip_ssl_verify)
 
         if ocr_type == "azure_ocr":
-            ocr = AzureOCR(azure_ocr_key=api_key or "", azure_ocr_endpoint=base_url or "")
+            ocr = AzureOCR(azure_ocr_key=api_key or "", azure_ocr_endpoint=base_url or "", skip_ssl_verify=skip_ssl_verify)
 
         if ocr_type == "tesseract":
             ocr = TesseractOCR(lang=model or "chi_sim+eng")

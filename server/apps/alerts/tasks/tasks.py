@@ -174,6 +174,24 @@ def beat_close_alert():
     logger.info("[AlertTask] == beat close alert task end ==")
 
 
+SHIELD_REPLAY_LOCK_KEY = "alerts:shield_replay:beat:lock"
+SHIELD_REPLAY_LOCK_TIMEOUT = 60 * 10
+
+
+@shared_task
+def beat_replay_monitor_shield_events():
+    """屏蔽窗口结束后，重放仍未恢复的监控源事件。"""
+    if not cache.add(SHIELD_REPLAY_LOCK_KEY, "1", SHIELD_REPLAY_LOCK_TIMEOUT):
+        logger.warning("[AlertTask] shield_replay_lock_skip key=%s", SHIELD_REPLAY_LOCK_KEY)
+        return
+    try:
+        from apps.alerts.common.shield_replay import replay_settled_monitor_shields
+
+        return replay_settled_monitor_shields()
+    finally:
+        cache.delete(SHIELD_REPLAY_LOCK_KEY)
+
+
 @shared_task
 def check_and_send_reminders():
     """

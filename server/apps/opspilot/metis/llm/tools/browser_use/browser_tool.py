@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, TypedDict
 
+import httpx
 from browser_use import Agent as BrowserAgent
 from browser_use import Browser
 from browser_use.agent.views import AgentOutput
@@ -16,9 +17,9 @@ from browser_use.llm import ChatOpenAI
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from apps.core.logger import opspilot_logger as logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.tools.common.browser_security import (
     browser_user_data_dir,
     build_sensitive_data,
@@ -1557,6 +1558,7 @@ def browse_website(
             temperature=0.3,
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
+            http_client=httpx.AsyncClient(verify=False) if getattr(llm_config, "skip_ssl_verify", False) is True else None,
         )
 
         original_llm_task = task
@@ -1692,6 +1694,7 @@ def extract_webpage_info(
             temperature=0.3,
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
+            http_client=httpx.AsyncClient(verify=False) if getattr(llm_config, "skip_ssl_verify", False) is True else None,
         )
         logger.info(f"selectors: {selectors}")
         if selectors:

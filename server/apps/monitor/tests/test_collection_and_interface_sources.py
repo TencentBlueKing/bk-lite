@@ -1,5 +1,7 @@
 """采集和接口当前值：同一套过滤，查询出表，数量出一行。"""
 
+import asyncio
+import threading
 import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -127,6 +129,118 @@ def test_collection_count_ignores_the_unpaged_row_cap(monkeypatch):
         query_collection_rows(items, vm_api=_VM({}))
     counted = query_collection_rows(items, vm_api=_VM({}), bounded=False)
     assert len(counted) == 3
+
+
+def test_collection_skips_unconfigured_plugins_and_keeps_manual_instances(monkeypatch):
+    obj = _object("collect-scope")
+    host = _instance(obj, "alivehost", name="host")
+    branded = _instance(obj, "deadonly", name="branded")
+    manual = _instance(obj, "manualbox", name="manual")
+    alive = _plugin(obj, "scope-alive", "up{plugin='alive'}")
+    dead = _plugin(obj, "scope-dead", "up{plugin='dead'}")
+    _plugin(obj, "scope-unused", "up{plugin='unusedplug'}")
+    _config(host, alive)
+    _config(branded, dead)
+    calls = []
+    lock = threading.Lock()
+    state = {"active": 0, "peak": 0}
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            with lock:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            try:
+                time.sleep(0.05)
+                calls.append(query)
+                return {"status": "success", "data": {"result": []}}
+            finally:
+                with lock:
+                    state["active"] -= 1
+
+    query_collection_rows([host, branded, manual], vm_api=_RecordingVM())
+
+    alive_queries = [query for query in calls if "plugin='alive'" in query]
+    dead_queries = [query for query in calls if "plugin='dead'" in query]
+    assert alive_queries and dead_queries
+    assert state["peak"] >= 2
+    assert all("unusedplug" not in query for query in calls)
+    assert all("alivehost" in query and "manualbox" in query and "deadonly" not in query for query in alive_queries)
+    assert all("deadonly" in query and "manualbox" in query and "alivehost" not in query for query in dead_queries)
+
+    monkeypatch.setattr("apps.monitor.services.collection_query._MATCHER_BUDGET", 1)
+    calls.clear()
+    query_collection_rows([host, branded, manual], vm_api=_RecordingVM())
+    assert len([query for query in calls if "plugin='alive'" in query]) >= 2
+
+
+def test_collection_stops_vm_reads_after_the_request_deadline():
+    obj = _object("collect-deadline")
+    host = _instance(obj, "hostbox", name="host")
+    plugin = _plugin(obj, "deadline-alive", "up{plugin='alive'}")
+    _config(host, plugin)
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": []}}
+
+    with pytest.raises(GenericQueryError, match="采集查询超时"):
+        query_collection_rows([host], vm_api=_RecordingVM(), deadline=time.monotonic() - 1)
+
+    assert calls == []
+
+
+def test_collection_handler_does_not_hold_the_shared_nats_thread(monkeypatch):
+    from django.conf import settings
+
+    from apps.monitor.nats import generic_query as handlers
+    from nats_client.handlers import nats_handler
+    from nats_client.registry import default_registry
+
+    class _EmptyQueryset:
+        def select_related(self, *args, **kwargs):
+            del args, kwargs
+            return self
+
+        def distinct(self):
+            return self
+
+        def __iter__(self):
+            return iter(())
+
+    collection_entered = threading.Event()
+    other_entered = threading.Event()
+    monkeypatch.setattr(handlers, "_scoped_monitor_instances", lambda *args, **kwargs: _EmptyQueryset())
+
+    def slow_rows(*args, **kwargs):
+        del args, kwargs
+        collection_entered.set()
+        assert other_entered.wait(2), "其他 handler 在采集查询占住线程时没有开始"
+        return {"items": [], "count": 0, "page": 1, "page_size": 10}
+
+    def other_handler(*args, **kwargs):
+        del args, kwargs
+        assert collection_entered.wait(2), "采集查询没有进入工作线程"
+        other_entered.set()
+        return {"result": True, "data": [], "message": ""}
+
+    monkeypatch.setattr(handlers, "query_collection_rows", slow_rows)
+    namespace = settings.NATS_NAMESPACE
+    collection_key = f"{namespace}.query_monitor_collection"
+    other_key = f"{namespace}.query_monitor_instance_counts"
+    assert default_registry.registry[collection_key]["func"]._nats_thread_sensitive is False
+    assert default_registry.registry[f"{namespace}.query_monitor_collection_counts"]["func"]._nats_thread_sensitive is False
+    monkeypatch.setitem(default_registry.registry[other_key], "func", other_handler)
+
+    async def exercise():
+        await asyncio.gather(
+            nats_handler(collection_key, {"kwargs": {"user_info": {"user": "ada", "team": 1}, "page": 1, "page_size": 10}}),
+            nats_handler(other_key, {"kwargs": {"user_info": {"user": "ada", "team": 1}}}),
+        )
+
+    asyncio.run(exercise())
 
 
 def _vector(rows):

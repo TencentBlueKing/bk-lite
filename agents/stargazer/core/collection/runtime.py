@@ -50,6 +50,11 @@ class CollectionRequest:
             object.__setattr__(self, "workload_class", WorkloadClass(self.workload_class))
 
     @property
+    def access_check(self) -> bool:
+        """连通性测试停在插件 probe，不进入正式采集。"""
+        return str(self.params.get("run_purpose") or "").strip().lower() == "access_check"
+
+    @property
     def ip_precheck_enabled(self) -> bool:
         value = self.params.get("ip_precheck")
         if isinstance(value, bool):

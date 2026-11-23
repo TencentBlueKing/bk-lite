@@ -47,7 +47,7 @@ class ModelVendorSyncService:
         return "llm"
 
     @classmethod
-    def fetch_models_with_credentials(cls, api_base, api_key, protocol_type="openai", locale=None):
+    def fetch_models_with_credentials(cls, api_base, api_key, protocol_type="openai", locale=None, *, skip_ssl_verify=False):
         """根据协议类型获取模型列表
 
         注意：Anthropic API 不提供 /models 端点，此方法仅支持 OpenAI 兼容协议。
@@ -56,10 +56,10 @@ class ModelVendorSyncService:
         loader = cls._get_loader(locale)
         if protocol_type == "anthropic":
             raise ValueError(loader.get("error.anthropic_no_models_endpoint", "Anthropic API 不支持模型列表查询，请手动添加模型"))
-        return cls._fetch_openai_models(api_base, api_key, locale)
+        return cls._fetch_openai_models(api_base, api_key, locale, skip_ssl_verify=skip_ssl_verify)
 
     @classmethod
-    def _fetch_openai_models(cls, api_base, api_key, locale=None):
+    def _fetch_openai_models(cls, api_base, api_key, locale=None, *, skip_ssl_verify=False):
         """获取 OpenAI 兼容 API 的模型列表"""
         loader = cls._get_loader(locale)
         normalized_api_base = (api_base or "").rstrip("/")
@@ -71,13 +71,14 @@ class ModelVendorSyncService:
             f"{normalized_api_base}/models",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15,
+            verify=not skip_ssl_verify,
         )
         response.raise_for_status()
         payload = response.json()
         return payload.get("data", []) if isinstance(payload, dict) else []
 
     @classmethod
-    def test_anthropic_connection(cls, api_base, api_key, model=None, locale=None):
+    def test_anthropic_connection(cls, api_base, api_key, model=None, locale=None, *, skip_ssl_verify=False):
         """测试 Anthropic 协议连接
 
         用于验证 Anthropic 协议端点是否可用，支持自定义模型（如 DeepSeek）。
@@ -94,7 +95,7 @@ class ModelVendorSyncService:
 
         test_model = model or "claude-3-haiku-20240307"
         try:
-            AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model)
+            AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model, skip_ssl_verify=skip_ssl_verify)
         except ValueError as exc:
             if str(exc) == ANTHROPIC_INVALID_API_KEY_ERROR:
                 raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效")) from exc
@@ -117,7 +118,7 @@ class ModelVendorSyncService:
             api_base = (api_base or "").replace("/anthropic", "/v1").rstrip("/")
             if not api_base.endswith("/v1"):
                 api_base = "https://api.deepseek.com/v1"
-        remote_models = cls._fetch_openai_models(api_base, vendor.decrypted_api_key, locale=locale)
+        remote_models = cls._fetch_openai_models(api_base, vendor.decrypted_api_key, locale=locale, skip_ssl_verify=vendor.skip_ssl_verify)
         grouped = defaultdict(list)
         for item in remote_models:
             model_id = item.get("id", "")

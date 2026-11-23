@@ -197,6 +197,7 @@ const ScreenDataConfig = memo(
     onDirtyChange,
     onConfirm,
     onClose,
+    canRepairOptionSource,
   }: {
     item: LayoutItem;
     dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -218,6 +219,7 @@ const ScreenDataConfig = memo(
     onDirtyChange?: (dirty: boolean) => void;
     onConfirm?: (values: WidgetConfig) => void | false;
     onClose?: () => void;
+    canRepairOptionSource?: boolean;
   }) {
     return (
       <ViewConfig
@@ -242,6 +244,7 @@ const ScreenDataConfig = memo(
         onDirtyChange={onDirtyChange}
         onConfirm={onConfirm}
         onClose={onClose}
+        canRepairOptionSource={canRepairOptionSource}
       />
     );
   },
@@ -1631,6 +1634,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       }}
       onApplyInitial={queryState.setAppliedFilterValues}
       prefixContent={namespaceSelectorElement}
+      canEditCanvas={hasPermission(["EditChart"])}
     />
   ) : null;
   const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
@@ -1695,6 +1699,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
       }
       previewHost={widgetPreviewHost}
       onDirtyChange={setDataFormDirty}
+      canRepairOptionSource={hasPermission(["EditChart"])}
       onConfirm={
         pendingViewConfigItem
           ? handleConfirmNewWidgetConfig
@@ -1908,6 +1913,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           valueConfig: item.valueConfig,
         }))}
         dataSources={dataSources}
+        canRepairOptionSource={hasPermission(["EditChart"])}
       />
       <DataVariableModal
         open={dataVariableOpen}

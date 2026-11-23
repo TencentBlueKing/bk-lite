@@ -51,6 +51,11 @@ export const useParamInputOptions = (
         getSourceDataByApiId: (...args) =>
           runtimeRef.current.getSourceDataByApiId?.(...args)
           ?? apiRef.current.getSourceDataByApiId(...args),
+        resolveOptionSource: async (body) => {
+          const resolver = apiRef.current.resolveOptionSource;
+          if (!resolver) throw new Error('option-source-resolver-unavailable');
+          return resolver(body);
+        },
       },
       () => loaderOptionsRef.current,
     );

@@ -181,11 +181,27 @@ class NamespaceItem(BaseModel):
         return value
 
 
+class DatasourceIdentity(BaseModel):
+    """跨环境身份。包内句柄不是目标库的数字主键。"""
+
+    kind: str
+    build_in_key: str = ""
+    portable_key: str = ""
+
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        if value not in {"builtin", "portable"}:
+            raise ValueError(oa_message("messages.yaml_source_type_unsupported", "source_type 不支持"))
+        return value
+
+
 class DatasourceItem(BaseModel):
     """数据源对象结构"""
 
     key: str
     name: str
+    identity: DatasourceIdentity | None = None
     rest_api: str = Field(default="")
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)

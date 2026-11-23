@@ -36,3 +36,19 @@ def cleanup_expired_artifacts(*, store=None, batch_size: int = 100) -> dict[str,
             artifact.save(update_fields=("deleted_at", "updated_at"))
             deleted += 1
     return {"selected": len(records), "deleted": deleted, "failed": failed}
+
+
+class NotificationFileSizeError(ValueError):
+    """已登记的附件超出本次原生文件传输的大小范围。"""
+
+
+def read_notification_artifact(*, artifact_id, execution_id, team, min_bytes, max_bytes):
+    artifact = ExecutionArtifact.objects.get(
+        pk=artifact_id, execution_id=execution_id, team=[team], deleted_at__isnull=True, expires_at__gt=timezone.now()
+    )
+    if not min_bytes <= artifact.size <= max_bytes:
+        raise NotificationFileSizeError("文件大小超过渠道限制")
+    content, _, _ = WorkflowObjectStore().get(artifact.object_key, max_bytes=max_bytes)
+    if len(content) != artifact.size:
+        raise ValueError("附件内容与登记大小不一致")
+    return artifact.filename, content

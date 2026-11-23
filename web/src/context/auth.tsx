@@ -27,7 +27,7 @@ import {
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
-import { isDashboardExecutionRenderRoute, isScreenDisplayPath } from '@/app/routeScope';
+import { isDashboardExecutionRenderRoute, isDashboardShareEntryPath, isScreenDisplayPath } from '@/app/routeScope';
 import {
   publishAuthRecovery,
   subscribeAuthRecovery,
@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isCurrentAuthPath = isAuthPath(pathname);
   const isDashboardRenderRoute = isDashboardExecutionRenderRoute(pathname);
   const isScreenDisplayRoute = isScreenDisplayPath(pathname);
-  const skipsInteractiveLogin = isDashboardRenderRoute || isScreenDisplayRoute;
+  const skipsInteractiveLogin = isDashboardRenderRoute || isScreenDisplayRoute || isDashboardShareEntryPath(pathname);
   const isSessionValid = hasValidSession(extendedSession);
   const authenticatedSessionIdentityRef = useRef<string | null>(null);
   const pageUserIdentityRef = useRef<string | null>(null);
@@ -568,7 +568,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
 
-      // 报表渲染和电视投屏都不进入平台登录页。
+      // 报表渲染、电视投屏和分享入口不进入平台登录页。分享入口先换 state。
       if (skipsInteractiveLogin) {
         return;
       }

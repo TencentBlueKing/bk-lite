@@ -181,6 +181,14 @@ export interface IntegrationProviderQueryItem {
   raw?: Pick<ProviderManifest, 'capabilities'>;
 }
 
+export function excludeNotificationChannelProviders<T extends { capabilities?: Array<{ key?: string }> }>(
+  providers: T[],
+): T[] {
+  return providers.filter(
+    (provider) => !(provider.capabilities || []).some((capability) => capability.key === 'notification_channel'),
+  );
+}
+
 export function collectIntegrationCapabilityFilterOptions(
   providers: Array<{ capabilities?: Array<{ key: string }> }>,
   t: (key: string, fallback?: string) => string,
@@ -188,7 +196,7 @@ export function collectIntegrationCapabilityFilterOptions(
   const present = new Set<string>();
   providers.forEach((provider) => {
     (provider.capabilities || []).forEach((capability) => {
-      if (capability.key) {
+      if (capability.key && capability.key !== 'notification_channel') {
         present.add(capability.key);
       }
     });

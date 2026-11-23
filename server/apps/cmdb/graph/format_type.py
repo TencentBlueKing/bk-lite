@@ -18,6 +18,9 @@ def apply_node_alias(expression: str, alias: str = "n") -> str:
 def format_bool(param):
     field = param["field"]
     value = param["value"]
+    # 列表把缺省画成 NO。查否时要带上未写入的属性，否则手工实例被滤成空。
+    if value is False:
+        return f"(n.{field} = {value} OR n.{field} IS NULL)"
     return f"n.{field} = {value}"
 
 
@@ -349,12 +352,14 @@ class ParameterCollector:
 
 
 def format_bool_params(param, collector):
-    """参数化版本：bool类型"""
+    """参数化版本：bool类型。false 同时匹配未写入的属性。"""
     from apps.cmdb.graph.validators import CQLValidator
 
     field = CQLValidator.validate_field(param["field"])
     value = param["value"]
     param_name = collector.add_param(value, prefix="bool")
+    if value is False:
+        return f"(n.{field} = {param_name} OR n.{field} IS NULL)"
     return f"n.{field} = {param_name}"
 
 

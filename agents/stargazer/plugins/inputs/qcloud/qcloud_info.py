@@ -1053,6 +1053,17 @@ class TencentCloudManager:
 
         return inst_data
 
+    async def probe(self):
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+
+        connected = await asyncio.to_thread(self.test_connection)
+        if connected:
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        return AccessProbeResult(
+            status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+            error_code="qcloud_connection_failed",
+        )
+
     def test_connection(self):
         """
         Test connection to Tencent Cloud Api

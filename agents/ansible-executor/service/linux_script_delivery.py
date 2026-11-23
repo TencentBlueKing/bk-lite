@@ -7,6 +7,7 @@ from service.ansible_runner import (
     WINDOWS_SCRIPT_MAX_BYTES,
     _get_explicit_ssh_common_args,
     _get_password_auth_ssh_common_args,
+    _materialize_private_key,
     _write_restricted_bytes,
 )
 
@@ -162,8 +163,7 @@ def _private_key_path(workspace: Path | None, index: int, credential: dict[str, 
             return str(existing)
         content = credential.get("private_key_content")
         if content:
-            _write_restricted_bytes(existing, str(content).encode("utf-8"))
-            return str(existing)
+            return _materialize_private_key(workspace, content, credential.get("private_key_passphrase"), filename=existing.name)
     configured = credential.get("private_key_file")
     if configured:
         return str(configured)

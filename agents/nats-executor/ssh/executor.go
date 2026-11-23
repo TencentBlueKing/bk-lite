@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -260,6 +261,21 @@ func handleSSHExecuteMessage(data []byte, instanceId string, natsConn *nats.Conn
 	return responseContent, true
 }
 
+const (
+	remoteTargetExistsMarker = "__BKLITE_TARGET_EXISTS__"
+	remoteTargetAbsentMarker = "__BKLITE_TARGET_ABSENT__"
+)
+
+// remoteTargetCheckCommand 按 scp 的落点规则判断远程是否已有同名文件：
+// target_path 是目录时看目录里的 file_name，否则看 target_path 本身。
+func remoteTargetCheckCommand(targetPath, fileName string) string {
+	script := fmt.Sprintf(
+		`if [ -d "$1" ]; then p="$1/$2"; else p="$1"; fi; if [ -e "$p" ] || [ -L "$p" ]; then echo %s; else echo %s; fi`,
+		remoteTargetExistsMarker, remoteTargetAbsentMarker,
+	)
+	return fmt.Sprintf("sh -c %s sh %s %s", shellQuote(script), shellQuote(targetPath), shellQuote(fileName))
+}
+
 func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) ([]byte, bool) {
 	incoming, ok := decodeIncomingMessage(data)
 	if !ok {
@@ -284,6 +300,56 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 			}
 			return responseContent, true
 		}
+	}
+
+	if utils.KeepExisting(downloadRequest.Overwrite) {
+		// scp 没有不覆盖的选项，传输前先在目标机上确认；确认不了就不传。
+		// 这一步仍使用原始私钥和口令：后面的解密只服务于 scp -i。
+		checkResp := executeSSHCommand(ExecuteRequest{
+			Command:        remoteTargetCheckCommand(downloadRequest.TargetPath, downloadRequest.FileName),
+			ExecuteTimeout: remainingBudgetSeconds(deadline),
+			Host:           downloadRequest.Host,
+			Port:           downloadRequest.Port,
+			User:           downloadRequest.User,
+			Password:       downloadRequest.Password,
+			PrivateKey:     downloadRequest.PrivateKey,
+			Passphrase:     downloadRequest.Passphrase,
+		}, instanceId)
+		if !checkResp.Success {
+			responseContent, err := json.Marshal(checkResp)
+			if err != nil {
+				return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to marshal response: %v", err)), true
+			}
+			return responseContent, true
+		}
+		exists := strings.Contains(checkResp.Output, remoteTargetExistsMarker)
+		absent := strings.Contains(checkResp.Output, remoteTargetAbsentMarker)
+		if exists == absent {
+			return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, "Failed to determine whether the remote file already exists; nothing was transferred"), true
+		}
+		if exists {
+			responseContent, err := json.Marshal(local.ExecuteResponse{
+				Success:    true,
+				Output:     fmt.Sprintf("File already exists, successfully skipped: %s/%s", downloadRequest.TargetPath, downloadRequest.FileName),
+				InstanceId: instanceId,
+			})
+			if err != nil {
+				return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to marshal response: %v", err)), true
+			}
+			return responseContent, true
+		}
+	}
+
+	if downloadRequest.PrivateKey != "" && downloadRequest.Passphrase != "" {
+		key, err := ssh.ParseRawPrivateKeyWithPassphrase([]byte(downloadRequest.PrivateKey), []byte(downloadRequest.Passphrase))
+		if err != nil {
+			return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "SSH private key or passphrase is invalid or unsupported"), true
+		}
+		identity, err := ssh.MarshalPrivateKey(key, "")
+		if err != nil {
+			return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "SSH private key or passphrase is invalid or unsupported"), true
+		}
+		downloadRequest.PrivateKey = string(pem.EncodeToMemory(identity))
 	}
 
 	stagingBasePath := downloadRequest.LocalPath

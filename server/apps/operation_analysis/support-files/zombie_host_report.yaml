@@ -41,7 +41,7 @@ reports:
           type: dynamic
           sourceRef:
             type: rest_api
-            value: cmdb/list_application_systems
+            value: 应用系统::cmdb/list_application_systems
           valueField: inst_uuid
           labelField: display_name
     - id: time__timeRange
@@ -388,7 +388,7 @@ datasources:
         type: dynamic
         sourceRef:
           type: rest_api
-          value: cmdb/list_application_systems
+          value: 应用系统::cmdb/list_application_systems
         valueField: inst_uuid
         labelField: display_name
   - name: time

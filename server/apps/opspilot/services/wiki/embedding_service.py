@@ -14,6 +14,7 @@ from django.db import transaction
 from openai import OpenAI
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.common.vendor_tls import sdk_http_options, vendor_skips_ssl_verify
 from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
 from apps.opspilot.services.wiki.generation_navigation_service import page_version_summary
 
@@ -232,7 +233,7 @@ def embed_texts(texts, embed_provider):
     if not texts or embed_provider is None:
         return []
     try:
-        client = OpenAI(base_url=embed_provider.base_url, api_key=embed_provider.api_key)
+        client = OpenAI(base_url=embed_provider.base_url, api_key=embed_provider.api_key, **sdk_http_options(vendor_skips_ssl_verify(embed_provider)))
         resp = client.embeddings.create(model=embed_provider.model_name, input=list(texts))
         return [item.embedding for item in resp.data]
     except Exception as error:
