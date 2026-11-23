@@ -1,7 +1,7 @@
 import type { Graph, Node } from '@antv/x6';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
-import type { LayoutItem, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
+import type { LayoutItem, UnifiedFilterDefinition, FilterValue, WidgetConfig } from '@/app/ops-analysis/types/dashBoard';
 import type { ViewConfigFormValues } from '@/app/ops-analysis/types/topology';
 import {
   bindDiscoveredQueryRefs,
@@ -206,7 +206,7 @@ const VALUE_FORMAT_CHART_TYPES = new Set([
 
 const applyValueFormatFields = (
   valueConfig: Record<string, unknown>,
-  values: ViewConfigFormValues,
+  values: Pick<WidgetConfig, 'unit' | 'unitId' | 'conversionFactor' | 'decimalPlaces'>,
 ) => {
   if (values.unit !== undefined) valueConfig.unit = values.unit;
   if (values.unitId !== undefined) valueConfig.unitId = values.unitId;
@@ -247,12 +247,49 @@ export const applyTopNValueConfig = (
   return valueConfig;
 };
 
+const SAVED_CHART_FIELDS = [
+  'dimensionField',
+  'valueField',
+  'valueFields',
+  'seriesField',
+  'pieScalarFields',
+  'multiValueLabelField',
+  'multiValueValueField',
+  'descriptionField',
+  'eventTimeline',
+  'radar',
+  'cardList',
+  'sceneWidgetType',
+  'networkStatusTopology',
+  'relatedTopology',
+  'applicationTopology',
+  'application3DWall',
+  'room3D',
+  'appearance',
+  'compare',
+  'compareMode',
+  'valueMappings',
+] as const;
+
+const copySavedChartFields = (
+  valueConfig: Record<string, unknown>,
+  values: WidgetConfig,
+) => {
+  for (const key of SAVED_CHART_FIELDS) {
+    const value = values[key];
+    if (value == null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    valueConfig[key] = value;
+  }
+};
+
 /**
- * 从 ViewConfigFormValues 构建 valueConfig 对象，供图表/单值/表格节点使用。
+ * 从组件配置的提交结果构建 valueConfig。提交结果里已经有的字段映射要原样留下。
  * @param coerceDataSource 是否将 string 类型的 dataSource 转为 number（新增节点场景）
  */
 export const buildValueConfig = (
-  values: ViewConfigFormValues,
+  values: WidgetConfig,
   coerceDataSource = false,
 ): Record<string, unknown> => {
   const valueConfig: Record<string, unknown> = {
@@ -314,6 +351,7 @@ export const buildValueConfig = (
   if (values.interaction) {
     valueConfig.interaction = values.interaction;
   }
+  copySavedChartFields(valueConfig, values);
   const displayPatch = chartDisplayPatch(values);
   if (displayPatch.displayLimit !== undefined) {
     valueConfig.displayLimit = displayPatch.displayLimit;

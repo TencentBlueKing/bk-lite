@@ -7,12 +7,12 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
   UnifiedFilterDefinition,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   NodeStyleConfig,
   NodeConfigFormValues,
   TopologyNodeData,
-  ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import {
   extractComparableValue,
@@ -575,7 +575,7 @@ export const useGraphNodeOperations = ({
 
   const handleViewConfigConfirm = useCallback(
     (
-      values: ViewConfigFormValues,
+      values: WidgetConfig,
       unifiedFilterValues?: Record<string, FilterValue>,
       filterDefinitions?: UnifiedFilterDefinition[],
       dataSources?: DatasourceItem[],
@@ -615,7 +615,7 @@ export const useGraphNodeOperations = ({
   );
 
   const handleAddChartNode = useCallback(
-    async (values: ViewConfigFormValues, skipInitialFetch?: boolean) => {
+    async (values: WidgetConfig, skipInitialFetch?: boolean) => {
       if (!graphInstance) {
         return null;
       }
