@@ -10,6 +10,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
+import ConditionFilterControl from '@/app/ops-analysis/components/conditionFilterControl';
 import { useFilterOptionLabelStore } from '@/app/ops-analysis/context/filterTemplate';
 import { createFilterOptionLabelStore } from '@/app/ops-analysis/context/filterOptionLabelStore';
 import { mapOptionLabels } from '@/app/ops-analysis/utils/filterTemplate';
@@ -20,7 +21,12 @@ import type {
   FilterValue,
   TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import type {
+  ConditionFieldSource,
+  ConditionFilterValue,
+  InputControlConfig,
+  InputOption,
+} from '@/app/ops-analysis/types/dataSource';
 import {
   areFilterValuesEqual,
   isDynamicOptionFilter,
@@ -43,6 +49,20 @@ import {
   useShareOrganizationSeed,
 } from '@/app/ops-analysis/context/shareOrganization';
 import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
+
+function CanvasConditionFieldFilter({ source }: { source: ConditionFieldSource }) {
+  const [value, setValue] = useState<ConditionFilterValue | undefined>(undefined);
+  return (
+    <div className="min-w-80">
+      <ConditionFilterControl
+        source={source}
+        value={value}
+        onChange={setValue}
+        canRepairOptionSource={false}
+      />
+    </div>
+  );
+}
 import {
   buildResetFilterValues,
   fillMissingOrganizationFilterValues,
@@ -61,6 +81,8 @@ interface UnifiedFilterBarProps {
   containerClassName?: string;
   appearance?: 'default' | 'embedded';
   popupZIndex?: number;
+  /** 当前用户能否编辑画布并重选选项来源。缺省时，非分享页视为可以。 */
+  canEditCanvas?: boolean;
 }
 
 const EMPTY_LABEL_STORE = createFilterOptionLabelStore();
@@ -87,6 +109,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   containerClassName,
   appearance = 'default',
   popupZIndex,
+  canEditCanvas,
 }) => {
   const { t } = useTranslation();
   const labelStore = useFilterOptionLabelStore();
@@ -142,7 +165,22 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   }
 
   useEffect(() => {
-    setLocalValues(values);
+    // 子控件的同步选项（静态列表）会先校正草稿，随后这次同步才跑。
+    // 已经成功拿到的候选要重新套上，避免把校正结果盖回已存的无效值。
+    setLocalValues(() => {
+      const next = { ...values };
+      optionsByFilterRef.current.forEach((options, filterId) => {
+        const definition = definitionsRef.current.find((item) => item.id === filterId);
+        if (!definition) return;
+        const corrected = reconcileOptionBackedFilterValue(
+          definition,
+          values[filterId],
+          options,
+        );
+        if (corrected !== undefined) next[filterId] = corrected;
+      });
+      return next;
+    });
   }, [values]);
 
   useLayoutEffect(() => {
@@ -243,14 +281,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     );
     enabledDefinitions.forEach((definition) => {
       const options = optionsByFilterRef.current.get(definition.id);
-      if (!options) {
-        if (isDynamicOptionFilter(definition)) {
-          resetValues[definition.id] = null;
-        }
-        return;
-      }
-      const retained = reconcileOptionBackedFilterValue(definition, null, options);
-      resetValues[definition.id] = retained === undefined ? null : retained;
+      if (!options) return;
+      const retained = reconcileOptionBackedFilterValue(definition, null, options, 'reset');
+      if (retained !== undefined) resetValues[definition.id] = retained;
     });
     publishValues(resetValues, 'reset');
   };
@@ -354,6 +387,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         }
 
         const inputConfig = getFilterInputConfig(definition);
+        if (inputConfig?.control === 'conditionFilter') {
+          return <CanvasConditionFieldFilter source={inputConfig.fields} />;
+        }
         const isMultiple = isMultipleSelectInputConfig(inputConfig);
         const queryResolution = resolveOptionsQueryParams(
           dynamicQueryParamsOf(inputConfig),
@@ -405,6 +441,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
                 ? String(labelSnapshot.revisions[definition.id] ?? 0)
                 : undefined
             }
+            canRepairOptionSource={canEditCanvas ?? !shareMode}
             onOptionsFailed={() => {
               if (isDynamicOptionFilter(definition)) {
                 labelStore?.publish(definition.id, {});

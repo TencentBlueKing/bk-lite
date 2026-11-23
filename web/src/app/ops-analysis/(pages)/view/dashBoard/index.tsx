@@ -2224,6 +2224,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onApplyInitial={setAppliedFilterValues}
         prefixContent={namespaceSelectorElement}
         popupZIndex={isFullscreen ? 1200 : undefined}
+        canEditCanvas={hasPermission(['EditChart'])}
       />
     );
 
@@ -2391,6 +2392,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           dataVariables={dataVariables}
           onCreateDataVariable={handleCreateDataVariable}
         />
@@ -2401,6 +2403,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           definitions={definitions}
           layoutItems={widgetLayoutItems}
           dataSources={dataSourceManager.dataSources}
+          canRepairOptionSource={hasPermission(['EditChart'])}
         />
         <DataVariableModal
           open={dataVariableOpen}

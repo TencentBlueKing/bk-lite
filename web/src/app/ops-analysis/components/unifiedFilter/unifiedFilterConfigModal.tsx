@@ -96,6 +96,7 @@ interface UnifiedFilterConfigModalProps {
   definitions: UnifiedFilterDefinition[];
   layoutItems: LayoutItem[];
   dataSources: DatasourceItem[];
+  canRepairOptionSource?: boolean;
 }
 
 interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
@@ -184,6 +185,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   definitions: initialDefinitions,
   layoutItems,
   dataSources,
+  canRepairOptionSource = false,
 }) => {
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
@@ -657,9 +659,12 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
           return (
             <ParamInputControl
+              valuePicker
               inputConfig={inputConfig}
               fallback={fallbackInput}
               value={controlValue}
+              canRepairOptionSource={canRepairOptionSource}
+              onOptionsFailed={() => undefined}
               onOptionsResolved={(options) => {
                 const next = retainFilterValueInOptions(value ?? null, options);
                 const unchanged = Array.isArray(next) && Array.isArray(value)

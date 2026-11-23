@@ -207,6 +207,11 @@ def _profile_values(profile, fields, type_key, variant):
         return keep({"username": _raw(fields, "username"), "ENV_PASSWORD": _raw(fields, "password")})
     if profile == "cloud":
         return keep({"username": _raw(fields, "access_key"), "ENV_PASSWORD": _raw(fields, "secret_key")})
+    if profile == "aksk":
+        managed_names = list((variant or {}).get("managed_fields") or [])
+        access_name = next((name for name in managed_names if "password" not in str(name).lower()), "access_key")
+        secret_name = next((name for name in managed_names if name != access_name), "ENV_PASSWORD")
+        return {access_name: _raw(fields, "access_key"), secret_name: _raw(fields, "secret_key")}
     if profile == "ipmi":
         return keep({"username": _raw(fields, "username"), "ENV_PASSWORD": _raw(fields, "password")})
     if profile == "bearer":

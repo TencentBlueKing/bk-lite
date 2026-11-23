@@ -2,7 +2,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-
 MaskStrategy = Literal["full", "last4"]
 FieldType = Literal["string", "password", "number", "boolean", "select", "textarea"]
 InputMode = Literal["department_select", "manual_input"]
@@ -59,9 +58,7 @@ class BusinessTemplateManifest(BaseModel):
         for group in self.groups:
             for field in group.fields:
                 if field.key in seen:
-                    raise ValueError(
-                        f"Duplicate field key '{field.key}' found across groups in business template '{self.title}'"
-                    )
+                    raise ValueError(f"Duplicate field key '{field.key}' found across groups in business template '{self.title}'")
                 seen.add(field.key)
         return self
 
@@ -74,6 +71,8 @@ class CapabilityManifest(BaseModel):
     adapter_path: str = Field(description="adapter 类导入路径")
     connection_template: list[TemplateFieldManifest] = Field(default_factory=list, description="实例级 capability 接口配置模板")
     business_template: str = Field(default="", description="业务配置模板键，引用 ProviderManifest.business_templates 中的条目")
+    delivery: Literal["template", "body"] | None = Field(default=None, description="通知渠道投递方式")
+    parameter_mode: Literal["ordered", "named"] | None = Field(default=None, description="模板参数排列")
 
 
 class ProviderManifest(BaseModel):
@@ -126,9 +125,7 @@ class ProviderManifest(BaseModel):
             all_field_keys.add(field.key)
             invalid_capabilities = set(field.reset_capabilities) - valid_capabilities
             if invalid_capabilities:
-                raise ValueError(
-                    f"Field '{field.key}' in provider '{self.key}' references unknown capabilities: {sorted(invalid_capabilities)}"
-                )
+                raise ValueError(f"Field '{field.key}' in provider '{self.key}' references unknown capabilities: {sorted(invalid_capabilities)}")
 
         for capability in self.capabilities:
             if capability.business_template and capability.business_template not in self.business_templates:
@@ -187,6 +184,8 @@ class ProviderManifest(BaseModel):
                     "description": capability.description,
                     "connection_template": [field.model_dump() for field in capability.connection_template],
                     "business_template": capability.business_template,
+                    "delivery": capability.delivery,
+                    "parameter_mode": capability.parameter_mode,
                 }
                 for capability in self.capabilities
             ],

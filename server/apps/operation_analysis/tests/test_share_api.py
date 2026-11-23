@@ -181,6 +181,14 @@ def test_prepare_then_exchange_with_nonce_cookie(settings, dashboard, sharer, vi
     state = prepared.data["state"]
 
     browser.force_authenticate(visitor)
+    mismatched = browser.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"state": state},
+        format="json",
+        HTTP_COOKIE="bk_dashboard_share_prep=wrong-nonce",
+    )
+    assert mismatched.status_code == 404
+
     exchanged = browser.post(
         "/api/v1/operation_analysis/api/dashboard_share/exchange/",
         {"state": state},
@@ -191,6 +199,14 @@ def test_prepare_then_exchange_with_nonce_cookie(settings, dashboard, sharer, vi
     assert exchanged.data["session_id"]
     assert "group_tree" not in exchanged.data
     assert "space_id" not in exchanged.data
+
+    replay = browser.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"state": state},
+        format="json",
+        HTTP_COOKIE=f"bk_dashboard_share_prep={nonce}",
+    )
+    assert replay.status_code == 404
 
 
 @pytest.mark.django_db
@@ -511,6 +527,292 @@ def test_share_query_rejects_datasource_not_declared_by_dashboard(settings, dash
 
 
 @pytest.mark.django_db
+def test_share_resolves_declared_option_source_as_the_canvas_org(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    declared = DataSourceAPIModel.objects.create(
+        name=f"declared-{uuid.uuid4()}",
+        rest_api=f"demo/declared-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    foreign = DataSourceAPIModel.objects.create(
+        name=f"foreign-{uuid.uuid4()}",
+        rest_api=f"demo/foreign-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [{"valueConfig": {"dataSource": declared.id}}]
+    dashboard.save(update_fields=["view_sets"])
+    sharer_client = APIClient()
+    sharer_client.force_authenticate(sharer)
+    sharer_client.cookies["current_team"] = "1"
+    created = sharer_client.post(
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        {},
+        format="json",
+    )
+    token = created.data["url"].rsplit("/", 1)[-1]
+    visitor_client = APIClient()
+    visitor_client.force_authenticate(visitor)
+    visitor_client.cookies["current_team"] = "99"
+    exchanged = visitor_client.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"token": token},
+        format="json",
+    )
+    session_id = exchanged.data["session_id"]
+
+    allowed = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/resolve_option_source/",
+        {"sourceId": declared.id},
+        format="json",
+    )
+    assert allowed.status_code == 200
+    assert allowed.data["status"] == "resolved"
+    assert allowed.data["id"] == declared.id
+
+    denied = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/resolve_option_source/",
+        {"sourceId": foreign.id},
+        format="json",
+    )
+    assert denied.status_code == 200
+    assert denied.data == {"status": "forbidden"}
+    assert foreign.name not in str(denied.data)
+
+    login_resolve = visitor_client.post(
+        "/api/v1/operation_analysis/api/data_source/resolve_option_source/",
+        {"sourceId": declared.id},
+        format="json",
+    )
+    assert login_resolve.status_code == 403
+
+
+@pytest.mark.django_db
+def test_share_condition_field_source_is_queryable_without_opening_other_ids(settings, dashboard, sharer, visitor, monkeypatch):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    seen = {}
+
+    def fake_get_data(self):
+        seen["params"] = dict(self.params)
+        return {"result": True, "data": [{"name": "host", "label": "主机"}]}
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.common.get_nats_source_data.GetNatsData.get_data",
+        fake_get_data,
+    )
+    chart = DataSourceAPIModel.objects.create(
+        name=f"chart-{uuid.uuid4()}",
+        rest_api=f"demo/chart-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    option = DataSourceAPIModel.objects.create(
+        name=f"option-{uuid.uuid4()}",
+        rest_api=f"demo/option-{uuid.uuid4()}",
+        groups=[1],
+        params=[{"name": "site_id", "type": "string", "filterType": "params"}],
+        created_by="alice",
+        updated_by="alice",
+    )
+    fields = DataSourceAPIModel.objects.create(
+        name=f"fields-{uuid.uuid4()}",
+        rest_api=f"demo/fields-{uuid.uuid4()}",
+        groups=[1],
+        params=[
+            {"name": "metric_id", "type": "string", "filterType": "params"},
+            {"name": "secret_filter", "type": "string", "filterType": "params"},
+        ],
+        created_by="alice",
+        updated_by="alice",
+    )
+    chart.params = [
+        {
+            "name": "site",
+            "type": "string",
+            "filterType": "params",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceId": option.id,
+                    "valueField": "id",
+                    "labelField": "name",
+                    "queryParams": {"site_id": {"ref": "site"}},
+                },
+            },
+        }
+    ]
+    chart.save(update_fields=["params"])
+    foreign = DataSourceAPIModel.objects.create(
+        name=f"foreign-fields-{uuid.uuid4()}",
+        rest_api=f"demo/foreign-fields-{uuid.uuid4()}",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    locked = DataSourceAPIModel.objects.create(
+        name=f"locked-fields-{uuid.uuid4()}",
+        rest_api=f"demo/locked-fields-{uuid.uuid4()}",
+        groups=[2],
+        created_by="alice",
+        updated_by="alice",
+    )
+    DataSourceAPIModel.objects.create(
+        name=f"ambiguous-a-{uuid.uuid4()}",
+        rest_api="demo/ambiguous-condition-fields",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    DataSourceAPIModel.objects.create(
+        name=f"ambiguous-b-{uuid.uuid4()}",
+        rest_api="demo/ambiguous-condition-fields",
+        groups=[1],
+        created_by="alice",
+        updated_by="alice",
+    )
+    data_source_menu = Menu.objects.create(
+        name="data_source-View",
+        display_name="View data source",
+        url="",
+        app="ops-analysis",
+    )
+    role = Role.objects.create(
+        name=f"condition-field-role-{uuid.uuid4()}",
+        app="ops-analysis",
+        menu_list=[data_source_menu.id],
+    )
+    persisted_sharer = User.objects.get(username="alice", domain="domain.com")
+    persisted_sharer.role_list = [role.id]
+    persisted_sharer.group_list = [1]
+    persisted_sharer.save(update_fields=["role_list", "group_list"])
+    dashboard.view_sets = [{"valueConfig": {"dataSource": chart.id, "dataSourceParams": []}}]
+    dashboard.filters = [
+        {
+            "id": "row_filter__conditionFilter",
+            "key": "row_filter",
+            "name": "条件",
+            "type": "conditionFilter",
+            "order": 1,
+            "enabled": True,
+            "inputConfig": {
+                "control": "conditionFilter",
+                "fields": {
+                    "kind": "dynamic",
+                    "sourceId": fields.id,
+                    "valueField": "name",
+                    "labelField": "label",
+                    "queryParams": {"metric_id": {"ref": "metric_id"}},
+                },
+            },
+        }
+    ]
+    dashboard.save(update_fields=["view_sets", "filters"])
+    sharer_client = APIClient()
+    sharer_client.force_authenticate(sharer)
+    sharer_client.cookies["current_team"] = "1"
+    created = sharer_client.post(
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        {},
+        format="json",
+    )
+    visitor_client = APIClient()
+    visitor_client.force_authenticate(visitor)
+    visitor_client.cookies["current_team"] = "99"
+    exchanged = visitor_client.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"token": created.data["url"].rsplit("/", 1)[-1]},
+        format="json",
+    )
+    session_id = exchanged.data["session_id"]
+
+    def resolve(body):
+        return visitor_client.post(
+            f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/resolve_option_source/",
+            body,
+            format="json",
+        )
+
+    chart_resolved = resolve({"sourceId": chart.id})
+    option_resolved = resolve({"sourceId": option.id})
+    fields_resolved = resolve({"sourceId": fields.id})
+    assert chart_resolved.data["status"] == "resolved"
+    assert option_resolved.data["id"] == option.id
+    assert fields_resolved.data == {"status": "resolved", "id": fields.id}
+
+    loaded = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{fields.id}/",
+        {"metric_id": "metric-1"},
+        format="json",
+    )
+    assert loaded.status_code == 200
+    assert loaded.data["data"] == [{"name": "host", "label": "主机"}]
+    assert seen["params"]["metric_id"] == "metric-1"
+
+    option_loaded = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{option.id}/",
+        {"site_id": "site-1"},
+        format="json",
+    )
+    assert option_loaded.status_code == 200
+    assert seen["params"]["site_id"] == "site-1"
+
+    crossed = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{fields.id}/",
+        {"site_id": "site-1"},
+        format="json",
+    )
+    assert crossed.status_code == 400
+    undeclared_schema_key = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{fields.id}/",
+        {"secret_filter": "hidden"},
+        format="json",
+    )
+    assert undeclared_schema_key.status_code == 400
+    assert fields.name not in str(undeclared_schema_key.data)
+    chart_extra = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{chart.id}/",
+        {"metric_id": "metric-1"},
+        format="json",
+    )
+    assert chart_extra.status_code == 400
+
+    denied = resolve({"sourceId": foreign.id})
+    assert denied.data == {"status": "forbidden"}
+    assert foreign.name not in str(denied.data)
+    assert str(foreign.id) not in str(denied.data)
+    locked_result = resolve({"sourceId": locked.id})
+    assert locked_result.data == {"status": "forbidden"}
+    assert locked.name not in str(locked_result.data)
+    missing = resolve({"sourceId": 999999})
+    assert missing.data == {"status": "missing"}
+    ambiguous = resolve({"sourceRef": {"type": "rest_api", "value": "demo/ambiguous-condition-fields"}})
+    assert ambiguous.data == {"status": "ambiguous"}
+    assert "id" not in ambiguous.data
+
+    foreign_query = visitor_client.post(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/{session_id}/query/{foreign.id}/",
+        {},
+        format="json",
+    )
+    assert foreign_query.status_code == 403
+    assert foreign.name not in str(foreign_query.data)
+
+    login_resolve = visitor_client.post(
+        "/api/v1/operation_analysis/api/data_source/resolve_option_source/",
+        {"sourceId": fields.id},
+        format="json",
+    )
+    assert login_resolve.status_code == 403
+
+
+@pytest.mark.django_db
 def test_share_datasource_metadata_is_scoped_and_secret_free(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
     monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
@@ -697,4 +999,5 @@ def test_share_query_uses_sharer_runtime_authorization_context(settings, dashboa
     )
 
     assert response.status_code == 200
-    assert response.data == [{"region": "east", "count": 1}]
+    # 查询契约自 902bf359 起是 {data, warnings}。断言写成于 b0fd03ab，当时视图还直接返回列表。
+    assert response.data == {"data": [{"region": "east", "count": 1}], "warnings": []}

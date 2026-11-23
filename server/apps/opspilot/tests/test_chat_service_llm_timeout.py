@@ -12,8 +12,10 @@
     revert 修复后，以下测试均应失败，从而证明测试覆盖了修复点。
 """
 
+import asyncio
 import os
 import re
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -90,18 +92,6 @@ class TestChatServiceFutureTimeout:
             "chat_service.py 未专门处理 concurrent.futures.TimeoutError。" "未处理的 TimeoutError 会向上传播为 500 错误，缺少明确提示。"
         )
 
-    def test_timeout_error_handler_returns_error_type_field(self, chat_service_src):
-        """
-        TimeoutError 处理块应返回 error_type='TimeoutError'，便于前端区分超时与其他错误。
-        """
-        # Find the TimeoutError handler block
-        idx = chat_service_src.rfind("except concurrent.futures.TimeoutError")
-        assert idx != -1, "未找到 TimeoutError 处理块"
-        # Check the next 500 chars for the error_type field
-        handler_snippet = chat_service_src[idx : idx + 600]
-        assert '"TimeoutError"' in handler_snippet or "'TimeoutError'" in handler_snippet, "TimeoutError 处理块应设置 error_type='TimeoutError'"
-        assert "False" in handler_snippet, "TimeoutError 处理块应设置 success=False"
-
     def test_os_is_imported(self, chat_service_src):
         """os 模块必须被 import，用于 os.getenv('LLM_INVOKE_TIMEOUT', ...)"""
         assert "import os" in chat_service_src, "chat_service.py 缺少 import os，无法调用 os.getenv()"
@@ -148,6 +138,31 @@ class TestChatServiceFutureTimeout:
         assert result["success"] is False
         assert result["error_type"] == "TimeoutError"
         assert elapsed < 1.5, f"超时返回仍等待了后台线程: {elapsed:.3f}s"
+
+    def test_workflow_deadline_cancels_pending_graph_step(self, mocker, monkeypatch):
+        from apps.opspilot.services.chat_service import ChatService
+
+        cancelled = threading.Event()
+
+        class WaitingGraph:
+            async def execute(self, _request):
+                try:
+                    await asyncio.sleep(10)
+                finally:
+                    cancelled.set()
+
+        mocker.patch.object(ChatService, "format_chat_server_kwargs", return_value=({}, {}, {}))
+        mocker.patch("apps.opspilot.services.chat_service.LLMModel.objects.get", return_value=MagicMock(id=1))
+        mocker.patch("apps.opspilot.services.chat_service.create_agent_instance", return_value=(WaitingGraph(), MagicMock()))
+        mocker.patch("apps.opspilot.services.chat_service._is_eventlet_environment", return_value=False)
+        monkeypatch.setenv("LLM_INVOKE_TIMEOUT", "30")
+
+        result, _, _ = ChatService.invoke_chat({"llm_model": 1, "skill_type": "test"}, execution_timeout_seconds=1)
+
+        assert result["success"] is False
+        assert result["error_type"] == "TimeoutError"
+        assert result["error"] == "agent execute timeout after 1s"
+        assert cancelled.wait(2)
 
     def test_timeout_path_cleans_db_connections_in_worker(self, chat_service_src):
         """worker finally 必须 close_old_connections；超时使用 daemon 线程避免阻塞退出。"""

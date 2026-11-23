@@ -1069,6 +1069,14 @@ class CollectModelService(object):
             return WebUtils.response_error(error_message="配置文件采集仅支持周期执行", status_code=400)
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
+        from apps.cmdb.models.collect_access_check import CollectAccessCheck
+
+        if CollectAccessCheck.objects.filter(task_id=instance.pk, status="running").exists():
+            return WebUtils.response_error(
+                {"error_code": "check_running"},
+                error_message="连通性测试进行中",
+                status_code=409,
+            )
 
         before_snapshot = cls._snapshot_task(instance)
         cls.repair_host_cloud_snapshot(instance)

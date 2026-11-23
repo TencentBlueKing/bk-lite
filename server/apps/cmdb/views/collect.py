@@ -414,6 +414,21 @@ class CollectModelViewSet(AuthViewSet):
         return result
 
     @HasPermission("auto_collection-Execute")
+    @action(methods=["GET", "POST"], detail=True, url_path="access_check")
+    def access_check(self, request, *args, **kwargs):
+        from apps.cmdb.services.collect_access_check_service import CollectAccessCheckService
+
+        instance = self.get_object()
+        user = request.user
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        if not self.get_has_permission(user, instance, current_team, include_children=include_children):
+            return WebUtils.response_403("您没有操作该采集任务的权限！")
+        if request.method == "GET":
+            return CollectAccessCheckService.get(instance)
+        return CollectAccessCheckService.start(instance, getattr(user, "username", "") or "")
+
+    @HasPermission("auto_collection-Execute")
     @action(methods=["POST"], detail=True, url_path="unknown_soid_mappings")
     def unknown_soid_mappings(self, request, *args, **kwargs):
         return self._run_unknown_soid(request, save_unknown_soid_mappings, request.data.get("items"))

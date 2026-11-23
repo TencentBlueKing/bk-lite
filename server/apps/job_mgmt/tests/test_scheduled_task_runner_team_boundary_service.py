@@ -8,8 +8,8 @@ from django.db import close_old_connections
 
 from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, JobType, TargetSource
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Target
-from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.job_mgmt.utils.team_authz import is_team_authorized as real_is_team_authorized
@@ -234,9 +234,9 @@ def test_runner_linearizes_target_snapshot_before_concurrent_team_update():
 
     original_build = ExecutionTaskBaseService._build_ssh_credentials
 
-    def build_after_update(cls, locked_target):
+    def build_after_update(cls, locked_target, *, execution):
         assert update_done.wait(timeout=5)
-        return original_build(locked_target)
+        return original_build(locked_target, execution=execution)
 
     def run_execution():
         close_old_connections()

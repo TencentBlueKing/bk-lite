@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Form } from 'antd';
 
@@ -41,6 +41,7 @@ vi.mock('@/utils/i18n', () => ({
     t: (key: string) => {
       if (key === 'paramInput.dynamic.upstreamRequired') return '请先选择上游';
       if (key === 'paramInput.dynamic.invalidUpstream') return '查询入参无法对应到唯一的上游筛选';
+      if (key === 'paramInput.editButton') return '配置选项';
       return key;
     },
   }),
@@ -274,6 +275,9 @@ describe('DataSourceParamsConfig options query', () => {
 
     const readZone = () => JSON.parse(screen.getByTestId('form-params').textContent || '{}') as Record<string, unknown>;
     expect(readZone().zone_id).toBe('zone-stale');
+    await waitFor(() => {
+      expect(getSourceDataByApiId).toHaveBeenCalled();
+    });
 
     finish({ data: [], warnings: [] });
     await waitFor(() => {
@@ -583,5 +587,34 @@ describe('DataSourceParamsConfig options query', () => {
       }),
       undefined,
     );
+  });
+
+  it('opens input config from a 配置选项 link on the label', () => {
+    const onEdit = vi.fn();
+    render(
+      <Form>
+        <DataSourceParamsConfig
+          selectedDataSource={{
+            ...dataSource,
+            params: [{ ...regionParam, desc: '按主机当前状态筛选' }],
+          }}
+          includeFilterTypes={['params', 'fixed']}
+          onEditInputConfig={onEdit}
+        />
+      </Form>,
+    );
+
+    const regionLabel = screen.getByText('地域').closest('.ant-form-item-label') as HTMLElement;
+    const button = within(regionLabel).getByRole('button', { name: '配置选项' });
+    expect(button.querySelector('.anticon')).toBeNull();
+    const labelText = screen.getByText('地域');
+    const helpIcon = regionLabel.querySelector('.anticon-question-circle');
+    expect(helpIcon).not.toBeNull();
+    expect(labelText.compareDocumentPosition(helpIcon as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((helpIcon as Node).compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(button);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEdit.mock.calls[0]?.[0]).toMatchObject({ name: 'cloud_region_ids' });
+    expect(screen.queryByText(/·/)).toBeNull();
   });
 });

@@ -289,7 +289,7 @@ def test_ansible_windows_reject_publishes_done_for_all_targets():
     ]
     with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=True), patch.object(
         ScriptExecutionRunner, "_should_use_ansible", return_value=False
-    ), patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+    ), patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done, patch.object(runner, "finalize_execution"):
         handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
 
     assert handled is True
@@ -309,7 +309,9 @@ def test_ansible_submit_failure_publishes_done_for_all_targets():
         ScriptExecutionRunner, "_should_use_ansible", return_value=True
     ), patch.object(ScriptExecutionRunner, "_execute_script_via_ansible", side_effect=RuntimeError("boom")), patch(
         "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
-    ) as mock_done:
+    ) as mock_done, patch.object(
+        runner, "finalize_execution"
+    ):
         handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
 
     assert handled is True

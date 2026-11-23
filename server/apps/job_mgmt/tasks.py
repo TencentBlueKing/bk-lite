@@ -33,6 +33,7 @@ from apps.job_mgmt.services.scheduled_task_authz import (
     validate_scheduled_task_resource_boundary,
 )
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService  # noqa: F401 - 保留测试与外部 patch 接缝
+from apps.job_mgmt.services.target_vault import uses_vault_targets
 from apps.job_mgmt.services.template_revision import display_revision_label
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
@@ -200,7 +201,8 @@ def execute_scheduled_task(scheduled_task_id: int):
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
 
-        if SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED:
+        enforce_team = SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED or uses_vault_targets(scheduled_task.target_source, scheduled_task.target_list)
+        if enforce_team:
             try:
                 validate_scheduled_task_resource_boundary({}, instance=scheduled_task, lock_resources=True)
             except ScheduledTaskTeamBoundaryError as exc:
@@ -296,7 +298,7 @@ def execute_scheduled_task(scheduled_task_id: int):
                 playbook=scheduled_task.playbook,
                 playbook_version=playbook_version,
                 scheduled_task=scheduled_task,
-                enforce_scheduled_team_boundary=SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
+                enforce_scheduled_team_boundary=enforce_team,
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,

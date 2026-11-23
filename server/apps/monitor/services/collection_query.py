@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import re
+import threading
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+
+from django.conf import settings
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models.collect_config import CollectConfig
@@ -12,9 +17,11 @@ from apps.monitor.services.active_alert_ranking import format_active_alert_local
 from apps.monitor.services.generic_query import GenericQueryError, _checked_sort, _optional_page, _table
 from apps.monitor.services.generic_query_limits import INSTANCE_LIST_MAX
 from apps.monitor.services.instance_distribution import _object_labels, _type_labels
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance import list_reporting_status
 from apps.monitor.utils.last_sample import last_sample_timestamp_query, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 REPORT_STATUS_ALL = "all"
 REPORT_STATUS_NORMAL = "normal"
@@ -26,6 +33,13 @@ COLLECT_MODE_ALL = "all"
 COLLECT_MODE_AUTO = "auto"
 COLLECT_MODE_MANUAL = "manual"
 SORT_LAST_SAMPLE = "last_sample_at"
+
+# 单条状态查询的标签匹配串上限。超出后按实例拆开，避免把全部实例拼进一条正则。
+_MATCHER_BUDGET = 8000
+_VM_READ_TIMEOUT_SECONDS = 15.0
+_SELECTOR_RE = re.compile(r"\{([^{}]*)\}")
+_VM_MISS = object()
+_DEADLINE = object()
 
 _REPORT_LABELS = {
     REPORT_STATUS_NORMAL: "正常",
@@ -54,12 +68,18 @@ def query_collection_rows(
     locale=None,
     vm_api=None,
     bounded=True,
+    deadline=None,
 ):
     report_code = _choice(report_status, {REPORT_STATUS_ALL, REPORT_STATUS_NORMAL, REPORT_STATUS_UNAVAILABLE}, "上报状态")
     collect_code = _choice(collect_status, {COLLECT_STATUS_ALL, COLLECT_STATUS_NORMAL, COLLECT_STATUS_OFFLINE}, "采集状态")
     mode_code = _choice(collect_mode, {COLLECT_MODE_ALL, COLLECT_MODE_AUTO, COLLECT_MODE_MANUAL}, "采集方式")
     requested_sort = _checked_sort(order_by, order_dir, {SORT_LAST_SAMPLE})
-    rows = _rolled_rows(list(instances), locale=locale, vm_api=vm_api or VictoriaMetricsAPI())
+    rows = _rolled_rows(
+        list(instances),
+        locale=locale,
+        vm_api=vm_api or VictoriaMetricsAPI(),
+        deadline=_collection_deadline(deadline),
+    )
     if report_code != REPORT_STATUS_ALL:
         rows = [row for row in rows if row["report_status"] == report_code]
     if collect_code != COLLECT_STATUS_ALL:
@@ -80,7 +100,21 @@ def _choice(value, allowed: set[str], label: str) -> str:
     return text
 
 
-def _rolled_rows(instances, *, locale, vm_api) -> list[dict]:
+def _collection_deadline(deadline):
+    """与调用方的 NATS 超时对齐。到点后停止后续读取。"""
+    if deadline is not None:
+        return deadline
+    raw = getattr(settings, "NATS_REQUEST_TIMEOUT", 60)
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        seconds = 60.0
+    if seconds <= 0:
+        return None
+    return time.monotonic() + seconds
+
+
+def _rolled_rows(instances, *, locale, vm_api, deadline) -> list[dict]:
     if not instances:
         return []
     objects = []
@@ -100,8 +134,8 @@ def _rolled_rows(instances, *, locale, vm_api) -> list[dict]:
     object_labels = _object_labels(objects, locale)
     type_labels = _type_labels(types, locale)
     plugins_by_object = _plugins_by_object([item.id for item in objects])
-    report_maps = _report_maps(instances, plugins_by_object, vm_api)
     configured = _configured_plugin_ids(instances, plugins_by_object)
+    report_maps = _report_maps(instances, plugins_by_object, vm_api, configured, deadline)
     rows = []
     for instance in instances:
         monitor_object = instance.monitor_object
@@ -151,41 +185,215 @@ def _plugins_by_object(object_ids: list[int]) -> dict[int, list]:
     return grouped
 
 
-def _report_maps(instances, plugins_by_object, vm_api) -> dict[tuple, dict[str, float]]:
+def _plugin_status_query(plugin) -> str:
+    """原生插件的状态不算脚本序列。脚本插件的状态查询本身只看自己的模板。"""
+    from apps.monitor.services.script_attach import is_script_plugin
+    from apps.monitor.utils.script_series_isolation import exclude_script_series
+
+    query = (plugin.status_query or "").strip()
+    if query and not is_script_plugin(plugin):
+        return exclude_script_series(query)
+    return query
+
+
+def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> dict[tuple, dict[str, float]]:
+    """没人配置的插件不再查询。选择器只含配置了该插件的实例，以及完全没有配置的实例。
+
+    失联仍是已配置插件减去有上报的插件。最后采样时间不再计入没配给这台机器的插件。
+    """
     keys_by_object = {}
     for instance in instances:
         monitor_object = instance.monitor_object
         if monitor_object is not None:
             keys_by_object[monitor_object.id] = tuple(monitor_object.instance_id_keys or [])
-    cache: dict[tuple, dict[str, float]] = {}
+    manual_by_object = defaultdict(list)
+    for instance in instances:
+        object_id = _instance_object_id(instance)
+        if object_id is not None and not configured.get(instance.id):
+            manual_by_object[object_id].append(instance)
+
     maps = {}
+    groups = {}
     for object_id, plugins in plugins_by_object.items():
         keys = keys_by_object.get(object_id, ())
+        object_instances = [instance for instance in instances if _instance_object_id(instance) == object_id]
         for plugin in plugins:
-            cache_key = ((plugin.status_query or "").strip(), keys)
-            if cache_key not in cache:
-                cache[cache_key] = _query_plugin_reports(plugin, keys, vm_api)
-            maps[(object_id, plugin.id)] = cache[cache_key]
+            query = _plugin_status_query(plugin)
+            needed = [instance for instance in object_instances if plugin.id in configured.get(instance.id, set())]
+            if not query or not keys or not needed:
+                maps[(object_id, plugin.id)] = {}
+                continue
+            allowed = {instance.id for instance in needed}
+            for instance in manual_by_object.get(object_id, []):
+                if instance.id not in allowed:
+                    needed.append(instance)
+                    allowed.add(instance.id)
+            group = groups.setdefault((query, keys), {"instances": {}, "plugins": [], "plugin_id": plugin.id})
+            for instance in needed:
+                group["instances"][instance.id] = instance
+            group["plugins"].append((object_id, plugin.id, allowed))
+
+    jobs = []
+    job_groups = []
+    plugin_id_by_job = {}
+    for (query, keys), group in groups.items():
+        for scoped in _scoped_status_queries(query, keys, list(group["instances"].values())):
+            jobs.append(scoped)
+            job_groups.append((query, keys))
+            plugin_id_by_job.setdefault(scoped, group["plugin_id"])
+
+    aborted = threading.Event()
+
+    def fetch(scoped):
+        if aborted.is_set() or _past_deadline(deadline):
+            aborted.set()
+            return _DEADLINE
+        remaining = None if deadline is None else deadline - time.monotonic()
+        try:
+            return _read_status(vm_api, last_sample_timestamp_query(scoped), remaining)
+        except Exception as exc:
+            if _past_deadline(deadline):
+                aborted.set()
+                return _DEADLINE
+            logger.exception(
+                "event=collection_plugin_status_failed plugin_id=%s error_type=%s",
+                plugin_id_by_job.get(scoped),
+                type(exc).__name__,
+            )
+            return _VM_MISS
+
+    payloads, _errors = run_unique_vm_queries(jobs, fetch)
+    if aborted.is_set():
+        logger.warning("event=collection_query_deadline_exceeded")
+        raise GenericQueryError("采集查询超时")
+    merged: dict[tuple, dict[str, float]] = {}
+    failed = set()
+    for scoped, key in zip(jobs, job_groups):
+        payload = payloads.get(scoped, _VM_MISS)
+        if payload is _VM_MISS:
+            failed.add(key)
+            continue
+        found = merged.setdefault(key, {})
+        for instance_id, stamp in _plugin_reports_from_payload(payload, key[1]).items():
+            current = found.get(instance_id)
+            if current is None or stamp > current:
+                found[instance_id] = stamp
+
+    for key, group in groups.items():
+        found = {} if key in failed else merged.get(key, {})
+        for object_id, plugin_id, allowed in group["plugins"]:
+            maps[(object_id, plugin_id)] = {instance_id: stamp for instance_id, stamp in found.items() if instance_id in allowed}
     return maps
 
 
-def _query_plugin_reports(plugin, instance_id_keys: tuple[str, ...], vm_api) -> dict[str, float]:
-    query = (plugin.status_query or "").strip()
-    if not query or not instance_id_keys:
-        return {}
-    try:
-        from apps.monitor.services.script_attach import is_script_plugin
-        from apps.monitor.utils.script_series_isolation import isolate_status_timestamp_query
+def _instance_object_id(instance):
+    object_id = getattr(instance, "monitor_object_id", None)
+    if object_id is None and instance.monitor_object is not None:
+        return instance.monitor_object.id
+    return object_id
 
-        prepared = last_sample_timestamp_query(query) if is_script_plugin(plugin) else isolate_status_timestamp_query(query)
-        payload = vm_api.query(prepared, step="20m")
-    except Exception as exc:
-        logger.exception(
-            "event=collection_plugin_status_failed plugin_id=%s error_type=%s",
-            plugin.id,
-            type(exc).__name__,
-        )
-        return {}
+
+def _past_deadline(deadline) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _read_timeout(remaining):
+    if remaining is None:
+        return _VM_READ_TIMEOUT_SECONDS
+    return min(_VM_READ_TIMEOUT_SECONDS, max(float(remaining), 0.001))
+
+
+def _read_status(vm_api, promql, remaining=None):
+    if type(vm_api) is VictoriaMetricsAPI:
+        timeout = _read_timeout(remaining)
+        if len(promql) > 3000:
+            return vm_api.query_form(promql, step="20m", timeout=timeout)
+        return vm_api.query(promql, step="20m", timeout=timeout)
+    if len(promql) > 3000 and hasattr(vm_api, "query_form"):
+        return vm_api.query_form(promql, step="20m")
+    return vm_api.query(promql, step="20m")
+
+
+def _scoped_status_queries(query: str, keys: tuple[str, ...], instances) -> list[str]:
+    identities = [_identity(instance, keys) for instance in instances]
+    if any(identity is None for identity in identities) or not _SELECTOR_RE.search(query):
+        return [query]
+    if _selector_already_constrained(query, keys):
+        return [query]
+    chunks = _chunk_instances(keys, instances, _MATCHER_BUDGET)
+    scoped = [_rewrite_selector(query, keys, chunk) for chunk in chunks]
+    if any(item == query for item in scoped):
+        return [query]
+    return scoped
+
+
+def _identity(instance, keys: tuple[str, ...]):
+    parsed = parse_instance_id(instance.id)
+    if len(parsed) < len(keys):
+        return None
+    values = tuple(parsed[index] for index in range(len(keys)))
+    if any(value in (None, "") for value in values):
+        return None
+    return tuple(str(value) for value in values)
+
+
+def _selector_already_constrained(query: str, keys: tuple[str, ...]) -> bool:
+    for selector in _SELECTOR_RE.findall(query):
+        for key in keys:
+            if re.search(rf"(?:^|,)\s*{re.escape(key)}\s*(=~|=|!=|!~)", selector):
+                return True
+    return False
+
+
+def _chunk_instances(keys: tuple[str, ...], instances, budget: int) -> list[list]:
+    chunks = []
+    current = []
+    for instance in instances:
+        trial = current + [instance]
+        if current and _matcher_length(keys, trial) > budget:
+            chunks.append(current)
+            current = [instance]
+        else:
+            current = trial
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _matcher_length(keys: tuple[str, ...], instances) -> int:
+    return len(_matchers(keys, instances))
+
+
+def _matchers(keys: tuple[str, ...], instances) -> str:
+    values_by_key = {key: set() for key in keys}
+    for instance in instances:
+        for key, value in zip(keys, _identity(instance, keys)):
+            values_by_key[key].add(value)
+    parts = []
+    for key in keys:
+        pattern = "|".join(re.escape(value) for value in sorted(values_by_key[key]))
+        quoted = pattern.replace("\\", "\\\\").replace('"', '\\"')
+        parts.append(f'{key}=~"{quoted}"')
+    return ",".join(parts)
+
+
+def _rewrite_selector(query: str, keys: tuple[str, ...], instances) -> str:
+    matcher = _matchers(keys, instances)
+    if not matcher:
+        return query
+
+    def replace(match):
+        body = match.group(1).strip()
+        if _selector_already_constrained("{" + body + "}", keys):
+            return match.group(0)
+        if not body:
+            return "{" + matcher + "}"
+        return "{" + matcher + "," + body + "}"
+
+    return _SELECTOR_RE.sub(replace, query)
+
+
+def _plugin_reports_from_payload(payload, instance_id_keys: tuple[str, ...]) -> dict[str, float]:
     found = {}
     for metric in (payload or {}).get("data", {}).get("result", []) or []:
         labels = metric.get("metric") or {}

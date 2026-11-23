@@ -521,7 +521,41 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     if data_source_id in overlay_datasource_ids_for_view_sets(getattr(dashboard, "view_sets", None)):
         allowed |= NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS
 
+    allowed.update(_declared_option_query_keys(dashboard, data_source_id))
     return allowed
+
+
+def _chart_datasource_ids(view_sets) -> set[int]:
+    found: set[int] = set()
+    for node in _iter_view_nodes(view_sets):
+        value_config = node.get("valueConfig") if isinstance(node.get("valueConfig"), dict) else node
+        if not isinstance(value_config, dict):
+            continue
+        raw_source = value_config.get("dataSource")
+        try:
+            found.add(int(raw_source))
+        except (TypeError, ValueError):
+            continue
+    return found
+
+
+def _declared_option_query_keys(dashboard, data_source_id: int) -> set[str]:
+    """条件字段和动态选项声明的上游参数，只在查询那个已解析源时放行。"""
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.named_option_datasources import (
+        declared_option_query_keys,
+        iter_input_config_carriers,
+    )
+
+    carriers: list = []
+    carriers.extend(_resource_filter_definitions(dashboard))
+    carriers.extend(iter_input_config_carriers(getattr(dashboard, "view_sets", None)))
+    chart_ids = _chart_datasource_ids(getattr(dashboard, "view_sets", None))
+    if chart_ids:
+        for params in DataSourceAPIModel.objects.filter(id__in=chart_ids).values_list("params", flat=True):
+            if isinstance(params, list):
+                carriers.extend(item for item in params if isinstance(item, dict))
+    return declared_option_query_keys(carriers).get(int(data_source_id), set())
 
 
 def allowed_share_namespace_ids(*, data_source_id: int) -> set[int]:

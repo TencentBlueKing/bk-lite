@@ -149,6 +149,19 @@ const mutexValuesEqual = (left: any, right: any) => {
 // 导出给同一表单里的自定义控件（如「凭据」下拉）复用，保持宽度一致。
 export const FORM_WIDGET_WIDTH = 300;
 
+/** 悬浮提示已经承载说明时，不再在控件右侧重复展示同一段 description。 */
+export const fieldShowsInlineDescription = (field: {
+  name?: string;
+  description?: unknown;
+  guide_short?: unknown;
+  tooltip?: unknown;
+}) => {
+  const guideTip = field.guide_short || field.tooltip || field.description;
+  return Boolean(
+    (field.description && field.description !== guideTip) || field.name === 'run_as'
+  );
+};
+
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
   const formWidgetWidthStyle = (style?: React.CSSProperties) => ({
@@ -202,9 +215,12 @@ export const useConfigRenderer = () => {
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
     // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description；run_as 保留内联灰字说明
-    const showInlineDescription = Boolean(
-      (description && description !== guideTip) || name === 'run_as'
-    );
+    const showInlineDescription = fieldShowsInlineDescription({
+      name,
+      description,
+      guide_short,
+      tooltip
+    });
 
     if (type === 'hidden') {
       return (

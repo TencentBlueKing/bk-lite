@@ -1924,13 +1924,16 @@ def test_artifact_download_rejects_oversized_artifact_before_object_get(superuse
 
 
 @pytest.mark.django_db
-def test_shared_report_link_downloads_without_login_and_rejects_expired_tokens(mocker):
-    from urllib.parse import parse_qs, urlparse
+def test_shared_artifact_link_uses_token_and_keeps_detail_download_private(mocker, client, settings):
+    from urllib.parse import urlsplit
 
-    from rest_framework.permissions import AllowAny
+    from django.urls import include, path
 
     from apps.workflow.services.report_links import build_report_download_link
 
+    # Use the workflow URLConf and the same authentication middleware as the deployed API.
+    settings.ROOT_URLCONF = (path("api/v1/workflow/", include("apps.workflow.urls")),)
+    settings.MIDDLEWARE = ["apps.core.middlewares.auth_middleware.AuthMiddleware"]
     workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     artifact = ExecutionArtifact.objects.create(
@@ -1951,17 +1954,22 @@ def test_shared_report_link_downloads_without_login_and_rejects_expired_tokens(m
     )
     audit = mocker.patch("apps.workflow.views.log_operation")
     link = build_report_download_link(artifact_id=str(artifact.id), execution_id=str(execution.id), team=7)
-    token = parse_qs(urlparse(link).query)["token"][0]
-    shared = ExecutionArtifactViewSet.as_view(
-        {"get": "shared"},
-        permission_classes=[AllowAny],
-        authentication_classes=[],
-    )
 
-    response = shared(APIRequestFactory().get("/artifacts/shared/", {"token": token}))
+    def backend_url(public_url):
+        uri = urlsplit(public_url)
+        assert uri.path == "/api/proxy/workflow/api/artifacts/shared/"
+        return f"{uri.path.replace('/api/proxy/', '/api/v1/', 1)}?{uri.query}"
+
+    response = client.get(backend_url(link))
 
     assert response.status_code == 200
     assert response["X-Content-Type-Options"] == "nosniff"
+    assert b"".join(response.streaming_content) == b"report"
     audit.assert_not_called()
-    expired = shared(APIRequestFactory().get("/artifacts/shared/?token=not-a-token"))
-    assert expired.status_code == 403
+    assert client.get("/api/v1/workflow/api/artifacts/shared/?token=invalid").status_code == 403
+    for wrong_execution, wrong_team in [(str(execution.id), 8), ("other", 7)]:
+        wrong_link = build_report_download_link(artifact_id=str(artifact.id), execution_id=wrong_execution, team=wrong_team)
+        assert client.get(backend_url(wrong_link)).status_code == 403
+    assert client.get(f"/api/v1/workflow/api/artifacts/{artifact.id}/download/").status_code == 401
+    ExecutionArtifact.objects.filter(pk=artifact.pk).update(expires_at=timezone.now())
+    assert client.get(backend_url(link)).status_code == 410

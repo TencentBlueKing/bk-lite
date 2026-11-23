@@ -50,7 +50,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - `describe_credential` 成功体为 `{credential_id, type, name, disabled, secret_version}`。当前组织已归档时返回 `{"result": false, "message": "team_archived"}`。`resolve_credential` 的失败 message 保持原样，归档组织仍走既有本地化文案，不改成 `team_archived`。
 - `get_credential_versions` 入参为凭据 ID 列表，最多 100；空列表、非字符串或超过 100 返回 `{"result": false, "message": "invalid"}`。成功体 `data.versions` 的键覆盖每个入参 ID，已删除为 `null`。
 - 改密通知方法表（`credential_refresh.py` 的 `CREDENTIAL_REFRESH_NATS_METHODS`）：目前只注册监控 `monitor_refresh_credential_refs`。载荷 `credential_ids`，超时 5 秒。失败日志模板 `event=credential_refresh_notify_failed module=%s failed_stage=rpc error_type=%s id_count=%s`。CMDB 改密联动不在本契约内。
-- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。监控侧按采集配置上的非空 `vault_credential_id`、对 `monitor_instance` 去重计数。系统管理在列表、删除、改组织时只定向问这两家。列表：成功且 `count > 0` 的模块按模块加总画芯片；至少一家成功且合计 0 显示「0」；两家都失败或未接线显示「—」。删除/改组织：只在任一家确认 `count > 0` 时拦截；超时、无订阅者、`result: false` 或合计 0 则放行。作业等后置，同一载荷另加方法即可。
+- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`、`job_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求对应模块的方法**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。监控侧按采集配置上的非空 `vault_credential_id`、对 `monitor_instance` 去重计数。作业侧按选择系统凭据的 Target 数统计。系统管理在列表、删除、改组织时定向查询三个模块。列表：成功且 `count > 0` 的模块按模块加总画芯片；至少一家成功且合计 0 显示「0」；所有模块均失败或未接线显示「—」。删除/改组织：只在任一家确认 `count > 0` 时拦截；超时、无订阅者、`result: false` 或合计 0 则放行。
 - 页面要引用仓库凭据时，把 `CredentialPicker`（`web/src/components/credential-picker`）嵌进业务原表单的 `Form.Item`，字段值为 `credential_id`；组件自己向系统管理拉可选列表，调用方只传 `category` / `type` 与表单值。监控接入可再传可选 `types`、`snmpVersion`、`boundOption`。不要自绘下拉或复用 `CredentialPickerChrome`。明文仍只走 `resolve_credential`。
 - 系统管理不负责消费方如何把解析结果写入节点，也不规定消费方如何从任务表算出 `counts`。监控接入的落 ID、解析与重下发在监控模块。
 
@@ -59,7 +59,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 > 证据来源：server/apps/system_mgmt/nats/credentials.py、server/apps/rpc/system_mgmt.py、server/apps/system_mgmt/services/credential_ref_count.py、server/apps/system_mgmt/services/credential_refresh.py、server/apps/system_mgmt/models/credential.py、server/apps/monitor/nats/monitor.py　|　【已实现：列表/创建/解析/描述/版本/询问/拦截/监控引用计数/监控改密通知】
 
 ## 5. 通知渠道【已实现/已存在】
-`models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
+`models/channel.py` 的 `ChannelChoices` 定义 9 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）、`sms`（短信）、`voice`（语音）。邮件、机器人和 Webhook 的发送实现见 `utils/channel_utils.py`。短信和语音按渠道上保存的已审核模板调用腾讯云或阿里云，实现见 `services/cloud_notify/`。BK 用户对接 `utils/bk_user_utils.py`。
 
 IM 应用通知、群聊小助手、智能机器人和事故建群选用的平台用户与外部 IM 身份对应，是独立的账号关联，不再写在渠道上。规则见 `specs/capabilities/im-account-association.md`。
 
@@ -85,7 +85,7 @@ IM 应用通知、群聊小助手、智能机器人和事故建群选用的平�
 
 ## 8. 证据来源
 - 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py`（ChannelChoices 9 类，含 `sms`、`voice`）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
 - 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`、`nats/credentials.py:59-138`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。

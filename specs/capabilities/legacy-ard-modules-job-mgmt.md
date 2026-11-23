@@ -20,6 +20,8 @@
 | DangerousRule / DangerousPath | `models/*.py` | 危险命令/路径黑名单 |
 
 ## 3. 接口【已实现/已存在】
+
+手动目标支持手填和系统凭据两种来源。系统凭据按目标绑定，测连、脚本、Playbook 与文件分发在下发前解析当前值；交互执行按真实用户和活动组织，定时执行按任务的唯一团队。仓库通过 `job_count_credential_refs` 统计直接绑定的目标数。详见[目标凭据变更](../changes/job-target-system-credentials/spec.md)。
 DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`，对外完整路径为 `api/v1/job_mgmt/api/<resource>/`：`api/target`、`api/script`、`api/playbook`、`api/execution`、`api/scheduled_task`、`api/dashboard`、`api/distribution_file`、`api/dangerous_rule`、`api/dangerous_path`。存量开放端点 `api/open/upload_file`、`api/open/delete_file`、`api/open/job_list`、`api/open/script_execute`、`api/open/job_status`、`api/open/job_detail/<task_id>` 仍使用 API Secret 中间件。新文件分发能力按统一规范暴露为 `POST /openapi/v1/job-mgmt/file-distribute`，由网关从 Bearer API Secret 注入团队并记录可归因审计。当前 `urls.py` 未注册 `callback_test/` 回调测试端点。
 
 ## 4. 执行机制【已实现/已存在】

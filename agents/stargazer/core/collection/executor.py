@@ -112,6 +112,12 @@ class TargetCollectionExecutor:
             metrics=self._metrics,
         )
 
+    async def execute_access_check(self, request: CollectionRequest, lease: RunLease):
+        """复用单目标预检和 probe。每完成一个目标产出该目标的行。"""
+        for target in request.targets:
+            result = await self._target_attempt_runner.run(request, target, lease)
+            yield tuple(result.access_rows)
+
     # fmt: off
     async def execute(  # noqa: C901
         self, request: CollectionRequest, lease: RunLease

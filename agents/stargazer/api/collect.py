@@ -29,19 +29,41 @@ def _request_task_id(request, params: dict | None = None) -> str:
     return build_request_task_id_from_request(request)
 
 
-async def _submit_collection_run(request, task_params: dict, model_id: str):
-    hosts_param = str(task_params.get("hosts") or "").strip()
+def _prepare_collection_request(task_params: dict, *, purpose: str, task_id: str):
+    params = dict(task_params)
+    params.pop("run_purpose", None)
+    params["run_purpose"] = "access_check" if purpose == "access_check" else "collect"
+    hosts_param = str(params.get("hosts") or "").strip()
     if hosts_param:
-        task_params["hosts"] = _parse_hosts(hosts_param)
-        if not task_params["hosts"]:
+        params["hosts"] = _parse_hosts(hosts_param)
+        if not params["hosts"]:
             raise ValueError("Failed to parse hosts parameter")
-    task_params["credentials_pool"] = parse_credentials_pool(task_params.get("credentials_pool"), params=task_params)
-    collection_request = build_collection_request(
-        task_id=_request_task_id(request, task_params),
-        params=task_params,
+    params["credentials_pool"] = parse_credentials_pool(params.get("credentials_pool"), params=params)
+    return build_collection_request(
+        task_id=task_id,
+        params=params,
         workload_class=WorkloadClass.CONFIGURATION,
     )
-    submission = await get_collection_application().submit(collection_request)
+
+
+async def run_collect_info(task_params: dict, *, purpose: str, task_id: str):
+    """collect_info 的执行逻辑。HTTP 接口和 access_check NATS 函数都调用它。"""
+    collection_request = _prepare_collection_request(task_params, purpose=purpose, task_id=task_id)
+    application = get_collection_application()
+    if purpose == "access_check":
+        return await application.admit_access_check(collection_request)
+    submission = await application.submit(collection_request)
+    return submission, len(collection_request.targets)
+
+
+async def _submit_collection_run(request, task_params: dict, model_id: str):
+    params = dict(task_params)
+    params.pop("run_purpose", None)
+    submission, target_count = await run_collect_info(
+        params,
+        purpose="collect",
+        task_id=_request_task_id(request, params),
+    )
     http_status = {
         SubmissionStatus.ACCEPTED: 202,
         SubmissionStatus.DUPLICATE_ACTIVE: 202,
@@ -58,7 +80,7 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
         "X-Task-ID": submission.task_id,
         "X-Task-Status": submission.status.value,
         "X-Fencing-Token": str(submission.fence),
-        "X-Target-Count": str(len(collection_request.targets)),
+        "X-Target-Count": str(target_count),
     }
     if submission.status == SubmissionStatus.BUSY:
         headers["Retry-After"] = "1"

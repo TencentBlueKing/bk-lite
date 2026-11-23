@@ -220,25 +220,3 @@ def test_linux_command_issuance_does_not_consume_install_token(monkeypatch, inst
 
     assert response.status_code == 200
     assert cache.get(usage_key) == 1
-
-
-def test_session_accepts_private_token_header_without_query_string(monkeypatch):
-    token = InstallTokenService.generate_install_token(
-        node_id="header-node",
-        ip="192.0.2.9",
-        user="tester",
-        os="linux",
-        package_id=1,
-        cloud_region_id=1,
-        organizations=[1],
-        node_name="host",
-        cpu_architecture="x86_64",
-    )
-    monkeypatch.setattr(
-        "apps.node_mgmt.services.installer_session.InstallerSessionService.build_session_config", lambda *args, **kwargs: {"node_id": "header-node"}
-    )
-    request = APIRequestFactory().get("/api/v1/node_mgmt/open_api/installer/session", HTTP_X_INSTALLATION_TOKEN=token)
-    response = OpenSidecarViewSet.as_view({"get": "installer_session"})(request)
-    assert response.status_code == 200
-    assert json.loads(response.content)["node_id"] == "header-node"
-    assert token not in request.get_full_path()

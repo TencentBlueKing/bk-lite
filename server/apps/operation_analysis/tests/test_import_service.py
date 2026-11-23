@@ -255,9 +255,9 @@ def test_import_datasource_overwrite_existing():
     doc = _doc(datasources=[_ds_section(desc="new desc")])
     result = _service(doc, conflict_decisions={"ds1::api/x": ConflictAction.OVERWRITE.value}).execute()
 
-    assert result["summary"]["overwritten"] == 1
+    assert result["success"] is False
     existing.refresh_from_db()
-    assert existing.desc == "new desc"
+    assert existing.desc == "old"
 
 
 @pytest.mark.django_db
@@ -395,6 +395,8 @@ def test_import_datasource_overwrite_preserves_redacted_target_secret():
         query_config={"table": "old_table"},
         created_by="s",
         updated_by="s",
+        is_build_in=True,
+        build_in_key="mysql-source::",
     )
     doc = _doc(
         datasources=[
@@ -405,11 +407,12 @@ def test_import_datasource_overwrite_preserves_redacted_target_secret():
                 source_type="mysql",
                 connection_config={"host": "new.example.com", "password": "******"},
                 query_config={"table": "new_table"},
+                identity={"kind": "builtin", "build_in_key": "mysql-source::"},
             )
         ]
     )
 
-    result = _service(doc, conflict_decisions={"mysql-source::": ConflictAction.OVERWRITE.value}).execute()
+    result = _service(doc, builtin_seed=True).execute()
 
     assert result["success"] is True
     existing.refresh_from_db()

@@ -23,6 +23,7 @@ from apps.operation_analysis.serializers.share_serializers import (
 from apps.operation_analysis.services.named_option_datasources import (
     collect_named_option_datasource_ids,
     collect_named_option_datasource_ids_from_filters,
+    collect_named_option_datasource_ids_from_tree,
 )
 from apps.operation_analysis.services.network_status_topology_overlay import (
     collect_network_status_topology_overlay_datasource_ids,
@@ -89,7 +90,7 @@ _ROOM3D_ROOM_LIST_FILTER = [
             "control": "select",
             "optionsSource": {
                 "type": "dynamic",
-                "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                "sourceRef": {"type": "rest_api", "value": "CMDB 机房列表::cmdb/get_room_list"},
                 "valueField": "inst_uuid",
                 "labelField": "inst_name",
             },
@@ -106,7 +107,7 @@ _APPLICATION_TOPOLOGY_SYSTEM_FILTER = [
             "control": "select",
             "optionsSource": {
                 "type": "dynamic",
-                "sourceRef": {"type": "rest_api", "value": "cmdb/list_application_systems"},
+                "sourceRef": {"type": "rest_api", "value": "应用系统::cmdb/list_application_systems"},
                 "valueField": "inst_uuid",
                 "labelField": "inst_name",
             },
@@ -122,6 +123,27 @@ def _resource_view_sets(resource):
     return getattr(resource, "view_sets", None)
 
 
+def _parse_option_source_body(body):
+    if not isinstance(body, dict):
+        body = {}
+    source_id = body.get("sourceId")
+    if source_id in ("", None):
+        source_id = None
+    else:
+        try:
+            source_id = int(source_id)
+        except (TypeError, ValueError):
+            return None
+    source_ref = body.get("sourceRef")
+    ref_value = source_ref.get("value") if isinstance(source_ref, dict) else source_ref
+    builtin_key = body.get("builtinKey")
+    return {
+        "source_id": source_id,
+        "builtin_key": builtin_key if isinstance(builtin_key, str) else None,
+        "source_ref": ref_value if isinstance(ref_value, str) else None,
+    }
+
+
 def _canvas_data_source_ids(resource):
     view_sets = _resource_view_sets(resource)
     found = _walk_data_source_ids(view_sets)
@@ -129,6 +151,7 @@ def _canvas_data_source_ids(resource):
         found.update(collect_network_status_topology_overlay_datasource_ids())
     found.update(collect_named_option_datasource_ids(found))
     found.update(collect_named_option_datasource_ids_from_filters(_resource_filter_definitions(resource)))
+    found.update(collect_named_option_datasource_ids_from_tree(view_sets))
     if _view_sets_has_scene_widget(view_sets, "room3D"):
         found.update(collect_named_option_datasource_ids_from_filters(_ROOM3D_ROOM_LIST_FILTER))
     if _view_sets_has_scene_widget(view_sets, "applicationTopology"):
@@ -543,6 +566,60 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             result="ok",
         )
         return Response(payloads)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/resolve_option_source",
+    )
+    def resolve_option_source(self, request, session_id=None):
+        """用分享画布所在组织解析选项来源，并且只承认画布已经声明的数据源。"""
+        try:
+            principal = self._load_principal(request, session_id)
+        except ShareRateLimited:
+            log_share_access(request, action="resolve_option_source", result="reject", reason="rate_limited")
+            return Response({"detail": oa_message("messages.rate_limited", "请求过于频繁")}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except ShareLinkInvalid:
+            log_share_access(request, action="resolve_option_source", result="reject", reason="invalid")
+            return Response(invalid_share_response(), status=status.HTTP_404_NOT_FOUND)
+
+        if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
+            log_share_access(
+                request,
+                action="resolve_option_source",
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="resource_type_not_queryable",
+            )
+            return Response({"detail": oa_message("messages.share_query_unsupported", "当前画布不支持数据源查询")}, status=status.HTTP_403_FORBIDDEN)
+
+        parsed = _parse_option_source_body(request.data)
+        if parsed is None:
+            return Response(
+                {"detail": oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.operation_analysis.services.option_source_identity import FORBIDDEN, RESOLVED, resolve_option_source
+
+        result = resolve_option_source(
+            source_id=parsed["source_id"],
+            builtin_key=parsed["builtin_key"],
+            source_ref=parsed["source_ref"],
+            current_team=principal.space_id,
+            is_superuser=False,
+        )
+        allowed_ids = _canvas_data_source_ids(principal.resource)
+        if result.get("status") == RESOLVED and result.get("id") not in allowed_ids:
+            result = {"status": FORBIDDEN}
+        log_share_access(
+            request,
+            action="resolve_option_source",
+            principal=principal,
+            visitor=request.user,
+            result="ok" if result.get("status") == RESOLVED else "reject",
+        )
+        return Response(result)
 
     def _delegated_scene_widget_operation(
         self,

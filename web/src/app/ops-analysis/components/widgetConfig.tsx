@@ -235,6 +235,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onDirtyChange,
   previewSingleStyle,
   previewHost = null,
+  canRepairOptionSource = false,
   onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
@@ -859,18 +860,22 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     noteUnappliedConfigChange();
     const newChartType = e.target.value;
     setChartType(newChartType);
-    form.setFieldValue('chartType', newChartType);
+    // chartType 已由 Form.Item 在这次 onChange 里写入。此处再 setFieldValue
+    // 会让 rc-field-form 对 errors/warnings 共用的 EMPTY_ERRORS 做 isEqual，
+    // 开发态弹出 “Warning: There may be circular references”。
+    // 其它字段只在值变化时用 setFieldsValue 写，值相同则不再比较 meta。
+    const nextFormValues: Record<string, unknown> = {};
     if (newChartType === 'eventTimeline' && !form.getFieldValue('eventTimeline')) {
-      form.setFieldValue('eventTimeline', { sortOrder: 'desc' });
+      nextFormValues.eventTimeline = { sortOrder: 'desc' };
     }
     if (newChartType === 'radar' && !form.getFieldValue('radar')) {
-      form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+      nextFormValues.radar = { min: 0, max: 100, indicators: [] };
     }
     if (newChartType === 'cardList' && !form.getFieldValue('cardList')) {
-      form.setFieldValue('cardList', {
+      nextFormValues.cardList = {
         leading: { type: 'none' },
         layout: 'list',
-      });
+      };
     }
     if (newChartType === 'multiValue') {
       singleValueConfig.setThresholdColors(initThresholdColors([]));
@@ -881,13 +886,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       if (normalizeLineBarFieldList(form.getFieldValue('selectedFields')).length === 0) {
         const displayFields = defaultDisplayFields(selectedDataSource?.field_schema);
         if (displayFields.length > 0) {
-          form.setFieldValue('selectedFields', displayFields);
+          nextFormValues.selectedFields = displayFields;
           singleValueConfig.setSelectedFields(displayFields);
         }
       }
     }
     if (newChartType === 'nodeGraph' && !form.getFieldValue('nodeGraphIdentityMode')) {
-      form.setFieldValue('nodeGraphIdentityMode', 'ip');
+      nextFormValues.nodeGraphIdentityMode = 'ip';
     }
     if (newChartType !== 'single' && activeSection === 'singleStyle') {
       if (variant === 'panel') {
@@ -897,18 +902,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
     }
     if (surface === 'screen') {
-      form.setFieldValue(
-        'appearance',
-        getDefaultScreenWidgetAppearance(newChartType),
-      );
+      const nextAppearance = getDefaultScreenWidgetAppearance(newChartType);
+      if (form.getFieldValue(['appearance', 'frame']) !== nextAppearance.frame) {
+        nextFormValues.appearance = nextAppearance;
+      }
     }
-    form.setFieldValue(
-      ['interaction', 'kind'],
-      interactionKindForChartType(
-        newChartType,
-        form.getFieldValue(['interaction', 'kind']),
-      ),
+    const currentInteractionKind = form.getFieldValue(['interaction', 'kind']);
+    const nextInteractionKind = interactionKindForChartType(
+      newChartType,
+      currentInteractionKind,
     );
+    if (nextInteractionKind !== currentInteractionKind) {
+      nextFormValues.interaction = {
+        ...(form.getFieldValue('interaction') || {}),
+        kind: nextInteractionKind,
+      };
+    }
+    if (Object.keys(nextFormValues).length > 0) {
+      form.setFieldsValue(nextFormValues);
+    }
     if (!supportsComponentSwitch(newChartType)) {
       setWidgetParamOverrides((previous) =>
         previous.map(clearComponentParamSwitch),
@@ -1890,6 +1902,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             dataVariables={dataVariables}
             onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
+            canRepairOptionSource={canRepairOptionSource}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
             }
@@ -2083,6 +2096,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 previewRawData={previewRawData}
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}
+                resetToken={open ? configReloadKey : 'closed'}
               />
             )}
           </WidgetQueryFields>

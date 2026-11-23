@@ -50,6 +50,22 @@ export const useDataSourceApi = () => {
     return response;
   }, []);
 
+  const resolveOptionSource = useCallback(async (body: {
+    sourceId?: number;
+    builtinKey?: string;
+    sourceRef?: string;
+  }) => {
+    if (sharedAccess) {
+      return sharedAccess.resolveOptionSource(body);
+    }
+    const response = await post('/operation_analysis/api/data_source/resolve_option_source/', {
+      sourceId: body.sourceId,
+      builtinKey: body.builtinKey,
+      sourceRef: body.sourceRef ? { type: 'rest_api', value: body.sourceRef } : undefined,
+    });
+    return response as { status?: string; id?: number };
+  }, [post, sharedAccess]);
+
   const getDataSourceList = useCallback(async (params?: any) => {
     const onDisplayPage = typeof window !== 'undefined'
       && window.location.pathname.startsWith('/ops-analysis/display/');
@@ -181,6 +197,7 @@ export const useDataSourceApi = () => {
   }, [post]);
 
   return {
+    resolveOptionSource,
     getDataSourceList,
     getDataSourceBriefList,
     getDataSourceDetails,

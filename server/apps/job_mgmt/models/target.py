@@ -74,7 +74,7 @@ class Target(TimeInfo, MaintainerInfo):
     # 凭据来源
     credential_source = models.CharField(max_length=32, choices=CredentialSource.CHOICES, default=CredentialSource.MANUAL, verbose_name="凭据来源")
 
-    # 凭据管理方式时的凭据ID（预留字段）
+    # 系统凭据仓库的对外标识。手填模式为空。
     credential_id = models.CharField(max_length=64, blank=True, default="", verbose_name="凭据ID")
 
     # 手动录入时的 SSH 凭据

@@ -15,6 +15,12 @@ def collect_named_option_datasource_ids(primary_ids: Iterable[int]) -> set[int]:
     return extras
 
 
+def _filter_option_refs(filters) -> set[str]:
+    sources = _iter_dynamic_options_sources(filters if isinstance(filters, list) else [])
+    _source_ids, rest_apis = _collect_option_refs(sources)
+    return rest_apis
+
+
 def collect_named_option_datasource_ids_from_filters(filters) -> set[int]:
     """从画布筛选项 inputConfig 收集能点名的动态选项源。"""
     source_ids, rest_apis = _collect_option_refs(_iter_dynamic_options_sources(filters if isinstance(filters, list) else []))
@@ -25,7 +31,7 @@ def collect_named_option_datasource_ids_by_primary(primary_ids: Iterable[int]) -
     """从主数据源 params 收集能点名的动态选项源。
 
     sourceId：仅收录库中存在的 id。
-    sourceRef.rest_api：仅在全表恰好一条，或恰好一条内置时收录，避免同 path 全表放行。
+    sourceRef：全表恰好一条，或内置键恰好一条时收录。多条不猜测。
     """
     ids = {int(item) for item in primary_ids}
     result: dict[int, set[int]] = {ds_id: set() for ds_id in ids}
@@ -46,12 +52,17 @@ def collect_named_option_datasource_ids_by_primary(primary_ids: Iterable[int]) -
     for ds_id, candidates in source_ids_by_primary.items():
         result[ds_id].update(candidates & existing_source_ids)
 
-    resolved_rest_apis = _resolve_unique_rest_api_ids({item for values in rest_apis_by_primary.values() for item in values})
+    option_refs = {item for values in rest_apis_by_primary.values() for item in values}
+    resolved_rest_apis = _resolve_unique_rest_api_ids(option_refs)
+    resolved_builtin_keys = _resolve_unique_builtin_key_ids(option_refs)
     for ds_id, apis in rest_apis_by_primary.items():
         for rest_api in apis:
             resolved = resolved_rest_apis.get(rest_api)
             if resolved is not None:
                 result[ds_id].add(resolved)
+            builtin_id = resolved_builtin_keys.get(rest_api)
+            if builtin_id is not None:
+                result[ds_id].add(builtin_id)
     return result
 
 
@@ -111,6 +122,45 @@ def expand_widget_manifest_with_named_option_datasources(
     return expanded
 
 
+def iter_input_config_carriers(value) -> list[dict]:
+    """画出布上带 inputConfig 的参数或筛选项，含组件参数和嵌套布局。"""
+    found: list[dict] = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("inputConfig"), dict):
+                found.append(node)
+            for child in node.values():
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value)
+    return found
+
+
+def collect_named_option_datasource_ids_from_tree(value) -> set[int]:
+    """从布局树里的组件参数收集能点名的动态选项源和条件字段源。"""
+    return collect_named_option_datasource_ids_from_filters(iter_input_config_carriers(value))
+
+
+def declared_option_query_keys(items) -> dict[int, set[str]]:
+    """已解析的动态选项源或条件字段源，对应画布在 queryParams 里声明的参数名。
+
+    解析不到、或同一引用有多条时，不把参数名挂到任何数据源上。
+    """
+    grouped: dict[int, set[str]] = defaultdict(set)
+    for source in _iter_dynamic_options_sources(items if isinstance(items, list) else []):
+        names = _query_param_names(source)
+        if not names:
+            continue
+        source_ids, refs = _collect_option_refs([source])
+        for resolved_id in _resolve_option_datasource_ids(source_ids, refs):
+            grouped[resolved_id].update(names)
+    return grouped
+
+
 def _iter_dynamic_options_sources(items: Iterable) -> list[dict]:
     sources: list[dict] = []
     for item in items:
@@ -122,7 +172,19 @@ def _iter_dynamic_options_sources(items: Iterable) -> list[dict]:
         options_source = input_config.get("optionsSource")
         if isinstance(options_source, dict) and options_source.get("type") == "dynamic":
             sources.append(options_source)
+        if input_config.get("control") != "conditionFilter":
+            continue
+        fields = input_config.get("fields")
+        if isinstance(fields, dict) and fields.get("kind") == "dynamic":
+            sources.append(fields)
     return sources
+
+
+def _query_param_names(source: dict) -> set[str]:
+    raw = source.get("queryParams")
+    if not isinstance(raw, dict):
+        return set()
+    return {key.strip() for key in raw if isinstance(key, str) and key.strip()}
 
 
 def _collect_option_refs(options_sources: Iterable[dict]) -> tuple[set[int], set[str]]:
@@ -142,6 +204,9 @@ def _collect_option_refs(options_sources: Iterable[dict]) -> tuple[set[int], set
             value = source_ref.get("value")
             if isinstance(value, str) and value:
                 rest_apis.add(value)
+        builtin_key = options_source.get("builtinKey")
+        if isinstance(builtin_key, str) and builtin_key.strip():
+            rest_apis.add(builtin_key.strip())
     return source_ids, rest_apis
 
 
@@ -150,38 +215,67 @@ def _resolve_option_datasource_ids(source_ids: set[int], rest_apis: set[str]) ->
     if source_ids:
         resolved.update(DataSourceAPIModel.objects.filter(id__in=source_ids).values_list("id", flat=True))
     resolved.update(_resolve_unique_rest_api_ids(rest_apis).values())
+    resolved.update(_resolve_unique_builtin_key_ids(rest_apis).values())
     return resolved
+
+
+def _resolve_unique_builtin_key_ids(refs: set[str]) -> dict[str, int]:
+    """sourceRef 等于不可变 build_in_key 且全表只有一条时才认。同键多条不猜测。"""
+    if not refs:
+        return {}
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for key, row_id in DataSourceAPIModel.objects.filter(build_in_key__in=refs, is_build_in=True).values_list(
+        "build_in_key",
+        "id",
+    ):
+        grouped[key].append(row_id)
+    return {key: row_ids[0] for key, row_ids in grouped.items() if len(row_ids) == 1}
+
+
+def ambiguous_source_refs(refs: set[str]) -> set[str]:
+    """同一引用对应多条数据源时返回这些引用。零条或恰好一条都不是歧义。"""
+    if not refs:
+        return set()
+    rest_groups: dict[str, list[int]] = defaultdict(list)
+    for row_id, rest_api in DataSourceAPIModel.objects.filter(rest_api__in=refs).values_list("id", "rest_api"):
+        rest_groups[rest_api].append(row_id)
+    builtin_groups: dict[str, list[int]] = defaultdict(list)
+    for key, row_id in DataSourceAPIModel.objects.filter(build_in_key__in=refs, is_build_in=True).values_list(
+        "build_in_key",
+        "id",
+    ):
+        builtin_groups[key].append(row_id)
+    ambiguous: set[str] = set()
+    for ref in refs:
+        rest_ids = rest_groups.get(ref, [])
+        builtin_ids = builtin_groups.get(ref, [])
+        if len(rest_ids) > 1 or len(builtin_ids) > 1:
+            ambiguous.add(ref)
+        elif len(rest_ids) == 1 and len(builtin_ids) == 1 and rest_ids[0] != builtin_ids[0]:
+            ambiguous.add(ref)
+    return ambiguous
+
+
+def raise_if_option_refs_ambiguous(refs: set[str]) -> None:
+    if not ambiguous_source_refs(refs):
+        return
+    from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError
+    from apps.operation_analysis.services.user_messages import oa_message
+
+    raise ImportExportValidationError(
+        "OA_EXPORT_OPTION_SOURCE_AMBIGUOUS",
+        oa_message(
+            "messages.export_option_source_ambiguous",
+            "选项来源对应多个数据源，无法确定导出依赖。",
+        ),
+    )
 
 
 def _resolve_unique_rest_api_ids(rest_apis: set[str]) -> dict[str, int]:
+    """同地址恰好一条才认。多条时不挑内置、不按名称或参数猜测。"""
     if not rest_apis:
         return {}
-    grouped: dict[str, list[tuple[int, bool, str, str, list]]] = defaultdict(list)
-    for ds_id, rest_api, is_build_in, name, build_in_key, params in DataSourceAPIModel.objects.filter(rest_api__in=rest_apis).values_list(
-        "id",
-        "rest_api",
-        "is_build_in",
-        "name",
-        "build_in_key",
-        "params",
-    ):
-        grouped[rest_api].append((ds_id, bool(is_build_in), str(name or ""), str(build_in_key or ""), params if isinstance(params, list) else []))
-
-    resolved: dict[str, int] = {}
-    for rest_api, matches in grouped.items():
-        if len(matches) == 1:
-            resolved[rest_api] = matches[0][0]
-            continue
-        builtins = [item for item in matches if item[1]]
-        if len(builtins) == 1:
-            resolved[rest_api] = builtins[0][0]
-            continue
-        if rest_api == "monitor/query_latest_active_alerts":
-            preferred = [item for item in builtins if item[3] == "监控活跃告警::monitor/query_latest_active_alerts" or item[2] == "监控活跃告警"]
-            if len(preferred) == 1:
-                resolved[rest_api] = preferred[0][0]
-                continue
-        with_instance_ids = [item for item in builtins if any(isinstance(param, dict) and param.get("name") == "instance_ids" for param in item[4])]
-        if len(with_instance_ids) == 1:
-            resolved[rest_api] = with_instance_ids[0][0]
-    return resolved
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for ds_id, rest_api in DataSourceAPIModel.objects.filter(rest_api__in=rest_apis).values_list("id", "rest_api"):
+        grouped[rest_api].append(ds_id)
+    return {rest_api: row_ids[0] for rest_api, row_ids in grouped.items() if len(row_ids) == 1}

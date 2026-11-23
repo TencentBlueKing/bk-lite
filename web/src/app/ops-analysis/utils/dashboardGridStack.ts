@@ -6,6 +6,7 @@ import type {
 import {
   isDashboardGroupItem,
   normalizeDashboardLayoutGroupIds,
+  separateOverlappingDashboardBlocks,
   sortDashboardLayoutItems,
 } from './dashboardGroups';
 
@@ -141,7 +142,9 @@ const toGroupNode = (
 export const buildDashboardGridStackLayout = (
   items: DashboardLayoutItem[],
 ): DashboardGridStackLayout => {
-  const normalized = normalizeDashboardLayoutGroupIds(items);
+  const normalized = normalizeDashboardLayoutGroupIds(
+    separateOverlappingDashboardBlocks(items),
+  );
   const groupedWidgets = new Map<string, DashboardWidgetLayoutItem[]>();
   const ungroupedNodes: DashboardGridStackWidgetNode[] = [];
 
@@ -314,7 +317,9 @@ export const deserializeDashboardGridStackLayout = (
   }
 
   if (!isNativeDashboardGridStackLayout(viewSets)) {
-    return normalizeDashboardLayoutGroupIds(viewSets as DashboardLayoutItem[]);
+    return separateOverlappingDashboardBlocks(
+      normalizeDashboardLayoutGroupIds(viewSets as DashboardLayoutItem[]),
+    );
   }
 
   const flattened = viewSets.flatMap((item) => {
@@ -388,7 +393,9 @@ export const deserializeDashboardGridStackLayout = (
     ];
   });
 
-  return normalizeDashboardLayoutGroupIds(flattened);
+  return separateOverlappingDashboardBlocks(
+    normalizeDashboardLayoutGroupIds(flattened),
+  );
 };
 
 export const applyDashboardGridStackLayoutChanges = (

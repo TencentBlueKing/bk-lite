@@ -80,6 +80,8 @@ class JobExecution(TimeInfo, MaintainerInfo):
         verbose_name="执行时强制定时任务团队边界",
     )
 
+    credential_actor = models.JSONField(null=True, blank=True, editable=False, verbose_name="执行凭据消费身份")
+
     # 目标来源
     target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")
 

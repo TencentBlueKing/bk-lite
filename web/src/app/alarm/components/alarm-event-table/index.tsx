@@ -11,6 +11,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { getMonitorIdentityColumns } from '@/app/alarm/components/monitor-object-list/columns';
 import { presentEventRawData } from '@/app/alarm/utils/eventRawData';
+import ShieldReplayNote from '@/app/alarm/components/shield-replay-note';
 
 export interface AlarmEventLevelOption {
   color?: string;
@@ -139,6 +140,12 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
       dataIndex: 'title',
       key: 'title',
       width: 230,
+      render: (text: string, record) => (
+        <div>
+          <div>{text || '--'}</div>
+          <ShieldReplayNote raw={record.raw_data} />
+        </div>
+      ),
     },
     {
       title: t('alarms.object'),
@@ -216,6 +223,7 @@ const AlarmEventTable: React.FC<AlarmEventTableProps> = ({
         destroyOnClose
         hideFooter
       >
+        <ShieldReplayNote raw={rawData} className="mb-3 text-sm text-[var(--color-text-3)]" />
         <StructuredDataPreview value={rawData} maxHeight="calc(100vh - 160px)" />
       </ContentFormDrawer>
     </>

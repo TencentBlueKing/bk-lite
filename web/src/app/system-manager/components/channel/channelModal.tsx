@@ -1,15 +1,16 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, message, Select, Spin } from 'antd';
+import { Button, Divider, Form, message, Select, Spin } from 'antd';
+import { ExportOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
-import { useChannelApi } from '@/app/system-manager/api/channel';
+import { NotificationChannelPack, useChannelApi } from '@/app/system-manager/api/channel';
 import { useNatsChannelExtension } from '@/app/system-manager/hooks/useNatsChannelExtension';
 import { ChannelType } from '@/app/system-manager/types/channel';
 import NotificationTagSelect, { NotificationTagOption } from '@/app/system-manager/components/channel/NotificationTagSelect';
+import CloudParameterList from '@/app/system-manager/components/channel/cloudParameterList';
 
 interface ChannelModalProps {
   visible: boolean;
@@ -20,6 +21,36 @@ interface ChannelModalProps {
 }
 
 const WEBHOOK_SUB_TYPES: ChannelType[] = ['enterprise_wechat_bot', 'feishu_bot', 'dingtalk_bot', 'custom_webhook'];
+const BUILTIN_CHANNEL_TYPES = new Set<string>([
+  'email',
+  'enterprise_wechat',
+  'enterprise_wechat_bot',
+  'nats',
+  'feishu_bot',
+  'dingtalk_bot',
+  'custom_webhook',
+  'sms',
+  'voice',
+]);
+
+const packControlType = (field: NotificationChannelPack['instance_template'][number]) => {
+  if (field.secret || field.field_type === 'password') {
+    return 'editablePwd';
+  }
+  if (field.field_type === 'textarea') {
+    return 'textarea';
+  }
+  if (field.field_type === 'number') {
+    return 'inputNumber';
+  }
+  if (field.field_type === 'boolean') {
+    return 'switch';
+  }
+  if (field.field_type === 'select') {
+    return 'select';
+  }
+  return 'input';
+};
 
 const GROUP_BOT_PROVIDER: Partial<Record<ChannelType, string>> = {
   enterprise_wechat_bot: 'wecom',
@@ -38,7 +69,7 @@ function AccountAssociationField({
   value,
   onChange,
   options,
-  refreshing,
+  loading,
   onRefresh,
   onManage,
   placeholder,
@@ -47,11 +78,11 @@ function AccountAssociationField({
   value?: number | null;
   onChange?: (value: number | null) => void;
   options: AccountAssociationOption[];
-  refreshing: boolean;
-  onRefresh: () => void;
-  onManage: () => void;
-  placeholder: string;
-  manageLabel: string;
+  loading?: boolean;
+  onRefresh?: () => void;
+  onManage?: () => void;
+  placeholder?: string;
+  manageLabel?: string;
 }) {
   return (
     <div className="flex items-start gap-2">
@@ -65,9 +96,25 @@ function AccountAssociationField({
           label: `${item.name}（${item.integration_instance_name}）`,
         }))}
         onChange={(next) => onChange?.(next ?? null)}
+        dropdownRender={(menu) => (
+          <>
+            {menu}
+            <Divider style={{ margin: '8px 0' }} />
+            <div className="px-2 pb-1">
+              <Button
+                type="link"
+                size="small"
+                icon={<ExportOutlined />}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onManage}
+              >
+                {manageLabel}
+              </Button>
+            </div>
+          </>
+        )}
       />
-      <Button icon={<ReloadOutlined />} loading={refreshing} onClick={onRefresh} />
-      <Button onClick={onManage}>{manageLabel}</Button>
+      <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh} />
     </div>
   );
 }
@@ -85,6 +132,20 @@ const ensureEmailConfig = (config: Record<string, unknown> = {}): Record<string,
   smtp_usetls: false,
   mail_sender: '',
   ...config,
+});
+
+const cloudDefaultConfig = () => ({
+  provider: 'tencent',
+  secret_id: '',
+  secret_key: '',
+  sdk_app_id: '',
+  sign_name: '',
+  template_id: '',
+  access_key_id: '',
+  access_key_secret: '',
+  template_code: '',
+  called_show_number: '',
+  parameters: [],
 });
 
 const getDefaultConfig = (st: ChannelType): Record<string, unknown> => {
@@ -129,6 +190,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     testChannel,
     getNotificationTagCatalog,
     getGroupAccountAssociationOptions,
+    getNotificationChannelPacks,
   } = useChannelApi();
   const natsExtension = useNatsChannelExtension();
   const [loading, setLoading] = useState<boolean>(false);
@@ -146,10 +208,15 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const isFillingForm = useRef<boolean>(false);
 
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
+  const isCloudChannel = channelType === 'sms' || channelType === 'voice';
+  const isPackChannel = !BUILTIN_CHANNEL_TYPES.has(channelType);
+  const [packManifest, setPackManifest] = useState<NotificationChannelPack | null>(null);
 
   const watchedSubType = Form.useWatch('sub_type', form);
   const watchedNatsMode = Form.useWatch('nats_mode', form);
   const watchedSmtpAuthEnabled = Form.useWatch('smtp_auth_enabled', form);
+  const watchedProvider = Form.useWatch('provider', form);
+  const watchedParameters = Form.useWatch('parameters', form);
   useEffect(() => {
     if (!isWebhookChannel || !watchedSubType || isFillingForm.current) return;
     if (watchedSubType as ChannelType !== subType) {
@@ -243,7 +310,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: '',
         channel_type: isWebhookChannel ? defaultSubType : channelType,
         description: '',
-        config: channelType === 'email' ? ensureEmailConfig() : channelType === 'nats' ? {
+        config: isPackChannel ? {} : channelType === 'email' ? ensureEmailConfig() : isCloudChannel ? cloudDefaultConfig() : channelType === 'nats' ? {
           ...(natsExtension?.buildInitialConfig() || {
             nats_mode: 'request_reply',
             namespace: '',
@@ -255,6 +322,51 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
     }
   }, [type, channelId, visible]);
+
+  useEffect(() => {
+    if (!visible || !isPackChannel) {
+      setPackManifest(null);
+      return;
+    }
+    let cancelled = false;
+    getNotificationChannelPacks()
+      .then((packs) => {
+        if (!cancelled) {
+          setPackManifest(packs.find((pack) => pack.key === channelType) || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPackManifest(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, isPackChannel, channelType]);
+
+  const savedCloudParameters = Array.isArray(channelData.config?.parameters) ? channelData.config.parameters : [];
+  const savedCloudProvider = channelData.config?.provider === 'aliyun' ? 'aliyun' : 'tencent';
+  const formParameterCount = Array.isArray(watchedParameters) ? watchedParameters.length : 0;
+
+  useEffect(() => {
+    if (!visible || !isPackChannel || !packManifest || type !== 'add') {
+      return;
+    }
+    const config: Record<string, unknown> = {};
+    packManifest.instance_template.forEach((field) => {
+      config[field.key] = field.default ?? '';
+    });
+    if (packManifest.delivery === 'template') {
+      config.parameters = [];
+    }
+    setChannelData({
+      name: '',
+      channel_type: channelType,
+      description: '',
+      config,
+    });
+  }, [visible, isPackChannel, packManifest, type, channelType]);
 
   useEffect(() => {
     if (!visible || !isWebhookChannel || !GROUP_BOT_PROVIDER[subType]) {
@@ -314,6 +426,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleOk = async () => {
     try {
       setConfirmLoading(true);
+      if (isPackChannel && !packManifest) {
+        message.error(t('system.channel.settings.packNotLoaded'));
+        return;
+      }
       const values = await form.validateFields();
       const payload = buildChannelPayload(values);
 
@@ -370,6 +486,45 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     if (body_template !== undefined) {
       finalConfig.body_template = body_template;
     }
+    delete finalConfig.test_title;
+    delete finalConfig.test_content;
+    if (isCloudChannel) {
+      const provider = finalConfig.provider === 'aliyun' ? 'aliyun' : 'tencent';
+      const keep = new Set(['provider', 'parameters', provider === 'tencent' ? 'secret_id' : 'access_key_id', provider === 'tencent' ? 'secret_key' : 'access_key_secret']);
+      if (provider === 'tencent') {
+        keep.add('sdk_app_id');
+        keep.add('template_id');
+      } else {
+        keep.add('template_code');
+      }
+      if (channelType === 'sms') keep.add('sign_name');
+      if (channelType === 'voice' && provider === 'aliyun') keep.add('called_show_number');
+      Object.keys(finalConfig).forEach((key) => {
+        if (!keep.has(key)) delete finalConfig[key];
+      });
+      if (Array.isArray(finalConfig.parameters)) {
+        finalConfig.parameters = finalConfig.parameters.map((item) => ({
+          name: provider === 'aliyun' ? String(item?.name || '').trim() : '',
+          test_value: String(item?.test_value || '').trim(),
+        }));
+      }
+    }
+    if (isPackChannel && packManifest) {
+      const keep = new Set(packManifest.instance_template.map((field) => field.key));
+      if (packManifest.delivery === 'template') {
+        keep.add('parameters');
+      }
+      Object.keys(finalConfig).forEach((key) => {
+        if (!keep.has(key)) delete finalConfig[key];
+      });
+      if (packManifest.delivery === 'template' && Array.isArray(finalConfig.parameters)) {
+        const named = packManifest.parameter_mode === 'named';
+        finalConfig.parameters = finalConfig.parameters.map((item) => ({
+          name: named ? String(item?.name || '').trim() : '',
+          test_value: String(item?.test_value || '').trim(),
+        }));
+      }
+    }
 
     const webhookType = (values.sub_type || subType) as ChannelType;
     return {
@@ -388,6 +543,37 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const handleTest = async () => {
     try {
       setTestLoading(true);
+      if (isCloudChannel || isPackChannel) {
+        if (type !== 'edit' || !channelId) {
+          message.warning(t('system.channel.settings.cloudTestSaveFirst'));
+          return;
+        }
+        let templateParams: Record<string, string> | string[] | undefined;
+        if (isCloudChannel && savedCloudParameters.length > 0) {
+          const formRows = Array.isArray(watchedParameters) ? watchedParameters : [];
+          const formNames = formRows.map((item: { name?: string }) => String(item?.name || '').trim());
+          const savedNames = savedCloudParameters.map((item: { name?: string }) => String(item?.name || '').trim());
+          const formTestValues = formRows.map((item: { test_value?: string }) => String(item?.test_value || '').trim());
+          if (formNames.length !== savedNames.length || formNames.some((name, index) => name !== savedNames[index])) {
+            message.warning(t('system.channel.settings.cloudTestSaveFirst'));
+            return;
+          }
+          if (formTestValues.length !== savedCloudParameters.length || formTestValues.some((item) => !item)) {
+            message.warning(t('system.channel.settings.cloudTestParamsRequired'));
+            return;
+          }
+          templateParams = savedCloudProvider === 'aliyun'
+            ? Object.fromEntries(savedNames.map((name, index) => [name, formTestValues[index]]))
+            : formTestValues;
+        }
+        await testChannel({
+          channel_id: channelId,
+          channel_type: channelType,
+          ...(templateParams === undefined ? {} : { template_params: templateParams }),
+        });
+        message.success(t('system.channel.settings.testSuccess'));
+        return;
+      }
       const values = await form.validateFields();
       const payload = buildChannelPayload(values, { preserveEncryptedFields: true });
       if (
@@ -489,10 +675,14 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: 'account_association',
         type: 'accountAssociation',
         label: t('system.channel.settings.accountAssociation', '账号关联'),
+        tooltip: t(
+          'system.channel.settings.accountAssociationTooltip',
+          '发送时按该账号关联的匹配规则，以平台账号字段确定被提及用户的 IM 账号。',
+        ),
         component: (
           <AccountAssociationField
             options={associationOptions}
-            refreshing={refreshingAssociations}
+            loading={refreshingAssociations}
             onRefresh={refreshAssociationOptions}
             onManage={openAssociationManager}
             placeholder={t('system.channel.settings.accountAssociationPlaceholder', '选择账号关联')}
@@ -552,7 +742,96 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         return fieldDef;
       });
 
-    return [...basicFields, ...configFields];
+    const provider = watchedProvider === 'aliyun' ? 'aliyun' : 'tencent';
+    const cloudFields = isCloudChannel ? [
+      {
+        name: 'provider',
+        type: 'select',
+        label: t('system.channel.settings.provider'),
+        rules: [{ required: true, message: t('system.channel.settings.providerRequired') }],
+        options: [
+          { value: 'tencent', label: t('system.channel.settings.providerTencent') },
+          { value: 'aliyun', label: t('system.channel.settings.providerAliyun') },
+        ],
+      },
+      {
+        name: provider === 'tencent' ? 'secret_id' : 'access_key_id',
+        type: 'input',
+        label: t(provider === 'tencent' ? 'system.channel.settings.secret_id' : 'system.channel.settings.access_key_id'),
+        rules: [{ required: true, message: t('common.inputMsg') }],
+      },
+      {
+        name: provider === 'tencent' ? 'secret_key' : 'access_key_secret',
+        type: 'editablePwd',
+        label: t(provider === 'tencent' ? 'system.channel.settings.secret_key' : 'system.channel.settings.access_key_secret'),
+        rules: [{ required: type === 'add', message: t('common.inputMsg') }],
+      },
+      ...(provider === 'tencent' ? [{
+        name: 'sdk_app_id',
+        type: 'input',
+        label: t('system.channel.settings.sdk_app_id'),
+        rules: [{ required: true, message: t('common.inputMsg') }],
+      }] : []),
+      ...(channelType === 'sms' ? [{
+        name: 'sign_name',
+        type: 'input',
+        label: t('system.channel.settings.sign_name'),
+        rules: [{ required: true, message: t('common.inputMsg') }],
+      }] : []),
+      {
+        name: provider === 'tencent' ? 'template_id' : 'template_code',
+        type: 'input',
+        label: t(provider === 'tencent' ? 'system.channel.settings.template_id' : 'system.channel.settings.template_code'),
+        rules: [{ required: true, message: t('common.inputMsg') }],
+      },
+      ...(channelType === 'voice' && provider === 'aliyun' ? [{
+        name: 'called_show_number',
+        type: 'input',
+        label: t('system.channel.settings.called_show_number'),
+        rules: [{ required: false }],
+      }] : []),
+      {
+        name: 'parameters',
+        type: 'cloudParameters',
+        label: t('system.channel.settings.parameters'),
+        component: (
+          <CloudParameterList
+            declareOnly
+            showName={provider === 'aliyun'}
+          />
+        ),
+      },
+    ] : [];
+
+    const packFields = isPackChannel && packManifest ? [
+      ...packManifest.instance_template.map((field) => ({
+        name: field.key,
+        type: packControlType(field),
+        label: field.label || field.key,
+        placeholder: field.placeholder || '',
+        options: field.options,
+        rules: [{
+          required: field.required && (type === 'add' || !field.secret),
+          message: t('common.inputMsg'),
+        }],
+      })),
+      ...(packManifest.delivery === 'template' ? [{
+        name: 'parameters',
+        type: 'cloudParameters',
+        label: t('system.channel.settings.parameters'),
+        component: (
+          <CloudParameterList
+            declareOnly
+            showName={packManifest.parameter_mode === 'named'}
+          />
+        ),
+      }] : []),
+    ] : [];
+
+    if (isPackChannel) {
+      return [...basicFields, ...packFields];
+    }
+    return [...basicFields, ...(isCloudChannel ? cloudFields : configFields)];
   }, [
     channelData.config,
     t,
@@ -563,6 +842,11 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     natsExtension,
     tagOptions,
     subType,
+    isCloudChannel,
+    isPackChannel,
+    packManifest,
+    watchedProvider,
+    type,
     associationOptions,
     refreshingAssociations,
   ]);
@@ -589,6 +873,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
           form={form}
           fields={formFields}
         />
+        {isCloudChannel && formParameterCount > 0 ? (
+          <p className="mb-0 text-(--color-text-3)">{t('system.channel.settings.cloudTestParamsHint')}</p>
+        ) : null}
       </Spin>
     </OperateModal>
   );

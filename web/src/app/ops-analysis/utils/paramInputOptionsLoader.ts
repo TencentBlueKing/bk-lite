@@ -3,10 +3,10 @@ import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import {
+  classifyOptionSource,
   extractDataSourceItems,
   isOptionInputControl,
   mapDynamicItems,
-  resolveDynamicSourceId,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import {
   canonicalQueryParams,
@@ -38,6 +38,24 @@ export interface ParamInputOptionsLoaderOptions {
   knownDataSources?: Array<{ id: number; name?: string; rest_api?: string }>;
 }
 
+const readHttpStatus = (error: unknown): number | undefined => {
+  if (!error || typeof error !== 'object') return undefined;
+  if ('status' in error && typeof (error as { status?: unknown }).status === 'number') {
+    return (error as { status: number }).status;
+  }
+  const response = (error as { response?: { status?: unknown } }).response;
+  if (response && typeof response.status === 'number') return response.status;
+  return undefined;
+};
+
+const identityErrorMessage = (status: string | undefined): string => (
+  status === 'ambiguous'
+    ? 'option-source-ambiguous'
+    : status === 'forbidden'
+      ? 'option-source-forbidden'
+      : 'option-source-missing'
+);
+
 interface OptionsApi {
   getDataSourceList: (params?: unknown) => Promise<unknown>;
   getSourceDataByApiId: (
@@ -45,6 +63,11 @@ interface OptionsApi {
     params?: unknown,
     options?: SourceDataRequestOptions,
   ) => Promise<SourceDataResult>;
+  resolveOptionSource?: (body: {
+    sourceId?: number;
+    builtinKey?: string;
+    sourceRef?: string;
+  }) => Promise<{ status?: string; id?: number }>;
 }
 
 const typedOption = (option: InputOption) => [option.label, typeof option.value, option.value];
@@ -82,7 +105,7 @@ export const getParamInputConfigKey = (config?: InputControlConfig): string => {
     return JSON.stringify(['static', config.control, source.staticItems.map(typedOption)]);
   }
   return JSON.stringify([
-    'dynamic', config.control, source.sourceId,
+    'dynamic', config.control, source.sourceId, source.builtinKey,
     source.sourceRef?.type, source.sourceRef?.value,
     source.valueField, source.labelField,
     canonicalQueryParams(source.queryParams),
@@ -194,27 +217,76 @@ export const createParamInputOptionsLoader = (
       const fallbackErrorMessage = loaderOptions?.fallbackErrorMessage ?? '';
       try {
         const knownItems = loaderOptions?.knownDataSources ?? [];
-        let sourceId = resolveDynamicSourceId(
-          source,
-          knownItems,
-        );
-        if (!sourceId && source.sourceRef) {
+        let sourceId = typeof source.sourceId === 'number' ? source.sourceId : undefined;
+        let resolverUnavailable = !api.resolveOptionSource;
+        let resolvedThroughIdentity = false;
+        if (api.resolveOptionSource) {
+          try {
+            const identity = await api.resolveOptionSource({
+              sourceId,
+              builtinKey: source.builtinKey,
+              sourceRef: source.sourceRef?.value,
+            });
+            if (requestGeneration !== generation) return null;
+            if (identity.status !== 'resolved' || typeof identity.id !== 'number') {
+              settled = true;
+              return {
+                status: 'error',
+                options: [],
+                errorMessage: identityErrorMessage(identity.status),
+              };
+            }
+            sourceId = identity.id;
+            resolvedThroughIdentity = true;
+          } catch (error) {
+            if (requestGeneration !== generation) return null;
+            if (error instanceof Error && error.message === 'option-source-resolver-unavailable') {
+              resolverUnavailable = true;
+            } else {
+              settled = true;
+              const errorMessage = getRequestErrorMessage(error, '') || 'option-source-unavailable';
+              return { status: 'error', options: [], errorMessage };
+            }
+          }
+        }
+        if (resolverUnavailable && sourceId === undefined && source.sourceRef) {
+          const namedInKnown = source.sourceRef.value.includes('::')
+            ? classifyOptionSource(source, knownItems)
+            : undefined;
+          if (namedInKnown?.status === 'resolved') sourceId = namedInKnown.id;
+        }
+        if (resolverUnavailable && sourceId === undefined && source.sourceRef) {
           const response = await api.getDataSourceList({ page_size: -1 });
           const sourceItems = Array.isArray(response)
             ? response
             : extractDataSourceItems(response);
           if (requestGeneration !== generation) return null;
-          sourceId = resolveDynamicSourceId(
+          const classified = classifyOptionSource(
             source,
-            sourceItems as Array<{ id: number; name?: string; rest_api?: string }>,
+            sourceItems as Array<{ id: number; name?: string; rest_api?: string; build_in_key?: string | null }>,
           );
+          if (classified.status === 'resolved') sourceId = classified.id;
+          else {
+            settled = true;
+            return {
+              status: 'error',
+              options: [],
+              errorMessage: classified.status === 'ambiguous'
+                ? 'option-source-ambiguous'
+                : 'option-source-missing',
+            };
+          }
         }
-        if (!sourceId) {
+        if (sourceId === undefined) {
           if (requestGeneration !== generation) return null;
           settled = true;
-          return { status: 'error', options: [] };
+          return { status: 'error', options: [], errorMessage: 'option-source-missing' };
         }
-        const { data } = await api.getSourceDataByApiId(sourceId, resolvedParams, requestOptions);
+        // 解析过的来源由控件自己显示缺失/无权，不再弹一条全局提示。
+        const dataRequestOptions: SourceDataRequestOptions | undefined = resolvedThroughIdentity
+          ? { ...requestOptions, suppressErrorNotification: true }
+          : requestOptions;
+        const { data } = await api.getSourceDataByApiId(sourceId, resolvedParams, dataRequestOptions);
         const firstPage = readOptionPage(data);
         const items = [...firstPage.items];
         const shouldPage = firstPage.page !== undefined
@@ -231,7 +303,7 @@ export const createParamInputOptionsLoader = (
             const next = await api.getSourceDataByApiId(
               sourceId,
               { ...resolvedParams, page: nextPage, page_size: firstPage.pageSize },
-              requestOptions,
+              dataRequestOptions,
             );
             if (requestGeneration !== generation) return null;
             const nextItems = readOptionPage(next.data).items;
@@ -252,11 +324,21 @@ export const createParamInputOptionsLoader = (
       } catch (error) {
         if (requestGeneration !== generation) return null;
         settled = true;
-        const errorMessage = getRequestErrorMessage(error, fallbackErrorMessage);
+        const httpStatus = readHttpStatus(error);
+        if (httpStatus === 403 || httpStatus === 404) {
+          return {
+            status: 'error',
+            options: [],
+            errorMessage: httpStatus === 403
+              ? 'option-source-forbidden'
+              : 'option-source-missing',
+          };
+        }
+        const errorMessage = getRequestErrorMessage(error, fallbackErrorMessage) || 'option-source-unavailable';
         return {
           status: 'error',
           options: [],
-          ...(errorMessage ? { errorMessage } : {}),
+          errorMessage,
         };
       }
     })();

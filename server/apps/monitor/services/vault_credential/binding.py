@@ -324,6 +324,10 @@ def _match_variants(names, by_name, config_types, collect_type):
     if user_field and len(password_fields) == 1:
         hinted = collect_type if collect_type in {"database", "middleware", "host", "network"} else None
         return [_variant("default", {}, ["sql"], hinted, user_field, [user_field, password_fields[0]], "user_password")]
+    # access_key + 单个密码（RocketMQ 的 ENV_PASSWORD）是 AK/SK，不是只有密码的 API Token。
+    # 内置 AK/SK 类型的分类是 cloud/storage/middleware；对象分类命中则用对象分类。
+    if "access_key" in names and len(password_fields) == 1:
+        return [_variant("default", {}, ["cloud"], "middleware", "access_key", ["access_key", password_fields[0]], "aksk")]
     if not user_field and len(password_fields) == 1:
         return [_variant("default", {}, ["token"], "other", password_fields[0], [password_fields[0]], "token")]
     return []

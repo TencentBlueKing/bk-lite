@@ -51,6 +51,8 @@ class IntegrationInstanceSerializer(UsernameSerializer):
     def validate(self, attrs):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")
         manifest = get_provider_registry().get(provider_key)
+        if manifest is not None and manifest.get_capability("notification_channel") is not None:
+            raise serializers.ValidationError({"provider_key": "Notification channel packs cannot be integration instances"})
         if manifest is None:
             if self.instance is None:
                 raise serializers.ValidationError({"provider_key": "Unknown provider"})

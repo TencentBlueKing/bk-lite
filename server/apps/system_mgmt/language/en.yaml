@@ -99,6 +99,46 @@ error:
   synced_groups_local_users_forbidden: Synced groups cannot have locally managed users
   synced_group_membership_immutable: Synced group membership cannot be changed locally
   channel_team_required: Please select the channel organization
+  cloud_config_invalid: Cloud channel config must be an object
+  cloud_provider_invalid: The cloud provider must be Tencent Cloud or Alibaba Cloud
+  cloud_field_required: This field is required
+  cloud_parameters_invalid: Template parameters must be a list
+  cloud_parameters_limit: Template parameters cannot exceed 20 items
+  cloud_called_show_number_invalid: The caller ID must be a string
+  cloud_parameter_invalid: A template parameter must be an object
+  cloud_parameter_source_invalid: A parameter source must be title, content, or literal
+  cloud_parameter_name_invalid: A parameter name must be a string
+  cloud_parameter_name_required: Alibaba Cloud template parameter names are required
+  cloud_parameter_name_duplicate: Alibaba Cloud template parameter names must be unique
+  cloud_test_value_invalid: A test value must be a string
+  cloud_template_params_unexpected: This template has no variables, so template parameters must be omitted
+  cloud_template_params_mismatch: Template parameters do not match the variables registered on the channel
+  cloud_template_params_object: Alibaba Cloud template parameters must be a JSON object
+  cloud_template_params_array: Tencent Cloud template parameters must be a string array
+  cloud_template_params_value: Each template parameter value must be a non-empty string
+  cloud_literal_required: Literal text is required
+  cloud_literal_too_long: Literal text cannot exceed 200 characters
+  cloud_secret_unreadable: The cloud secret cannot be decrypted
+  cloud_config_incomplete: The cloud channel configuration is incomplete
+  cloud_no_recipients: There are no recipients
+  cloud_user_missing: The user does not exist
+  cloud_phone_missing: No usable phone number
+  cloud_phone_unusable: The phone number cannot be used with this provider
+  cloud_send_unknown: The provider result is unknown
+  cloud_send_rejected: The provider rejected the request
+  cloud_test_requires_saved_channel: Save the channel before sending a test
+  cloud_test_phone_missing: The current user has no usable phone number
+  cloud_test_content_required: A test send needs a title and a body
+  notification_channel_pack_not_loaded: The notification channel pack is not loaded
+  notification_channel_secret_unreadable: The secret cannot be decrypted
+  notification_channel_config_incomplete: The channel configuration is incomplete
+  notification_channel_config_invalid: Channel config must be an object
+  notification_channel_content_invalid: The notification title or body is invalid
+  notification_channel_phone_missing: No phone number
+  notification_channel_parameter_name_required: Parameter name is required
+  notification_channel_template_params_invalid: Template parameters must be a JSON object or an array of strings
+  notification_channel_send_unknown: The send result is unknown
+  notification_channel_send_rejected: The channel rejected the send
   account_association_provider_mismatch: The account association does not belong to this group channel's platform
   account_association_not_found: Account association was not found
   account_association_not_ready: This account association cannot be used until a complete update finishes
@@ -319,6 +359,8 @@ channel:
     title_feishu_bot: 'Feishu card title. If left empty, the channel displays "通知".'
     title_dingtalk_bot: 'DingTalk markdown title. If left empty, the channel displays "通知".'
     title_custom_webhook: Custom webhooks do not use a title; pass an empty string.
+    title_sms: SMS does not use a title. Put cloud template variables in template_params. An empty string is allowed.
+    title_voice: Voice does not use a title. Put cloud template variables in template_params. An empty string is allowed.
     title_im_notification: IM app notification title. Can be left empty. Maximum 512 characters.
     title_default: Title. Can be left empty. Maximum 512 characters.
     content_email: Email body, sent as HTML. Tags are not escaped, and line breaks are not converted to line-break tags.
@@ -328,6 +370,12 @@ channel:
     content_dingtalk_bot: DingTalk markdown body. Recipient names are appended to the body.
     # format() turns {{{{content}}}} back into the literal {{content}}
     content_custom_webhook: 'Notification body; it replaces {{{{content}}}} in the channel template. Recipient names are appended to the body.'
+    content_sms: SMS does not use the body. Put cloud template variables in template_params. This field is still required and can be any placeholder text.
+    content_voice: Voice does not use the body. Put cloud template variables in template_params. This field is still required and can be any placeholder text. Playback count is fixed at 1.
+    template_params_sms_aliyun: Required when the channel registers template variables. Pass a JSON object whose keys match the registered names. Each value must be a non-empty string. When it registers none, omit this field or pass an empty value; supplying variables is rejected locally.
+    template_params_sms_tencent: 'Required when the channel registers template variables. Pass a string array with the same length and order as the registered parameters. Each value must be a non-empty string. When it registers none, omit this field or pass an empty value; supplying variables is rejected locally. Example: ["4370"].'
+    template_params_voice_aliyun: Required when the channel registers template variables. Pass a JSON object whose keys match the registered names. Each value must be a non-empty string. When it registers none, omit this field or pass an empty value; supplying variables is rejected locally.
+    template_params_voice_tencent: 'Required when the channel registers template variables. Pass a string array with the same length and order as the registered parameters. Each value must be a non-empty string. When it registers none, omit this field or pass an empty value; supplying variables is rejected locally. Example: ["4370"].'
     content_im_notification: IM app notification body. Required. Maximum 20,000 characters.
     content_default: Notification body. Required. Maximum 20,000 characters.
     receivers_system_user: Platform user ID strings from the id field returned by GET /openapi/v1/system-mgmt/users. They must belong to the current organization. Do not pass usernames. 1 to 100 items, no duplicates.
