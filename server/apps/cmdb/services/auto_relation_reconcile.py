@@ -27,6 +27,7 @@ INCOMING_FULL_SYNC_TASK = "apps.cmdb.tasks.celery_tasks.sync_incoming_auto_assoc
 AUTO_RELATION_BATCH_SIZE = 500
 AUTO_RELATION_SOURCE_BUDGET = 2000
 AUTO_RELATION_ROUND_SECONDS = 60
+AUTO_RELATION_INDEX_FIELDS = ("model_id", "ip_addr")
 
 
 def schedule_instance_auto_relation_reconcile(
@@ -213,8 +214,22 @@ def _drain_rule_rows(deadline: float) -> int:
     return len(done)
 
 
+def ensure_auto_relation_query_indexes() -> None:
+    """给自动关联用到的点查字段建索引。已存在时静默跳过。"""
+    try:
+        with GraphClient() as graph:
+            ensure = getattr(graph, "ensure_node_property_index", None)
+            if not callable(ensure):
+                return
+            for field in AUTO_RELATION_INDEX_FIELDS:
+                ensure(INSTANCE, field)
+    except Exception:
+        logger.exception("[AutoRelationRule] ensure query indexes failed")
+
+
 def drain_auto_relation_pending() -> dict:
     """排空待重算名单。实例按批重算已登记的出向规则，规则行只同步入队时点名的规则。"""
+    ensure_auto_relation_query_indexes()
     deadline = time.monotonic() + AUTO_RELATION_ROUND_SECONDS
     stage = "reconcile_instances"
     try:
@@ -288,17 +303,17 @@ class AutoRelationRuleReconcileService:
         return False
 
     @staticmethod
-    def _query_instances_by_model(model_id: str, fields: list[str] | None = None) -> list[dict]:
+    def _query_instances_by_conditions(conditions: list[dict], fields: list[str] | None = None) -> list[dict]:
         instances = []
         cursor = None
         with GraphClient() as ag:
             while True:
-                conditions = [{"field": "model_id", "type": "str=", "value": model_id}]
+                page_conditions = list(conditions)
                 if cursor is not None:
-                    conditions.append({"field": "id", "type": "id>", "value": cursor})
+                    page_conditions.append({"field": "id", "type": "id>", "value": cursor})
                 page, _ = ag.query_entity(
                     INSTANCE,
-                    conditions,
+                    page_conditions,
                     page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
                     fields=fields,
                     include_count=False,
@@ -308,6 +323,30 @@ class AutoRelationRuleReconcileService:
                     break
                 cursor = page[-1]["_id"]
         return instances
+
+    @classmethod
+    def _query_instances_by_model(cls, model_id: str, fields: list[str] | None = None) -> list[dict]:
+        return cls._query_instances_by_conditions(
+            [{"field": "model_id", "type": "str=", "value": model_id}],
+            fields=fields,
+        )
+
+    @classmethod
+    def _query_instances_by_values(cls, model_id: str, field: str, values: list, fields: list[str] | None = None) -> list[dict]:
+        unique_values = []
+        for value in values:
+            if cls._is_empty_value(value) or value in unique_values:
+                continue
+            unique_values.append(value)
+        if not unique_values:
+            return []
+        return cls._query_instances_by_conditions(
+            [
+                {"field": "model_id", "type": "str=", "value": model_id},
+                {"field": field, "type": "str[]", "value": unique_values},
+            ],
+            fields=fields,
+        )
 
     @staticmethod
     def _query_existing_edges_for_source(model_asst_id: str, src_inst_uuid: str) -> list[dict]:
@@ -321,17 +360,86 @@ class AutoRelationRuleReconcileService:
             )
 
     @staticmethod
+    def _query_existing_edges_for_sources(src_inst_uuids: list[str], model_asst_ids: list[str]) -> list[dict]:
+        uuids = list(dict.fromkeys(uuid for uuid in src_inst_uuids if uuid))
+        rule_ids = list(dict.fromkeys(rule_id for rule_id in model_asst_ids if rule_id))
+        if not uuids or not rule_ids:
+            return []
+        with GraphClient() as ag:
+            return ag.query_edge(
+                INSTANCE_ASSOCIATION,
+                [
+                    {"field": "src_inst_uuid", "type": "str[]", "value": uuids},
+                    {"field": "model_asst_id", "type": "str[]", "value": rule_ids},
+                ],
+            )
+
+    @staticmethod
+    def _edges_keyed_by_source_and_rule(edges: list[dict]) -> dict[tuple[str, str], list[dict]]:
+        keyed: dict[tuple[str, str], list[dict]] = {}
+        for edge in edges:
+            key = (str(edge.get("src_inst_uuid") or ""), str(edge.get("model_asst_id") or ""))
+            keyed.setdefault(key, []).append(edge)
+        return keyed
+
+    @staticmethod
+    def _single_exact_dest_field(rules) -> str | None:
+        dest_fields = set()
+        for rule in rules:
+            for pair in rule.match_pairs:
+                if pair.matching_rule != AUTO_RELATION_MATCHING_RULE_EXACT:
+                    return None
+                dest_fields.add(pair.dst_field_id)
+        if len(dest_fields) != 1:
+            return None
+        return next(iter(dest_fields))
+
+    @staticmethod
     def _matching_fields(rules, side):
         return sorted({"inst_uuid", "model_id"} | {getattr(pair, f"{side}_field_id") for rule in rules for pair in rule.match_pairs})
 
     @classmethod
-    def _prepare_target_snapshots(cls, rules_by_model):
+    def _collect_exact_source_values(cls, rules_by_model, instances, dest_model_id: str, dest_field: str) -> list:
+        instances_by_model: dict[str, list[dict]] = {}
+        for instance in instances:
+            instances_by_model.setdefault(instance.get("model_id"), []).append(instance)
+        values = []
+        for src_model, associations in rules_by_model.items():
+            for association, rules in associations:
+                if association.get("dst_model_id") != dest_model_id:
+                    continue
+                for rule in rules:
+                    for pair in rule.match_pairs:
+                        if pair.dst_field_id != dest_field:
+                            continue
+                        for instance in instances_by_model.get(src_model, []):
+                            value = instance.get(pair.src_field_id)
+                            if cls._is_empty_value(value) or value in values:
+                                continue
+                            values.append(value)
+        return values
+
+    @classmethod
+    def _prepare_target_snapshots(cls, rules_by_model, instances=None):
         fields_by_model = {}
+        rules_by_dest = {}
         for associations in rules_by_model.values():
             for association, rules in associations:
-                fields_by_model.setdefault(association["dst_model_id"], set()).update(cls._matching_fields(rules, "dst"))
-        # 完整读取成功后才能据此删除失效边；分页避免图数据库结果集上限截断。
-        return {model: TargetSnapshot(cls._query_instances_by_model(model, fields=sorted(fields))) for model, fields in fields_by_model.items()}
+                dest_model_id = association["dst_model_id"]
+                fields_by_model.setdefault(dest_model_id, set()).update(cls._matching_fields(rules, "dst"))
+                rules_by_dest.setdefault(dest_model_id, []).extend(rules)
+        snapshots = {}
+        source_instances = list(instances or [])
+        for model, fields in fields_by_model.items():
+            dest_field = cls._single_exact_dest_field(rules_by_dest[model]) if source_instances else None
+            if dest_field:
+                values = cls._collect_exact_source_values(rules_by_model, source_instances, model, dest_field)
+                rows = cls._query_instances_by_values(model, dest_field, values, fields=sorted(fields))
+            else:
+                # contains/iexact 或多种目标字段时仍读全量目标；删边靠源 UUID 上的已有边，不靠这张快照是否含旧目标。
+                rows = cls._query_instances_by_model(model, fields=sorted(fields))
+            snapshots[model] = TargetSnapshot(rows)
+        return snapshots
 
     @classmethod
     def source_match_fields(cls, model_id: str) -> tuple[bool, set[str]]:
@@ -499,6 +607,7 @@ class AutoRelationRuleReconcileService:
         rules: list[AutoRelationRule],
         target_instances: list[dict] | TargetSnapshot | None = None,
         target_claims: dict[int, int] | None = None,
+        existing_edges: list[dict] | None = None,
         *,
         phase: str = "full",
     ) -> dict:
@@ -506,7 +615,8 @@ class AutoRelationRuleReconcileService:
         if target_instances is None:
             target_instances = cls._query_instances_by_model(association["dst_model_id"], fields=cls._matching_fields(rules, "dst"))
         snapshot = target_instances if isinstance(target_instances, TargetSnapshot) else TargetSnapshot(target_instances)
-        existing_edges = cls._query_existing_edges_for_source(model_asst_id, source_instance["inst_uuid"])
+        if existing_edges is None:
+            existing_edges = cls._query_existing_edges_for_source(model_asst_id, source_instance["inst_uuid"])
         auto_edges = [
             edge
             for edge in existing_edges
@@ -628,8 +738,22 @@ class AutoRelationRuleReconcileService:
 
         model_ids = list(dict.fromkeys(instance["model_id"] for instance in instances))
         rules_by_model = {model: cls._list_enabled_rules_by_src_model(model) for model in model_ids}
-        targets_by_model = cls._prepare_target_snapshots(rules_by_model)
+        targets_by_model = cls._prepare_target_snapshots(rules_by_model, instances)
         incoming_by_model = {model: cls._list_enabled_rule_ids_by_dst_model(model) for model in model_ids} if schedule_incoming else {}
+        rule_ids = list(
+            dict.fromkeys(
+                association["model_asst_id"]
+                for associations in rules_by_model.values()
+                for association, _rules in associations
+                if association.get("model_asst_id")
+            )
+        )
+        edges_by_key = cls._edges_keyed_by_source_and_rule(
+            cls._query_existing_edges_for_sources(
+                [instance.get("inst_uuid") for instance in instances],
+                rule_ids,
+            )
+        )
 
         for instance_id in normalized_ids:
             instance = instances_by_id.get(instance_id)
@@ -638,7 +762,11 @@ class AutoRelationRuleReconcileService:
             try:
                 for association, rules in rules_by_model[instance["model_id"]]:
                     item_summary = cls.reconcile_source_instance(
-                        instance, association, rules, target_instances=targets_by_model[association["dst_model_id"]]
+                        instance,
+                        association,
+                        rules,
+                        target_instances=targets_by_model[association["dst_model_id"]],
+                        existing_edges=edges_by_key.get((instance["inst_uuid"], association["model_asst_id"]), []),
                     )
                     summary["source_rules"] += 1
                     summary["created"] += item_summary["created"]
@@ -692,9 +820,19 @@ class AutoRelationRuleReconcileService:
         }
 
         associations = cls._list_enabled_rules_by_src_model(instance["model_id"])
-        targets_by_model = cls._prepare_target_snapshots({instance["model_id"]: associations})
+        targets_by_model = cls._prepare_target_snapshots({instance["model_id"]: associations}, [instance])
+        rule_ids = [association["model_asst_id"] for association, _rules in associations if association.get("model_asst_id")]
+        edges_by_key = cls._edges_keyed_by_source_and_rule(
+            cls._query_existing_edges_for_sources([instance.get("inst_uuid")], rule_ids)
+        )
         for association, rules in associations:
-            item_summary = cls.reconcile_source_instance(instance, association, rules, target_instances=targets_by_model[association["dst_model_id"]])
+            item_summary = cls.reconcile_source_instance(
+                instance,
+                association,
+                rules,
+                target_instances=targets_by_model[association["dst_model_id"]],
+                existing_edges=edges_by_key.get((instance["inst_uuid"], association["model_asst_id"]), []),
+            )
             summary["source_rules"] += 1
             summary["created"] += item_summary["created"]
             summary["deleted"] += item_summary["deleted"]
@@ -733,27 +871,21 @@ class AutoRelationRuleReconcileService:
 
     @classmethod
     def _targets_for_page(cls, association, rules, page, dst_fields, exact_only):
-        if exact_only and rules and rules[0].match_pairs:
-            pair = rules[0].match_pairs[0]
+        dest_field = cls._single_exact_dest_field(rules) if exact_only else None
+        if dest_field:
             values = []
             for source in page:
-                value = source.get(pair.src_field_id)
-                if value not in (None, "") and value not in values:
-                    values.append(value)
-            if not values:
-                return TargetSnapshot([])
-            with GraphClient() as ag:
-                rows, _ = ag.query_entity(
-                    INSTANCE,
-                    [
-                        {"field": "model_id", "type": "str=", "value": association["dst_model_id"]},
-                        {"field": pair.dst_field_id, "type": "str[]", "value": values},
-                    ],
-                    page={"skip": 0, "limit": AUTO_RELATION_BATCH_SIZE},
-                    fields=dst_fields,
-                    include_count=False,
-                )
-            return TargetSnapshot(rows)
+                for rule in rules:
+                    for pair in rule.match_pairs:
+                        if pair.dst_field_id != dest_field:
+                            continue
+                        value = source.get(pair.src_field_id)
+                        if cls._is_empty_value(value) or value in values:
+                            continue
+                        values.append(value)
+            return TargetSnapshot(
+                cls._query_instances_by_values(association["dst_model_id"], dest_field, values, fields=dst_fields)
+            )
         return TargetSnapshot(cls._query_instances_by_model(association["dst_model_id"], fields=dst_fields))
 
     @classmethod
@@ -801,6 +933,12 @@ class AutoRelationRuleReconcileService:
                 done = True
                 break
             targets = cls._targets_for_page(association, enabled_rules, page, dst_fields, exact_only)
+            edges_by_key = cls._edges_keyed_by_source_and_rule(
+                cls._query_existing_edges_for_sources(
+                    [source_instance.get("inst_uuid") for source_instance in page],
+                    [model_asst_id],
+                )
+            )
             for source_instance in page:
                 item_summary = cls.reconcile_source_instance(
                     source_instance,
@@ -808,6 +946,7 @@ class AutoRelationRuleReconcileService:
                     enabled_rules,
                     target_instances=targets,
                     target_claims=None if phase == "delete" else target_claims,
+                    existing_edges=edges_by_key.get((source_instance["inst_uuid"], model_asst_id), []),
                     phase=phase,
                 )
                 summary["deleted"] += item_summary["deleted"]

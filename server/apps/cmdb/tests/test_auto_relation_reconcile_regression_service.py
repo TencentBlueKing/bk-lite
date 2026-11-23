@@ -33,11 +33,23 @@ def association(name):
     }
 
 
+def _match_condition(row, condition):
+    field, op, value = (condition[k] for k in ("field", "type", "value"))
+    if op == "id[]":
+        return row.get("_id") in value
+    if op == "id>":
+        return row.get("_id") > value
+    if op == "str[]":
+        return row.get(field) in set(value)
+    return row.get(field) == value
+
+
 class MemoryGraph:
     def __init__(self, instances):
         self.instances = instances
         self.edges = []
         self.queries = []
+        self.edge_queries = []
 
     def __enter__(self):
         return self
@@ -49,16 +61,7 @@ class MemoryGraph:
         self.queries.append((conditions, kwargs))
         rows = self.instances
         for condition in conditions:
-            field, op, value = (condition[k] for k in ("field", "type", "value"))
-            if op == "id[]":
-                rows = [row for row in rows if row["_id"] in value]
-            elif op == "id>":
-                rows = [row for row in rows if row["_id"] > value]
-            elif op == "str[]":
-                wanted = set(value)
-                rows = [row for row in rows if row.get(field) in wanted]
-            else:
-                rows = [row for row in rows if row.get(field) == value]
+            rows = [row for row in rows if _match_condition(row, condition)]
         rows = sorted(rows, key=lambda row: row["_id"])
         total = len(rows)
         if kwargs.get("page"):
@@ -68,7 +71,8 @@ class MemoryGraph:
         return rows, total
 
     def query_edge(self, label, conditions):
-        return [edge for edge in self.edges if all(edge.get(c["field"]) == c["value"] for c in conditions)]
+        self.edge_queries.append(list(conditions))
+        return [edge for edge in self.edges if all(_match_condition(edge, condition) for condition in conditions)]
 
     def create_edge(self, label, src_id, src_label, dst_id, dst_label, data, *args):
         by_id = {row["_id"]: row for row in self.instances}
@@ -188,7 +192,7 @@ def test_failed_snapshot_never_deletes_existing_edges(graph, monkeypatch):
     original = graph.query_entity
 
     def fail(label, conditions, **kwargs):
-        if any(c.get("type") == "id>" for c in conditions):
+        if any(c.get("field") == "model_id" and c.get("value") == "target" for c in conditions):
             raise RuntimeError("target page unavailable")
         return original(label, conditions, **kwargs)
 
@@ -239,14 +243,14 @@ def test_shared_target_projection_unions_fields_across_source_models(graph, monk
 
 
 def test_reconcile_reports_failed_instance_and_continues_other_sources(graph, monkeypatch):
-    original = graph.query_edge
+    original = graph.create_edge
 
-    def fail_first_source(label, conditions):
-        if any(c["value"] == graph.instances[0]["inst_uuid"] for c in conditions):
+    def fail_first_source(label, src_id, *args, **kwargs):
+        if src_id == graph.instances[0]["_id"]:
             raise RuntimeError("graph unavailable")
-        return original(label, conditions)
+        return original(label, src_id, *args, **kwargs)
 
-    monkeypatch.setattr(graph, "query_edge", fail_first_source)
+    monkeypatch.setattr(graph, "create_edge", fail_first_source)
     result = SVC.reconcile_for_instances([1, 2])
     assert result["success"] is False
     assert result["failed"] == [{"instance_id": 1, "error": "graph unavailable"}]
@@ -394,3 +398,73 @@ def test_full_sync_keeps_later_matching_auto_edge_as_conflict(monkeypatch, mappi
     assert result["created"] == 0
     assert result["deleted"] == 0
     assert result["conflicts"] >= 1
+
+
+def _target_queries(graph):
+    return [conditions for conditions, _kwargs in graph.queries if any(condition.get("field") == "model_id" and condition.get("value") == "target" for condition in conditions)]
+
+
+def test_exact_instance_reconcile_queries_targets_by_value_in(graph):
+    graph.instances.append(instance(99, "target", "unrelated"))
+    result = SVC.reconcile_for_instances([1, 2])
+    assert result["created"] == 4
+    in_values = [condition["value"] for conditions in _target_queries(graph) for condition in conditions if condition.get("type") == "str[]"]
+    assert in_values
+    assert set(in_values[0]) == {"a", "b"}
+    assert "unrelated" not in in_values[0]
+
+
+def test_stale_auto_edge_deleted_when_no_target_matches_in_query(graph):
+    first = SVC.reconcile_for_instances([1])
+    assert first["created"] == 2
+    graph.instances[0]["key"] = "gone"
+    second = SVC.reconcile_for_instances([1])
+    assert second["deleted"] == 2
+    assert second["created"] == 0
+    assert all(edge["src_inst_uuid"] != graph.instances[0]["inst_uuid"] for edge in graph.edges)
+
+
+def test_instance_batch_queries_existing_edges_once_with_in(graph):
+    result = SVC.reconcile_for_instances([1, 2])
+    assert result["created"] == 4
+    assert len(graph.edge_queries) == 1
+    conditions = graph.edge_queries[0]
+    src = next(condition for condition in conditions if condition["field"] == "src_inst_uuid")
+    rules = next(condition for condition in conditions if condition["field"] == "model_asst_id")
+    assert src["type"] == "str[]"
+    assert set(src["value"]) == {graph.instances[0]["inst_uuid"], graph.instances[1]["inst_uuid"]}
+    assert rules["type"] == "str[]"
+    assert set(rules["value"]) == {"r1", "r2"}
+
+
+def test_contains_rule_still_loads_all_destination_instances(graph, monkeypatch):
+    assoc = association("r-contains")
+    assoc["auto_relation_rule"]["rules"][0]["match_pairs"][0]["matching_rule"] = "contains"
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [assoc])
+    graph.instances.append(instance(99, "target", "zzz"))
+    result = SVC.reconcile_for_instances([1])
+    assert result["created"] == 1
+    target_ops = {condition.get("type") for conditions in _target_queries(graph) for condition in conditions}
+    assert "str[]" not in target_ops
+
+
+def test_exact_in_target_query_pages_all_matches(graph, monkeypatch):
+    monkeypatch.setattr(mod, "AUTO_RELATION_BATCH_SIZE", 2)
+    monkeypatch.setattr(mod, "model_association_search", lambda _model: [association("r1")])
+    graph.instances = [instance(1, "source", "a")] + [instance(10 + i, "target", "a") for i in range(5)]
+    result = SVC.reconcile_for_instances([1])
+    assert result["created"] == 5
+    in_queries = [conditions for conditions in _target_queries(graph) if any(condition.get("type") == "str[]" for condition in conditions)]
+    assert len(in_queries) >= 3
+
+
+def test_full_sync_exact_page_queries_existing_edges_once(graph, monkeypatch):
+    monkeypatch.setattr(mod, "model_association_info_search", lambda key: association(key))
+    result = SVC.full_sync_rule("r1")
+    assert result["created"] == 2
+    # delete 相位 + create 相位各一批，不再按源实例逐条查边。
+    assert len(graph.edge_queries) == 2
+    for conditions in graph.edge_queries:
+        src = next(condition for condition in conditions if condition["field"] == "src_inst_uuid")
+        assert src["type"] == "str[]"
+        assert set(src["value"]) == {graph.instances[0]["inst_uuid"], graph.instances[1]["inst_uuid"]}
