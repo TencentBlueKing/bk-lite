@@ -108,6 +108,10 @@ export function useItsmApi() {
   const retryTicketExport = useCallback((id: number) => post<TicketExportRecord>(`/itsm/api/tickets/export/tasks/${id}/retry/`), [post]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
   const getTriggerOptions = useCallback(() => get<TriggerOptions>('/itsm/api/triggers/options/'), [get]);
+  const previewPrintTemplate = useCallback(() =>
+    post<{ html: string }>('/itsm/api/print-templates/preview/', {}, { suppressErrorNotification: true }), [post]);
+  const getTicketPrint = useCallback((id: number) =>
+    get<{ html: string }>(`/itsm/api/tickets/${id}/print/`, { suppressErrorNotification: true }), [get]);
   const listHandovers = useCallback(async () => await listResources('handovers') as unknown as {
     items: HandoverRecord[];
     can_add?: boolean;
@@ -282,6 +286,8 @@ export function useItsmApi() {
     publishWorkflow,
     listTickets, ticketFilterWorkflows, ticketFilterFields, exportTickets, ticketExportFields, listTicketExports, downloadTicketExport, retryTicketExport,
     listResources, getTriggerOptions,
+    previewPrintTemplate,
+    getTicketPrint,
     createResource,
     updateResource,
     deleteResource,

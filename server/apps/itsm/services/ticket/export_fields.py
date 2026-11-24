@@ -135,13 +135,13 @@ def project_export(queryset, columns, fields):
     return queryset
 
 
-def _labels(options):
+def option_labels(options):
     labels = {}
     for item in options:
         value = item.get("value")
         if isinstance(value, str) or is_number(value):
             labels[value] = str(item.get("label", value))
-        labels.update(_labels(item.get("children") or []))
+        labels.update(option_labels(item.get("children") or []))
     return labels
 
 
@@ -185,17 +185,24 @@ def read_form_value(ticket, field):
     schema = field["schemas"].get(ticket.workflow_version_id)
     if schema is None:
         return None
-    value = ticket.form_data.get(field["key"])
-    kind = field["type"]
+    return format_form_value(
+        ticket.form_data.get(field["key"]),
+        field["type"],
+        columns=schema.get("export_columns"),
+        labels=schema.get("export_labels"),
+    )
+
+
+def format_form_value(value, kind, *, columns=None, labels=None):
     if kind in TABLE_FIELDS:
-        return _table_value(value, schema["export_columns"])
+        return _table_value(value, columns or ())
     if kind == "attachment":
         if not isinstance(value, list):
             return None
         return joined(path.split("/")[-1] for path in value if isinstance(path, str) and "://" not in path)
     if kind == "richtext" and isinstance(value, str):
         return strip_tags(value) or None
-    labels = schema.get("export_labels", {})
+    labels = labels or {}
     if kind in LIST_FIELDS and isinstance(value, list):
         safe_values = (part for entry in value for part in (entry if isinstance(entry, list) else [entry]))
         return joined(_simple_label(part, labels) for part in safe_values)
@@ -219,4 +226,4 @@ def set_option_labels(fields):
     for field in fields:
         if field["type"] in OPTION_TYPES:
             for schema in field["schemas"].values():
-                schema["export_labels"] = _labels(resolve_options(schema))
+                schema["export_labels"] = option_labels(resolve_options(schema))

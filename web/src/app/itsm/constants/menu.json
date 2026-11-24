@@ -150,7 +150,6 @@
         {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "打印", "url": "/itsm/apps/print", "name": "print"},
         {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"},
         {"title": "业务对象", "url": "/itsm/apps/biz-object", "name": "biz_object"},
         {"title": "在线客服", "url": "/itsm/apps/chat", "name": "chat"},
@@ -168,6 +167,7 @@
         {"title": "VIP", "url": "/itsm/settings/vips", "name": "org"},
         {"title": "通知模板", "url": "/itsm/settings/notify-templates", "name": "notify"},
         {"title": "满意度模板", "url": "/itsm/settings/survey-templates", "name": "survey"},
+        {"title": "打印预览", "url": "/itsm/settings/print-templates", "name": "print"},
         {"title": "公告", "url": "/itsm/settings/announcements", "name": "notify"},
         {"title": "基础配置", "url": "/itsm/settings", "name": "setting"}
       ]
@@ -242,7 +242,6 @@
         {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "Print", "url": "/itsm/apps/print", "name": "print"},
         {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"},
         {"title": "Business objects", "url": "/itsm/apps/biz-object", "name": "biz_object"},
         {"title": "Chat", "url": "/itsm/apps/chat", "name": "chat"},
@@ -260,6 +259,7 @@
         {"title": "VIP", "url": "/itsm/settings/vips", "name": "org"},
         {"title": "Notification templates", "url": "/itsm/settings/notify-templates", "name": "notify"},
         {"title": "Satisfaction templates", "url": "/itsm/settings/survey-templates", "name": "survey"},
+        {"title": "Print preview", "url": "/itsm/settings/print-templates", "name": "print"},
         {"title": "Announcements", "url": "/itsm/settings/announcements", "name": "notify"},
         {"title": "System settings", "url": "/itsm/settings", "name": "setting"}
       ]

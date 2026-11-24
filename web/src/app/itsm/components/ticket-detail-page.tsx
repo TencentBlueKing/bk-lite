@@ -2,8 +2,8 @@
 
 import { Alert, App, Form, Button, Empty, Tag } from 'antd';
 import { ItsmBackButton } from './back-button';
-import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
-import { useParams } from 'next/navigation';
+import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined, PrinterOutlined } from '@ant-design/icons';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
 import { FormRenderer } from './form-renderer';
@@ -33,6 +33,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const params = useParams<{ id: string }>();
   const ticketId = Number(params.id);
   const { t } = useTranslation();
+  const router = useRouter();
   const { settings } = useItsmRuntimeSettings();
   const api = useItsmApi();
   const { message } = App.useApp();
@@ -125,7 +126,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
             <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><TicketActions ticket={ticket} busy={busy} operate={operate} /></>}</div>
+          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print`)}>打印</Button><TicketActions ticket={ticket} busy={busy} operate={operate} /></>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>

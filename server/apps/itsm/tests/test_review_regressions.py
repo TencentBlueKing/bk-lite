@@ -712,16 +712,16 @@ def test_handover_updates_engine_and_claimed_local_task(sample):
     assert task.assignee == "replacement"
 
 
-def test_print_escapes_ticket_values_and_blocks_template_object_access(sample):
+def test_print_escapes_ticket_values_and_ignores_stored_template(sample):
     from apps.itsm.models.extend import PrintTemplate
     from apps.itsm.views.extend import render_print
 
     ticket, _ = sample
     ticket.title = "<img src=x onerror=alert(1)>"
     ticket.save()
-    template = PrintTemplate.objects.create(name="打印", body="<h1>{{ title }}</h1>")
-    response = render_print(request(username="owner"), ticket.id)
-    assert json.loads(response.content)["data"]["html"] == "<h1>&lt;img src=x onerror=alert(1)&gt;</h1>"
-    template.body = "{{ title.__class__.__mro__ }}"
-    template.save()
-    assert render_print(request(username="owner"), ticket.id).status_code == 400
+    template = PrintTemplate.objects.create(name="打印", body="{{ title.__class__.__mro__ }}")
+    response = render_print(request(payload={"template_id": template.id}, username="owner"), ticket.id)
+    assert response.status_code == 200
+    html = json.loads(response.content)["data"]["html"]
+    assert "<h1>&lt;img src=x onerror=alert(1)&gt;</h1>" in html
+    assert "<img" not in html

@@ -161,15 +161,52 @@ def _apply_view_template(form, fields, status_key):
     return ordered + [field for field in fields if field.get("key") not in seen]
 
 
-def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False):
+def ticket_principals(ticket, username):
     from apps.itsm.models.extend import TicketProxy
 
-    principals = set(TicketProxy.objects.filter(domain=ticket.domain, agent=username, is_enabled=True).values_list("principal", flat=True)) | {
-        username
-    }
-    tasks = list(ticket.tasks.all())
+    return set(TicketProxy.objects.filter(domain=ticket.domain, agent=username, is_enabled=True).values_list("principal", flat=True)) | {username}
+
+
+def ticket_form_view(ticket, design, own_task, status_key, *, include_legacy_fields=True):
+    from apps.itsm.services.form.fetch import public_schema
+
+    form = ticket.workflow.form if ticket.workflow_id and ticket.workflow.form_id else None
+    schema = workflow_schema(ticket.workflow_version) if ticket.workflow_version_id else {}
+    values = ticket.form_data or {}
+    schema = public_schema(schema, values.get("_field_labels"))
+    fields = schema.get("fields") if isinstance(schema, dict) else None
+    if not fields:
+        fields = [{"key": key, "label": key, "type": "input"} for key in values] if include_legacy_fields else []
+    fields = _apply_view_template(form, fields, status_key)
+    permissions = (
+        _find_node(design, node_id=own_task.node_id).get("field_perm", {})
+        if own_task
+        else _find_node(design, node_type="submit").get("field_perm", {})
+    )
+    visible_keys = set()
+
+    def visible_fields(items):
+        result = []
+        for field in items:
+            hidden = field.get("state") == "hidden" or permissions.get(field.get("key"), permissions.get("*")) == "hidden"
+            if hidden:
+                continue
+            visible_keys.add(field.get("key"))
+            copied = dict(field)
+            if copied.get("children"):
+                copied["children"] = visible_fields(copied["children"])
+            result.append(copied)
+        return result
+
+    fields = visible_fields(fields)
+    return fields, {key: value for key, value in values.items() if key in visible_keys}, schema, permissions
+
+
+def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False):
     from apps.itsm.services.ticket.history import current_round_start
 
+    principals = ticket_principals(ticket, username)
+    tasks = list(ticket.tasks.all())
     design = ticket.workflow_version.design if ticket.workflow_version_id else {}
     round_start = current_round_start(ticket, tasks, design)
     round_tasks = [task for task in tasks if not round_start or task.created_at >= round_start]
@@ -182,38 +219,8 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     pending = [task for task in tasks if task.status in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}]
     pending_ids = {task.node_id for task in pending}
     status_key = ticket.status.key if ticket.status_id else ""
-    design = ticket.workflow_version.design if ticket.workflow_version_id else {}
-    form = ticket.workflow.form if ticket.workflow_id and ticket.workflow.form_id else None
-    schema = workflow_schema(ticket.workflow_version) if ticket.workflow_version_id else {}
-    from apps.itsm.services.form.fetch import public_schema
-
-    schema = public_schema(schema, (ticket.form_data or {}).get("_field_labels"))
-    fields = schema.get("fields") if isinstance(schema, dict) else None
-    if not fields:
-        fields = [{"key": key, "label": key, "type": "input"} for key in (ticket.form_data or {})]
-    fields = _apply_view_template(form, fields, status_key)
     own_task = next((task for task in pending if privileged or task.assignee in principals), None)
-    permissions = (
-        _find_node(design, node_id=own_task.node_id).get("field_perm", {})
-        if own_task
-        else _find_node(design, node_type="submit").get("field_perm", {})
-    )
-    visible_keys = set()
-
-    def visible_fields(items, inherited_hidden=False):
-        result = []
-        for field in items:
-            hidden = inherited_hidden or field.get("state") == "hidden" or permissions.get(field.get("key"), permissions.get("*")) == "hidden"
-            if hidden:
-                continue
-            visible_keys.add(field.get("key"))
-            copied = dict(field)
-            if copied.get("children"):
-                copied["children"] = visible_fields(copied["children"])
-            result.append(copied)
-        return result
-
-    fields = visible_fields(fields)
+    fields, values, _, _ = ticket_form_view(ticket, design, own_task, status_key)
 
     stages = []
     if ticket.workflow_id:
@@ -307,7 +314,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         "title": ticket.title,
         "status": status_key,
         "creator": ticket.creator,
-        "form_data": {key: value for key, value in (ticket.form_data or {}).items() if key in visible_keys},
+        "form_data": values,
         "fields": fields,
         "stages": stages,
         "extra_actions": extra_actions,

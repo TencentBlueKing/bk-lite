@@ -5,11 +5,10 @@ from functools import wraps
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
-from jinja2 import TemplateError
-from jinja2.sandbox import SandboxedEnvironment
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import itsm_logger as logger
@@ -42,12 +41,19 @@ from apps.itsm.models.extend import (
 )
 from apps.itsm.services.ticket.actions import node_actions, node_required_opinions
 from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
+from apps.itsm.services.ticket.printing import (
+    PrintTemplateError,
+    PrintTicketContext,
+    normalize_print_template,
+    render_print_example,
+    render_ticket_print,
+)
 from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
 from apps.itsm.services.trigger_config import TriggerConfigError, normalize_trigger
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.knowledge import knowledge_resources
-from apps.itsm.views.tickets import _service, _user
+from apps.itsm.views.tickets import _service, _user, ticket_form_view, ticket_principals
 
 KINDS = {
     "views": (TicketSavedView, ["name", "filters", "columns"]),
@@ -203,7 +209,7 @@ def _list_resources(request, kind, model, fields):
     page = paginator.get_page(int(request.GET.get("page") or 1))
     items = [_public(item, fields) for item in page]
     data = {"items": items, "count": paginator.count}
-    if kind in {"schedules", "triggers", "surveys"}:
+    if kind in {"schedules", "triggers", "surveys", "prints"}:
         menu = RESOURCE_MENUS[kind]
         data.update(
             can_add=has_permission(request, f"{menu}-Add"),
@@ -228,7 +234,7 @@ def resources(request, kind):
     model, fields = spec
     if request.method == "GET":
         return _list_resources(request, kind, model, fields)
-    if kind in {"surveys", "triggers"} and request.method != "POST":
+    if kind in {"surveys", "prints", "triggers"} and request.method != "POST":
         return WebUtils.response_error("不支持的请求方法", status_code=405)
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
@@ -237,11 +243,6 @@ def resources(request, kind):
         return _save_schedule(request, values)
     if kind == "triggers":
         return _save_trigger(request, values)
-    if kind == "surveys":
-        try:
-            values = normalize_survey_template(values, creating=True)
-        except SurveyValidationError as exc:
-            return WebUtils.response_error(error_message=str(exc))
     if kind == "reports":
         values["username"] = _user(request)
     if kind == "preferences":
@@ -264,6 +265,12 @@ def resources(request, kind):
         values["end_at"] = end
         if start and end and ChangeWindow.objects.filter(domain=domain_of(request)).filter(start_at__lt=end, end_at__gt=start).exists():
             return WebUtils.response_error("变更窗口冲突")
+    if kind in {"prints", "surveys"}:
+        normalize = normalize_print_template if kind == "prints" else normalize_survey_template
+        try:
+            values = normalize(values, creating=True)
+        except (PrintTemplateError, SurveyValidationError) as exc:
+            return WebUtils.response_error(error_message=str(exc))
     if kind == "vips" and not str(values.get("username") or "").strip():
         return WebUtils.response_error("请选择用户")
     if kind == "proxies" and (not str(values.get("principal") or "").strip() or not str(values.get("agent") or "").strip()):
@@ -301,7 +308,7 @@ def resource_item(request, kind, item_id):
     model, fields = spec
     item = resource_scope(request, kind, model).filter(id=item_id).first()
     if item is None:
-        return WebUtils.response_error("记录不存在")
+        return WebUtils.response_error("记录不存在", status_code=404) if kind == "prints" else WebUtils.response_error("记录不存在")
     if kind == "handovers" and item.results:
         return WebUtils.response_error("交接执行记录不允许修改或删除", status_code=405)
     if request.method == "DELETE":
@@ -316,10 +323,11 @@ def resource_item(request, kind, item_id):
         return _save_schedule(request, values, item)
     if kind == "triggers":
         return _save_trigger(request, values, item)
-    if kind == "surveys":
+    if kind in {"prints", "surveys"}:
+        normalize = normalize_print_template if kind == "prints" else normalize_survey_template
         try:
-            values = normalize_survey_template(values)
-        except SurveyValidationError as exc:
+            values = normalize(values)
+        except (PrintTemplateError, SurveyValidationError) as exc:
             return WebUtils.response_error(error_message=str(exc))
     for field, value in values.items():
         setattr(item, field, value)
@@ -529,17 +537,29 @@ def create_child(request, ticket_id):
 
 
 @csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("print-View")
+def preview_print_template(request):
+    return WebUtils.response_success({"html": render_print_example()})
+
+
+@require_GET
 @api_errors
 @HasPermission("ticket-View")
 def render_print(request, ticket_id):
-    ticket = get_ticket(request, ticket_id)
-    template = PrintTemplate.objects.filter(domain=domain_of(request)).order_by("-id").first()
-    body = template.body if template else "{{ title }}"
-    try:
-        rendered = SandboxedEnvironment(autoescape=True).from_string(body).render(title=ticket.title, sn=ticket.sn, creator=ticket.creator)
-    except TemplateError as exc:
-        raise ValueError("打印模板不合法") from exc
-    return WebUtils.response_success({"html": rendered})
+    scoped = ticket_scope(request).select_related(
+        "status", "service", "workflow__form__current_version", "workflow_version__workflow__form__current_version"
+    )
+    ticket = get_object_or_404(scoped.prefetch_related("tasks"), pk=ticket_id)
+    active = [task for task in ticket.tasks.all() if task.status in ACTIVE_STATUSES]
+    privileged = bool(getattr(request.user, "is_superuser", False))
+    principals = set() if privileged or not active else ticket_principals(ticket, _user(request))
+    own_task = next((task for task in active if privileged or task.assignee in principals), None)
+    design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+    status_key = ticket.status.key if ticket.status_id else ""
+    form = ticket_form_view(ticket, design, own_task, status_key, include_legacy_fields=False)
+    return WebUtils.response_success({"html": render_ticket_print(PrintTicketContext(ticket, active, *form))})
 
 
 @csrf_exempt
