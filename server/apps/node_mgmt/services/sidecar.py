@@ -782,6 +782,7 @@ class Sidecar:
             request_data.update(cpu_architecture=NodeConstants.X86_64_ARCH)
 
         created = False
+        first_sidecar_contact = bool(node) and not node.status
         if not node:
             node, node_id, created = Sidecar._create_sidecar_node(node_id, request_data)
             if created:
@@ -790,6 +791,9 @@ class Sidecar:
                 Sidecar._consume_deferred_module_push(node)
 
         if not created:
+            if first_sidecar_contact:
+                Sidecar.create_default_config(node, node_types)
+                Sidecar._consume_deferred_module_push(node)
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
 
         Sidecar._notify_collectors_node_returned(node)

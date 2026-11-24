@@ -142,7 +142,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
             instance_name = response.data.get("name", "")
-            log_operation(request, "create", "system-manager", f"新增集成实例: {instance_name}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=response.data.get("id"),
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.create: created, "
                 f"instance_id={response.data.get('id')}, instance_name={instance_name!r}, "
@@ -164,7 +173,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         response = super().update(request, *args, **kwargs)
         if response.status_code == 200:
             instance_name = response.data.get("name", "")
-            log_operation(request, "update", "system-manager", f"编辑集成实例: {instance_name}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=obj.id,
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.update: updated, "
                 f"instance_id={obj.id}, instance_name={instance_name!r}, "
@@ -189,7 +207,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
 
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除集成实例: {instance_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=obj.id,
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.destroy: deleted, "
                 f"instance_id={obj.id}, instance_name={instance_name!r}, "
@@ -260,7 +287,17 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
             )
         obj.save(update_fields=["status", "capability_status", "updated_at"])
 
-        log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
+        log_operation(
+            request,
+            "execute",
+            "system-manager",
+            f"测试集成实例连接: {obj.name}",
+            target_type="integration_instance",
+            target_id=obj.id,
+            target_name=obj.name,
+            outcome="success" if result.success else "failure",
+            failure_reason="" if result.success else (result.summary or ""),
+        )
         if not result.success:
             # Runtime 负责唯一的失败告警；此处仅保留状态落库后的调试上下文。
             logger.debug(

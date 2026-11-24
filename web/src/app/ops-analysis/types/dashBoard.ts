@@ -148,6 +148,10 @@ export interface ValueConfig {
   barMode?: 'relative' | 'absolute';
   /** absolute 模式下的满分。条宽为 clamp(value, 0, barMax) / barMax。 */
   barMax?: number;
+  /** 排行、饼图、柱状图的展示条数。缺省为全部。 */
+  displayLimit?: number;
+  /** 饼图和柱状图按数值降序。只存 true，缺省为关闭。 */
+  sortByValue?: boolean;
   dimensionField?: string;
   valueField?: string;
   /** 折线/柱状多选数值。有值时优先于 valueField；只选一个时与 valueField 同时写入。 */

@@ -4,6 +4,8 @@ export interface OperationLogFilterState {
   username?: string;
   app?: string;
   actionType?: string;
+  target?: string;
+  outcome?: string;
 }
 
 /**
@@ -31,6 +33,12 @@ export function buildOperationLogParams(
   }
   if (filters.actionType) {
     params.action_type = filters.actionType;
+  }
+  if (filters.target) {
+    params.target = filters.target;
+  }
+  if (filters.outcome) {
+    params.outcome = filters.outcome;
   }
   if (timeRange && timeRange.length === 2) {
     params.operation_time_start = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');

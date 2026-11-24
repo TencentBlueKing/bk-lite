@@ -7,7 +7,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.response import Response
 
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, OperationLog, User
 from apps.system_mgmt.serializers.im_notification_channel_serializer import (
     IMNotificationChannelSerializer,
     IMNotificationSyncRunSerializer,
@@ -476,6 +476,24 @@ def test_create_accepts_team_in_user_scope(api_client, authenticated_user, ready
 
     assert response.status_code == 201
     assert IMNotificationChannel.objects.get(name="scoped-channel").team == [1]
+
+
+@pytest.mark.django_db
+def test_create_writes_operation_log_as_system_manager(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/",
+        _im_channel_payload(ready_im_instance, name="audit-im-channel"),
+    )
+
+    assert response.status_code == 201
+    log = OperationLog.objects.get(target_name="audit-im-channel")
+    assert log.app == "system-manager"
+    assert log.action_type == "create"
+    assert log.target_type == "im_notification_channel"
 
 
 @pytest.mark.django_db

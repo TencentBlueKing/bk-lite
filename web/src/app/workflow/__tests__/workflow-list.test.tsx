@@ -146,7 +146,7 @@ describe('流程列表', () => {
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('is_builtin=false'), expect.anything());
   });
 
-  it('行内展示高频的编辑和运行，更多菜单按使用频率排列', async () => {
+  it('行内展示编排、修改和运行，更多菜单按使用频率排列', async () => {
     renderPage();
     await screen.findByText(workflow.name);
 
@@ -159,8 +159,10 @@ describe('流程列表', () => {
       expect.stringMatching(/刷新/),
     ]);
     expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
-    const editButton = screen.getByRole('button', { name: /编辑/ });
-    expect(editButton).not.toBeNull();
+    const editButton = screen.getByRole('button', { name: '编排' });
+    fireEvent.click(editButton);
+    expect(mocks.push).toHaveBeenCalledWith('/workflow/workflows/1?mode=edit');
+    expect(screen.getByRole('button', { name: '修改' })).not.toBeNull();
     expect(editButton.querySelector('.anticon')).toBeNull();
     expect(screen.getByRole('button', { name: '运行' })).not.toBeNull();
 
@@ -169,7 +171,7 @@ describe('流程列表', () => {
     const menu = document.querySelector('.ant-dropdown-menu');
     expect(menu).not.toBeNull();
     if (!menu) return;
-    expect(within(menu as HTMLElement).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['执行记录', '复制', '基本信息', '删除']);
+    expect(within(menu as HTMLElement).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['执行记录', '复制', '删除']);
     expect(within(menu as HTMLElement).queryByText('运行')).toBeNull();
     expect(menu.querySelector('.anticon')).toBeNull();
   });
@@ -390,7 +392,8 @@ describe('流程列表', () => {
     renderPage();
     await screen.findByText(workflow.name);
 
-    expect(screen.queryByRole('button', { name: /编辑/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '编排' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '修改' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /查看/ }));
     expect(mocks.push).toHaveBeenCalledWith('/workflow/workflows/1?mode=view');
   });
@@ -516,22 +519,23 @@ describe('流程列表', () => {
     expect(await screen.findByText('已复制为新的纯草稿')).not.toBeNull();
   });
 
-  it('已发布流程的基本信息可以改名称和描述，组织保持锁定', async () => {
+  it('已发布流程从行内修改名称和组织', async () => {
     mocks.patch.mockResolvedValue({ ...workflow, name: '改名后的流程' });
     renderPage();
     await screen.findByText(workflow.name);
 
-    fireEvent.click(screen.getByRole('button', { name: `更多操作：${workflow.name}` }));
-    fireEvent.click((await screen.findByText('基本信息')).closest('[role="menuitem"]')!);
+    fireEvent.click(screen.getByRole('button', { name: '修改' }));
 
-    const dialog = (await screen.findByText('编辑流程')).closest('.ant-modal') as HTMLElement;
-    expect((within(dialog).getByLabelText('组织') as HTMLInputElement).disabled).toBe(true);
+    const dialog = (await screen.findByText('修改流程')).closest('.ant-modal') as HTMLElement;
+    fireEvent.change(within(dialog).getByLabelText('组织'), { target: { value: '8' } });
     fireEvent.change(within(dialog).getByLabelText('流程名称'), { target: { value: '改名后的流程' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /确\s*定|OK/ }));
 
     await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/workflow/api/workflows/1/', {
       name: '改名后的流程',
       description: workflow.description,
+      team: [8],
+      draft_revision: workflow.draft_revision,
     }));
   });
 

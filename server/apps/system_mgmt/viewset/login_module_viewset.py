@@ -18,6 +18,7 @@ class LoginModuleViewSet(LanguageViewSet):
     菜单与 REST 路由均已关闭，保留仅用于存量兼容和直接测试。新认证源
     配置应走集成中心 Provider，不得重新暴露本 ViewSet。
     """
+
     queryset = LoginModule.objects.all()
     serializer_class = LoginModuleSerializer
 
@@ -59,7 +60,16 @@ class LoginModuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 201:
             module_name = response.data.get("name", "")
-            log_operation(request, "create", "system-manager", f"新增认证源: {module_name}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增认证源: {module_name}",
+                target_type="login_module",
+                target_id=response.data.get("id"),
+                target_name=module_name,
+                outcome="success",
+            )
 
         return response
 
@@ -94,7 +104,16 @@ class LoginModuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 200:
             module_name = response.data.get("name", "")
-            log_operation(request, "update", "system-manager", f"编辑认证源: {module_name}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑认证源: {module_name}",
+                target_type="login_module",
+                target_id=obj.id,
+                target_name=module_name,
+                outcome="success",
+            )
 
         return response
 
@@ -137,7 +156,16 @@ class LoginModuleViewSet(LanguageViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除认证源: {module_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除认证源: {module_name}",
+                target_type="login_module",
+                target_id=obj.id,
+                target_name=module_name,
+                outcome="success",
+            )
 
         return response
 
@@ -147,7 +175,16 @@ class LoginModuleViewSet(LanguageViewSet):
         sync_user_and_group_by_login_module.delay(obj.id)
 
         # 记录操作日志
-        log_operation(request, "execute", "system-manager", f"开启认证源: {obj.name}")
+        log_operation(
+            request,
+            "execute",
+            "system-manager",
+            f"开启认证源: {obj.name}",
+            target_type="login_module",
+            target_id=obj.id,
+            target_name=obj.name,
+            outcome="accepted",
+        )
 
         message = self.loader.get("success.sync_task_initiated") if self.loader else "Sync task has been initiated."
         return JsonResponse({"result": True, "message": message})

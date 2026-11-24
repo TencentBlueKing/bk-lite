@@ -2,10 +2,7 @@ import type { DatasourceItem, ResponseFieldDefinition } from '@/app/ops-analysis
 import type { TableColumnConfigItem, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { resolveChartBinding } from '@/app/ops-analysis/utils/chartFieldContract';
-import {
-  hasExplicitLineBarMapping,
-  toLineBarFieldMapping,
-} from '@/app/ops-analysis/utils/lineBarFieldMapping';
+import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   formatVisibleChartValue,
   getLineBarYAxisName,
@@ -27,7 +24,15 @@ import {
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { resolveTopNHeaderLabel } from '@/app/ops-analysis/components/widgets/comTopN';
 import { parseTableLikeData, resolveTableLikeColumns, isSelfPagedTablePayload } from '@/app/ops-analysis/utils/tableLikeData';
-import { buildTopNItems, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
+import { buildTopNItems } from '@/app/ops-analysis/utils/topNData';
+import {
+  CHART_DISPLAY_I18N,
+  collectRawDimensionValues,
+  presentBar,
+  presentPie,
+  presentRanking,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
 
 /**
  * 非 NATS 取数把 page_size 钳到 1000（`_normalize_preview_limit`）。
@@ -64,6 +69,7 @@ export interface WidgetCsvLabels {
   indicator: string;
   name: string;
   seriesValue: string;
+  other: string;
 }
 
 type Translate = (id: string) => string;
@@ -75,6 +81,7 @@ export const buildWidgetCsvLabels = (t: Translate): WidgetCsvLabels => ({
   indicator: t('dashboard.csvIndicator'),
   name: t('dashboard.csvName'),
   seriesValue: t('topology.treeValueTitle'),
+  other: t(CHART_DISPLAY_I18N.other),
 });
 
 export interface CsvTable {
@@ -165,44 +172,6 @@ const formatChartCell = (value: unknown, config?: ValueConfig): string => {
   return String(value);
 };
 
-const collectRawDimensionValues = (rawData: unknown, config?: ValueConfig): unknown[] => {
-  const dimensionField = config?.dimensionField?.trim() || '';
-  if (hasExplicitLineBarMapping(config)) {
-    return unwrapTopNData(rawData).map((row) => {
-      if (!row || typeof row !== 'object' || Array.isArray(row)) return undefined;
-      return (row as Record<string, unknown>)[dimensionField];
-    });
-  }
-
-  if (Array.isArray(rawData)) {
-    if (rawData.length === 0) return [];
-    const first = rawData[0];
-    if (Array.isArray(first)) {
-      return rawData.map((item) => (Array.isArray(item) ? item[0] : undefined));
-    }
-    if (first && typeof first === 'object' && 'name' in (first as Record<string, unknown>)) {
-      return rawData.map((item) => (item as { name?: unknown }).name);
-    }
-    return [];
-  }
-
-  if (rawData && typeof rawData === 'object') {
-    const values: unknown[] = [];
-    Object.values(rawData as Record<string, unknown>).forEach((series) => {
-      if (!Array.isArray(series)) return;
-      series.forEach((item) => {
-        if (Array.isArray(item)) values.push(item[0]);
-        else if (item && typeof item === 'object' && 'name' in (item as Record<string, unknown>)) {
-          values.push((item as { name?: unknown }).name);
-        }
-      });
-    });
-    return values;
-  }
-
-  return [];
-};
-
 const lineDimensionHeader = (
   rawData: unknown,
   config: ValueConfig | undefined,
@@ -222,9 +191,18 @@ export const buildLineBarCsvTable = (
   config: ValueConfig | undefined,
   labels: WidgetCsvLabels,
   schema?: ResponseFieldDefinition[],
+  chartType?: string,
 ): CsvTable => {
   const mapping = toLineBarFieldMapping(config, schema);
-  const chart = ChartDataTransformer.transformToLineBarData(rawData, mapping);
+  const transformed = ChartDataTransformer.transformToLineBarData(rawData, mapping);
+  const resolvedChartType = chartType ?? config?.chartType;
+  const chart = resolvedChartType === 'bar'
+    ? presentBar(transformed, readChartDisplay(config), {
+      rawData,
+      mapping,
+      otherName: labels.other,
+    })
+    : transformed;
   const dimensionLabel = lineDimensionHeader(
     rawData,
     { ...config, dimensionField: mapping.dimensionField },
@@ -271,11 +249,15 @@ export const buildPieCsvTable = (
     dimensionField: config?.dimensionField,
     valueField: config?.valueField,
   });
-  const slices = ChartDataTransformer.transformToPieData(rawData, {
-    dimensionField: config?.dimensionField,
-    valueField: config?.valueField,
-    pieScalarFields: config?.pieScalarFields,
-  });
+  const slices = presentPie(
+    ChartDataTransformer.transformToPieData(rawData, {
+      dimensionField: config?.dimensionField,
+      valueField: config?.valueField,
+      pieScalarFields: config?.pieScalarFields,
+    }),
+    readChartDisplay(config),
+    labels.other,
+  );
   const titles = schemaWithResultTitles(schema);
   const dimensionKey = config?.dimensionField || binding.dimensionField;
   const valueKey = config?.valueField || binding.measureField;
@@ -302,9 +284,12 @@ export const buildTopNCsvTable = (
       || labels.value,
     config,
   );
-  const items = buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
-    scalarFields: config?.topNScalarFields,
-  });
+  const items = presentRanking(
+    buildTopNItems(rawData, config?.topNLabelField, config?.topNValueField, {
+      scalarFields: config?.topNScalarFields,
+    }),
+    readChartDisplay(config),
+  );
   return {
     headers: [labelHeader, valueHeader],
     rows: items.map((item) => [item.name, formatChartCell(item.value, config)]),
@@ -566,7 +551,13 @@ const buildChartTable = (
   switch (runtime.chartType) {
     case 'line':
     case 'bar':
-      return buildLineBarCsvTable(runtime.rawData, runtime.config, labels, schema);
+      return buildLineBarCsvTable(
+        runtime.rawData,
+        runtime.config,
+        labels,
+        schema,
+        runtime.chartType,
+      );
     case 'pie':
       return buildPieCsvTable(runtime.rawData, runtime.config, labels, schema);
     case 'topN':

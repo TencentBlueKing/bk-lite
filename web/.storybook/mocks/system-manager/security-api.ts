@@ -63,9 +63,12 @@ const loginLogs = [
     id: 1,
     username: 'alice',
     login_time: '2026-06-03 09:00:00',
-    location: 'Shanghai',
+    login_method: 'bk_lite_builtin',
+    login_method_display: '本地密码',
+    used_otp: false,
     os_info: 'macOS',
     browser_info: 'Chrome',
+    client_display: 'macOS Chrome',
     source_ip: '127.0.0.1',
     status: 'success',
     status_display: 'Success',
@@ -92,8 +95,17 @@ const errorLogs = [
     id: 1,
     username: 'alice',
     app: 'monitor',
+    app_name: '监控中心',
     module: 'permission',
     error_message: 'Permission rule validation failed',
+    recorded_text: 'Permission rule validation failed',
+    parsed: false,
+    method: '',
+    path: '',
+    exception_type: '',
+    reason: '',
+    stack_text: '',
+    stack_trace: '',
     domain: 'domain.com',
     created_at: '2026-06-03 09:20:00',
   },
@@ -128,6 +140,8 @@ export const useSecurityApi = () => {
     items: errorLogs,
   });
 
+  const exportErrorLogs = async () => new Blob();
+
   const getOpenApiCallLogs = async () => ({
     count: 0,
     items: [],
@@ -148,6 +162,7 @@ export const useSecurityApi = () => {
     getOperationLogs,
     exportOperationLogs,
     getErrorLogs,
+    exportErrorLogs,
     getOpenApiCallLogs,
     exportOpenApiCallLogs,
   };

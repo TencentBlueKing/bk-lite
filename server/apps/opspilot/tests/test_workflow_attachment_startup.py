@@ -221,7 +221,7 @@ def test_build_attachment_bytes_pptx_uses_cover_callout_and_point_pages():
     texts = [_pptx_slide_text(slide) for slide in deck.slides]
     assert "巡检" in texts[0]
     assert "•" not in texts[0]
-    assert any("核心结论" in text and "• 磁盘满" in text for text in texts)
+    assert any("核心结论" in text and "磁盘满" in text and "•" not in text for text in texts)
     assert any("明细" in text and "• 五" in text for text in texts)
     assert sum("明细" in text for text in texts) == 2
 
@@ -247,6 +247,307 @@ def test_build_attachment_bytes_pptx_renders_markdown_tables():
     assert piped_tables[0].cell(0, 0).text == "SEED-AC-02"
     assert piped_tables[0].cell(1, 3).text == "admin"
     assert "•" not in piped_tables[0].cell(0, 0).text
+
+
+def test_build_attachment_bytes_pptx_renders_metric_cards_not_markdown():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 活动告警汇总
+
+告警中心现状、处置缺口与改进建议
+
+## 现状
+
+7 条告警中，3 条仍未闭环
+
+- **3** 条活动告警，占全部 7 条的 42.9%
+- **7** 告警总数，当前授权组织下的全部记录
+- **4** 已闭环告警，人工关闭与自动恢复都有
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="活动告警汇总")))
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
+    blob = "\n".join(texts)
+    assert "**" not in blob
+    assert "#" not in blob
+    assert "|" not in blob
+    assert any("活动告警汇总" in text and "处置缺口" in text and "•" not in text for text in texts)
+    metric = next(text for text in texts if "42.9%" in text)
+    assert "•" not in metric
+    assert "3 条" in metric
+    assert "告警总数" in metric
+    assert "7 条告警中，3 条仍未闭环" in metric
+
+
+def test_build_attachment_bytes_pptx_puts_h3_and_actions_side_by_side():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 环节
+
+三个环节各卡一条
+
+### 待响应
+SEED-AC-01 无人开始处置
+
+### 处理中
+SEED-AC-02 未推进到闭环
+
+### 未分派
+SEED-AC-03 尚未进入流程
+
+## 动作
+
+1. **逐条核实**：已恢复的直接关闭
+2. **认领未分派**：先指定责任人
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
+    blob = "\n".join(texts)
+    assert "**" not in blob
+    status = next(text for text in texts if "待响应" in text and "未分派" in text)
+    assert "•" not in status
+    assert "01" in status
+    assert "SEED-AC-03" in status
+    action = next(text for text in texts if "逐条核实" in text)
+    assert "已恢复的直接关闭" in action
+    assert "02" in action
+    assert "•" not in action
+    body = next(
+        paragraph
+        for slide in deck.slides
+        for shape in slide.shapes
+        if shape.has_text_frame
+        for paragraph in shape.text_frame.paragraphs
+        if "无人开始处置" in paragraph.text
+    )
+    assert body.line_spacing == 1.45
+    assert body.space_before.pt == 6
+
+
+def test_build_attachment_bytes_pptx_splits_packed_action_labels():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 后续建议
+
+- **优先指派**：将未分派的 SEED-AC-03 明确处理人，避免遗漏 **关注重复**：noperm-host-10.10.70.21 同时存在磁盘过高与磁盘使用率过高两条告警 **推进处理**：2 条 pending 告警需尽快响应，2 条 processing 告警需跟进闭环
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+    text = _pptx_slide_text(deck.slides[-1])
+    assert "后续建议" in text
+    assert "•" not in text
+    assert "01" in text and "优先指派" in text
+    assert "02" in text and "关注重复" in text
+    assert "03" in text and "推进处理" in text
+
+
+def test_build_attachment_bytes_pptx_lays_out_briefing_bullets():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 活动告警统计汇总
+
+统计范围：当前全部未关闭活动告警工单 告警总数：5 条 涉及资源：4 个 数据来源：统一告警中心工单 报告版本：v1.0
+
+## 统计概览
+
+- 告警总数 5 条，全部为未关闭的活动告警
+- 处理中 2 条，待响应 2 条，未分派 1 条
+- 等级均为 0，来源均为「本地验收」
+- 资源类型均为主机（host），涉及 4 个不同资源
+
+## 按状态分布
+
+- 处理中：2 条（SEED-OG-02、SEED-AC-02）
+- 待响应：2 条（SEED-OG-01、SEED-AC-01）
+- 未分派：1 条（SEED-AC-03）
+
+## 告警明细
+
+- SEED-OG-02：Guest组CPU过高，资源 noperm-opaque-01，处理中，处理人 admin
+- SEED-AC-01：磁盘使用率过高，资源 noperm-host-10.10.70.21，待响应，处理人 admin
+
+## 核心结论
+
+- SEED-AC-03 内存不足告警处于未分派状态，建议尽快指派处理人
+- noperm-host 出现 2 条磁盘类告警，建议优先核查磁盘容量
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="活动告警统计汇总")))
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
+    blob = "\n".join(texts)
+    cover = texts[0].replace("\n", "")
+    assert "•" not in texts[0]
+    assert "统计范围：当前全部未关闭活动告警工单" in cover
+    assert "告警总数：5" not in cover
+    assert "5 条" in cover
+    assert "报告版本：v1.0" in cover
+    overview = next(text for text in texts if "统计概览" in text)
+    assert "•" not in overview
+    assert "处理中" in overview and "待响应" in overview
+    detail = next(slide for slide in deck.slides if any(shape.has_table for shape in slide.shapes))
+    table = next(shape.table for shape in detail.shapes if shape.has_table)
+    assert table.cell(0, 0).text == "编号"
+    assert table.cell(1, 0).text == "SEED-OG-02"
+    assert "处理人" in table.cell(0, 1).text or any(cell.text == "处理人" for cell in table.rows[0].cells)
+    conclusion = next(text for text in texts if "核心结论" in text)
+    assert "•" not in conclusion
+    assert "指派处理人" in conclusion
+    assert "SEED-OG-02：" not in blob
+
+
+def test_build_attachment_bytes_pptx_keeps_table_intro_on_the_table_slide():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = "# 汇总\n\n副标题\n\n## 活动告警\n\n三条活动告警：磁盘、CPU、内存各一条\n\n| 告警 ID | 告警内容 | 状态 |\n| --- | --- | --- |\n| SEED-AC-01 | 磁盘使用率过高 | 待响应 |\n"
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+    assert len(deck.slides) == 2
+    text = _pptx_slide_text(deck.slides[1])
+    assert "三条活动告警" in text
+    assert "•" not in text
+    tables = [shape.table for shape in deck.slides[1].shapes if shape.has_table]
+    assert tables[0].cell(1, 0).text == "SEED-AC-01"
+
+
+def test_build_attachment_bytes_pptx_keeps_prose_beside_metric_cards():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 概览
+
+本周只看未关闭工单。
+
+- 处理中 2 条，仍在排查
+- 待响应 3 条
+- 等级均为 0
+- 来源均为本地验收
+
+## 更多
+
+- 甲 1 条，乙 2 条，丙 3 个
+- 丁 4 台，戊 5 次，己 6 人
+
+## 双说明
+
+第一句说明。
+
+第二句说明也不能丢。
+
+- 处理中 2 条
+- 待响应 3 条
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+    overview = next(_pptx_slide_text(slide) for slide in deck.slides if "概览" in _pptx_slide_text(slide))
+    assert "本周只看未关闭工单" in overview
+    assert "等级均为 0" in overview
+    assert "来源均为本地验收" in overview
+    assert "仍在排查" in overview
+    more = next(_pptx_slide_text(slide) for slide in deck.slides if "更多" in _pptx_slide_text(slide))
+    assert "己" in more and "6" in more
+    doubled = next(_pptx_slide_text(slide) for slide in deck.slides if "第一句说明" in _pptx_slide_text(slide))
+    assert "第二句说明也不能丢" in doubled
+    assert "处理中" in doubled
+
+
+def test_build_attachment_bytes_pptx_keeps_section_intro_with_cards():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 核心结论
+
+先看这段总述，不能丢。
+
+- 第一条，建议甲
+- 第二条，建议乙
+
+## 环节
+
+第一句说明
+
+第二句说明也不能丢
+
+### 甲
+正文甲
+
+### 乙
+正文乙
+
+## 动作
+
+先做这两件。
+
+1. **逐条核实**：已恢复的直接关闭
+2. **认领未分派**：先指定责任人
+
+## 分布
+
+按来源看。
+
+- 处理中：2 条（SEED-OG-02）
+- 待响应：2 条（SEED-OG-01）
+
+## 告警明细
+
+只看这两条。
+
+- SEED-OG-02：Guest组CPU过高，资源 noperm-opaque-01，处理中，处理人 admin
+- SEED-AC-01：磁盘使用率过高，资源 noperm-host-10.10.70.21，待响应，处理人 admin
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+
+    def slide_blob(slide) -> str:
+        parts = [_pptx_slide_text(slide)]
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            parts.extend(cell.text for row in shape.table.rows for cell in row.cells)
+        return "\n".join(parts)
+
+    texts = [slide_blob(slide) for slide in deck.slides]
+    conclusion = next(text for text in texts if "建议甲" in text)
+    assert "先看这段总述，不能丢" in conclusion
+    status = next(text for text in texts if "正文甲" in text)
+    assert "第一句说明" in status
+    assert "第二句说明也不能丢" in status
+    action = next(text for text in texts if "逐条核实" in text)
+    assert "先做这两件" in action
+    spread = next(text for text in texts if "按来源看" in text)
+    assert "处理中" in spread and "SEED-OG-02" in spread
+    detail = next(text for text in texts if "只看这两条" in text)
+    assert "只看这两条" in detail
+    assert "admin" in detail
+
+
+def test_build_attachment_bytes_pptx_unescapes_literal_newlines():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = "# 第一页\\n\\n要点\\n\\n# 第二页\\n\\n收尾"
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="第一页")))
+    texts = [_pptx_slide_text(slide) for slide in deck.slides]
+    blob = "\n".join(texts)
+    assert len(deck.slides) >= 2
+    assert "第一页" in texts[0]
+    assert "第二页" in texts[1]
+    assert "# " not in blob
+    assert "\\n" not in blob
 
 
 def test_normalize_attachment_file_type_rewrites_alias_extension():

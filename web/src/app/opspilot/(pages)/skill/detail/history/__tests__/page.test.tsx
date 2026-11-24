@@ -1,8 +1,16 @@
 import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SkillHistoryPage from '../page';
+import zh from '@/app/opspilot/locales/zh.json';
+
+const analysisApi = vi.hoisted(() => ({
+  list: vi.fn(), create: vi.fn(), preview: vi.fn(), report: vi.fn(), retry: vi.fn(), pdf: vi.fn(),
+}));
+const savePdf = vi.hoisted(() => vi.fn());
+vi.mock('@/app/opspilot/api/historyAnalysis', () => ({ useHistoryAnalysisApi: () => analysisApi }));
+vi.mock('file-saver', () => ({ saveAs: savePdf }));
 
 const mockFetchSkillChannels = vi.fn();
 const mockFetchAdminSkillConversations = vi.fn();
@@ -16,13 +24,17 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback || key,
+    t: (key: string, fallback?: string, values: Record<string, string | number> = {}) => {
+      const entries: Record<string, string> = zh.skill.analysis;
+      const text = key.startsWith('skill.analysis.') ? entries[key.slice('skill.analysis.'.length)] : fallback || key;
+      return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name]));
+    },
   }),
 }));
 
 vi.mock('@/hooks/useLocalizedTime', () => ({
   useLocalizedTime: () => ({
-    convertToLocalizedTime: (value: string) => value,
+    convertToLocalizedTime: (value: string) => value, timeZone: 'Asia/Shanghai',
   }),
 }));
 
@@ -130,5 +142,68 @@ describe('SkillHistoryPage', () => {
     expect(screen.getByTestId('readonly-chat').getAttribute('data-mode')).toBe('display');
     expect(screen.queryByPlaceholderText('chat.inputPlaceholder')).toBeNull();
     expect(screen.queryByText('发送')).toBeNull();
+  });
+
+  it('requires a preview and submits the selected time range once', async () => {
+    analysisApi.list.mockResolvedValue({ items: [], count: 0 });
+    analysisApi.preview.mockResolvedValue({ conversation_count: 2, question_count: 4, issue: '' });
+    analysisApi.create.mockResolvedValue({ id: 5 });
+    render(<SkillHistoryPage />);
+    fireEvent.click(screen.getByText('智能分析'));
+    fireEvent.click(await screen.findByText('新建分析'));
+    const submit = screen.getByRole('button', { name: '创建任务' });
+    expect(submit).toHaveProperty('disabled', true);
+    await screen.findByText('覆盖 2 个对话、4 条用户提问');
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await waitFor(() => expect(analysisApi.create).toHaveBeenCalledTimes(1));
+    expect(analysisApi.create).toHaveBeenCalledWith(expect.objectContaining({ scope: 'range', start: expect.any(String), end: expect.any(String) }),
+      expect.objectContaining({ objective: 'overview', name: expect.stringContaining('综合分析'), request_id: expect.any(String) }));
+  });
+
+  it('retains selected conversations across pages and blocks an empty preview', async () => {
+    analysisApi.list.mockResolvedValue({ items: [], count: 0 });
+    analysisApi.preview.mockImplementation(async scope => ({ conversation_count: 2, question_count: 2, issue: scope.scope === 'range' ? 'empty' : '' }));
+    mockFetchAdminSkillConversations.mockImplementation(async ({ page = 1 }) => ({
+      count: 6, items: [{ title: '对话' + page, session_id: 's' + page, person_display: '用户', channel_name: 'web' }],
+    }));
+    render(<SkillHistoryPage />);
+    fireEvent.click(screen.getByText('智能分析'));
+    fireEvent.click(await screen.findByText('新建分析'));
+    await screen.findByText('范围内没有用户提问，请调整范围。');
+    expect(screen.getByRole('button', { name: '创建任务' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByText('指定对话'));
+    const modal = screen.getAllByRole('dialog').at(-1);
+    if (!modal) throw Error('Missing configuration dialog');
+    const picker = within(modal);
+    await picker.findByText('对话1');
+    fireEvent.click(picker.getAllByRole('checkbox')[1]);
+    fireEvent.click(picker.getByTitle('2'));
+    await picker.findByText('对话2');
+    fireEvent.click(picker.getAllByRole('checkbox')[1]);
+    await picker.findByText('已选 2 个对话');
+    await picker.findByText('覆盖 2 个对话、2 条用户提问');
+    fireEvent.click(picker.getByRole('button', { name: '创建任务' }));
+    await waitFor(() => expect(analysisApi.create).toHaveBeenCalledWith({ scope: 'sessions', session_ids: ['s1', 's2'] }, expect.any(Object)));
+  });
+
+  it('reopens a completed report, downloads its PDF and opens its cited message', async () => {
+    const task = { id: 5, name: '连接质量', creator: 'alice', created_at: '2026-11-23', status: 'completed', objective: 'quality',
+      scope: { scope: 'sessions', session_ids: ['s-1'] }, conversation_count: 1, question_count: 1 };
+    analysisApi.list.mockResolvedValue({ items: [task], count: 1 });
+    analysisApi.report.mockResolvedValue({ ...task, focus: '', findings: [{ finding: '回答缺少重试步骤', suggestion: '添加重试说明',
+      evidence: [{ session_id: 's-1', message_id: 17 }] }] });
+    const pdf = new Blob(['%PDF-'], { type: 'application/pdf' });
+    analysisApi.pdf.mockResolvedValue(pdf);
+    render(<SkillHistoryPage />);
+    fireEvent.click(screen.getByText('智能分析'));
+    fireEvent.click(await screen.findByText('查看报告'));
+    expect(await screen.findByText('回答缺少重试步骤')).toBeTruthy();
+    fireEvent.click(screen.getByText('导出 PDF'));
+    await waitFor(() => expect(savePdf).toHaveBeenCalledWith(pdf, '连接质量.pdf'));
+    fireEvent.click(screen.getByText('查看原对话 #17'));
+    await waitFor(() => expect(mockFetchAdminSkillSessionMessages).toHaveBeenCalledWith('s-1', 17));
+    fireEvent.click(await screen.findByText('查看完整对话'));
+    await waitFor(() => expect(mockFetchAdminSkillSessionMessages).toHaveBeenCalledWith('s-1'));
   });
 });

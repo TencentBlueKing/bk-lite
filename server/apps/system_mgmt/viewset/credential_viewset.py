@@ -54,6 +54,9 @@ def _request_actor(request, current_team=None):
     }
 
 
+_FAILURE_AUDIT_CODES = frozenset({"in_use", "conflict", "immutable", "disabled"})
+
+
 def _audit_credential(request, action_type, summary, credential_id, detail):
     log_operation(
         request,
@@ -62,7 +65,27 @@ def _audit_credential(request, action_type, summary, credential_id, detail):
         summary,
         target_type="credential",
         target_id=credential_id,
+        target_name=(detail or {}).get("name") or "",
         detail=detail,
+        outcome="success",
+    )
+
+
+def _audit_credential_failure(request, exc, *, action_type, summary, credential_id="", detail=None):
+    code = getattr(exc, "code", "")
+    if code not in _FAILURE_AUDIT_CODES:
+        return
+    log_operation(
+        request,
+        action_type,
+        "system-manager",
+        summary,
+        target_type="credential",
+        target_id=credential_id,
+        target_name=(detail or {}).get("name") or "",
+        detail=detail,
+        outcome="failure",
+        failure_reason=code,
     )
 
 
@@ -140,6 +163,15 @@ class CredentialTypeViewSet(MaintainerViewSet):
         try:
             created = create_type(serializer.validated_data, _request_actor(request))
         except CredentialServiceError as exc:
+            name = serializer.validated_data.get("name") or ""
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="create",
+                summary=f"新增凭据类型: {name}",
+                credential_id=serializer.validated_data.get("key") or "",
+                detail={"name": name, "key": serializer.validated_data.get("key") or ""},
+            )
             return _error_response(exc)
         _audit_credential(
             request,
@@ -158,6 +190,14 @@ class CredentialTypeViewSet(MaintainerViewSet):
         try:
             updated = update_type(instance.key, serializer.validated_data, _request_actor(request))
         except CredentialServiceError as exc:
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="update",
+                summary=f"编辑凭据类型: {instance.name}",
+                credential_id=instance.key,
+                detail={"name": instance.name, "key": instance.key},
+            )
             return _error_response(exc)
         _audit_credential(
             request,
@@ -181,6 +221,14 @@ class CredentialTypeViewSet(MaintainerViewSet):
         try:
             delete_type(key, _request_actor(request))
         except CredentialServiceError as exc:
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="delete",
+                summary=f"删除凭据类型: {name}",
+                credential_id=key,
+                detail={"name": name, "key": key},
+            )
             return _error_response(exc)
         _audit_credential(request, "delete", f"删除凭据类型: {name}", key, {"name": name, "key": key})
         return Response(status=204)
@@ -247,6 +295,14 @@ class CredentialViewSet(MaintainerViewSet):
             created = create_credential(payload, actor=actor)
             public = get_credential(created.credential_id, actor["current_team"], actor=actor, owner_scope="manage")
         except CredentialServiceError as exc:
+            name = payload.get("name") or ""
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="create",
+                summary=f"新增凭据: {name}",
+                detail={"name": name, "type": payload.get("type") or "", "group_id": payload.get("group_id")},
+            )
             return _error_response(exc)
         _audit_credential(
             request,
@@ -268,6 +324,15 @@ class CredentialViewSet(MaintainerViewSet):
             updated = update_credential(kwargs.get("credential_id"), payload, actor=actor)
             public = get_credential(updated.credential_id, actor["current_team"], actor=actor, owner_scope="manage")
         except CredentialServiceError as exc:
+            name = payload.get("name") or ""
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="update",
+                summary=f"编辑凭据: {name}",
+                credential_id=kwargs.get("credential_id") or "",
+                detail={"name": name, "type": payload.get("type") or "", "group_id": payload.get("group_id")},
+            )
             return _error_response(exc)
         _audit_credential(
             request,
@@ -287,10 +352,23 @@ class CredentialViewSet(MaintainerViewSet):
     def destroy(self, request, *args, **kwargs):
         actor = _request_actor(request)
         credential_id = kwargs.get("credential_id")
+        public = None
         try:
             public = get_credential(credential_id, actor["current_team"], actor=actor, owner_scope="manage")
             delete_credential(credential_id, actor=actor, current_team=actor["current_team"])
         except CredentialServiceError as exc:
+            name = (public or {}).get("name") or ""
+            detail = {"name": name}
+            if public:
+                detail = {"name": public.get("name") or "", "type": public.get("type") or "", "group_id": public.get("group_id")}
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="delete",
+                summary=f"删除凭据: {name}",
+                credential_id=credential_id or "",
+                detail=detail,
+            )
             return _error_response(exc)
         _audit_credential(
             request,
@@ -357,6 +435,17 @@ class CredentialViewSet(MaintainerViewSet):
                 current_team=actor["current_team"],
             )
         except CredentialServiceError as exc:
+            credential_id = kwargs.get("credential_id") or ""
+            existing = Credential.objects.filter(credential_id=credential_id).first()
+            name = existing.name if existing else ""
+            _audit_credential_failure(
+                request,
+                exc,
+                action_type="update",
+                summary=f"{'停用' if disabled else '启用'}凭据: {name}",
+                credential_id=credential_id,
+                detail={"name": name, "disabled": disabled},
+            )
             return _error_response(exc)
         _audit_credential(
             request,

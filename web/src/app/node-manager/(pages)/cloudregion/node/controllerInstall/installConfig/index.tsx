@@ -22,7 +22,7 @@ import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import { useTableConfig } from './tableConfig';
 import { useTableRenderer } from './tableRenderer';
-import { DownOutlined, UploadOutlined } from '@ant-design/icons';
+import { CopyOutlined, DownOutlined, UploadOutlined } from '@ant-design/icons';
 import { Dropdown, Modal } from 'antd';
 import type { MenuProps } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +31,7 @@ import useNodeManagerApi from '@/app/node-manager/api';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { useInstallWays } from '@/app/node-manager/hooks/node';
+import { useHandleCopy } from '@/app/node-manager/hooks';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
@@ -56,6 +57,18 @@ import {
   type WinrmScheme
 } from '@/app/node-manager/utils/winrm';
 import { countAccessAssets } from './installNodeCount';
+import {
+  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_SUCCESS_COUNT,
+  BULK_EXPIRE_DAY_OPTIONS,
+  BULK_INSTALL_METHOD,
+  BULK_SUCCESS_COUNT_OPTIONS,
+  bulkCommandIncludesNodeIp,
+  bulkExpireHours,
+  dedupeControllerPackages,
+  installWaysForOs
+} from './bulkInstall';
+import { BulkInstallBatch } from '@/app/node-manager/types/controller';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -68,11 +81,17 @@ interface ControllerPlatformOption {
   description?: string;
 }
 
+const fieldHintTextClass =
+  'text-xs font-normal leading-[18px] text-[var(--color-text-3)]';
+const fieldHintClass = `mt-2 ${fieldHintTextClass}`;
+
 const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { installController, getNodeList } = useNodeManagerApi();
-  const { manualInstallController, getControllerList } = useControllerApi();
+  const { manualInstallController, getControllerList, createBulkInstall } =
+    useControllerApi();
+  const { handleCopy } = useHandleCopy();
   const commonContext = useUserInfoContext();
   const { clientData } = useClientData();
   const soldPushTargets = useMemo(
@@ -106,6 +125,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [versionLoading, setVersionLoading] = useState<boolean>(false);
   const [platformLoading, setPlatformLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
+  const [bulkBatch, setBulkBatch] = useState<BulkInstallBatch | null>(null);
   const [winrmCertValidation, setWinrmCertValidation] =
     useState<boolean>(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
   const [winrmScheme, setWinrmScheme] = useState<WinrmScheme>('https');
@@ -223,6 +243,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const isRemote = useMemo(() => {
     return installMethod === 'remoteInstall';
   }, [installMethod]);
+  const isBulk = installMethod === BULK_INSTALL_METHOD;
+  const installWayOptions = useMemo(
+    () =>
+      installWaysForOs(installWays, os, {
+        label: t('node-manager.cloudregion.node.bulkInstall'),
+        value: BULK_INSTALL_METHOD
+      }),
+    [installWays, os, t]
+  );
 
   const availableOSOptions = useMemo(() => {
     const osSet = new Set(controllerPlatforms.map((item) => item.os));
@@ -249,21 +278,26 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     );
   }, [controllerPlatforms, cpuArchitecture, os]);
 
-  // 对当前查询结果做去重，接口已按操作系统和 CPU 架构精确过滤
-  const filteredSidecarVersionList = useMemo(() => {
-    const deduped = new Map();
-    sidecarVersionList.forEach((item) => {
-      const key = `${item.os}-${item.cpu_architecture}-${item.version}`;
-      if (!deduped.has(key)) {
-        deduped.set(key, item);
-      }
-    });
-    return Array.from(deduped.values());
-  }, [sidecarVersionList]);
+  const filteredSidecarVersionList = useMemo(
+    () => dedupeControllerPackages(sidecarVersionList, isBulk),
+    [isBulk, sidecarVersionList]
+  );
 
   const noVersionAvailable = useMemo(() => {
-    return !!selectedPlatform && !versionLoading && filteredSidecarVersionList.length === 0;
-  }, [filteredSidecarVersionList.length, selectedPlatform, versionLoading]);
+    if (versionLoading) {
+      return false;
+    }
+    if (isBulk) {
+      return Boolean(os) && filteredSidecarVersionList.length === 0;
+    }
+    return !!selectedPlatform && filteredSidecarVersionList.length === 0;
+  }, [
+    filteredSidecarVersionList.length,
+    isBulk,
+    os,
+    selectedPlatform,
+    versionLoading
+  ]);
 
   const getControllerPlatforms = useCallback(async () => {
     setPlatformLoading(true);
@@ -337,6 +371,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       form.setFieldValue('sidecar_package', null);
     }
 
+    if (nextOs !== 'linux' && installMethod === BULK_INSTALL_METHOD) {
+      setInstallMethod('remoteInstall');
+    }
+
     if (nextOs !== os) {
       setOs(nextOs);
       setWinrmScheme('https');
@@ -362,7 +400,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       os: nextOs || undefined,
       cpu_architecture: nextArchitecture || undefined
     });
-  }, [availableOSOptions, controllerPlatforms, cpuArchitecture, createInfoItem, form, os, platformLoading]);
+  }, [
+    availableOSOptions,
+    controllerPlatforms,
+    cpuArchitecture,
+    createInfoItem,
+    form,
+    installMethod,
+    os,
+    platformLoading
+  ]);
 
   useEffect(() => {
     if (isLoading || hasFetchedPlatformsRef.current) {
@@ -374,12 +421,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }, [getControllerPlatforms, isLoading]);
 
   useEffect(() => {
-    if (!isLoading && os && cpuArchitecture) {
+    const ready = isBulk ? Boolean(os) : Boolean(os && cpuArchitecture);
+    if (!isLoading && ready) {
       getSidecarList();
       return;
     }
     setSidecarVersionList([]);
-  }, [isLoading, os, cpuArchitecture]);
+  }, [cpuArchitecture, isBulk, isLoading, os]);
 
   useEffect(() => {
     form.setFieldValue('install', installMethod);
@@ -616,6 +664,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const changeCollectType = (id: string) => {
     setInstallMethod(id);
+    setBulkBatch(null);
     setWinrmScheme('https');
     setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
     setTableData([
@@ -647,7 +696,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     try {
       const data = await getPackages({
         os,
-        cpu_architecture: cpuArchitecture,
+        ...(isBulk ? {} : { cpu_architecture: cpuArchitecture }),
         type: 'controller',
         object: 'Controller'
       });
@@ -660,7 +709,41 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     }
   };
 
+  const handleGenerateBulkCommand = async () => {
+    setConfirmLoading(true);
+    try {
+      const values = await form.validateFields();
+      const payload = await createBulkInstall({
+        cloud_region_id: cloudId,
+        package_id: Number(values.sidecar_package),
+        max_success_count: values.max_success_count ?? BULK_DEFAULT_SUCCESS_COUNT,
+        expires_in_hours: bulkExpireHours(values.expires_in_days ?? BULK_DEFAULT_EXPIRE_DAYS),
+        push_targets: values.push_targets || []
+      });
+      setBulkBatch(payload);
+      message.success(t('node-manager.cloudregion.node.bulkCommandReady'));
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const openBulkProgress = () => {
+    if (!bulkBatch) {
+      return;
+    }
+    onNext({
+      installMethod: BULK_INSTALL_METHOD,
+      os,
+      bulkBatchId: bulkBatch.batch_id,
+      command: bulkBatch.command
+    });
+  };
+
   const handleCreate = async () => {
+    if (isBulk) {
+      await handleGenerateBulkCommand();
+      return;
+    }
     setConfirmLoading(true);
     try {
       const values = await form.validateFields();
@@ -756,7 +839,21 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   return (
     <div className="w-full min-w-0 max-w-full">
-      <Form form={form} name="basic" layout="vertical">
+      <Form
+        form={form}
+        name="basic"
+        layout="vertical"
+        onValuesChange={(changed) => {
+          if (
+            'max_success_count' in changed ||
+            'expires_in_days' in changed ||
+            'sidecar_package' in changed ||
+            'push_targets' in changed
+          ) {
+            setBulkBatch(null);
+          }
+        }}
+      >
         <Form.Item
           name="os"
           required
@@ -767,6 +864,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             value={os}
             onChange={(value) => {
               setOs(value);
+              setBulkBatch(null);
+              if (value !== 'linux' && installMethod === BULK_INSTALL_METHOD) {
+                setInstallMethod('remoteInstall');
+              }
               setWinrmScheme('https');
               setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
               setTableData([
@@ -785,42 +886,46 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             disabled={platformLoading || availableOSOptions.length <= 1}
           />
         </Form.Item>
-        <Form.Item<ControllerInstallFields>
-          name="cpu_architecture"
-          required
-          label={t('node-manager.cloudregion.node.cpuArchitecture')}
-          rules={[{ required: true, message: t('common.required') }]}
-        >
-          <Segmented
-            options={architectureOptions}
-            disabled={platformLoading || architectureOptions.length <= 1}
-            value={cpuArchitecture}
-            onChange={(value) => {
-              setCpuArchitecture(value);
-              form.setFieldValue('cpu_architecture', value);
-              form.setFieldValue('sidecar_package', null);
-            }}
-          />
-        </Form.Item>
+        {!isBulk && (
+          <Form.Item<ControllerInstallFields>
+            name="cpu_architecture"
+            required
+            label={t('node-manager.cloudregion.node.cpuArchitecture')}
+            rules={[{ required: true, message: t('common.required') }]}
+          >
+            <Segmented
+              options={architectureOptions}
+              disabled={platformLoading || architectureOptions.length <= 1}
+              value={cpuArchitecture}
+              onChange={(value) => {
+                setCpuArchitecture(value);
+                form.setFieldValue('cpu_architecture', value);
+                form.setFieldValue('sidecar_package', null);
+              }}
+            />
+          </Form.Item>
+        )}
         <Form.Item<ControllerInstallFields>
           required
           label={t('node-manager.cloudregion.node.installationMethod')}
         >
           <Form.Item name="install" noStyle>
             <Segmented
-              options={installWays}
+              options={installWayOptions}
               value={installMethod}
               onChange={changeCollectType}
             />
           </Form.Item>
-          <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
-            {isRemote
-              ? t(
-                os === 'windows'
-                  ? 'node-manager.cloudregion.node.windowsRemoteInstallDes'
-                  : 'node-manager.cloudregion.node.installWayDes'
-              )
-              : t('node-manager.cloudregion.node.autoInstallDes')}
+          <div className={fieldHintClass}>
+            {isBulk
+              ? t('node-manager.cloudregion.node.bulkInstallDes')
+              : isRemote
+                ? t(
+                  os === 'windows'
+                    ? 'node-manager.cloudregion.node.windowsRemoteInstallDes'
+                    : 'node-manager.cloudregion.node.installWayDes'
+                )
+                : t('node-manager.cloudregion.node.autoInstallDes')}
           </div>
         </Form.Item>
         {isRemote && os === 'windows' && (
@@ -865,10 +970,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               }))}
             />
           </Form.Item>
-          <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
-            {t('node-manager.cloudregion.node.sidecarVersionDes', undefined, {
-              architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture
-            })}
+          <div className={fieldHintClass}>
+            {isBulk
+              ? t('node-manager.cloudregion.node.bulkSidecarVersionDes')
+              : t('node-manager.cloudregion.node.sidecarVersionDes', undefined, {
+                architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture
+              })}
           </div>
           {noVersionAvailable && (
             <div className="mt-[8px] max-w-[420px]">
@@ -877,7 +984,11 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                 showIcon
                 message={t('node-manager.cloudregion.node.noControllerVersionTitle')}
                 description={t('node-manager.cloudregion.node.noControllerVersionDesc', undefined, {
-                  architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture,
+                  architecture: isBulk
+                    ? 'x86_64 / ARM64'
+                    : cpuArchitecture === 'arm64'
+                      ? 'ARM64'
+                      : cpuArchitecture,
                   os: os === 'windows' ? 'Windows' : 'Linux'
                 })}
               />
@@ -885,23 +996,107 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           )}
         </Form.Item>
         {soldPushTargets.length > 0 && (
-          <Form.Item
-            name="push_targets"
-            label={t('node-manager.cloudregion.node.pushTargets')}
-            extra={t('node-manager.cloudregion.node.pushTargetsHint')}
-            initialValue={soldPushTargets}
-          >
-            <Checkbox.Group
-              options={soldPushTargets.map((target) => ({
-                label:
-                  target === 'cmdb'
-                    ? t('node-manager.cloudregion.node.pushTargetCmdb')
-                    : t('node-manager.cloudregion.node.pushTargetMonitor'),
-                value: target
-              }))}
-            />
+          <Form.Item label={t('node-manager.cloudregion.node.pushTargets')}>
+            <Form.Item
+              name="push_targets"
+              noStyle
+              initialValue={soldPushTargets}
+            >
+              <Checkbox.Group
+                options={soldPushTargets.map((target) => ({
+                  label:
+                    target === 'cmdb'
+                      ? t('node-manager.cloudregion.node.pushTargetCmdb')
+                      : t('node-manager.cloudregion.node.pushTargetMonitor'),
+                  value: target
+                }))}
+              />
+            </Form.Item>
+            <div className={fieldHintClass}>
+              {t('node-manager.cloudregion.node.pushTargetsHint')}
+            </div>
           </Form.Item>
         )}
+        {isBulk && (
+          <>
+            <Form.Item
+              required
+              label={t('node-manager.cloudregion.node.bulkMaxSuccessCount')}
+            >
+              <Form.Item
+                name="max_success_count"
+                noStyle
+                initialValue={BULK_DEFAULT_SUCCESS_COUNT}
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  style={{ width: 300 }}
+                  options={BULK_SUCCESS_COUNT_OPTIONS.map((count) => ({
+                    value: count,
+                    label: t('node-manager.cloudregion.node.bulkSuccessCountOption', '', { count })
+                  }))}
+                />
+              </Form.Item>
+              <div className={fieldHintClass}>
+                {t('node-manager.cloudregion.node.bulkMaxSuccessCountHint')}
+              </div>
+            </Form.Item>
+            <Form.Item
+              required
+              label={t('node-manager.cloudregion.node.bulkExpireDays')}
+            >
+              <Form.Item
+                name="expires_in_days"
+                noStyle
+                initialValue={BULK_DEFAULT_EXPIRE_DAYS}
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  style={{ width: 300 }}
+                  options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
+                    value: count,
+                    label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
+                  }))}
+                />
+              </Form.Item>
+              <div className={fieldHintClass}>
+                {t('node-manager.cloudregion.node.bulkExpireDaysHint')}
+              </div>
+            </Form.Item>
+            {bulkBatch && (
+              <div className="mb-[16px]">
+                <div className="mb-[8px] flex items-center justify-between gap-[8px]">
+                  <span className="text-[14px]">
+                    {t('node-manager.cloudregion.node.bulkCommand')}
+                  </span>
+                  <Button
+                    icon={<CopyOutlined />}
+                    onClick={() => {
+                      if (bulkCommandIncludesNodeIp(bulkBatch.command)) {
+                        handleCopy({ value: bulkBatch.command });
+                      }
+                    }}
+                  >
+                    {t('node-manager.cloudregion.node.bulkCopyCommand')}
+                  </Button>
+                </div>
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded border border-[var(--color-border-1)] bg-[var(--color-bg-7)] p-[12px] text-[12px]">
+                  {bulkBatch.command}
+                </pre>
+                <div className={fieldHintClass}>
+                  {t('node-manager.cloudregion.node.bulkCommandHint')}
+                </div>
+                <div className={`mt-1 ${fieldHintTextClass}`}>
+                  {t('node-manager.cloudregion.node.bulkExpiresAt', '', {
+                    time: new Date(bulkBatch.expires_at).toLocaleString()
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {!isBulk && (
+        <>
         <div className="flex items-center justify-between mb-[10px]">
           <div className="flex items-center gap-[8px]">
             <span className="text-[14px]">
@@ -915,13 +1110,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             </span>
             <span
               aria-live="polite"
-              className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+              className="text-sm tabular-nums text-[var(--color-text-2)]"
             >
               {t('node-manager.cloudregion.node.installNodeCount', '', {
                 count: installNodeCount
               })}
             </span>
-            <span className="text-[12px] text-[var(--color-text-3)]">
+            <span className={fieldHintTextClass}>
               {t('node-manager.cloudregion.node.installNodeCountHint')}
             </span>
           </div>
@@ -969,20 +1164,47 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             rowSelection={rowSelection}
           />
         </Form.Item>
+        </>
+        )}
       </Form>
-      <div className="mt-[10px] pl-[20px]">
-        <Button
-          type="primary"
-          className="mr-[10px]"
-          loading={confirmLoading}
-          disabled={noVersionAvailable}
-          onClick={handleCreate}
-        >
-          {`${t('node-manager.cloudregion.node.toInstall')} (${
-            tableData.length
-          })`}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        {isBulk ? (
+          <>
+            <Button
+              type="primary"
+              autoInsertSpace={false}
+              loading={confirmLoading}
+              disabled={noVersionAvailable}
+              onClick={handleCreate}
+            >
+              {bulkBatch
+                ? t('node-manager.cloudregion.node.bulkRegenerateCommand')
+                : t('node-manager.cloudregion.node.bulkGenerateCommand')}
+            </Button>
+            <Button
+              autoInsertSpace={false}
+              disabled={!bulkBatch}
+              onClick={openBulkProgress}
+            >
+              {t('node-manager.cloudregion.node.bulkViewProgress')}
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="primary"
+            autoInsertSpace={false}
+            loading={confirmLoading}
+            disabled={noVersionAvailable}
+            onClick={handleCreate}
+          >
+            {`${t('node-manager.cloudregion.node.toInstall')} (${
+              tableData.length
+            })`}
+          </Button>
+        )}
+        <Button autoInsertSpace={false} onClick={cancel}>
+          {t('common.cancel')}
         </Button>
-        <Button onClick={cancel}>{t('common.cancel')}</Button>
       </div>
       <BatchEditModal
         ref={batchEditModalRef}

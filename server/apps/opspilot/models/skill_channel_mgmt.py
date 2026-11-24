@@ -180,3 +180,27 @@ class ChatAttachment(models.Model):
             models.Index(fields=["status", "created_at"], name="chat_att_status_created_idx"),
             models.Index(fields=["message", "status"], name="chat_att_message_status_idx"),
         ]
+
+
+class SkillHistoryAnalysis(TimeInfo):
+    skill = models.ForeignKey("LLMSkill", on_delete=models.CASCADE, related_name="history_analyses")
+    team = models.CharField(max_length=64)
+    creator = models.CharField(max_length=255)
+    request_id = models.UUIDField()
+    name = models.CharField(max_length=120)
+    objective = models.CharField(max_length=24)
+    focus = models.CharField(max_length=500, blank=True)
+    locale = models.CharField(max_length=12)
+    scope = models.JSONField()
+    # Store references only. Recheck that every source still exists before model invocation.
+    snapshot = models.JSONField()
+    conversation_count = models.PositiveIntegerField()
+    question_count = models.PositiveIntegerField()
+    status = models.CharField(max_length=16, default="queued")
+    attempt = models.PositiveIntegerField(default=1)
+    failure = models.CharField(max_length=32, blank=True)
+    findings = models.JSONField(default=list)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["skill", "team", "creator", "request_id"], name="uniq_skill_history_request")]
+        indexes = [models.Index(fields=["skill", "team", "-id"], name="skill_history_team_list")]
