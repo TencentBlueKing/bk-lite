@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
+import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -124,7 +124,7 @@ export function useItsmApi() {
   const retryAutoNode = useCallback((ticketId: number, executionId: number) => post(`/itsm/api/tickets/${ticketId}/auto/${executionId}/retry/`), [post]);
   const listScheduleRuns = useCallback((page: number, scheduleId?: number) => get('/itsm/api/schedules/runs/', { params: { page, schedule_id: scheduleId } }), [get]);
   const submitSurvey = useCallback(
-    (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
+    (id: number, body: SurveySubmission) => post(`/itsm/api/tickets/${id}/survey/`, body),
     [post],
   );
   const portal = useCallback(() => get<PortalData>('/itsm/api/services/portal/'), [get]);

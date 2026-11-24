@@ -2,6 +2,7 @@ import json
 
 from django.conf import settings
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -9,7 +10,7 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableClient
-from apps.itsm.models import TicketSurvey, TicketTask, WorkflowVersion
+from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
@@ -18,6 +19,7 @@ from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.returns import return_targets
 from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
+from apps.itsm.services.ticket.survey import SURVEY_READY, SurveyValidationError, survey_data, survey_snapshot, survey_submission
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.users import search_users
 
@@ -294,12 +296,13 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
 
     action_task = own_task or (pending[0] if pending else None)
     action_node = _find_node(design, node_id=action_task.node_id) if action_task else {}
+    survey = getattr(ticket, "survey", None)
     return {
         "history": history,
         "allowed_actions": allowed_actions,
         "action_display": node_action_display(action_node, allowed_actions),
         "required_opinion_actions": side_required_opinions(design, tasks, allowed_actions) if can_operate else [],
-        "can_survey": can_operate and ticket.creator == username and status_key == "finished",
+        "can_survey": can_operate and ticket.creator == username and status_key == "finished" and survey is None,
         "id": ticket.id,
         "sn": ticket.sn,
         "created_at": ticket.created_at.isoformat(),
@@ -329,7 +332,8 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
             {"from": edge.get("from") or "", "to": edge.get("to") or "", "default": bool(edge.get("default"))} for edge in (design.get("edges") or [])
         ],
         "logs": [{"action": item.action, "operator": item.operator, "message": item.message} for item in ticket.logs.all()],
-        "survey": {"score": ticket.survey.score, "comment": ticket.survey.comment} if hasattr(ticket, "survey") else None,
+        "survey": survey_data(survey) if survey is not None else None,
+        "survey_template": survey_snapshot(ticket, ticket.logs.all()) if status_key == "finished" else None,
         "sla": [
             {
                 "target": item.target,
@@ -377,23 +381,29 @@ def ticket_detail(request, ticket_id):
 
 
 @csrf_exempt
+@require_POST
 @api_errors
 @HasPermission("ticket-Operate")
+@transaction.atomic
 def ticket_survey(request, ticket_id):
     ticket = get_ticket(request, ticket_id)
-    if ticket.creator != _user(request):
+    if not has_permission(request, "ticket-View") or ticket.creator != _user(request):
         raise PermissionError()
+    ticket = Ticket.objects.select_for_update().get(id=ticket.id)
     if not ticket.status_id or ticket.status.key != "finished":
         return WebUtils.response_error("工单未完成")
-    payload = _body(request)
-    score = int(payload.get("score") or 0)
-    if score < 1 or score > 5:
-        return WebUtils.response_error("评分应为 1 到 5")
-    survey, _created = TicketSurvey.objects.update_or_create(
+    try:
+        submission = survey_submission(_body(request), survey_snapshot(ticket, ticket.logs.filter(action=SURVEY_READY)))
+    except SurveyValidationError as exc:
+        return WebUtils.response_error(str(exc))
+    survey, created = TicketSurvey.objects.get_or_create(
         ticket=ticket,
-        defaults={"score": score, "comment": str(payload.get("comment") or ""), "updated_by": _user(request), "created_by": _user(request)},
+        defaults={**submission, "domain": ticket.domain, "updated_by": _user(request), "created_by": _user(request)},
     )
-    return WebUtils.response_success({"score": survey.score, "comment": survey.comment})
+    result = survey_data(survey)
+    if not created and submission != result:
+        return WebUtils.response_error("满意度已提交", status_code=409)
+    return WebUtils.response_success(result)
 
 
 @api_errors

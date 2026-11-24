@@ -1,7 +1,5 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { ResourceBoard } from '../../components/resource-board';
-
-export default function Page() {
-  return <ResourceBoard title="满意度模板" kind="surveys" fields={['name']} />;
+export default function SurveyPage() {
+  redirect('/itsm/settings/survey-templates');
 }

@@ -113,6 +113,7 @@ class TicketSurvey(ItsmModel):
     ticket = models.OneToOneField(Ticket, on_delete=models.CASCADE, related_name="survey")
     score = models.PositiveSmallIntegerField()
     comment = models.CharField(max_length=500, blank=True, default="")
+    answers = models.JSONField(default=list)
 
     class Meta:
         db_table = "itsm_ticket_survey"

@@ -17,6 +17,7 @@ from apps.itsm.services.ticket.actions import (
     validated_opinion,
 )
 from apps.itsm.services.ticket.returns import resolve_return_target
+from apps.itsm.services.ticket.survey import record_survey_invitation
 from apps.itsm.services.ticket.transfer import require_transfer_target, transfer_users
 from apps.itsm.services.todo_sync import schedule_sync
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
@@ -275,22 +276,7 @@ class TicketService:
                 },
             )
             self.sync_ticket(ticket)
-            if not self._process_active(ticket.process_instance_id):
-                finished = TicketStatus.objects.filter(key="finished").first()
-                if finished:
-                    self._set_status(ticket, "finished")
-                    finish_sla(ticket, "resolve")
-                    from apps.itsm.models.extend import SurveyTemplate
-
-                    if SurveyTemplate.objects.exists():
-                        TicketLog.objects.create(
-                            ticket=ticket,
-                            action="survey_ready",
-                            operator=operator,
-                            message="请填写满意度",
-                            created_by=operator,
-                            updated_by=operator,
-                        )
+            self.finish_if_ended(ticket, operator)
         schedule_sync(ticket)
         return ticket
 
@@ -411,7 +397,7 @@ class TicketService:
         elif action == "terminate":
             self._stop_process(ticket, "terminated")
         elif action == "close":
-            self._stop_process(ticket, "finished")
+            self._stop_process(ticket, "finished", operator)
         elif action == "reopen":
             data = {**data, "round_started_at": timezone.now().isoformat()}
             self._reopen(ticket, operator)
@@ -487,8 +473,8 @@ class TicketService:
                 updated_by=operator,
             )
 
-    def _stop_process(self, ticket: Ticket, status_key: str) -> None:
-        self._set_status(ticket, status_key)
+    def _stop_process(self, ticket: Ticket, status_key: str, operator: str | None = None) -> None:
+        self._set_status(ticket, status_key, operator)
         if self.client and ticket.process_instance_id:
             try:
                 self.client.delete_process_instance(ticket.process_instance_id)
@@ -498,20 +484,8 @@ class TicketService:
         ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).update(status=TicketTask.TaskStatus.DONE)
         finish_sla(ticket, "response")
         finish_sla(ticket, "resolve")
-        if status_key == "finished":
-            from apps.itsm.models.extend import SurveyTemplate
 
-            if SurveyTemplate.objects.exists():
-                TicketLog.objects.create(
-                    ticket=ticket,
-                    action="survey_ready",
-                    operator=ticket.updated_by or ticket.creator,
-                    message="请填写满意度",
-                    created_by=ticket.creator,
-                    updated_by=ticket.creator,
-                )
-
-    def _set_status(self, ticket: Ticket, key: str) -> None:
+    def _set_status(self, ticket: Ticket, key: str, operator: str | None = None) -> None:
         if ticket.status_id and ticket.status.key == key:
             return
         status = TicketStatus.objects.filter(key=key).first()
@@ -527,6 +501,7 @@ class TicketService:
         if key == "finished":
             from apps.itsm.services.triggers import fire_triggers
 
+            record_survey_invitation(ticket, operator or ticket.updated_by or ticket.creator)
             fire_triggers(ticket, "finish", ticket.updated_by or ticket.creator)
 
     def _log(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str) -> None:
@@ -559,7 +534,7 @@ class TicketService:
             return True
         return not historic.get("endTime")
 
-    def finish_if_ended(self, ticket: Ticket) -> None:
+    def finish_if_ended(self, ticket: Ticket, operator: str | None = None) -> None:
         if ticket.status_id and ticket.status.key in {"finished", "terminated", "cancelled"}:
             return
         if self._process_active(ticket.process_instance_id):
@@ -567,7 +542,7 @@ class TicketService:
         finished = TicketStatus.objects.filter(key="finished").first()
         if finished is None:
             return
-        self._set_status(ticket, "finished")
+        self._set_status(ticket, "finished", operator)
         finish_sla(ticket, "resolve")
 
 

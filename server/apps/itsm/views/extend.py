@@ -44,6 +44,7 @@ from apps.itsm.models.extend import (
 from apps.itsm.services.ticket.actions import node_actions, node_required_opinions
 from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
 from apps.itsm.services.ticket.service import _find_node
+from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.tickets import _service, _user
 
@@ -196,6 +197,25 @@ def schedule_runs(request):
     return WebUtils.response_success({"items": items, "count": paginator.count})
 
 
+def _list_resources(request, kind, model, fields):
+    page_size = max(1, min(100, int(request.GET.get("page_size") or 100)))
+    paginator = Paginator(resource_scope(request, kind, model).order_by("-id"), page_size)
+    page = paginator.get_page(int(request.GET.get("page") or 1))
+    items = [_public(item, fields) for item in page]
+    data = {"items": items, "count": paginator.count}
+    if kind in {"schedules", "surveys"}:
+        menu = RESOURCE_MENUS[kind]
+        data.update(
+            can_add=has_permission(request, f"{menu}-Add"),
+            can_edit=has_permission(request, f"{menu}-Edit"),
+            can_delete=has_permission(request, f"{menu}-Delete"),
+        )
+    if kind == "handovers":
+        can_retry = has_permission(request, "handover-Add")
+        data.update(can_add=can_retry and has_permission(request, "ticket-View"), can_retry=can_retry)
+    return WebUtils.response_success(data)
+
+
 @csrf_exempt
 @api_errors
 @resource_permission
@@ -205,26 +225,19 @@ def resources(request, kind):
         return WebUtils.response_error("未知资源")
     model, fields = spec
     if request.method == "GET":
-        page_size = max(1, min(100, int(request.GET.get("page_size") or 100)))
-        paginator = Paginator(resource_scope(request, kind, model).order_by("-id"), page_size)
-        page = paginator.get_page(int(request.GET.get("page") or 1))
-        items = [_public(item, fields) for item in page]
-        data = {"items": items, "count": paginator.count}
-        if kind == "schedules":
-            data.update(
-                can_add=has_permission(request, "rule-Add"),
-                can_edit=has_permission(request, "rule-Edit"),
-                can_delete=has_permission(request, "rule-Delete"),
-            )
-        if kind == "handovers":
-            can_retry = has_permission(request, "handover-Add")
-            data.update(can_add=can_retry and has_permission(request, "ticket-View"), can_retry=can_retry)
-        return WebUtils.response_success(data)
+        return _list_resources(request, kind, model, fields)
+    if kind == "surveys" and request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
     if kind == "schedules":
         return _save_schedule(request, values)
+    if kind == "surveys":
+        try:
+            values = normalize_survey_template(values, creating=True)
+        except SurveyValidationError as exc:
+            return WebUtils.response_error(error_message=str(exc))
     if kind == "reports":
         values["username"] = _user(request)
     if kind == "preferences":
@@ -309,6 +322,11 @@ def resource_item(request, kind, item_id):
     values["domain"] = domain_of(request)
     if kind == "schedules":
         return _save_schedule(request, values, item)
+    if kind == "surveys":
+        try:
+            values = normalize_survey_template(values)
+        except SurveyValidationError as exc:
+            return WebUtils.response_error(error_message=str(exc))
     for field, value in values.items():
         setattr(item, field, value)
     item.updated_by = _user(request)

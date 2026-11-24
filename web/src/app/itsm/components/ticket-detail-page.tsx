@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, App, Form, Button, Empty, Input, Rate, Tag } from 'antd';
+import { Alert, App, Form, Button, Empty, Tag } from 'antd';
 import { ItsmBackButton } from './back-button';
 import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useParams } from 'next/navigation';
@@ -10,6 +10,7 @@ import { FormRenderer } from './form-renderer';
 import { TicketHeaderSocial, TicketRelations } from './ticket-social';
 import { TicketHistory } from './ticket-history';
 import { TicketSla } from './ticket-sla';
+import { TicketSurveyPanel } from './ticket-survey';
 import { TicketFlowBoard } from './ticket-flow-board';
 import { TicketActions, type OperationInput } from './ticket-actions';
 import { TicketCollaboration, formatTicketTime } from './ticket-collaboration';
@@ -39,8 +40,6 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const [operationBusy, setBusy] = useState(false);
   const busy = operationBusy || draft.busy;
   const [logsOpen, setLogsOpen] = useState(true);
-  const [score, setScore] = useState(5);
-  const [comment, setComment] = useState('');
 
   const load = useCallback(async () => {
     const data = await api.getTicket(ticketId) as TicketDetail;
@@ -154,11 +153,11 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('itsm.ticket.noLogs')} />}
 
           </> },
-          { key: 'survey', label: '满意度', children: ticket.survey ? <div className="flex flex-col gap-3 py-3"><Rate disabled value={ticket.survey.score} /><p>{ticket.survey.comment || '已完成评价'}</p></div> : ticket.can_survey ? <div className="flex max-w-xl flex-col items-start gap-3 py-3">
-              <Rate aria-label="满意度评分" value={score} allowClear={false} onChange={setScore} />
-              <Input.TextArea aria-label="评价内容" placeholder="请填写评价意见（选填）" value={comment} maxLength={500} onChange={(event) => setComment(event.target.value)} rows={3} />
-              <Button type="primary" loading={busy} onClick={() => { setBusy(true); void api.submitSurvey(ticketId, { score, comment }).then(() => load()).catch((error: unknown) => message.error(error instanceof Error ? error.message : '评价失败')).finally(() => setBusy(false)); }}>提交评价</Button>
-            </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="工单完成后由提单人评价" /> },
+          { key: 'survey', label: '满意度', children: <TicketSurveyPanel key={ticketId} result={ticket.survey} template={ticket.survey_template}
+            canSurvey={Boolean(ticket.can_survey)} onSubmit={async answers => {
+              await api.submitSurvey(ticketId, answers);
+              await load();
+            }} /> },
           { key: 'relations', label: '关联单', children: <TicketRelations ticketId={ticketId} /> },
           ...(ticket.sla?.length ? [{ key: 'sla', label: 'SLA', children: <TicketSla records={ticket.sla} /> }] : []),
         ]}

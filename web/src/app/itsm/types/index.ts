@@ -251,6 +251,29 @@ export interface TicketCommentItem {
   attachment_ids: number[];
 }
 
+export interface SurveyQuestion {
+  id: string;
+  title: string;
+  required: boolean;
+}
+
+export interface SurveyTemplateSnapshot {
+  name: string;
+  questions: SurveyQuestion[];
+}
+
+export interface SurveySubmission {
+  score: number;
+  comment?: string;
+  answers?: Record<string, string>;
+}
+
+export interface SurveyResult {
+  score: number;
+  comment: string;
+  answers?: Array<{ id: string; title: string; value: string }>;
+}
+
 export interface TicketDetail {
   history?: TicketHistoryItem[];
   created_at?: string;
@@ -272,7 +295,8 @@ export interface TicketDetail {
   edges?: TicketProgressEdge[];
   logs: TicketLogItem[];
   sla?: TicketSLAItem[];
-  survey?: { score: number; comment: string } | null;
+  survey?: SurveyResult | null;
+  survey_template?: SurveyTemplateSnapshot | null;
 }
 
 export type TicketFormOperator = 'contains' | 'eq' | 'gte' | 'lte';
