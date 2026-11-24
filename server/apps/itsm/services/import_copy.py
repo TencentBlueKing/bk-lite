@@ -142,12 +142,17 @@ def export_table(table):
             if isinstance(value, (dict, list)) or (key in row and value in (None, "")):
                 value = json.dumps(value, ensure_ascii=False)
                 json_cells.append(f"{row_index}:{col}")
+            if isinstance(value, str) and len(value.encode("utf-16-le")) > 65534:
+                raise ValueError("数据超过 Excel 单元格容量，请缩短内容后导出")
             cell = sheet.cell(row_index, col, value)
             if isinstance(value, str):
                 cell.data_type = "s"
     meta = book.create_sheet("_itsm")
-    meta.append(["format", "itsm-table-v1"])
-    meta.append(["metadata", json.dumps({"key": table.key, "name": table.name, "fields": fields, "json_cells": json_cells}, ensure_ascii=False)])
+    meta.append(["format", "itsm-table-v2"])
+    metadata = json.dumps({"key": table.key, "name": table.name, "fields": fields, "json_cells": json_cells}, separators=(",", ":"))
+    for row_index, start in enumerate(range(0, len(metadata), 16000), 2):
+        meta.cell(row_index, 1, "metadata")
+        meta.cell(row_index, 2, metadata[start : start + 16000]).data_type = "s"
     meta.sheet_state = "hidden"
     out = BytesIO()
     book.save(out)
@@ -188,9 +193,10 @@ def copy_table(request, payload):
     try:
         meta = {}
         if "_itsm" in book:
-            if book["_itsm"]["B1"].value != "itsm-table-v1":
+            chunks = book["_itsm"].iter_rows(min_col=2, max_col=2, values_only=True)
+            if next(chunks, (None,))[0] not in ("itsm-table-v1", "itsm-table-v2"):
                 raise ValueError("不支持的数据表格式")
-            meta = json.loads(book["_itsm"]["B2"].value)
+            meta = json.loads("".join(chunk for (chunk,) in chunks))
         sheet = book["data"] if "data" in book else book.active
         iterator = sheet.iter_rows(values_only=True)
         header = list(next(iterator, []))

@@ -28,7 +28,7 @@ from apps.itsm.models import (
     WorkflowVariable,
     WorkflowVersion,
 )
-from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, method_permission, ticket_scope
+from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, list_page, method_permission, ticket_scope
 
 
 def _body(request):
@@ -595,7 +595,7 @@ def sla_settings(request):
             return WebUtils.response_success({"id": item.id})
         return _save_sla_policy(request, payload)
     calendars = [
-        {"id": item.id, "name": item.name, "work_days": item.work_days, "work_start": item.work_start, "work_end": item.work_end}
+        {"id": item.id, "name": item.name, "work_days": item.work_days, "work_start": item.work_start, "work_end": item.work_end, "timezone": item.timezone}
         for item in ServiceCalendar.objects.filter(domain=domain_of(request)).all()
     ]
     policies = [
@@ -698,7 +698,8 @@ def data_tables(request):
 def data_table_detail(request, table_id):
     from apps.itsm.services.data_tables import field_definitions, validate_fields, validate_row
 
-    table = DataTable.objects.select_for_update().get(id=table_id, domain=domain_of(request))
+    tables = DataTable.objects if request.method == "GET" else DataTable.objects.select_for_update()
+    table = tables.get(id=table_id, domain=domain_of(request))
     if request.method == "PUT":
         body = _body(request)
         name = str(body.get("name", table.name)).strip()
@@ -730,12 +731,16 @@ def data_table_detail(request, table_id):
 def data_table_rows(request, table_id):
     from apps.itsm.services.data_tables import field_definitions, validate_row
 
-    table = DataTable.objects.select_for_update().get(domain=domain_of(request), id=table_id)
+    tables = DataTable.objects if request.method == "GET" else DataTable.objects.select_for_update()
+    table = tables.get(domain=domain_of(request), id=table_id)
     fields = field_definitions(table)
     if request.method == "GET":
+        page = list_page(request.GET, table.rows.order_by("id").values("id", "data"))
         return WebUtils.response_success(
             {
-                "items": [{"id": row.id, "data": row.data} for row in table.rows.order_by("id")],
+                "items": list(page),
+                "total": page.paginator.count,
+                "page": page.number,
                 "fields": fields,
                 "can_edit": has_permission(request, "data-Edit"),
             }
@@ -767,9 +772,10 @@ def _table_keys(table):
 
 
 @api_errors
+@data_table_errors
 @HasPermission("data-View")
 def data_table_export(request, table_id):
-    table = DataTable.objects.filter(domain=domain_of(request)).prefetch_related("fields", "rows").get(id=table_id)
+    table = DataTable.objects.get(domain=domain_of(request), id=table_id)
     from apps.itsm.services.import_copy import export_table
 
     return WebUtils.response_success(export_table(table))

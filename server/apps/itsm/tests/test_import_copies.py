@@ -136,3 +136,26 @@ def test_table_export_roundtrip_empty_table_and_empty_values():
     package = data(data_table_export(req(), table.pk))
     clone = DataTable.objects.get(pk=data(data_table_import(req("post", package)))["id"])
     assert list(clone.rows.order_by("id").values_list("data", flat=True)) == list(table.rows.order_by("id").values_list("data", flat=True))
+
+
+def test_many_json_cells_round_trip():
+    table = DataTable.objects.create(key="many", name="大表")
+    DataTableField.objects.create(table=table, key="items", field_type="array")
+    DataTableRow.objects.bulk_create([DataTableRow(table=table, data={"items": [i]}) for i in range(5000)])
+    package = data(data_table_export(req(), table.pk))
+    result = data(data_table_import(req("post", package)))
+    assert list(DataTableRow.objects.filter(table_id=result["id"]).order_by("id").values_list("data", flat=True)) == [{"items": [i]} for i in range(5000)]
+
+
+def test_legacy_v1_metadata_still_restores_values():
+    book = Workbook()
+    book.active.title = "data"
+    book.active.append(["people"])
+    book.active.append(['["甲"]'])
+    meta = book.create_sheet("_itsm")
+    meta.append(["format", "itsm-table-v1"])
+    meta.append(["metadata", json.dumps({"name": "旧版", "key": "legacy", "fields": [{"key": "people", "field_type": "array"}], "json_cells": ["2:1"]})])
+    encoded = BytesIO()
+    book.save(encoded)
+    result = data(data_table_import(req("post", {"content_base64": base64.b64encode(encoded.getvalue()).decode()})))
+    assert DataTableRow.objects.get(table_id=result["id"]).data == {"people": ["甲"]}

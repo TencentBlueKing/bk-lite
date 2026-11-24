@@ -4,6 +4,7 @@ import json
 from functools import wraps
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.paginator import Paginator
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from minio.error import S3Error
@@ -83,3 +84,11 @@ def method_permission(read, write):
         return wrapped
 
     return decorate
+
+
+def list_page(params, rows, *, prefix=""):
+    size = int(params.get(f"{prefix}page_size", 20))
+    number = int(params.get(f"{prefix}page", 1))
+    if size not in (10, 20, 50, 100) or number < 1:
+        raise ValueError("分页参数无效")
+    return Paginator(rows, size).get_page(number)
