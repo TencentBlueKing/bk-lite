@@ -43,6 +43,35 @@ export function bulkAttemptStatusLabelKey(status: string): string {
   return ATTEMPT_LABEL_KEYS[status] || ATTEMPT_LABEL_KEYS.failed;
 }
 
+const ATTEMPT_STATUS_COLOR: Record<string, string> = {
+  installing: 'processing',
+  duplicate: 'warning',
+  failed: 'error',
+  timeout: 'default'
+};
+
+export function bulkAttemptDisplay(item: { status: string; online?: boolean }): {
+  labelKey: string;
+  color: string;
+} {
+  if (item.online) {
+    return {
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptOnline',
+      color: 'success'
+    };
+  }
+  if (item.status === 'installed') {
+    return {
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptAwaitingOnline',
+      color: 'processing'
+    };
+  }
+  return {
+    labelKey: bulkAttemptStatusLabelKey(item.status),
+    color: ATTEMPT_STATUS_COLOR[item.status] || 'default'
+  };
+}
+
 export function bulkBatchStatusLabelKey(status: string): string {
   return BATCH_LABEL_KEYS[status] || BATCH_LABEL_KEYS.active;
 }

@@ -5,6 +5,7 @@ import {
   BULK_EXPIRE_DAY_OPTIONS,
   BULK_INSTALL_METHOD,
   BULK_SUCCESS_COUNT_OPTIONS,
+  bulkAttemptDisplay,
   bulkAttemptStatusLabelKey,
   bulkCommandIncludesNodeIp,
   bulkExpireHours,
@@ -41,6 +42,57 @@ describe('bulkAttemptStatusLabelKey', () => {
     expect(installing).not.toBe(duplicate);
     expect(installing).toContain('Installing');
     expect(duplicate).toContain('Duplicate');
+  });
+});
+
+describe('bulkAttemptDisplay', () => {
+  it('shows online in the success color when the node has come online', () => {
+    expect(bulkAttemptDisplay({ status: 'installing', online: true })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptOnline',
+      color: 'success'
+    });
+    expect(bulkAttemptDisplay({ status: 'installed', online: true })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptOnline',
+      color: 'success'
+    });
+    expect(bulkAttemptDisplay({ status: 'failed', online: true })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptOnline',
+      color: 'success'
+    });
+  });
+
+  it('shows installed hosts that have not heartbeated as waiting to come online', () => {
+    expect(bulkAttemptDisplay({ status: 'installed', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptAwaitingOnline',
+      color: 'processing'
+    });
+    expect(bulkAttemptDisplay({ status: 'installed' })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptAwaitingOnline',
+      color: 'processing'
+    });
+  });
+
+  it('keeps the existing label and color for the other statuses', () => {
+    expect(bulkAttemptDisplay({ status: 'installing', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptInstalling',
+      color: 'processing'
+    });
+    expect(bulkAttemptDisplay({ status: 'duplicate', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptDuplicate',
+      color: 'warning'
+    });
+    expect(bulkAttemptDisplay({ status: 'failed', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptFailed',
+      color: 'error'
+    });
+    expect(bulkAttemptDisplay({ status: 'timeout', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptTimeout',
+      color: 'default'
+    });
+    expect(bulkAttemptDisplay({ status: 'other', online: false })).toEqual({
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptFailed',
+      color: 'default'
+    });
   });
 });
 

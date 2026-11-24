@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
@@ -35,6 +36,41 @@ TERMINAL_BATCH_MESSAGES = {
     InstallerConstants.BULK_STATUS_EXPIRED: "批量命令已过期",
     InstallerConstants.BULK_STATUS_DISABLED: "批量命令已停用",
 }
+_RESULT_STAGES = frozenset({"download", "install", "interrupted"})
+
+
+def _validated_stage(value) -> str:
+    if isinstance(value, str) and value in _RESULT_STAGES:
+        return value
+    return ""
+
+
+def _validated_exit_code(value) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        code = value
+    elif isinstance(value, str) and value.isascii() and value.isdigit():
+        code = int(value)
+    else:
+        return None
+    if 0 <= code <= 255:
+        return code
+    return None
+
+
+def _failed_attempt_message(stage, exit_code) -> str:
+    normalized = _validated_stage(stage)
+    code = _validated_exit_code(exit_code)
+    if normalized == "download":
+        return "下载安装脚本失败"
+    if normalized == "install":
+        if code is None:
+            return "安装器执行失败"
+        return f"安装器执行失败（退出码 {code}）"
+    if normalized == "interrupted":
+        return "安装被中断"
+    return "安装失败"
 
 
 @dataclass
@@ -242,7 +278,7 @@ class BulkInstallService:
         return EnrollOutcome(True, install_token=install_token, node_id=node_id)
 
     @staticmethod
-    def report(*, token: str, node_id: str, outcome: str) -> EnrollOutcome:
+    def report(*, token: str, node_id: str, outcome: str, stage=None, exit_code=None) -> EnrollOutcome:
         batch = ControllerBulkBatch.objects.filter(token=token).first()
         if batch is None:
             return EnrollOutcome(False, "批量命令不存在")
@@ -265,13 +301,14 @@ class BulkInstallService:
                 logger.debug("bulk install enroll batch_id=%s outcome=installed", locked.id)
                 return EnrollOutcome(True, node_id=node_id)
             BulkInstallService._delete_placeholder_node(attempt.node_id)
+            message = _failed_attempt_message(stage, exit_code)
             attempt.status = InstallerConstants.BULK_ATTEMPT_FAILED
-            attempt.message = "安装失败"
+            attempt.message = message
             attempt.counts_toward_disable = True
             attempt.save(update_fields=["status", "message", "counts_toward_disable", "updated_at"])
             BulkInstallService._disable_if_needed(locked)
             logger.debug("bulk install enroll batch_id=%s outcome=failed", locked.id)
-            return EnrollOutcome(True, message="安装失败", node_id=node_id)
+            return EnrollOutcome(True, message=message, node_id=node_id)
 
     @staticmethod
     def _reject(
@@ -385,8 +422,22 @@ class BulkInstallService:
     def _batch_payload(batch: ControllerBulkBatch, server_url: str) -> dict:
         accepted_count = ControllerBulkAttempt.objects.filter(batch=batch, status__in=ACCEPTED_STATUSES).count()
         failure_count = ControllerBulkAttempt.objects.filter(batch=batch, counts_toward_disable=True).count()
-        attempts = list(batch.attempts.order_by("-id")[: InstallerConstants.BULK_PROGRESS_ITEM_LIMIT])
-        attempts.reverse()
+        # 已装好的 IP 再执行一次只会得到「重复」，不能盖掉它真实的安装结果。
+        grouped = list(
+            batch.attempts.values("ip")
+            .annotate(
+                last_id=Max("id"),
+                last_real_id=Max("id", filter=~Q(status=InstallerConstants.BULK_ATTEMPT_DUPLICATE)),
+                attempt_count=Count("id"),
+            )
+            .order_by("-last_id")[: InstallerConstants.BULK_PROGRESS_ITEM_LIMIT]
+        )
+        attempt_counts = {row["last_real_id"] or row["last_id"]: row["attempt_count"] for row in grouped}
+        attempts = list(batch.attempts.filter(id__in=list(attempt_counts)).order_by("id"))
+        node_ids = [item.node_id for item in attempts if item.node_id and item.status in ACCEPTED_STATUSES]
+        reported_ids: set[str] = set()
+        if node_ids:
+            reported_ids = {node_id for node_id, node_status in Node.objects.filter(id__in=node_ids).values_list("id", "status") if node_status}
         return {
             "batch_id": batch.id,
             "status": batch.status,
@@ -402,6 +453,8 @@ class BulkInstallService:
                     "cpu_architecture": item.cpu_architecture,
                     "status": item.status,
                     "message": item.message,
+                    "online": item.status in ACCEPTED_STATUSES and item.node_id in reported_ids,
+                    "attempt_count": attempt_counts[item.id],
                 }
                 for item in attempts
             ],
@@ -496,7 +549,9 @@ report_outcome() {{
     if curl -sSLk -o /dev/null -X POST "$RESULT_URL" \
       --data-urlencode "token=$BATCH_TOKEN" \
       --data-urlencode "node_id=$NODE_ID" \
-      --data-urlencode "outcome=$_outcome"; then
+      --data-urlencode "outcome=$_outcome" \
+      --data-urlencode "stage=$STAGE" \
+      --data-urlencode "exit_code=$installer_status"; then
       return 0
     fi
     if [ "$_try" -lt 4 ]; then
@@ -506,6 +561,7 @@ report_outcome() {{
   return 0
 }}
 on_interrupt() {{
+  STAGE=interrupted
   report_outcome failed
   exit 130
 }}
@@ -525,11 +581,13 @@ if [ -z "$INSTALL_TOKEN" ] || [ -z "$NODE_ID" ]; then
   echo "安装受理失败" >&2
   exit 1
 fi
+installer_status=0
+STAGE=download
 trap 'on_interrupt' HUP INT TERM
 BOOTSTRAP_FILE=$(mktemp)
-installer_status=0
 curl -fsSLk "$BOOTSTRAP_PREFIX$INSTALL_TOKEN" -o "$BOOTSTRAP_FILE" || installer_status=$?
 if [ "$installer_status" -eq 0 ]; then
+  STAGE=install
   sh "$BOOTSTRAP_FILE" || installer_status=$?
 fi
 OUTCOME=failed
