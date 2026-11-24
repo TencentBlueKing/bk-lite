@@ -9,6 +9,7 @@ import { useItsmApi } from '../api/useItsmApi';
 import { FormRenderer } from './form-renderer';
 import { TicketHeaderSocial, TicketRelations } from './ticket-social';
 import { TicketHistory } from './ticket-history';
+import { useItsmRuntimeSettings } from '../settings/runtime-settings';
 import { TicketSla } from './ticket-sla';
 import { TicketTriggerRecords } from './ticket-trigger-records';
 import { TicketSurveyPanel } from './ticket-survey';
@@ -32,6 +33,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const params = useParams<{ id: string }>();
   const ticketId = Number(params.id);
   const { t } = useTranslation();
+  const { settings } = useItsmRuntimeSettings();
   const api = useItsmApi();
   const { message } = App.useApp();
   const [existingTicket, setTicket] = useState<TicketDetail | null>(null);
@@ -150,12 +152,12 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
           </div>
           <div className={`${logsOpen ? '' : 'hidden'} min-h-0 flex-1 overflow-hidden px-4 pb-4`}>
         <>{serviceId ? <Empty className="mt-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description="提交后可查看流转记录、评论和附件" /> : <TicketCollaboration ticketId={ticketId} historyFirst extraTabs={[
-          { key: 'history', label: '流转日志', children: <>
+          ...(settings.show_process_log ? [{ key: 'history', label: '流转日志', children: <>
             {ticket.history?.length ? (
               <TicketHistory items={ticket.history} nodes={ticket.nodes} retry={retryAuto} busy={busy} />
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('itsm.ticket.noLogs')} />}
 
-          </> },
+          </> }] : []),
           { key: 'survey', label: '满意度', children: <TicketSurveyPanel key={ticketId} result={ticket.survey} template={ticket.survey_template}
             canSurvey={Boolean(ticket.can_survey)} onSubmit={async answers => {
               await api.submitSurvey(ticketId, answers);

@@ -79,7 +79,7 @@ export function TicketCollaboration({ ticketId, extraTabs = [], historyFirst = f
     } catch (error) { failed(error); } finally { setPublishing(false); }
   };
   return <>
-    <Tabs className="h-full min-h-0 [&>.ant-tabs-nav]:shrink-0 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-y-auto [&>.ant-tabs-content-holder]:overscroll-contain" defaultActiveKey={historyFirst ? 'history' : 'comments'} items={[
+    <Tabs className="h-full min-h-0 [&>.ant-tabs-nav]:shrink-0 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-y-auto [&>.ant-tabs-content-holder]:overscroll-contain" defaultActiveKey={historyFirst && extraTabs.some(item => item.key === 'history') ? 'history' : 'comments'} items={[
       ...(historyFirst ? extraTabs.filter((item) => item.key === 'history' || item.key === 'sla') : []),
       { key: 'comments', label: `评论 (${notes.length})`, children: <div className="flex flex-col gap-4">
         {notes.length ? notes.map((item) => {

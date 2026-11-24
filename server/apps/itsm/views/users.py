@@ -25,7 +25,7 @@ def search_users(request, queryset):
 
 
 class UserSearchView(ItsmAPIView):
-    @HasPermission("portal-View,ticket-View,workflow-Edit,rule-Add,rule-Edit")
+    @HasPermission("portal-View,ticket-View,workflow-Edit,org-Edit,rule-Add,rule-Edit")
     def get(self, request):
         queryset = User.objects.filter(domain=request.user.domain, disabled=False)
         return Response(search_users(request, queryset))

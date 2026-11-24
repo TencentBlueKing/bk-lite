@@ -5,6 +5,7 @@ import { Alert, App, Button, Empty, Input, Select, Skeleton, Tooltip } from 'ant
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
+import { defaultBasicSettings, useItsmRuntimeSettings } from '../settings/runtime-settings';
 import type { PortalData } from '../types';
 import { backgrounds, widgetNames } from './workbench-types';
 import type { PortalDashboard, PortalLayout, WidgetType } from './workbench-types';
@@ -14,6 +15,7 @@ const icons = { stats: <AppstoreOutlined />, services: <AppstoreOutlined />, tod
 
 export default function PortalPage() {
   const api = useItsmApi();
+  const { settings } = useItsmRuntimeSettings();
   const { message } = App.useApp();
   const fail = (error: unknown) => message.error(error instanceof Error ? error.message : '操作失败，请重试');
   const [portal, setPortal] = useState<PortalData>();
@@ -78,7 +80,7 @@ export default function PortalPage() {
   return <div className="flex flex-col gap-5 pb-6">
     <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-7 md:px-8" style={{ backgroundImage: background, backgroundPosition: 'center', backgroundSize: 'cover' }}>
       <div className="relative flex flex-wrap items-start justify-between gap-4">
-        <div><div className="mb-2 text-xs font-medium tracking-widest text-blue-600">IT SERVICE PORTAL</div><h1 className={`mb-2 text-2xl font-semibold ${current.background ? 'text-slate-800' : 'text-[var(--color-text-1)]'}`}>{current.title}</h1><p className={`mb-0 text-sm ${current.background ? 'text-slate-500' : 'text-[var(--color-text-3)]'}`}>{current.subtitle}</p></div>
+        <div><div className="mb-2 text-xs font-medium tracking-widest text-blue-600">{settings.product_name === defaultBasicSettings.product_name ? 'IT SERVICE PORTAL' : settings.product_name}</div><h1 className={`mb-2 text-2xl font-semibold ${current.background ? 'text-slate-800' : 'text-[var(--color-text-1)]'}`}>{current.title}</h1><p className={`mb-0 text-sm ${current.background ? 'text-slate-500' : 'text-[var(--color-text-3)]'}`}>{current.subtitle}</p></div>
         <div className="flex flex-wrap gap-2">
           {!draft && <Tooltip title="刷新门户"><Button aria-label="刷新门户" icon={<ReloadOutlined />} onClick={() => void load()} /></Tooltip>}
           {portal.can_manage && !draft && <><Link href="/itsm/portal/services"><Button icon={<SettingOutlined />}>管理服务</Button></Link><Button icon={<EditOutlined />} onClick={() => { setSearch(''); setDraft(structuredClone(layout)); }}>编排门户</Button></>}

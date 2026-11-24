@@ -4,7 +4,7 @@ import { ItsmListEntry } from '@/app/itsm/components/list-entry';
 
 import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
 
-import { Input, Tag, message } from 'antd';
+import { Input, Select, Tag, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { ItsmModal as OperateModal } from '@/app/itsm/components/interaction-surfaces';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -29,10 +29,13 @@ export default function HandlerGroupsPage() {
   const [editing, setEditing] = useState<HandlerGroupItem | null>(null);
   const [name, setName] = useState('');
   const [members, setMembers] = useState<string[]>([]);
+  const [leaders, setLeaders] = useState<string[]>([]);
+  const [canEdit, setCanEdit] = useState(false);
 
   const load = useCallback(async () => {
-    const data = await api.listHandlerGroups() as { items?: HandlerGroupItem[] };
+    const data = await api.listHandlerGroups() as { items?: HandlerGroupItem[]; can_edit?: boolean };
     setItems(data.items || []);
+    setCanEdit(data.can_edit === true);
   }, [api.listHandlerGroups]);
 
   useEffect(() => {
@@ -46,15 +49,17 @@ export default function HandlerGroupsPage() {
     setEditing(item || null);
     setName(item?.name || '');
     setMembers(item?.members || []);
+    setLeaders(item?.leaders || []);
     setOpen(true);
   };
 
   const save = async () => {
+    if (!canEdit) return;
     if (!name.trim()) {
       message.warning(t('itsm.admin.needGroup'));
       return;
     }
-    await api.createHandlerGroup({ id: editing?.id, name: name.trim(), members, leaders: members.slice(0, 1) });
+    await api.createHandlerGroup({ id: editing?.id, name: name.trim(), members, leaders });
     setOpen(false);
     message.success(editing ? t('itsm.portal.saved') : t('itsm.portal.created'));
     await load();
@@ -65,31 +70,39 @@ export default function HandlerGroupsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: t('itsm.admin.searchGroup') }} actions={<ItsmCreateButton onClick={() => start()} />} />
+        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: t('itsm.admin.searchGroup') }} actions={canEdit && <ItsmCreateButton onClick={() => start()} />} />
         <CustomTable queryKey={keyword}
           rowKey="id"
           dataSource={shown}
           locale={{ emptyText: t('itsm.admin.emptyGroup') }}
           columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: HandlerGroupItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
+            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: HandlerGroupItem) => canEdit ? <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> : value },
             { title: t('itsm.admin.leader'), dataIndex: 'leaders', key: 'leaders', render: (leaders: string[]) => leaders?.length ? leaders.map((user) => <Tag key={user}>{user}</Tag>) : '—' },
             { title: t('itsm.admin.members'), dataIndex: 'members', key: 'members', render: (value: string[]) => value?.join('、') || '—' },
-            { fixed: 'right' as const, width: 120,
+            ...(canEdit ? [{ fixed: 'right' as const, width: 120,
               title: t('itsm.ticket.action'),
               key: 'actions',
               render: (_value: unknown, item: HandlerGroupItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
                 {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.admin.deleteGroup'), content: undefined }, onClick: () => { void api.deleteHandlerGroup(item.id).then(load); }}]} />,
-            },
+            }] : []),
           ]}
         />
       </div>
-      <OperateModal formValue={{name,members}} title={editing ? t('itsm.admin.editGroup') : t('itsm.admin.newGroup')} open={open} onCancel={() => setOpen(false)} onOk={save}>
+      <OperateModal formValue={{ name, members, leaders }} title={editing ? t('itsm.admin.editGroup') : t('itsm.admin.newGroup')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.admin.groupName')} value={name} onChange={(event) => setName(event.target.value)} />
           </FieldRow>
           <FieldRow label={t('itsm.admin.members')}>
-            <UserSelector value={members} onChange={setMembers} />
+            <UserSelector ariaLabel={t('itsm.admin.members')} value={members} onChange={next => {
+              setMembers(next);
+              setLeaders(current => current.filter(leader => next.includes(leader)));
+            }} />
+          </FieldRow>
+          <FieldRow label={t('itsm.admin.leader')}>
+            <Select aria-label={t('itsm.admin.leader')} mode="multiple" className="w-full" value={leaders}
+              placeholder="从组成员中选择负责人" options={members.map(member => ({ value: member, label: member }))}
+              onChange={setLeaders} />
           </FieldRow>
         </div>
       </OperateModal>

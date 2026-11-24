@@ -5,6 +5,7 @@ import { Select } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
+import { useItsmRuntimeSettings } from '../settings/runtime-settings';
 
 interface UserOption {
   label: string;
@@ -28,6 +29,7 @@ const PAGE_SIZE = 10;
 export function UserSelector({ id, value = [], onChange, multiple = true, placeholder, disabled, ariaLabel, allowClear = false, transfer }: UserSelectorProps) {
   const { t } = useTranslation();
   const api = useItsmApi();
+  const { settings } = useItsmRuntimeSettings();
   const [opened, setOpened] = useState(false);
   const [options, setOptions] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -102,7 +104,7 @@ export function UserSelector({ id, value = [], onChange, multiple = true, placeh
       placeholder={placeholder || t('itsm.admin.searchUser')}
       disabled={disabled}
       value={multiple ? value : value[0]}
-      options={options}
+      options={settings.user_display === 'username' ? options.map(option => ({ ...option, label: option.value })) : options}
       loading={loading}
       filterOption={false}
       onOpenChange={open => { if (transfer || open) setOpened(open); }}

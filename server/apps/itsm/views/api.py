@@ -5,7 +5,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -18,6 +18,7 @@ from apps.itsm.models import (
     FormModel,
     FormVersion,
     HandlerGroup,
+    ItsmSetting,
     NotifyTemplate,
     Workflow,
     WorkflowType,
@@ -25,10 +26,12 @@ from apps.itsm.models import (
     WorkflowVersion,
 )
 from apps.itsm.serializers import HandlerGroupSerializer, NotifyTemplateSerializer
+from apps.itsm.services.basic_settings import BASIC_SETTINGS_DEFAULTS, basic_settings_values, normalize_setting, read_basic_settings
 from apps.itsm.services.form.validator import FormValidator
 from apps.itsm.services.ticket.transfer import validate_transfer_scopes
 from apps.itsm.views.access import api_errors, domain_of, has_permission, method_permission
 from apps.itsm.views.base import ItsmAPIView
+from apps.system_mgmt.models import User
 
 
 def _body(request):
@@ -419,22 +422,39 @@ class HandlerGroupView(ItsmAPIView):
     @api_errors
     @HasPermission("org-View")
     def get(self, request):
-        return Response({"items": HandlerGroupSerializer(HandlerGroup.objects.filter(domain=domain_of(request)).all(), many=True).data})
+        groups = HandlerGroup.objects.filter(domain=domain_of(request)).order_by("id")
+        return Response({"items": HandlerGroupSerializer(groups, many=True).data, "can_edit": has_permission(request, "org-Edit")})
 
     @api_errors
     @HasPermission("org-Edit")
+    @transaction.atomic
     def post(self, request):
         payload = request.data
         if payload.get("id"):
-            item = HandlerGroup.objects.filter(domain=domain_of(request)).filter(id=payload["id"]).first()
+            item = HandlerGroup.objects.select_for_update().filter(domain=domain_of(request), id=payload["id"]).first()
             if item is None:
                 return self.fail("处理组不存在", 404)
             serializer = HandlerGroupSerializer(item, data=payload, partial=True)
         else:
             serializer = HandlerGroupSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        if not serializer.validated_data.get("leaders"):
-            serializer.validated_data["leaders"] = (serializer.validated_data.get("members") or [])[:1]
+        values = serializer.validated_data
+        existing = serializer.instance
+        members = values.get("members", existing.members if existing else [])
+        if not isinstance(members, list) or any(not isinstance(name, str) or not name for name in members):
+            return self.fail("请选择有效的处理组成员")
+        members = list(dict.fromkeys(members))
+        leaders = values.get("leaders", [name for name in existing.leaders if name in members] if existing else members[:1])
+        if not isinstance(leaders, list) or any(not isinstance(name, str) or name not in members for name in leaders):
+            return self.fail("负责人必须属于当前处理组")
+        new_users = (set(members) - set(existing.members if existing else [])) | (set(leaders) - set(existing.leaders if existing else []))
+        if (
+            new_users
+            and set(User.objects.filter(domain=domain_of(request), disabled=False, username__in=new_users).values_list("username", flat=True))
+            != new_users
+        ):
+            return self.fail("成员和负责人必须是当前组织的有效用户")
+        values.update(members=members, leaders=list(dict.fromkeys(leaders)))
         actor = self.actor(request)
         extra = {"updated_by": actor, "domain": domain_of(request)}
         if serializer.instance is None:
@@ -499,38 +519,48 @@ class NotifyTemplateView(ItsmAPIView):
         return Response({"id": request.GET.get("id")})
 
 
-@csrf_exempt
-@api_errors
-@method_permission("setting-View", "setting-Edit")
-def basic_settings(request):
-    from apps.itsm.models import ItsmSetting
+BASIC_RUNTIME_PERMISSIONS = (
+    "portal-View,ticket-View,workflow-View,form-View,data-View,rule-View,org-View,notify-View,setting-View,"
+    "knowledge-View,duty-View,change-View,survey-View,print-View,handover-View,ai-View"
+)
 
-    defaults = {
-        "product_name": "ITSM",
-        "tab_title": "ITSM",
-        "attachment_types": "png,jpg,pdf,docx,xlsx",
-        "show_process_log": True,
-        "user_display": "display_name",
-    }
-    setting, _created = ItsmSetting.objects.get_or_create(
-        domain=domain_of(request),
-        key="basic",
-        defaults={"value": defaults, "created_by": _user(request), "updated_by": _user(request)},
-    )
+
+@HasPermission(BASIC_RUNTIME_PERMISSIONS)
+def _basic_runtime(request):
+    return WebUtils.response_success(read_basic_settings(domain_of(request)))
+
+
+@method_permission("setting-View", "setting-Edit")
+@transaction.atomic
+def _basic_admin_settings(request):
+    domain = domain_of(request)
     if request.method == "GET":
-        value = dict(defaults)
-        value.update(setting.value or {})
-        return WebUtils.response_success(value)
+        return WebUtils.response_success({**read_basic_settings(domain), "can_edit": has_permission(request, "setting-Edit")})
+
     payload = _body(request)
-    value = dict(defaults)
-    value.update(setting.value or {})
-    for key in defaults:
-        if key in payload:
-            value[key] = payload[key]
-    setting.value = value
+    if not isinstance(payload, dict):
+        return WebUtils.response_error("基础设置须为对象")
+    try:
+        updates = {key: normalize_setting(key, payload[key]) for key in BASIC_SETTINGS_DEFAULTS if key in payload}
+    except ValueError as exc:
+        return WebUtils.response_error(str(exc))
+
+    setting, _created = ItsmSetting.objects.select_for_update().get_or_create(
+        domain=domain, key="basic", defaults={"created_by": _user(request), "updated_by": _user(request)}
+    )
+    setting.value = {**basic_settings_values(setting.value), **updates}
     setting.updated_by = _user(request)
     setting.save(update_fields=["value", "updated_by", "updated_at"])
-    return WebUtils.response_success(value)
+    return WebUtils.response_success(setting.value)
+
+
+@csrf_exempt
+@api_errors
+@require_http_methods(["GET", "POST", "PUT", "PATCH"])
+def basic_settings(request):
+    if request.method == "GET" and request.GET.get("runtime") == "1":
+        return _basic_runtime(request)
+    return _basic_admin_settings(request)
 
 
 @api_errors
