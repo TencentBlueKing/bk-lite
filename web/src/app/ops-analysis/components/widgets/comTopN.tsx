@@ -24,6 +24,10 @@ import {
 import { isTopNContentReady, resolveTopNContentState } from '@/app/ops-analysis/utils/topNContentState';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import {
+  presentRanking,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
+import {
   buildTopNItems,
   resolveConfiguredTopNBarPercent,
 } from '@/app/ops-analysis/utils/topNData';
@@ -118,9 +122,12 @@ const TopN: React.FC<TopNProps> = ({
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
   const minBarWidth = scaleScreenMetric(56, screenRenderContext);
   const gridTemplateColumns = `minmax(0, max-content) minmax(${minBarWidth}px, 1fr) max-content`;
-  const items = buildTopNItems(rawData, labelField, valueField, {
-    scalarFields: config?.topNScalarFields,
-  });
+  const items = presentRanking(
+    buildTopNItems(rawData, labelField, valueField, {
+      scalarFields: config?.topNScalarFields,
+    }),
+    readChartDisplay(config),
+  );
   const { active: dataLinkActive, openPoint } = useWidgetDataLink(config);
   const points = useMemo(
     () => topNLinkPoints(items, valueField),

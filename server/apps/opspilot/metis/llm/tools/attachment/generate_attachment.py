@@ -128,9 +128,12 @@ def generate_attachment_file(
 
     Parameters:
     - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
-    - content:  Complete file content to save. For xlsx/csv pass one CSV sheet; for md/txt/pdf/docx
-                pass the full Markdown body. The server applies the document theme. Do not embed
-                Markdown syntax into an xlsx sheet.
+    - content:  Complete file content to save. For xlsx/csv pass one CSV sheet; for md/txt/pdf/docx/pptx
+                pass the full Markdown body. The server renders Markdown into the document or slides.
+                Do not expect #, **, or | to remain as visible text. Do not embed Markdown syntax
+                into an xlsx sheet. For pptx, a level-1 heading is the cover, level-2 headings start
+                pages, a list whose items start with a number becomes metric cards, level-3 headings
+                sit side by side, and a bold-led ordered list becomes action cards.
     - file_type: File format — "txt", "md", "html", "pdf", "docx", "pptx", "xlsx", or "csv".
                  Defaults to "md". Use "txt" for a text file; do not substitute md.
                  Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.

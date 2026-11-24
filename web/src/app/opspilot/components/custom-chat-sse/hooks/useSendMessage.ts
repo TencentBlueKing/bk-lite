@@ -3,6 +3,7 @@
  */
 
 import { useCallback, MutableRefObject } from 'react';
+import { message as antMessage } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import { CustomChatMessage } from '@/app/opspilot/types/global';
 
@@ -25,7 +26,7 @@ interface UseSendMessageProps {
     enabled: boolean;
     url: string;
     reason?: string;
-  }) => Promise<void>;
+  }, onAccepted?: () => void) => Promise<void>;
   currentBotMessageRef: MutableRefObject<CustomChatMessage | null>;
   t: (key: string) => string;
 }
@@ -47,7 +48,7 @@ export const useSendMessage = ({
       content: string,
       currentMessages?: CustomChatMessage[],
       attachments?: any[],
-      choice?: { choiceId?: string; optionKey?: string },
+      choice?: { choiceId?: string; optionKey?: string; selectedKeys?: string[]; replyToChoiceId?: string },
     ) => {
       if ((!content && !attachments?.length) || loading || !token) {
         return;
@@ -63,6 +64,7 @@ export const useSendMessage = ({
         updateAt: new Date().toISOString(),
         ...(attachments && attachments.length > 0 && { attachments }),
         ...(choice?.choiceId ? { choiceId: choice.choiceId, choiceOption: choice.optionKey || '' } : {}),
+        ...(choice?.replyToChoiceId ? { replyToChoiceId: choice.replyToChoiceId } : {}),
       };
 
       const botLoadingMessage: CustomChatMessage = {
@@ -78,7 +80,18 @@ export const useSendMessage = ({
 
       const messagesToUse = currentMessages || messages;
       // 用函数式更新追加，避免绝对数组覆盖正在流式写入的正文
-      updateMessages(prev => [...prev, newUserMessage, botLoadingMessage]);
+      const appendTurn = () => updateMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (!choice?.choiceId || !choice.optionKey || !last?.userChoiceRequests) {
+          return [...prev, newUserMessage, botLoadingMessage];
+        }
+        const selected = choice.selectedKeys || [choice.optionKey];
+        const requests = last.userChoiceRequests.map(card => card.choice_id === choice.choiceId
+          ? { ...card, status: 'submitted' as const, selected } : card);
+        return [...prev.slice(0, -1), { ...last, userChoiceRequests: requests }, newUserMessage, botLoadingMessage];
+      });
+      const answeringChoice = Boolean(choice?.choiceId || choice?.replyToChoiceId);
+      if (!answeringChoice) appendTurn();
 
       try {
         if (handleSendMessage) {
@@ -93,9 +106,14 @@ export const useSendMessage = ({
           }
 
           const { url, payload, interruptRequest } = result;
-          await handleSSEStream(url, payload, botLoadingMessage, interruptRequest);
+          await handleSSEStream(url, payload, botLoadingMessage, interruptRequest, answeringChoice ? appendTurn : undefined);
         }
       } catch (error: any) {
+        if (answeringChoice) {
+          antMessage.error(t('chat.sendFailed'));
+          setLoading(false);
+          return;
+        }
         console.error(`${t('chat.sendFailed')}:`, error);
 
         updateMessages(prevMessages =>

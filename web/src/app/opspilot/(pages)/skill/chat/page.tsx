@@ -289,7 +289,7 @@ const SkillWebChatPage: React.FC = () => {
   const handleSendMessage = (panelSessionId: string) => async (
     message: string,
     _currentMessages?: unknown,
-    userMessage?: { attachments?: Array<{ id: number; status?: string }>; choiceId?: string; choiceOption?: string },
+    userMessage?: { attachments?: Array<{ id: number; status?: string }>; choiceId?: string; choiceOption?: string; replyToChoiceId?: string },
   ) => {
     if (!currentAgent?.id) return null;
     const distributeFileIds = pendingDistributeIds.current[panelSessionId] || [];
@@ -329,7 +329,7 @@ const SkillWebChatPage: React.FC = () => {
         ...(userMessage?.choiceId ? {
           choice_id: userMessage.choiceId,
           choice_option: userMessage.choiceOption || '',
-        } : {}),
+        } : { reply_to_choice_id: userMessage?.replyToChoiceId || '' }),
       },
       interruptRequest: {
         enabled: true,

@@ -12,6 +12,11 @@ import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
+import {
+  CHART_DISPLAY_I18N,
+  presentPie,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import { useTranslation } from '@/utils/i18n';
 
@@ -46,12 +51,24 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   }, []);
 
   const chartData = useMemo(
-    () => ChartDataTransformer.transformToPieData(rawData, {
-      dimensionField: config?.dimensionField,
-      valueField: config?.valueField,
-      pieScalarFields: config?.pieScalarFields,
-    }),
-    [config?.dimensionField, config?.pieScalarFields, config?.valueField, rawData],
+    () => presentPie(
+      ChartDataTransformer.transformToPieData(rawData, {
+        dimensionField: config?.dimensionField,
+        valueField: config?.valueField,
+        pieScalarFields: config?.pieScalarFields,
+      }),
+      readChartDisplay(config),
+      t(CHART_DISPLAY_I18N.other),
+    ),
+    [
+      config?.dimensionField,
+      config?.displayLimit,
+      config?.pieScalarFields,
+      config?.sortByValue,
+      config?.valueField,
+      rawData,
+      t,
+    ],
   );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value > 0,

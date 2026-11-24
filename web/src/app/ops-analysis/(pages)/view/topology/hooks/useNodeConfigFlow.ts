@@ -9,6 +9,7 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
   ValueConfig,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   DropPosition,
@@ -16,7 +17,6 @@ import type {
   NodeType,
   NodeTypeId,
   TopologyNodeData,
-  ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import type { useTopologyState } from './useTopologyState';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
@@ -42,7 +42,7 @@ interface UseTopologyNodeConfigControllerParams {
     isSingleValue?: boolean,
   ) => string | null;
   handleAddChartNode: (
-    values: ViewConfigFormValues,
+    values: WidgetConfig,
     isNewNode?: boolean,
   ) => Promise<
     | {
@@ -59,7 +59,7 @@ interface UseTopologyNodeConfigControllerParams {
     namespaceId?: number,
   ) => Promise<void>;
   handleViewConfigConfirm: (
-    values: ViewConfigFormValues,
+    values: WidgetConfig,
     filterValues?: Record<string, FilterValue>,
     definitions?: UnifiedFilterDefinition[],
     dataSources?: DatasourceItem[],
@@ -161,7 +161,7 @@ export const useNodeConfigFlow = ({
   }, [state]);
 
   const handleTopologyViewConfigConfirm = useCallback(
-    async (values: ViewConfigFormValues) => {
+    async (values: WidgetConfig) => {
       if (!state.editingNodeData) return;
       if (state.editingNodeData.isNewNode && state.editingNodeData.position) {
         const result = await handleAddChartNode(values, true);

@@ -8,6 +8,10 @@ import type {
 import ChartSurface from '@/components/chart-surface';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 import {
+  presentRanking,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
+import {
   buildTopNItems,
   resolveConfiguredTopNBarPercent,
 } from '@/app/ops-analysis/utils/topNData';
@@ -44,9 +48,12 @@ const OpsAnalysisTopN: React.FC<OpsAnalysisTopNProps> = ({
   const labelHeader = resolveTopNHeaderLabel(labelField, dataSource?.field_schema);
   const valueHeader = resolveTopNHeaderLabel(valueField, dataSource?.field_schema);
 
-  const items = buildTopNItems(rawData, labelField, valueField, {
-    scalarFields: config?.topNScalarFields,
-  });
+  const items = presentRanking(
+    buildTopNItems(rawData, labelField, valueField, {
+      scalarFields: config?.topNScalarFields,
+    }),
+    readChartDisplay(config),
+  );
   const isDataReady = items.length > 0;
 
   useEffect(() => {

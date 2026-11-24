@@ -108,11 +108,17 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
         await post(`${API}/workflows/${profile.workflow.id}/duplicate/`, value);
         message.success(profileSavedMessage('copy', value.team));
       } else if (profile.workflow) {
-        const body = profile.workflow.current_version
-          ? { name: value.name, description: value.description }
-          : value;
-        await patch(`${API}/workflows/${profile.workflow.id}/`, body);
-        message.success(t('workflowOrchestration.editor.draftSaved', '草稿已保存'));
+        const previousTeam = profile.workflow.team || [];
+        const teamChanged = value.team.length !== previousTeam.length || value.team.some((id) => !previousTeam.includes(id));
+        await patch(`${API}/workflows/${profile.workflow.id}/`, {
+          name: value.name,
+          description: value.description,
+          draft_revision: profile.workflow.draft_revision,
+          ...(teamChanged ? { team: value.team } : {}),
+        });
+        message.success(teamChanged && !includesCurrentOrganization(value.team)
+          ? t('workflowOrchestration.workflow.updatedElsewhere', '已修改流程，切换到 {organizations} 后可见', { organizations: organizationDisplayText(value.team, flatGroups) })
+          : t('workflowOrchestration.workflow.updatedSuccess', '流程已修改'));
       }
       setProfile(null);
       await load();
@@ -296,10 +302,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
       setProfile({ mode: 'copy', workflow: record });
       return;
     }
-    if (key === 'profile') {
-      setProfile({ mode: 'edit', workflow: record });
-      return;
-    }
     if (key === 'delete') {
       modal.confirm({
         title: t('workflowOrchestration.workflow.deleteConfirm', '确认删除流程？'),
@@ -315,7 +317,6 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
   const moreActions = (record: WorkflowRecord): MenuProps['items'] => [
     { key: 'executions', label: <WorkflowPermission operation="View" area="executions"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
     { key: 'duplicate', label: <WorkflowPermission operation="Add"><span>{t('common.copy', '复制')}</span></WorkflowPermission> },
-    ...(record.is_builtin ? [] : [{ key: 'profile', label: <WorkflowPermission operation="Edit" instancePermissions={record.permission}><span>{t('workflowOrchestration.workflow.basicInfo', '基本信息')}</span></WorkflowPermission> }]),
     ...(record.is_builtin
       ? []
       : [
@@ -448,7 +449,7 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
     {
       title: t('common.actions', '操作'),
       key: 'actions',
-      width: isMarket ? 168 : 136,
+      width: isMarket ? 168 : 212,
       fixed: 'right',
       render: (_, record) => (
         isMarket ? (
@@ -477,9 +478,16 @@ export function WorkflowListPage({ catalog = 'custom' }: { catalog?: WorkflowCat
                 size="small"
                 onClick={() => router.push(`/workflow/workflows/${record.id}?mode=${record.is_builtin ? 'view' : 'edit'}`)}
               >
-                {record.is_builtin ? t('common.view', '查看') : t('common.edit', '编辑')}
+                {record.is_builtin ? t('common.view', '查看') : t('workflowOrchestration.action.orchestrate', '编排')}
               </Button>
             </WorkflowPermission>
+            {!record.is_builtin && (
+              <WorkflowPermission operation="Edit" instancePermissions={record.permission}>
+                <Button type="link" size="small" onClick={() => setProfile({ mode: 'edit', workflow: record })}>
+                  {t('workflowOrchestration.action.modify', '修改')}
+                </Button>
+              </WorkflowPermission>
+            )}
             <WorkflowPermission operation="Execute" instancePermissions={record.permission}>
               <Tooltip title={runDisabledReason(record) || undefined}>
                 <span><Button type="link" size="small" disabled={Boolean(runDisabledReason(record))} onClick={() => void execute(record)}>{t('workflowOrchestration.action.run', '运行')}</Button></span>

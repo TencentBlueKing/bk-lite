@@ -875,7 +875,7 @@ def _append_person_ids(extras: list[str], user: SystemUser) -> None:
             extras.append(f"{user.username}@{user.domain}")
 
 
-def _filter_conversations_by_person(qs, person: str):
+def filter_conversations_by_person(qs, person: str):
     keyword = (person or "").strip()
     if not keyword:
         return qs
@@ -921,7 +921,7 @@ def list_skill_conversations_for_admin(
         qs = qs.filter(updated_at__gte=start_at)
     if end_at is not None:
         qs = qs.filter(updated_at__lte=end_at)
-    qs = _filter_conversations_by_person(qs, person)
+    qs = filter_conversations_by_person(qs, person)
     qs = qs.order_by("-updated_at", "-id")
     page = max(int(page or 1), 1)
     page_size = min(max(int(page_size or 10), 1), ADMIN_CONVERSATION_PAGE_SIZE_MAX)
@@ -1072,8 +1072,15 @@ def refresh_history_message_media(content: str) -> str:
     return json.dumps(events, ensure_ascii=False)
 
 
-def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
-    rows = list(conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX])
+def serialize_skill_session_messages(conv: SkillConversation, *, from_message_id: int | None = None) -> list[dict]:
+    messages = conv.messages.order_by("created_at", "id")
+    if from_message_id is not None:
+        anchor = messages.filter(id=from_message_id).values("created_at").first()
+        if not anchor:
+            raise SkillChannelChatError("引用的消息已删除", status=404)
+        created = anchor["created_at"]
+        messages = messages.filter(Q(created_at__gt=created) | Q(created_at=created, pk__gte=from_message_id))
+    rows = list(messages[:ADMIN_MESSAGE_FETCH_MAX])
     grouped: dict[int, list[dict]] = {}
     if rows:
         attachments = ChatAttachment.objects.filter(message_id__in=[row.id for row in rows]).order_by("id")
@@ -1505,6 +1512,7 @@ def stream_skill_channel_chat(
     distribute_file_ids=None,
     choice_id: str | None = None,
     choice_option: str | None = None,
+    reply_to_choice_id: str | None = None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
     user = identity_user or request.user
@@ -1633,6 +1641,8 @@ def stream_skill_channel_chat(
         params["choice_id"] = str(choice_id)
     if choice_option:
         params["choice_option"] = str(choice_option)
+    if reply_to_choice_id is not None:
+        params["reply_to_choice_id"] = reply_to_choice_id
     base_response = stream_agui_chat(params, skill.name, ingest_kwargs, current_ip, persist_text, skill_id=skill.id)
     return _wrap_stream_persist_assistant(base_response, conversation.id, organization_id=organization_id)
 

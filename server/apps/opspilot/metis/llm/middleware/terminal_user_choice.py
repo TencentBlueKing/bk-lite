@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from itertools import takewhile
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import hook_config
 from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables.config import ensure_config
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.nested_stream import publish_owned_custom_event_nowait
@@ -19,6 +21,7 @@ from apps.opspilot.utils.pending_question import (
     build_choice_request,
     collect_evidence_messages,
     format_choice_text,
+    job_confirmation_owner,
     resolve_conversation_key_from_mapping,
     save_pending_question,
     serialize_evidence,
@@ -26,14 +29,6 @@ from apps.opspilot.utils.pending_question import (
 
 _CHOICE_TOOL = "request_user_choice"
 _TERMINAL_TOOL_RESULT = "已向用户发出选择，本轮结束。用户回答后会在新一轮带着已有结果继续。"
-
-
-def _configurable(runtime: Any) -> dict[str, Any]:
-    config = getattr(runtime, "config", None)
-    if not isinstance(config, dict):
-        config = {}
-    configurable = config.get("configurable") if isinstance(config, dict) else None
-    return dict(configurable) if isinstance(configurable, dict) else {}
 
 
 def _tool_call_name(call: Any) -> str:
@@ -102,7 +97,8 @@ def finalize_user_choice(
     visible_text: str = "",
     tool_name: str = "",
     tool_result: str = "",
-) -> tuple[str, AIMessage]:
+    job_confirmation_id: str = "",
+) -> tuple[str, ToolMessage]:
     configurable = {}
     if isinstance(config, dict):
         raw = config.get("configurable")
@@ -119,7 +115,6 @@ def finalize_user_choice(
         description=description,
     )
     question_text = str(visible_text or "").strip() or format_choice_text(question, question_type, request_payload["options"])
-    emit_choice_request(config, request_payload)
     evidence = collect_evidence_messages(messages)
     if extra_evidence:
         evidence = list(evidence) + list(extra_evidence)
@@ -128,10 +123,12 @@ def finalize_user_choice(
         tool_call_id=tool_call_id or request_payload["choice_id"],
         name=tool_name or _CHOICE_TOOL,
     )
-    evidence.append(tool_message)
+    if not job_confirmation_id:
+        evidence.append(tool_message)
     conversation_key = resolve_conversation_key_from_mapping(configurable)
     pending_payload = {
         "kind": kind,
+        "choice_id": request_payload["choice_id"],
         "execution_id": execution_id,
         "node_id": node_id,
         "question": question,
@@ -142,12 +139,57 @@ def finalize_user_choice(
     }
     if isinstance(skill_package_draft, dict):
         pending_payload["skill_package_draft"] = {**skill_package_draft, "choice_id": request_payload["choice_id"]}
+    if job_confirmation_id:
+        pending_payload["job_confirmation"] = {
+            "id": job_confirmation_id,
+            "choice_id": request_payload["choice_id"],
+            "owner": job_confirmation_owner(configurable.get("caller_identity")),
+        }
     save_pending_question(conversation_key, pending_payload)
+    emit_choice_request(config, request_payload)
     return question_text, tool_message
+
+
+def finalize_job_confirmation(*, messages: list, config: Any) -> str | None:
+    """将本次工具调用的待审脚本原样展示，后续回复只能续接这次提案。"""
+    # 同一批工具可以并行返回；只检查本批结果，不能恢复历史确认卡。
+    batch = takewhile(lambda message: isinstance(message, ToolMessage), reversed(messages))
+    for result in batch:
+        if result.name == "job_mgmt_run_custom" and isinstance(result.artifact, dict):
+            proposal = result.artifact.get("job_confirmation")
+            if isinstance(proposal, dict):
+                break
+    else:
+        return None
+    configurable = (config or {}).get("configurable", {})
+    if not allows_user_questions(getattr(configurable.get("graph_request"), "extra_config", None)):
+        return None
+    question_text, _ = finalize_user_choice(
+        question=proposal["question"],
+        question_type="single_select",
+        options=proposal["options"],
+        description="可点击选项，也可直接回复序号或说明你的决定。",
+        config=config,
+        messages=messages,
+        tool_call_id=result.tool_call_id,
+        job_confirmation_id=proposal["id"],
+    )
+    return question_text
 
 
 class TerminalUserChoiceMiddleware(AgentMiddleware):
     """模型调用 request_user_choice 且校验通过时结束本轮。"""
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+        question = finalize_job_confirmation(messages=state.get("messages") or [], config=ensure_config(getattr(runtime, "config", None)))
+        if question is not None:
+            return {"jump_to": "end", "messages": [AIMessage(content=question)]}
+        return None
+
+    @hook_config(can_jump_to=["end"])
+    async def abefore_model(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+        return self.before_model(state, runtime)
 
     @hook_config(can_jump_to=["end"])
     def after_model(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
@@ -165,12 +207,12 @@ class TerminalUserChoiceMiddleware(AgentMiddleware):
         calls = _choice_calls(last)
         if not calls:
             return None
-        configurable = _configurable(runtime)
+        config = ensure_config(getattr(runtime, "config", None))
+        configurable = config["configurable"]
         request = configurable.get("graph_request")
         extra = getattr(request, "extra_config", None) or {}
         if not allows_user_questions(extra):
             return None
-        config = getattr(runtime, "config", None)
         for call in calls:
             rejection = guard_rejection(call, configurable)
             if rejection:
@@ -182,7 +224,7 @@ class TerminalUserChoiceMiddleware(AgentMiddleware):
             question=str(args.get("question") or ""),
             question_type=str(args.get("question_type") or "single_select"),
             options=args.get("options") if isinstance(args.get("options"), list) else None,
-            config=config if isinstance(config, dict) else {"configurable": configurable},
+            config=config,
             messages=messages[:-1],
             tool_call_id=_tool_call_id(call),
         )
