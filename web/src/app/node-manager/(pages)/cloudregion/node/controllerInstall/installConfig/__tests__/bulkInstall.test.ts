@@ -62,7 +62,8 @@ describe('bulk install presets', () => {
     expect(BULK_SUCCESS_COUNT_OPTIONS).toContain(BULK_DEFAULT_SUCCESS_COUNT);
     expect(BULK_EXPIRE_DAY_OPTIONS).toContain(BULK_DEFAULT_EXPIRE_DAYS);
     expect(BULK_EXPIRE_DAY_OPTIONS).toEqual([1, 3, 5, 7]);
-    expect(bulkExpireHours(BULK_DEFAULT_EXPIRE_DAYS)).toBe(72);
+    expect(BULK_DEFAULT_EXPIRE_DAYS).toBe(1);
+    expect(bulkExpireHours(BULK_DEFAULT_EXPIRE_DAYS)).toBe(24);
     expect(bulkExpireHours(5)).toBe(120);
     expect(bulkExpireHours(7)).toBe(168);
   });

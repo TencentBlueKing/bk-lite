@@ -2,8 +2,11 @@
 
 import json
 import logging
+import os
+import signal
 import subprocess
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -239,11 +242,23 @@ def test_timed_out_install_can_be_accepted_again(region, package):
     batch = _create_batch(region, package)
     assert _enroll(_token(batch)).status_code == 200
     ControllerBulkAttempt.objects.filter(ip="10.0.0.8").update(
-        created_at=timezone.now() - timedelta(seconds=InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS + 30)
+        created_at=timezone.now() - timedelta(seconds=InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS - 30)
     )
 
-    retry = _enroll(_token(batch), hostname="web-02")
+    still_installing = json.loads(_progress(batch["batch_id"]).content)["data"]
+    assert still_installing["items"][0]["status"] == "installing"
+    assert Node.objects.filter(cloud_region=region, ip="10.0.0.8").exists()
 
+    ControllerBulkAttempt.objects.filter(ip="10.0.0.8").update(
+        created_at=timezone.now() - timedelta(seconds=InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS + 30)
+    )
+    released = json.loads(_progress(batch["batch_id"]).content)["data"]
+
+    assert InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS == 900
+    assert InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS > InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS
+    assert released["items"][0]["status"] == "timeout"
+    assert not Node.objects.filter(cloud_region=region, ip="10.0.0.8").exists()
+    retry = _enroll(_token(batch), hostname="web-02")
     assert retry.status_code == 200, retry.content
     assert Node.objects.get(cloud_region=region, ip="10.0.0.8").name == "web-02"
     statuses = [item["status"] for item in json.loads(_progress(batch["batch_id"]).content)["data"]["items"]]
@@ -538,3 +553,228 @@ exit 0
     assert result.returncode != 0
     assert "https://node.example/result" in logged
     assert "outcome=failed" in logged
+
+
+def test_bulk_first_heartbeat_creates_default_config_once(region, package, monkeypatch):
+    calls = []
+
+    def _record(node, node_types):
+        calls.append((node.id, list(node_types)))
+
+    monkeypatch.setattr(Sidecar, "create_default_config", _record)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    batch = _create_batch(region, package)
+    accepted = _enroll(_token(batch), ip="10.5.0.1", hostname="cfg-host")
+    assert accepted.status_code == 200, accepted.content
+    node = Node.objects.get(ip="10.5.0.1")
+    assert not node.status
+
+    Sidecar.update_node_client(_sidecar_heartbeat(region, node.id, "10.5.0.1"), node.id)
+
+    node.refresh_from_db()
+    assert node.status
+    assert calls == [(node.id, [ControllerConstants.NODE_TYPE_HOST])]
+
+    Sidecar.update_node_client(_sidecar_heartbeat(region, node.id, "10.5.0.1"), node.id)
+    assert calls == [(node.id, [ControllerConstants.NODE_TYPE_HOST])]
+
+
+def test_reported_heartbeat_timeout_keeps_the_node_and_marks_installed(region, package, monkeypatch):
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    batch = _create_batch(region, package)
+    assert _enroll(_token(batch), ip="10.6.0.1", hostname="alive").status_code == 200
+    node = Node.objects.get(ip="10.6.0.1")
+    Sidecar.update_node_client(_sidecar_heartbeat(region, node.id, "10.6.0.1"), node.id)
+    node.refresh_from_db()
+    assert node.status
+
+    ControllerBulkAttempt.objects.filter(node_id=node.id).update(
+        created_at=timezone.now() - timedelta(seconds=InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS + 30)
+    )
+    progress = json.loads(_progress(batch["batch_id"]).content)["data"]
+    item = next(row for row in progress["items"] if row["ip"] == "10.6.0.1")
+
+    assert item["status"] == "installed"
+    assert item["message"] == ""
+    assert Node.objects.filter(id=node.id).exists()
+    duplicate = _enroll(_token(batch), ip="10.6.0.1", hostname="again")
+    assert duplicate.status_code == 400
+    assert "重复" in duplicate.content.decode()
+    assert Node.objects.filter(id=node.id).exists()
+
+
+def test_bulk_command_defaults_to_one_day(region, package):
+    view = installer_view.InstallerViewSet.as_view({"post": "controller_bulk_install"})
+    response = view(
+        _auth(
+            "post",
+            "/node_mgmt/api/installer/controller/bulk_install/",
+            {
+                "cloud_region_id": region.id,
+                "package_id": package.id,
+                "max_success_count": 10,
+            },
+        )
+    )
+
+    assert response.status_code == 200, response.content
+    expires_at = datetime.fromisoformat(json.loads(response.content)["data"]["expires_at"])
+    remaining = expires_at - timezone.now()
+    assert timedelta(hours=23, minutes=59) < remaining < timedelta(hours=24, minutes=1)
+    assert InstallerConstants.BULK_DEFAULT_EXPIRE_HOURS == 24
+    assert InstallerConstants.BULK_MAX_EXPIRE_HOURS == 24 * 7
+
+
+def _write_exec(path, content):
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
+
+
+_CURL_FAKE = """#!/bin/sh
+printf '%s\\n' "$*" >> "$CURL_LOG"
+case "$*" in
+  *"/enroll"*)
+    prev=""
+    for arg in "$@"; do
+      if [ "$prev" = "-o" ]; then
+        printf 'install-token\\nnode-id\\n' > "$arg"
+      fi
+      prev="$arg"
+    done
+    printf '200'
+    exit 0
+    ;;
+  *"bootstrap?token="*)
+    prev=""
+    for arg in "$@"; do
+      if [ "$prev" = "-o" ]; then
+        if [ "${INSTALLER_MODE:-exit}" = "sleep" ]; then
+          printf '#!/bin/sh\\nsleep 60\\n' > "$arg"
+        else
+          printf '#!/bin/sh\\nexit %s\\n' "${INSTALLER_RC:-0}" > "$arg"
+        fi
+      fi
+      prev="$arg"
+    done
+    exit 0
+    ;;
+  *"/result"*)
+    n=0
+    if [ -f "$RESULT_COUNT" ]; then
+      n=$(cat "$RESULT_COUNT")
+    fi
+    n=$((n + 1))
+    printf '%s' "$n" > "$RESULT_COUNT"
+    if [ "$n" -le "${RESULT_FAILS:-0}" ]; then
+      exit 1
+    fi
+    exit 0
+    ;;
+esac
+exit 1
+"""
+
+
+def _result_lines(logged):
+    return [line for line in logged.splitlines() if "/result" in line]
+
+
+def _prepare_bootstrap(root, extra_env=None, *, sleep_override=False):
+    root.mkdir(parents=True, exist_ok=True)
+    script = render_bulk_bootstrap_script(
+        enroll_url="https://node.example/enroll",
+        result_url="https://node.example/result",
+        linux_bootstrap_url_prefix="https://node.example/bootstrap?token=",
+        batch_token="batch-token",
+    )
+    bin_dir = root / "bin"
+    bin_dir.mkdir()
+    curl_log = root / "curl.log"
+    _write_exec(bin_dir / "ip", "#!/bin/sh\necho '2: eth0 inet 10.0.0.8/24'\n")
+    _write_exec(bin_dir / "curl", _CURL_FAKE)
+    if sleep_override:
+        _write_exec(bin_dir / "sleep", "#!/bin/sh\nexit 0\n")
+    script_path = root / "bootstrap.sh"
+    script_path.write_text(script, encoding="utf-8")
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "CURL_LOG": str(curl_log),
+        "RESULT_COUNT": str(root / "result.count"),
+    }
+    if extra_env:
+        env.update(extra_env)
+    return script_path, env, curl_log
+
+
+def _run_bootstrap(root, extra_env=None, *, sleep_override=False):
+    script_path, env, curl_log = _prepare_bootstrap(root, extra_env, sleep_override=sleep_override)
+    result = subprocess.run(
+        ["/bin/sh", str(script_path), "--node_ip", "10.0.0.8"],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    logged = curl_log.read_text(encoding="utf-8") if curl_log.exists() else ""
+    return result, logged
+
+
+def test_bootstrap_script_retries_result_report_without_changing_exit_code(tmp_path):
+    once, once_log = _run_bootstrap(tmp_path / "once", sleep_override=True)
+    once_lines = _result_lines(once_log)
+    assert once.returncode == 0, once.stderr
+    assert len(once_lines) == 1
+    assert "outcome=success" in once_lines[0]
+    assert "outcome=failed" not in once_log
+
+    retried, retried_log = _run_bootstrap(tmp_path / "retry", {"RESULT_FAILS": "1"}, sleep_override=True)
+    retried_lines = _result_lines(retried_log)
+    assert retried.returncode == 0, retried.stderr
+    assert len(retried_lines) == 2
+    assert all("outcome=success" in line for line in retried_lines)
+
+    failed, failed_log = _run_bootstrap(
+        tmp_path / "giveup",
+        {"RESULT_FAILS": "4", "INSTALLER_RC": "3"},
+        sleep_override=True,
+    )
+    failed_lines = _result_lines(failed_log)
+    assert failed.returncode == 3, failed.stderr
+    assert len(failed_lines) == 4
+    assert all("outcome=failed" in line for line in failed_lines)
+
+
+@pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
+def test_bootstrap_script_reports_failure_once_when_interrupted(tmp_path, stop_signal):
+    script_path, env, curl_log = _prepare_bootstrap(tmp_path, {"INSTALLER_MODE": "sleep"})
+    proc = subprocess.Popen(
+        ["/bin/sh", str(script_path), "--node_ip", "10.0.0.8"],
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if curl_log.exists() and "bootstrap?token=" in curl_log.read_text(encoding="utf-8"):
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert proc.poll() is None
+        os.killpg(proc.pid, stop_signal)
+        proc.communicate(timeout=10)
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+
+    logged = curl_log.read_text(encoding="utf-8")
+    lines = _result_lines(logged)
+    assert proc.returncode != 0
+    assert len(lines) == 1
+    assert "outcome=failed" in lines[0]
+    assert "outcome=success" not in logged

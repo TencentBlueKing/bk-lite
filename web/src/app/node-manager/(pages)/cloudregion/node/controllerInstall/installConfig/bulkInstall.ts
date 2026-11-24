@@ -2,7 +2,7 @@ export const BULK_INSTALL_METHOD = 'bulkInstall';
 export const BULK_SUCCESS_COUNT_OPTIONS = [10, 50, 100, 500, 1000] as const;
 export const BULK_DEFAULT_SUCCESS_COUNT = 100;
 export const BULK_EXPIRE_DAY_OPTIONS = [1, 3, 5, 7] as const;
-export const BULK_DEFAULT_EXPIRE_DAYS = 3;
+export const BULK_DEFAULT_EXPIRE_DAYS = 1;
 
 export function bulkExpireHours(days: number): number {
   return days * 24;

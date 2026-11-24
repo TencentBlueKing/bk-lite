@@ -322,7 +322,7 @@ class BulkInstallService:
 
     @staticmethod
     def _release_timed_out_attempts(batch: ControllerBulkBatch) -> None:
-        deadline = timezone.now() - timedelta(seconds=InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS)
+        deadline = timezone.now() - timedelta(seconds=InstallerConstants.BULK_INSTALL_TIMEOUT_SECONDS)
         timed_out_ids = list(
             ControllerBulkAttempt.objects.filter(
                 batch__cloud_region_id=batch.cloud_region_id,
@@ -332,12 +332,24 @@ class BulkInstallService:
             .order_by("id")
             .values_list("id", flat=True)[: InstallerConstants.BULK_TIMEOUT_RELEASE_LIMIT]
         )
-        timed_out = ControllerBulkAttempt.objects.select_for_update().filter(id__in=timed_out_ids)
+        timed_out = ControllerBulkAttempt.objects.select_for_update().filter(id__in=timed_out_ids).order_by("id")
         for attempt in timed_out:
+            if BulkInstallService._placeholder_has_reported(attempt.node_id):
+                attempt.status = InstallerConstants.BULK_ATTEMPT_INSTALLED
+                attempt.message = ""
+                attempt.save(update_fields=["status", "message", "updated_at"])
+                continue
             BulkInstallService._delete_placeholder_node(attempt.node_id)
             attempt.status = InstallerConstants.BULK_ATTEMPT_TIMEOUT
             attempt.message = "安装超时"
             attempt.save(update_fields=["status", "message", "updated_at"])
+
+    @staticmethod
+    def _placeholder_has_reported(node_id: str) -> bool:
+        if not node_id:
+            return False
+        node = Node.objects.select_for_update().filter(id=node_id).first()
+        return node is not None and bool(node.status)
 
     @staticmethod
     def _delete_placeholder_node(node_id: str) -> None:
@@ -413,6 +425,7 @@ ENROLL_URL={enroll}
 RESULT_URL={result}
 BOOTSTRAP_PREFIX={prefix}
 NODE_IP=""
+REPORTED=0
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--node_ip" ]; then
     if [ "$#" -lt 2 ]; then
@@ -473,6 +486,29 @@ cleanup() {{
     rm -f "$BOOTSTRAP_FILE"
   fi
 }}
+report_outcome() {{
+  if [ "$REPORTED" -eq 1 ]; then
+    return 0
+  fi
+  REPORTED=1
+  _outcome="$1"
+  for _try in 1 2 3 4; do
+    if curl -sSLk -o /dev/null -X POST "$RESULT_URL" \
+      --data-urlencode "token=$BATCH_TOKEN" \
+      --data-urlencode "node_id=$NODE_ID" \
+      --data-urlencode "outcome=$_outcome"; then
+      return 0
+    fi
+    if [ "$_try" -lt 4 ]; then
+      sleep 2
+    fi
+  done
+  return 0
+}}
+on_interrupt() {{
+  report_outcome failed
+  exit 130
+}}
 trap cleanup 0
 CODE=$(curl -sSLk -o "$BODY" -w '%{{http_code}}' -X POST "$ENROLL_URL" \
   --data-urlencode "token=$BATCH_TOKEN" \
@@ -489,6 +525,7 @@ if [ -z "$INSTALL_TOKEN" ] || [ -z "$NODE_ID" ]; then
   echo "安装受理失败" >&2
   exit 1
 fi
+trap 'on_interrupt' HUP INT TERM
 BOOTSTRAP_FILE=$(mktemp)
 installer_status=0
 curl -fsSLk "$BOOTSTRAP_PREFIX$INSTALL_TOKEN" -o "$BOOTSTRAP_FILE" || installer_status=$?
@@ -499,10 +536,7 @@ OUTCOME=failed
 if [ "$installer_status" -eq 0 ]; then
   OUTCOME=success
 fi
-curl -sSLk -o /dev/null -X POST "$RESULT_URL" \
-  --data-urlencode "token=$BATCH_TOKEN" \
-  --data-urlencode "node_id=$NODE_ID" \
-  --data-urlencode "outcome=$OUTCOME" || true
+report_outcome "$OUTCOME"
 exit "$installer_status"
 """
 
