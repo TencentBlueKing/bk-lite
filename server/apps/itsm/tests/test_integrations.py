@@ -160,7 +160,7 @@ def test_todo_token_is_encrypted_masked_and_preserved():
         assert item["config"]["token"] == ""
         stored = Integration.objects.get(id=item["id"])
         assert stored.config["token"] != "test-secret"
-        body(integration_detail(req("put", {"config": {"url": "https://example.com/next", "token": ""}}), stored.id))
+        body(integration_detail(req("put", {"config": {"url": "https://example.com/hook", "token": ""}}), stored.id))
         stored.refresh_from_db()
         response = Mock(status_code=204)
         with patch("apps.itsm.services.todo_sync.safe_request", return_value=response) as call:
@@ -266,3 +266,28 @@ def test_workflow_never_borrows_integration_maintainer_identity(sample):
         runner.return_value.execute.return_value = []
         run_for_ticket(ticket, {"integration_id": item.id})
     assert identity.call_args.kwargs["actor"] == "designer"
+
+
+def test_todo_changing_target_clears_previous_credential():
+    with patch("apps.itsm.services.integrations.SSRFValidator.validate"):
+        item = body(integrations(req("post", {"name": "待办", "kind": "todo", "config": {"url": "https://example.com/hook", "token": "fixture"}})))
+        changed = body(integration_detail(req("put", {"config": {"url": "https://other.example/hook"}}), item["id"]))
+        assert not changed["has_token"]
+        assert Integration.objects.get(pk=item["id"]).config["token"] == ""
+
+
+def test_historical_run_pages_and_status_filter():
+    item = script_item()
+    records = [IntegrationRun.objects.create(integration=item, status="failed" if i % 2 else "done") for i in range(44)]
+    result = body(integration_detail(req(data={"run_page": 2, "run_page_size": 10, "run_status": "failed"}), item.id))
+    assert result["run_count"] == 22
+    assert [row["id"] for row in result["runs"]] == [row.pk for row in reversed(records[1::2])][10:20]
+
+
+def test_history_cursor_keeps_next_page_stable_when_a_new_run_arrives():
+    item = script_item()
+    records = [IntegrationRun.objects.create(integration=item, status="done") for _ in range(14)]
+    first = body(integration_detail(req(data={"run_page_size": 10}), item.pk))
+    IntegrationRun.objects.create(integration=item, status="done")
+    second = body(integration_detail(req(data={"run_page": 2, "run_page_size": 10, "run_after": first["run_next_cursor"]}), item.pk))
+    assert [row["id"] for row in second["runs"]] == [row.pk for row in reversed(records[:4])]

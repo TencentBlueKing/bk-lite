@@ -1,8 +1,8 @@
 import json
 
-from django.db.models import Case, Value, When
-from django.utils import timezone
+from django.db.models import Case, Q, Value, When
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -11,7 +11,7 @@ from apps.core.openapi.catalog import build_docs_catalog
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.models.integration import Integration
 from apps.itsm.services.integrations import execute, request_identity, validate_config
-from apps.itsm.views.access import api_errors, domain_of, has_permission
+from apps.itsm.views.access import api_errors, domain_of, has_permission, list_page
 
 
 def require(request, permission):
@@ -95,22 +95,42 @@ def integration_detail(request, item_id):
                 config["token"] = (
                     EncryptMixin.get_cipher_suite().encrypt(config["token"].encode()).decode()
                     if config.get("token")
-                    else (item.config.get("token", "") if item.kind == "todo" or config.get("url") == item.config.get("url") else "")
+                    else (item.config.get("token", "") if config.get("url") == item.config.get("url") else "")
                 )
             item.config = config
         item.is_enabled = data.get("is_enabled", item.is_enabled)
         item.updated_by = request.user.username
         item.save()
-    return WebUtils.response_success(
-        {
-            **serialize(item),
-            "runs": list(item.runs.order_by("-id").values("id", "status", "code", "duration_ms", "created_by", "created_at")[:20]),
-            "deliveries": list(
-                item.deliveries.order_by(Case(When(status="unknown", then=Value(0)), default=Value(1)), "-id")
-                .values("id", "status", "code", "attempts", "created_at", "task_id", "event_key")[:30]
-            ),
-        }
-    )
+    result = serialize(item)
+    result.update(_history(request.GET, item.runs, "run", ("created_by", "duration_ms")))
+    result.update(_history(request.GET, item.deliveries, "delivery", ("attempts", "task_id", "event_key")))
+    return WebUtils.response_success(result)
+
+
+def _history(params, manager, kind, fields):
+    priority = Value(0)
+    if kind == "delivery":
+        priority = Case(When(status="unknown", then=Value(0)), When(status="failed", then=Value(1)), default=Value(2))
+    records = manager.annotate(priority=priority).order_by("priority", "-pk").values("id", "status", "code", "created_at", "priority", *fields)
+    if status := params.get(f"{kind}_status"):
+        records = records.filter(status=status)
+    page = list_page(params, records, prefix=f"{kind}_")
+    if cursor := params.get(f"{kind}_after"):
+        rank, pk = map(int, cursor.split(":"))
+        if rank not in (0, 1, 2) or not 0 < pk < 2**63:
+            raise ValueError("无效的历史记录游标")
+        rows = list(records.filter(Q(priority__gt=rank) | Q(priority=rank, pk__lt=pk))[:page.paginator.per_page])
+    else:
+        rows = list(page)
+    after = f"{rows[-1]['priority']}:{rows[-1]['id']}" if rows else ""
+    for row in rows:
+        del row["priority"]
+    return {
+        "runs" if kind == "run" else "deliveries": rows,
+        f"{kind}_count": page.paginator.count,
+        f"{kind}_page": page.number,
+        f"{kind}_next_cursor": after,
+    }
 
 
 @csrf_exempt

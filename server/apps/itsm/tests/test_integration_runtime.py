@@ -69,8 +69,17 @@ def test_real_todo_create_transfer_close_and_retry(sample):
         state["fail"] = True
         deliver(row.id)
         row.refresh_from_db()
-        assert row.status == "failed"
+        assert row.status == "unknown"
+        from apps.itsm.tests.test_review_regressions import request
+        from apps.itsm.views.integrations import reconcile_delivery
+
         state["fail"] = False
+        deliver(row.id)
+        assert len(received) == 1
+        checked = reconcile_delivery(
+            request("post", {"received": False, "attempts": row.attempts}, permissions=["data-Edit"], domain=row.domain), row.integration_id, row.pk,
+        )
+        assert checked.status_code == 200
         deliver(row.id)
         row.refresh_from_db()
         assert row.status == "done"
