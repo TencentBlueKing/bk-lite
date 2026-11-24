@@ -5,7 +5,7 @@ from django.db import transaction
 from apps.itsm.flowable.client import FlowableError
 from apps.itsm.models import Ticket, TicketTask
 from apps.itsm.models.extend import Handover
-from apps.itsm.services.ticket.actions import validated_opinion
+from apps.itsm.services.ticket.actions import NodeActionValidationError, validated_opinion
 from apps.itsm.services.ticket.batch import validate_ids
 from apps.itsm.services.ticket.service import TaskAssigneeChanged, TransferRejected
 from apps.itsm.services.ticket.transfer import ASSIGNEE_MAX_LENGTH
@@ -57,28 +57,24 @@ def _set_result(item_id, task_id, status, message, allowed):
 def run_handover(item, service, actor):
     for result in item.results:
         task_id = result["task_id"]
-        if result["status"] not in RETRYABLE_RESULTS or not _set_result(item.pk, task_id, "unconfirmed", "结果待核对，请勿重复转交", RETRYABLE_RESULTS):
+        if result["status"] not in RETRYABLE_RESULTS:
             continue
         try:
-            with transaction.atomic():
-                task = TicketTask.objects.select_related("ticket").get(pk=task_id, ticket_id=result["ticket_id"], ticket__domain=item.domain)
-                service.operate(
-                    task.ticket,
-                    task,
-                    "transfer",
-                    {"target": item.to_user, "opinion": item.opinion},
-                    actor,
-                    privileged=True,
-                    expected_assignee=item.from_user,
-                )
-                _set_result(item.pk, task_id, "succeeded", "交接成功", {"unconfirmed"})
+            task = TicketTask.objects.select_related("ticket").get(pk=task_id, ticket_id=result["ticket_id"], ticket__domain=item.domain)
+            service.operate(
+                task.ticket,
+                task,
+                "transfer",
+                {"target": item.to_user, "opinion": item.opinion},
+                actor,
+                privileged=True,
+                expected_assignee=item.from_user,
+                handover_id=item.pk,
+            )
         except (TaskAssigneeChanged, TicketTask.DoesNotExist, Ticket.DoesNotExist):
-            _set_result(item.pk, task_id, "skipped", "原待办或处理人已变化，已跳过", {"unconfirmed"})
-        except TransferRejected:
-            _set_result(item.pk, task_id, "failed", "待办暂时无法转交所选人员", {"unconfirmed"})
-        except FlowableError as exc:
-            if 400 <= exc.status < 500 and exc.status != 408:
-                _set_result(item.pk, task_id, "failed", "流程引擎拒绝了转交，可核对后重试", {"unconfirmed"})
-        except JSONDecodeError:
+            _set_result(item.pk, task_id, "skipped", "原待办或处理人已变化，已跳过", RETRYABLE_RESULTS)
+        except (TransferRejected, NodeActionValidationError):
+            _set_result(item.pk, task_id, "failed", "待办暂时无法转交所选人员", RETRYABLE_RESULTS)
+        except (FlowableError, JSONDecodeError):
             continue
     item.refresh_from_db(fields=["results"])

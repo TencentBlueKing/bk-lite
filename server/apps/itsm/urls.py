@@ -67,7 +67,9 @@ from apps.itsm.views.ticket_export import download_export, export_fields, export
 from apps.itsm.views.ticket_operations import batch_operate, batch_options, create_child, preview_print_template, render_print, run_auto
 from apps.itsm.views.tickets import (
     operate_ticket,
+    operation_recovery,
     reconcile_auto_node,
+    recover_start,
     retry_auto_node,
     ticket_detail,
     ticket_form,
@@ -184,6 +186,8 @@ urlpatterns = [
     path("api/workflows/<int:workflow_id>/versions/", workflow_versions, name="itsm-workflow-versions"),
     path("api/workflow_variables/test/", workflow_variable_test, name="itsm-variable-test"),
     path("api/tickets/<int:ticket_id>/", ticket_detail, name="itsm-ticket-detail"),
+    path("api/tickets/<int:ticket_id>/start-recovery/", recover_start, name="itsm-start-recovery"),
+    path("api/tickets/<int:ticket_id>/operation-recovery/", operation_recovery, name="itsm-operation-recovery"),
     path("api/tickets/<int:ticket_id>/operate/", operate_ticket, name="itsm-ticket-operate"),
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/reconcile/", reconcile_auto_node, name="itsm-auto-reconcile"),
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/retry/", retry_auto_node, name="itsm-auto-retry"),

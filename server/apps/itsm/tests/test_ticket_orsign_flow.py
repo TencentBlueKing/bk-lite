@@ -282,6 +282,7 @@ def test_real_decision_parallel_join_and_notice_chain(_todo, _notify):
 
 def test_old_release_and_unknown_start_recover_at_ticket_endpoint():
     import json
+
     from apps.itsm.flowable.client import FlowableError
     from apps.itsm.models import Ticket
     from apps.itsm.tests.test_review_regressions import request
@@ -295,8 +296,14 @@ def test_old_release_and_unknown_start_recover_at_ticket_endpoint():
         for number in (1, 2):
             deployment_id = client.deploy_bpmn(key, build_bpmn(DESIGN, key))["id"]
             deployments.append(deployment_id)
-            version = WorkflowVersion.objects.create(workflow=workflow, version_no=number, design=DESIGN,
-                process_definition_key=key, flowable_deployment_id=deployment_id, is_published=True)
+            WorkflowVersion.objects.create(
+                workflow=workflow,
+                version_no=number,
+                design=DESIGN,
+                process_definition_key=key,
+                flowable_deployment_id=deployment_id,
+                is_published=True,
+            )
         older = workflow.versions.get(version_no=1)
         workflow.current_version = older
         workflow.save()
@@ -308,9 +315,13 @@ def test_old_release_and_unknown_start_recover_at_ticket_endpoint():
             start(*args)
             raise FlowableError(0, "响应丢失")
 
-        with patch("apps.itsm.views.tickets._service", return_value=service), patch.object(client, "start_process", side_effect=lose_response) as remote:
+        with patch("apps.itsm.views.tickets._service", return_value=service), patch.object(
+            client, "start_process", side_effect=lose_response
+        ) as remote:
+
             def submit():
                 return tickets(request("post", payload, username="owner", permissions=["ticket-View", "ticket-Add"]))
+
             assert submit().status_code == 502
             assert Ticket.objects.get().creation_state == "starting"
             confirmed = json.loads(submit().content)
@@ -329,6 +340,7 @@ def test_old_release_and_unknown_start_recover_at_ticket_endpoint():
 
 def test_real_multi_instance_sync_reads_all_task_pages():
     import copy
+
     from django.core.management import call_command
 
     call_command("init_itsm")
@@ -342,8 +354,9 @@ def test_real_multi_instance_sync_reads_all_task_pages():
     workflow = Workflow.objects.create(name="会签分页", key=key)
     deployment = client.deploy_bpmn(key, build_bpmn(design, key))
     try:
-        version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=key,
-            flowable_deployment_id=deployment["id"], is_published=True)
+        version = WorkflowVersion.objects.create(
+            workflow=workflow, version_no=1, design=design, process_definition_key=key, flowable_deployment_id=deployment["id"], is_published=True
+        )
         engine = TicketService(client)
         ticket = engine.create(version, {"title": "105 人会签"}, "creator", is_test=True)
         with patch.object(client, "_request", wraps=client._request) as wire:
@@ -358,8 +371,10 @@ def test_real_multi_instance_sync_reads_all_task_pages():
 
 def test_real_once_schedule_resumes_claim_and_creates_one_instance():
     import json
+
     from django.core.management import call_command
     from django.utils import timezone
+
     from apps.itsm.models.extend import ScheduledTask
     from apps.itsm.services import schedules
 
@@ -370,16 +385,23 @@ def test_real_once_schedule_resumes_claim_and_creates_one_instance():
     design = {**DESIGN, "settings": {"is_test": True}}
     deployment = client.deploy_bpmn(key, build_bpmn(design, key))
     try:
-        version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=key,
-            flowable_deployment_id=deployment["id"], is_published=True)
+        version = WorkflowVersion.objects.create(
+            workflow=workflow, version_no=1, design=design, process_definition_key=key, flowable_deployment_id=deployment["id"], is_published=True
+        )
         workflow.current_version = version
         workflow.save()
         due = timezone.now()
-        item = ScheduledTask.objects.create(name="一次建单", created_by="owner", next_run_at=due, action=json.dumps(
-            {"mode": "once", "task": "create_ticket", "workflow_id": workflow.pk, "once_at": due.isoformat()}))
+        item = ScheduledTask.objects.create(
+            name="一次建单",
+            created_by="owner",
+            next_run_at=due,
+            action=json.dumps({"mode": "once", "task": "create_ticket", "workflow_id": workflow.pk, "once_at": due.isoformat()}),
+        )
         schedules._claim(item.pk, due)
+
         def service_for(*_):
             return TicketService(client)
+
         with patch.object(client, "start_process", wraps=client.start_process) as start:
             assert schedules.run_due(service_for, now=due) == 1
             assert schedules.run_due(service_for, now=due) == 0
@@ -387,5 +409,124 @@ def test_real_once_schedule_resumes_claim_and_creates_one_instance():
         run = item.runs.get()
         assert run.status == "succeeded" and run.ticket.creation_key == f"schedule-{run.pk}"
         assert set(run.ticket.tasks.filter(status="pending", node_id="approve").values_list("assignee", flat=True)) == {"alice", "bob"}
+    finally:
+        client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment['id']}", params={"cascade": "true"})
+
+
+def test_real_reopen_lost_reply_and_pre_send_crash_recovery():
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from apps.itsm.flowable.client import FlowableError, NoStartedInstance
+    from apps.itsm.models import Ticket
+    from apps.itsm.models.ticket import TicketStartAttempt
+    from apps.itsm.services.ticket.start_recovery import confirm_not_started, reconcile_starts
+
+    call_command("init_itsm")
+    client = _client()
+    key = "recovery_" + uuid4().hex[:12]
+    flow = Workflow.objects.create(name="轮次恢复", key=key)
+    dep = client.deploy_bpmn(key, build_bpmn(DESIGN, key))
+    try:
+        version = WorkflowVersion.objects.create(
+            workflow=flow,
+            version_no=1,
+            design=DESIGN,
+            is_published=True,
+            process_definition_key=key,
+            flowable_deployment_id=dep["id"],
+        )
+        service = TicketService(client)
+        real_start = client.start_process
+        with patch.object(client, "start_process", side_effect=FlowableError(0, "模拟发送前中断")):
+            with pytest.raises(FlowableError):
+                service.create(version, {"title": "启动故障"}, "owner", is_test=True, creation_key="request-one")
+        ticket = Ticket.objects.get(creation_key="request-one")
+        attempt = TicketStartAttempt.objects.get(ticket=ticket)
+        with pytest.raises(NoStartedInstance):
+            client.instance_for_business_key(attempt.business_key, attempt.definition_id)
+        TicketStartAttempt.objects.filter(pk=attempt.pk).update(sent_at=timezone.now() - timedelta(minutes=5))
+        confirm_not_started(service, ticket, attempt.pk, "已确认测试请求在发送前退出", "manager")
+        ticket.refresh_from_db()
+        previous = ticket.process_instance_id
+        assert previous == client.instance_for_business_key(attempt.business_key, attempt.definition_id)
+
+        submit = ticket.tasks.get(status="pending")
+        service.operate(ticket, submit, "withdraw", {}, "owner")
+        payload = {"reopen_from": previous, "opinion": "再审"}
+
+        def lose_reply(*args):
+            real_start(*args)
+            raise FlowableError(0, "模拟引擎成功后的应答丢失")
+
+        with patch.object(client, "start_process", side_effect=lose_reply) as start:
+            with pytest.raises(FlowableError):
+                service.operate(ticket, None, "reopen", payload, "owner")
+            assert reconcile_starts(client) == 1
+            service.operate(ticket, None, "reopen", payload, "owner")
+            start.assert_called_once()
+        ticket.refresh_from_db()
+        reopened = ticket.start_attempts.get(kind="reopen")
+        assert ticket.process_instance_id != previous
+        assert ticket.process_instance_id == client.instance_for_business_key(reopened.business_key, reopened.definition_id)
+        assert ticket.tasks.filter(node_id="submit", status="pending").count() == 1
+        assert TicketLog.objects.filter(ticket=ticket, action="reopen").count() == 1
+    finally:
+        client._request("DELETE", f"/flowable-rest/service/repository/deployments/{dep['id']}", params={"cascade": "true"})
+
+
+def test_real_manual_receipts_survive_lost_responses():
+    from django.core.management import call_command
+
+    from apps.itsm.flowable.client import FlowableError
+    from apps.itsm.services.ticket.manual_recovery import active_operations, reconcile_manual_operations
+
+    call_command("init_itsm")
+    client = _client()
+    key = "manual_receipts_" + uuid4().hex[:12]
+    workflow = Workflow.objects.create(name="人工操作回执", key=key)
+    deployment = client.deploy_bpmn(key, build_bpmn(DESIGN, key))
+    try:
+        version = WorkflowVersion.objects.create(
+            workflow=workflow,
+            version_no=1,
+            design=DESIGN,
+            process_definition_key=key,
+            flowable_deployment_id=deployment["id"],
+            is_published=True,
+        )
+        service = TicketService(client)
+        ticket = service.create(version, {"title": "人工操作回执"}, "creator", is_test=True)
+
+        def verify(method, action, data, actor, task):
+            remote = getattr(client, method)
+
+            def lose_response(*args, **kwargs):
+                remote(*args, **kwargs)
+                raise FlowableError(0, "应答丢失")
+
+            with patch.object(client, method, side_effect=lose_response) as send:
+                with pytest.raises(FlowableError):
+                    service.operate(ticket, task, action, data, actor)
+                op = active_operations(ticket).get()
+                assert client.confirmed_manual_action(op), action
+                assert reconcile_manual_operations(client) == 1
+                assert reconcile_manual_operations(client) == 0
+                assert send.call_count == 1
+            assert TicketLog.objects.filter(ticket=ticket, action=action, detail__opinion=data["opinion"]).count() == 1
+
+        from apps.system_mgmt.models import User
+
+        User.objects.create(domain=ticket.domain, username="handler", display_name="处理人")
+        submit = ticket.tasks.get(status="pending")
+        verify("set_process_suspended", "suspend", {"opinion": "暂停确认"}, "creator", submit)
+        verify("set_process_suspended", "resume", {"opinion": "恢复确认"}, "creator", submit)
+        verify("update_task_assignee", "transfer", {"target": "handler", "opinion": "转交确认"}, "creator", submit)
+        verify("complete_task", "submit", {"opinion": "提交确认"}, "handler", submit)
+        approve = ticket.tasks.filter(status="pending", node_id="approve").first()
+        verify("change_state", "return", {"return_mode": "submit", "opinion": "退回确认"}, approve.assignee, approve)
+        verify("delete_process_instance", "withdraw", {"opinion": "撤回确认"}, "creator", None)
     finally:
         client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment['id']}", params={"cascade": "true"})

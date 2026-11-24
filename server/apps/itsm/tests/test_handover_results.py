@@ -176,3 +176,16 @@ def test_candidates_require_view_and_only_return_visible_tickets_for_source(task
     }
     invisible = view(request(payload=params, username="outsider", permissions=["handover-Add", "ticket-View"]))
     assert json.loads(invisible.content)["data"] == {"items": [], "count": 0}
+
+
+def test_interruption_before_receipt_leaves_handover_retryable(task_pair):
+    first, second = task_pair
+    service = TicketService(Mock())
+    with patch("apps.itsm.views.extend._service", return_value=service), patch.object(service, "operate", side_effect=RuntimeError("未领取")):
+        with pytest.raises(RuntimeError):
+            _post_handover(task_pair)
+    item = Handover.objects.get()
+    assert [row["status"] for row in item.results] == ["pending", "pending"]
+    with patch("apps.itsm.views.extend._service", return_value=service):
+        assert _statuses(_retry(item.pk)) == (item.pk, {first.pk: "succeeded", second.pk: "succeeded"})
+    assert service.client.update_task_assignee.call_count == 2

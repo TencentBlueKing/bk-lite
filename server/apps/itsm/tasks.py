@@ -87,7 +87,11 @@ def auto_tick():
         return {"acquired": 0}
     client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD)
     from apps.itsm.services.external_jobs import reconcile_stale_executions
+    from apps.itsm.services.ticket.manual_recovery import reconcile_manual_operations
+    from apps.itsm.services.ticket.start_recovery import reconcile_starts
 
+    starts = reconcile_starts(client)
+    operations = reconcile_manual_operations(client)
     recovered = reconcile_stale_executions(client)
     done = 0
     for topic, kind in (("itsm.auto", "auto"), ("itsm.notify", "notify")):
@@ -103,7 +107,7 @@ def auto_tick():
     from apps.itsm.services.external_jobs import reconcile_tickets
 
     reconciled = reconcile_tickets(client)
-    return {"acquired": done, "reconciled": reconciled, "stale_jobs": recovered}
+    return {"acquired": done, "reconciled": reconciled, "starts": starts, "operations": operations, "stale_jobs": recovered}
 
 
 @shared_task(ignore_result=True)

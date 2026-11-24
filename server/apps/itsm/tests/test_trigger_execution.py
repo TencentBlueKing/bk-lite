@@ -139,6 +139,7 @@ def test_flowable_end_is_distinct_from_manual_stop_and_runs_once(workflow, opera
     task = TicketTask.objects.create(ticket=ticket, node_id="submit", assignee="owner", flowable_task_id="active-task")
     client = Mock()
     client.get_process_instance.side_effect = FlowableError(404, "")
+    client._request.return_value = {"id": ticket.process_instance_id, "endTime": "2026-11-24T15:00:00Z"}
     client.list_tasks_including_children.return_value = []
     service = TicketService(client)
 

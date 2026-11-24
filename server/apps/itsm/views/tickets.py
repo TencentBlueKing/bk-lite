@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.flowable.client import FlowableClient
+from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import reconcile_execution, request_retry, result_field, retry_available, review_available
@@ -120,11 +120,52 @@ def operate_ticket(request, ticket_id):
         raise PermissionError()
     payload = _body(request)
     ticket = get_ticket(request, ticket_id)
+    if payload.get("action") == "reopen" and ticket.process_instance_id and not isinstance(payload.get("reopen_from"), str):
+        return WebUtils.response_error("请刷新工单详情后重新打开当前轮次", status_code=409)
     task = TicketTask.objects.get(id=payload["task_id"], ticket=ticket) if payload.get("task_id") else None
     updated = _service(request).operate(
         ticket, task, payload["action"], payload, _user(request), privileged=bool(getattr(request.user, "is_superuser", False))
     )
     return WebUtils.response_success({"id": updated.id, "status": updated.status.key if updated.status_id else ""})
+
+
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("ticket-Operate")
+def operation_recovery(request, ticket_id):
+    from apps.itsm.services.ticket.actions import NodeActionValidationError
+    from apps.itsm.services.ticket.manual_recovery import abandon, active_operations, advance
+
+    if not has_permission(request, "ticket-View"):
+        raise PermissionError()
+    ticket = get_ticket(request, ticket_id)
+    body = _body(request)
+    if not isinstance(body, dict) or body.get("decision") not in {None, "abandon"}:
+        raise ValueError("无效的核对请求")
+    cancel = body.get("decision") == "abandon"
+    if cancel and not getattr(request.user, "is_superuser", False):
+        raise PermissionError()
+    operation = active_operations(ticket).first()
+    if cancel and operation is None:
+        return WebUtils.response_error("核对记录已变更，请刷新", status_code=409)
+    if operation is None:
+        return WebUtils.response_success({"id": ticket.pk, "status": "done"})
+    if operation.operator != _user(request) and not getattr(request.user, "is_superuser", False):
+        raise PermissionError()
+    service = _service(request)
+    if not service.client:
+        return WebUtils.response_error("流程引擎暂不可用", status_code=503)
+    try:
+        if cancel:
+            abandon(service, ticket, body, _user(request))
+        else:
+            advance(service, operation)
+    except NodeActionValidationError as exc:
+        return WebUtils.response_error(str(exc), status_code=409)
+    except FlowableError:
+        return WebUtils.response_error("尚未取得引擎回执，已保留原操作", status_code=409)
+    return WebUtils.response_success({"id": ticket.pk, "status": "done"})
 
 
 @require_GET
@@ -161,6 +202,37 @@ def reconcile_auto_node(request, ticket_id, execution_id):
     if not reconcile_execution(get_ticket(request, ticket_id), execution_id, _user(request), json_object(request)):
         return WebUtils.response_error(error_message="执行状态已变化，请刷新后核对", status_code=409)
     return WebUtils.response_success({"id": execution_id})
+
+
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("ticket-Operate")
+def recover_start(request, ticket_id):
+    from apps.itsm.services.ticket.start_recovery import confirm_not_started, recover_attempt
+
+    if not has_permission(request, "ticket-View") or not has_permission(request, "workflow-Edit"):
+        raise PermissionError()
+    ticket = get_ticket(request, ticket_id)
+    payload = _body(request)
+    if type(payload.get("id")) is not int:
+        return WebUtils.response_error("请选择当前启动记录", status_code=400)
+    try:
+        if payload.get("action") == "confirmed_not_started":
+            if not isinstance(payload.get("sent_at"), str) or not payload["sent_at"]:
+                raise ValueError("请刷新后核对本次发送记录")
+            confirm_not_started(_service(request), ticket, payload["id"], payload.get("reason"), _user(request), expected_sent_at=payload["sent_at"])
+        elif payload.get("action") == "check":
+            recover_attempt(_service(request), ticket, payload["id"])
+        else:
+            raise ValueError("请选择有效的核对操作")
+    except FlowableError as exc:
+        if exc.status == 409:
+            return WebUtils.response_error("引擎历史暂未能唯一确认该轮实例，请稍后核对。", status_code=409)
+        raise
+    except ValueError as exc:
+        return WebUtils.response_error(str(exc), status_code=409)
+    return WebUtils.response_success({"id": ticket.pk})
 
 
 def _node_state(node, done_ids, pending_ids, status_key):
@@ -272,9 +344,23 @@ def editable_task(request, ticket, task_id):
 
 def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False, task_id=None):
     from apps.itsm.services.ticket.history import current_round_start
+    from apps.itsm.services.ticket.manual_recovery import active_operations, can_abandon
+    from apps.itsm.services.ticket.start_recovery import start_recovery_info
+
+    operation = active_operations(ticket).first()
+    recovery = None
+    if operation:
+        recovery = {
+            "action": operation.action,
+            "status": operation.status,
+            "can_check": can_operate and (privileged or username == operation.operator),
+            "can_abandon": bool(privileged and can_operate and can_abandon(operation)),
+        }
+        if privileged and can_operate:
+            recovery.update(token=str(operation.token), sent_at=operation.payload.get("sent_at"))
 
     principals = ticket_principals(ticket, username)
-    tasks = list(ticket.tasks.all())
+    tasks = sorted(ticket.tasks.all(), key=lambda task: task.pk)
     design = ticket.workflow_version.design if ticket.workflow_version_id else {}
     round_start = current_round_start(ticket, tasks, design)
     round_tasks = [task for task in tasks if not round_start or task.created_at >= round_start]
@@ -290,6 +376,9 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     if task_id is not None and (not can_operate or status_key in {"suspended", "finished", "terminated", "cancelled"}):
         raise PermissionError()
     own_task = select_task(pending, principals, privileged, task_id)
+    start = start_recovery_info(ticket, can_retry)
+    engine_pending = bool(operation or start or ticket.creation_state != "complete")
+    can_operate = can_operate and not engine_pending
     fields, values, schema, _ = ticket_form_view(ticket, design, own_task, status_key)
     visible_keys = {field["key"] for field in walk(fields)}
     form_rules = [
@@ -381,6 +470,10 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     survey = getattr(ticket, "survey", None)
     return {
         "history": history,
+        "reopen_from": ticket.process_instance_id if "reopen" in allowed_actions else None,
+        "start_recovery": start if can_retry else None,
+        "engine_pending": engine_pending,
+        "manual_recovery": recovery,
         "allowed_actions": allowed_actions,
         "action_display": node_action_display(action_node, allowed_actions),
         "required_opinion_actions": side_required_opinions(design, tasks, allowed_actions) if can_operate else [],
@@ -396,7 +489,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         "fields": fields,
         "form_rules": form_rules,
         "stages": stages,
-        "extra_actions": extra_actions,
+        "extra_actions": [] if engine_pending else extra_actions,
         "tasks": task_rows,
         "selected_task_id": own_task.id if own_task else None,
         "nodes": [

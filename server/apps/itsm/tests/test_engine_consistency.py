@@ -18,7 +18,7 @@ def test_full_engine_tree_and_short_pages():
     def page(method, path, params):
         rows = tasks[params["processInstanceId"]] if path.endswith("/tasks") else children.get(params["superProcessInstanceId"], [])
         offset = params.get("start", 0)
-        return {"start": offset, "total": len(rows), "data": [{"id": id_} for id_ in rows[offset:offset + 1]]}
+        return {"start": offset, "total": len(rows), "data": [{"id": id_} for id_ in rows[offset : offset + 1]]}
 
     client._request = page
     assert {item["id"] for item in client.list_tasks_including_children("root")} == set("12345")
@@ -34,7 +34,9 @@ def test_reads_cannot_mutate(view, method):
 @pytest.mark.parametrize("lost_reply", [False, True])
 def test_start_recovers_without_replaying(lost_reply):
     workflow = Workflow.objects.create(key="same-key", name="版本绑定")
-    version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design={}, process_definition_key=workflow.key, flowable_deployment_id="dep1")
+    version = WorkflowVersion.objects.create(
+        workflow=workflow, version_no=1, design={}, process_definition_key=workflow.key, flowable_deployment_id="dep1"
+    )
     client = Mock()
     client.definition_for_deployment.return_value = "same-key:1:stable"
     client.start_process.side_effect = [FlowableError(0, "") if lost_reply else {"id": "existing"}]
@@ -52,8 +54,8 @@ def test_start_recovers_without_replaying(lost_reply):
 
 @pytest.mark.django_db
 def test_published_version_is_reused_and_child_inherits_identity():
-    from apps.itsm.tests.test_review_regressions import request
     from apps.itsm.models import TicketRelation
+    from apps.itsm.tests.test_review_regressions import request
 
     workflow = Workflow.objects.create(key="published", name="已发布")
     version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, is_published=True, flowable_deployment_id="existing")
@@ -76,13 +78,16 @@ def test_published_version_is_reused_and_child_inherits_identity():
 def test_scheduler_drains_previously_claimed_slot_and_reconciles_interrupted_run():
     import json
     from datetime import timedelta
+
     from django.utils import timezone
+
     from apps.itsm.models.extend import ScheduledTask
     from apps.itsm.services import schedules
 
     due = timezone.now()
-    item = ScheduledTask.objects.create(name="定时", created_by="owner", next_run_at=due,
-        action=json.dumps({"mode": "once", "task": "remind", "once_at": due.isoformat()}))
+    item = ScheduledTask.objects.create(
+        name="定时", created_by="owner", next_run_at=due, action=json.dumps({"mode": "once", "task": "remind", "once_at": due.isoformat()})
+    )
     schedules._claim(item.pk, due)
     with patch("apps.itsm.services.notify.service.dispatch_notification", return_value={"site": {"result": True}}) as notify:
         assert schedules.run_due(Mock(), now=due) == 1
@@ -104,7 +109,9 @@ def test_subform_confirmation_survives_parent_failure():
     child_version = WorkflowVersion.objects.create(workflow=child_flow, version_no=1, is_published=True)
     form_data = {"details": [{"form_data": {"title": "子行"}}]}
     schema = {"fields": [{"key": "details", "type": "subProcessForm", "props": {"workflow_version_id": child_version.pk}}]}
-    parent = Ticket.objects.create(workflow=parent_flow, workflow_version=parent_version, sn="PARENT", title="父单", form_data=form_data, creator="creator", is_test=True)
+    parent = Ticket.objects.create(
+        workflow=parent_flow, workflow_version=parent_version, sn="PARENT", title="父单", form_data=form_data, creator="creator", is_test=True
+    )
     materialize_subforms(TicketService(), parent, schema, parent.creator, initial=True)
     parent.refresh_from_db()
     materialize_subforms(TicketService(), parent, schema, parent.creator, initial=True)
@@ -114,10 +121,13 @@ def test_subform_confirmation_survives_parent_failure():
 
 def test_definition_mismatch_and_partial_task_page_fail_closed():
     client = FlowableClient("", "", "")
-    client._request = Mock(side_effect=[
-        {"total": 1, "data": [{"id": "wrong", "deploymentId": "another", "key": "key"}]},
-        {"total": 2, "data": [{"id": "task"}]}, {"total": 2, "start": 1, "data": []},
-    ])
+    client._request = Mock(
+        side_effect=[
+            {"total": 1, "data": [{"id": "wrong", "deploymentId": "another", "key": "key"}]},
+            {"total": 2, "data": [{"id": "task"}]},
+            {"total": 2, "start": 1, "data": []},
+        ]
+    )
     with pytest.raises(FlowableError):
         client.definition_for_deployment("expected", "key")
     with pytest.raises(FlowableError):
@@ -127,8 +137,13 @@ def test_definition_mismatch_and_partial_task_page_fail_closed():
 @pytest.mark.django_db
 def test_deployed_version_waits_for_engine_before_finishing():
     workflow = Workflow.objects.create(name="引擎离线", key="offline")
-    version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, process_definition_key=workflow.key,
-        process_definition_id="offline:1:known", flowable_deployment_id="deployment")
+    version = WorkflowVersion.objects.create(
+        workflow=workflow,
+        version_no=1,
+        process_definition_key=workflow.key,
+        process_definition_id="offline:1:known",
+        flowable_deployment_id="deployment",
+    )
     with pytest.raises(FlowableError):
         TicketService().create(version, {}, "creator", creation_key="same")
     ticket = Ticket.objects.get()
@@ -153,6 +168,7 @@ def test_http_creation_keys_are_isolated_from_internal_origins(key):
     version = WorkflowVersion.objects.create(workflow=flow, version_no=1, is_published=True)
     original = TicketService().create(version, {"title": "系统工单"}, "owner", creation_key=key)
     body = {"workflow_version_id": version.pk, "creation_key": key, "form_data": {"title": "手工工单"}}
+
     def submit(payload):
         return tickets(request("post", payload, username="owner", permissions=["ticket-View", "ticket-Add"]))
 
@@ -161,3 +177,50 @@ def test_http_creation_keys_are_isolated_from_internal_origins(key):
     assert json.loads(submit(body).content)["data"]["id"] == response["data"]["id"]
     assert submit({**body, "creation_key": "长" * 129}).status_code == 400
     assert Ticket.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_initial_subforms_validated_before_any_engine_start():
+    from apps.itsm.models import TicketRelation
+
+    child_flow = Workflow.objects.create(key="initial-child", name="子流程")
+    child = WorkflowVersion.objects.create(
+        workflow=child_flow,
+        version_no=1,
+        is_published=True,
+        process_definition_id="child:1",
+        design={"form_schema": {"fields": [{"key": "title", "type": "input", "required": True}]}},
+    )
+    parent_flow = Workflow.objects.create(key="initial-parent", name="父流程")
+    parent = WorkflowVersion.objects.create(
+        workflow=parent_flow,
+        version_no=1,
+        is_published=True,
+        process_definition_id="parent:1",
+        design={"form_schema": {"fields": [{"key": "rows", "type": "subProcessForm", "props": {"workflow_version_id": child.pk}}]}},
+    )
+    client = Mock()
+    client.start_process.side_effect = lambda definition, key, variables: {"id": key}
+    client.list_tasks_including_children.return_value = []
+    service = TicketService(client)
+    good_row = {"form_data": {"title": "子行"}}
+    with pytest.raises(ValueError):
+        service.create(parent, {"rows": [good_row, {"form_data": {}}]}, "owner", creation_key="request")
+    assert not Ticket.objects.exists()
+    assert not TicketRelation.objects.exists()
+    client.start_process.assert_not_called()
+    with pytest.raises(ValueError):
+        service.create(parent, {"rows": [{"ticket_id": 9999}]}, "owner", creation_key="request")
+    assert not Ticket.objects.exists()
+    client.start_process.assert_not_called()
+    from apps.itsm.services.form.fetch import validate_submission
+
+    service.identity = object()
+    with patch("apps.itsm.services.ticket.service.validate_submission", wraps=validate_submission) as validate:
+        result = service.create(parent, {"rows": [good_row]}, "owner", creation_key="request")
+    assert {call.args[3] for call in validate.call_args_list} == {f"version:{parent.pk}", f"version:{child.pk}"}
+    assert all(call.args[2] is service.identity for call in validate.call_args_list)
+    assert service.create(parent, {"rows": [good_row]}, "owner", creation_key="request").pk == result.pk
+    assert Ticket.objects.count() == 2
+    assert [args.args[0] for args in client.start_process.call_args_list] == ["child:1", "parent:1"]
+    assert result.form_data["rows"][0]["ticket_id"] == result.relations.get().related_id

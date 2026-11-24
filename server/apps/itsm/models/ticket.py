@@ -132,3 +132,44 @@ class TicketLog(ItsmModel):
 
     class Meta:
         db_table = "itsm_ticket_log"
+
+
+class TicketStartAttempt(models.Model):
+    """工单首次启动或一次重新打开的引擎交接记录。"""
+
+    ticket = models.ForeignKey(Ticket, related_name="start_attempts", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=12)
+    previous_instance = models.CharField(max_length=64, default="", blank=True)
+    business_key = models.CharField(max_length=100, unique=True)
+    definition_id = models.CharField(max_length=255)
+    operator = models.CharField(max_length=64)
+    opinion = models.TextField(default="", blank=True)
+    confirmations = models.JSONField(default=list, blank=True)
+    state = models.CharField(max_length=12, default="ready")
+    sent_at = models.DateTimeField(null=True)
+    instance_id = models.CharField(max_length=64, default="", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "itsm_ticket_start_attempt"
+        constraints = [models.UniqueConstraint(fields=("ticket", "kind", "previous_instance"), name="itsm_start_round_unique")]
+        indexes = [models.Index(fields=("state", "id"), name="itsm_start_scan_idx")]
+
+
+class ManualOperation(models.Model):
+    """已授权的工单操作及其引擎回执。"""
+
+    token = models.UUIDField(unique=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="manual_operations")
+    task = models.ForeignKey(TicketTask, on_delete=models.PROTECT, null=True)
+    process_id = models.CharField(max_length=128)
+    task_ref = models.CharField(max_length=128, blank=True)
+    action = models.CharField(max_length=32)
+    operator = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default="prepared")
+    payload = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "itsm_manual_operation"
+        indexes = [models.Index(fields=["status", "updated_at"], name="itsm_manual_recovery_idx")]

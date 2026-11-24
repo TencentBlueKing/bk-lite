@@ -40,9 +40,18 @@ class TicketService:
         self.identity = identity
 
     def create(
-        self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False,
-        *, service: Service | None = None, creation_key: str | None = None,
+        self,
+        workflow_version: WorkflowVersion,
+        form_data: dict,
+        creator: str,
+        is_test: bool = False,
+        *,
+        service: Service | None = None,
+        creation_key: str | None = None,
+        defer_start: bool = False,
     ) -> Ticket:
+        from apps.itsm.services.ticket.subforms import has_subform_rows, prepare_initial_subforms
+
         if creation_key is not None and (not isinstance(creation_key, str) or not creation_key.strip() or len(creation_key) > 128):
             raise ValueError("申请标识无效")
         key = {"domain": workflow_version.domain, "creator": creator, "creation_key": creation_key or uuid4().hex}
@@ -52,36 +61,69 @@ class TicketService:
             submit_node = _find_node(workflow_version.design, node_type="submit")
             if schema.get("fields"):
                 form_data = validate_submission(
-                    schema, form_data, self.identity, f"version:{workflow_version.id}", field_perm=_normalize_perm(submit_node.get("field_perm")),
+                    schema,
+                    form_data,
+                    self.identity,
+                    f"version:{workflow_version.id}",
+                    field_perm=_normalize_perm(submit_node.get("field_perm")),
                 )
             with transaction.atomic():
                 ticket, created = Ticket.objects.get_or_create(
                     **key,
                     defaults={
-                        "sn": f"REQ{timezone.now().strftime('%Y%m%d%H%M%S%f')}", "title": str(form_data.get("title") or workflow_version.workflow.name),
-                        "workflow": workflow_version.workflow, "workflow_version": workflow_version, "service": service,
-                        "status": TicketStatus.objects.filter(key="new").first(), "form_data": form_data,
+                        "sn": f"REQ{timezone.now().strftime('%Y%m%d%H%M%S%f')}",
+                        "title": str(form_data.get("title") or workflow_version.workflow.name),
+                        "workflow": workflow_version.workflow,
+                        "workflow_version": workflow_version,
+                        "service": service,
+                        "status": TicketStatus.objects.filter(key="new").first(),
+                        "form_data": form_data,
                         "is_test": is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
-                        "created_by": creator, "updated_by": creator, "creation_state": "prepared",
+                        "created_by": creator,
+                        "updated_by": creator,
+                        "creation_state": "prepared",
                     },
                 )
                 if created:
+                    if has_subform_rows(schema, ticket.form_data):
+                        prepare_initial_subforms(self, ticket, schema)
                     open_records(ticket)
-                    TicketLog.objects.create(ticket=ticket, domain=ticket.domain, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator)
+                    TicketLog.objects.create(
+                        ticket=ticket, domain=ticket.domain, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator
+                    )
         if ticket.workflow_version_id != workflow_version.pk or ticket.service_id != (service.pk if service else None):
             raise ValueError("申请标识已用于其他服务或版本")
         if ticket.creation_state == "complete":
             return ticket
+        if defer_start and (
+            workflow_version.process_definition_key or workflow_version.process_definition_id or workflow_version.flowable_deployment_id
+        ):
+            transaction.on_commit(lambda: self._resume_creation(Ticket.objects.get(pk=ticket.pk)), robust=True)
+            return ticket
+        return self._resume_creation(ticket)
+
+    def _resume_creation(self, ticket):
+        from apps.itsm.services.ticket.start_recovery import initial_start
+        from apps.itsm.services.ticket.subforms import has_subform_rows, materialize_subforms, prepare_initial_subforms
+
+        if ticket.creation_state == "complete":
+            return ticket
+        workflow_version = ticket.workflow_version
+        schema = workflow_schema(workflow_version)
+        if has_subform_rows(schema, ticket.form_data, only_unprepared=True):
+            # 旧版本留下的草稿可能只有原始子行。恢复时先补齐同一套校验和预建。
+            with transaction.atomic():
+                ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+                if ticket.creation_state == "complete":
+                    return ticket
+                if has_subform_rows(schema, ticket.form_data, only_unprepared=True):
+                    prepare_initial_subforms(self, ticket, schema)
+        materialize_subforms(self, ticket, schema, ticket.creator, initial=True)
         engine_required = workflow_version.process_definition_key or workflow_version.process_definition_id or workflow_version.flowable_deployment_id
         if engine_required or ticket.creation_state in {"starting", "bound"}:
             if not self.client:
                 raise FlowableError(503, "流程引擎未配置，请恢复连接后重试")
-            self._start_or_recover(ticket, workflow_version)
-        if ticket.process_instance_id:
-            self.sync_ticket(ticket)
-        from apps.itsm.services.ticket.subforms import materialize_subforms
-
-        materialize_subforms(self, ticket, schema, ticket.creator, initial=True)
+            initial_start(self, ticket)
         return self._finish_creation(ticket.pk, ticket.form_data)
 
     def _definition_id(self, version: WorkflowVersion) -> str:
@@ -91,23 +133,6 @@ class TicketService:
             version.process_definition_id = resolved
         return version.process_definition_id
 
-    def _start_or_recover(self, ticket, version):
-        if ticket.process_instance_id:
-            return
-        definition_id = self._definition_id(version)
-        variables = {"initiator": ticket.creator, **self._assignee_variables(version, ticket.creator, ticket.form_data), **_form_variables(ticket.form_data)}
-        # 先持久化领取标记。网络结果未知时只核对业务键，即使引擎暂时查不到，也不能重放启动。
-        if Ticket.objects.filter(pk=ticket.pk, creation_state="prepared").update(creation_state="starting"):
-            started = self.client.start_process(definition_id, ticket.sn, variables)
-            instance_id = str(started.get("id") or "")
-        else:
-            ticket.refresh_from_db()
-            instance_id = ticket.process_instance_id or self.client.instance_for_business_key(ticket.sn, definition_id)
-        if not instance_id:
-            raise FlowableError(502, "引擎未返回流程实例标识")
-        Ticket.objects.filter(pk=ticket.pk, creation_state="starting").update(process_instance_id=instance_id, creation_state="bound")
-        ticket.refresh_from_db()
-
     @transaction.atomic
     def _finish_creation(self, ticket_id, form_data):
         ticket = Ticket.objects.select_for_update().get(pk=ticket_id)
@@ -115,9 +140,13 @@ class TicketService:
             return ticket
         from apps.itsm.services.triggers import fire_triggers
 
+        # 节点同步可能登记自动退回。节点、创建完成态和启动回执须一起提交。
+        if ticket.process_instance_id:
+            self.sync_ticket(ticket)
         ticket.form_data = form_data
         ticket.creation_state = "complete"
         ticket.save(update_fields=["form_data", "creation_state", "updated_at"])
+        ticket.start_attempts.filter(kind="initial", state="bound").update(state="complete")
         fire_triggers(ticket, "create", ticket.creator)
         schedule_sync(ticket)
         return ticket
@@ -156,7 +185,9 @@ class TicketService:
     @transaction.atomic
     def sync_ticket(self, ticket: Ticket) -> None:
         ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
-        if not self.client or not ticket.process_instance_id:
+        from apps.itsm.services.ticket.manual_recovery import active_operations
+
+        if not self.client or not ticket.process_instance_id or active_operations(ticket).exists():
             return
         try:
             items = self.client.list_tasks_including_children(ticket.process_instance_id)
@@ -204,14 +235,16 @@ class TicketService:
                 entered = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
                 if entered.get("enter_status"):
                     self._set_status(ticket, entered["enter_status"])
-            if created and entered.get("auto_return") and not getattr(ticket, "_auto_returning", False):
+            if created and entered.get("auto_return") and not active_operations(ticket).exists():
                 rule = entered["auto_return"] if isinstance(entered.get("auto_return"), dict) else {}
                 current = (ticket.form_data or {}).get(rule.get("field"))
                 if rule.get("field") and str(current) == str(rule.get("value")):
-                    ticket._auto_returning = True
-                    self.operate(
-                        ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system", privileged=True, automatic_return=True
-                    )
+                    from apps.itsm.services.ticket.manual_recovery import advance, prepare
+
+                    args = {"return_mode": "submit", "opinion": "自动退回"}
+                    configured, args = self._validate_action(ticket, task, "return", args, "system", True, None, True)
+                    operation = prepare(self, ticket, task, "return", args, "system", configured)
+                    transaction.on_commit(lambda op=operation: advance(self, op), robust=True)
             if created and task.assignee:
                 itsm_event.send(
                     sender=ticket,
@@ -230,7 +263,6 @@ class TicketService:
 
         schedule_sync(ticket)
 
-    @transaction.atomic
     def operate(
         self,
         ticket: Ticket,
@@ -242,10 +274,48 @@ class TicketService:
         *,
         expected_assignee: str | None = None,
         automatic_return: bool = False,
+        handover_id: int | None = None,
     ) -> Ticket:
-        ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
-        if task is not None:
-            task = ticket.tasks.select_for_update().get(pk=task.pk)
+        if (
+            action == "reopen"
+            and ticket.workflow_version_id
+            and (
+                ticket.workflow_version.process_definition_key
+                or ticket.workflow_version.process_definition_id
+                or ticket.workflow_version.flowable_deployment_id
+            )
+        ):
+            from apps.itsm.services.ticket.start_recovery import reopen_ticket
+
+            return reopen_ticket(self, ticket, task, data, operator, privileged)
+        from apps.itsm.services.ticket.manual_recovery import active_operations, advance, creates_child, prepare, requires_engine
+
+        with transaction.atomic():
+            ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            if task is not None:
+                task = ticket.tasks.select_for_update().get(pk=task.pk)
+            if ticket.creation_state != "complete" or ticket.start_attempts.exclude(state="complete").exists():
+                raise NodeActionValidationError("流程启动结果待核对，请稍后刷新")
+            if handover_id:
+                from apps.itsm.services.ticket.handover import RETRYABLE_RESULTS, _set_result
+
+                if not _set_result(handover_id, task.pk, "unconfirmed", "结果待核对，请勿重复转交", RETRYABLE_RESULTS):
+                    return ticket
+            if active_operations(ticket).exists():
+                raise NodeActionValidationError("该工单有待核对的引擎操作，请稍后刷新")
+            node, data = self._validate_action(ticket, task, action, data, operator, privileged, expected_assignee, automatic_return)
+            engine_action = requires_engine(ticket, task, action)
+            if not engine_action and not creates_child(ticket, action, data):
+                result = self._apply_action(ticket, task, action, data, operator, node)
+                if handover_id:
+                    _set_result(handover_id, task.pk, "succeeded", "交接成功", {"unconfirmed"})
+                return result
+            if engine_action and not self.client:
+                raise FlowableError(503, "引擎绑定工单需要 Flowable 连接")
+            operation = prepare(self, ticket, task, action, data, operator, node, handover_id=handover_id, local_parent=not engine_action)
+        return advance(self, operation)
+
+    def _validate_action(self, ticket, task, action, data, operator, privileged, expected_assignee, automatic_return):
         if expected_assignee is not None and (
             task is None or task.assignee != expected_assignee or task.status not in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}
         ):
@@ -283,16 +353,21 @@ class TicketService:
                 ):
                     raise NodeActionValidationError("当前流程任务已变化，请刷新后回退")
             data = {**data, "return_node_id": target["node_id"], "return_node_name": target["name"]}
+        return node, data
+
+    def _apply_action(self, ticket, task, action, data, operator, node, *, saved_form=None):
         if action in {"suspend", "resume", "withdraw", "return", "transfer", "terminate", "close", "reopen", "urge", "save", "respond"}:
-            return self._side_action(ticket, task, action, data, operator, node)
+            return self._side_action(ticket, task, action, data, operator, node, saved_form=saved_form)
         if task is None:
             raise ValueError("需要待办任务")
         task.status = TicketTask.TaskStatus.CLAIMED if action == "claim" else TicketTask.TaskStatus.DONE
         task.assignee = operator
         task.save(update_fields=["status", "assignee", "updated_at"])
-        if action == "claim" and self.client and task.flowable_task_id:
-            self.client.update_task_assignee(task.flowable_task_id, operator)
-        self._save_form(ticket, node, data, task)
+        if saved_form is None:
+            self._save_form(ticket, node, data, task)
+        else:
+            ticket.form_data = saved_form
+            ticket.save(update_fields=["form_data", "updated_at"])
         TicketLog.objects.create(
             ticket=ticket,
             task=task,
@@ -308,20 +383,8 @@ class TicketService:
         fire_triggers(ticket, action, operator)
         if action in {"submit", "approve", "reject"}:
             finish_sla(ticket, "response")
-        if action != "claim" and self.client and task.flowable_task_id:
-            if ticket.status_id and ticket.status.key == "new":
-                self._set_status(ticket, "processing")
-            self.client.complete_task(
-                task.flowable_task_id,
-                {
-                    "result": action,
-                    f"out_{task.node_id}_result": action,
-                    **_form_variables(ticket.form_data),
-                    **self._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data),
-                },
-            )
-            self.sync_ticket(ticket)
-            self.finish_if_ended(ticket, operator)
+        if saved_form is not None and task.flowable_task_id and action != "claim" and ticket.status_id and ticket.status.key == "new":
+            self._set_status(ticket, "processing")
         schedule_sync(ticket)
         return ticket
 
@@ -398,7 +461,7 @@ class TicketService:
         elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
             raise PermissionError()
 
-    def _save_form(self, ticket, node, data, task=None):
+    def _validated_form(self, ticket, node, data, task=None):
         incoming = data.get("form_data") or {}
         if not isinstance(incoming, dict):
             raise ValueError("表单必须是对象")
@@ -414,29 +477,26 @@ class TicketService:
                 field_perm=_normalize_perm(node.get("field_perm")),
                 receipt_context=task_fetch_context(ticket, task) if task else None,
             )
-            ticket.form_data = {**original, **cleaned}
-        elif incoming:
-            ticket.form_data = {**original, **incoming}
+            return {**original, **cleaned}
+        return {**original, **incoming}
+
+    def _save_form(self, ticket, node, data, task=None):
+        schema = ticket_schema(ticket)
+        ticket.form_data = self._validated_form(ticket, node, data, task)
         from apps.itsm.services.ticket.subforms import materialize_subforms
 
         materialize_subforms(self, ticket, schema, ticket.updated_by or ticket.creator)
         ticket.save(update_fields=["form_data", "updated_at"])
 
-    def _side_action(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str, node: dict) -> Ticket:
+    def _side_action(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str, node: dict, *, saved_form=None) -> Ticket:
         if action == "suspend":
             self._set_status(ticket, "suspended")
-            if self.client and ticket.process_instance_id:
-                self.client.set_process_suspended(ticket.process_instance_id, True)
             pause(ticket)
         elif action == "resume":
             self._set_status(ticket, "processing")
-            if self.client and ticket.process_instance_id:
-                self.client.set_process_suspended(ticket.process_instance_id, False)
             resume(ticket)
         elif action == "withdraw":
             self._set_status(ticket, "cancelled")
-            if self.client and ticket.process_instance_id:
-                self.client.delete_process_instance(ticket.process_instance_id)
             ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).update(status=TicketTask.TaskStatus.DONE)
             finish_sla(ticket, "response")
             finish_sla(ticket, "resolve")
@@ -470,11 +530,13 @@ class TicketService:
         elif action == "save":
             if task is None:
                 node = _find_node(ticket.workflow_version.design, node_type="submit")
-            self._save_form(ticket, node, data, task)
+            if saved_form is None:
+                self._save_form(ticket, node, data, task)
+            else:
+                ticket.form_data = saved_form
+                ticket.save(update_fields=["form_data", "updated_at"])
         elif action == "transfer":
             target = data["target"]
-            if self.client and task.flowable_task_id:
-                self.client.update_task_assignee(task.flowable_task_id, target)
             task.assignee = target
             task.save(update_fields=["assignee", "updated_at"])
         elif action == "return":
@@ -483,12 +545,8 @@ class TicketService:
             target_status = "new" if _find_node(design, node_id=target_node).get("type") == "submit" else "processing"
             if not ticket.status_id or ticket.status.key != target_status:
                 self._set_status(ticket, target_status)
-            if self.client and ticket.process_instance_id and task.node_id:
-                self.client.change_state(ticket.process_instance_id, [task.node_id], [target_node])
             task.status = TicketTask.TaskStatus.DONE
             task.save(update_fields=["status", "updated_at"])
-            if self.client:
-                self.sync_ticket(ticket)
         self._log(ticket, task, action, data, operator)
         schedule_sync(ticket)
         return ticket
@@ -496,20 +554,7 @@ class TicketService:
     def _reopen(self, ticket: Ticket, operator: str) -> None:
         self._set_status(ticket, "processing")
         version = ticket.workflow_version if ticket.workflow_version_id else None
-        active = bool(self.client and ticket.process_instance_id and self._process_active(ticket.process_instance_id))
-        open_status = [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
-        if self.client and version and version.process_definition_key and not active:
-            variables = {
-                "initiator": ticket.creator,
-                **self._assignee_variables(version, ticket.creator, ticket.form_data or {}),
-                **_form_variables(ticket.form_data or {}),
-            }
-            started = self.client.start_process(self._definition_id(version), ticket.sn, variables)
-            ticket.process_instance_id = str(started.get("id") or "")
-            ticket.save(update_fields=["process_instance_id", "updated_at"])
-            ticket.tasks.filter(status__in=open_status).update(status=TicketTask.TaskStatus.DONE)
-            self.sync_ticket(ticket)
-        elif not ticket.tasks.filter(status__in=open_status).exists():
+        if not ticket.tasks.filter(status__in=["pending", "claimed"]).exists():
             TicketTask.objects.create(
                 ticket=ticket,
                 node_id=_find_node(version.design if version else {}, node_type="submit").get("id") or "submit",
@@ -521,36 +566,27 @@ class TicketService:
 
     def _stop_process(self, ticket: Ticket, status_key: str, operator: str | None = None) -> None:
         self._set_status(ticket, status_key, operator)
-        if self.client and ticket.process_instance_id:
-            try:
-                self.client.delete_process_instance(ticket.process_instance_id)
-            except FlowableError as exc:
-                if exc.status != 404:
-                    raise
         ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).update(status=TicketTask.TaskStatus.DONE)
         finish_sla(ticket, "response")
         finish_sla(ticket, "resolve")
 
+    def _status_target(self, ticket, target):
+        status = target if isinstance(target, TicketStatus) else TicketStatus.objects.filter(key=target).first()
+        if status is None:
+            raise ValueError(f"缺少状态 {target}")
+        if ticket.status_id != status.pk:
+            allowed = StatusTransition.objects.filter(from_status_id=ticket.status_id)
+            if allowed.exists() and not allowed.filter(to_status=status).exists():
+                current = ticket.status.key if ticket.status_id else ""
+                raise ValueError(f"不允许从 {current} 转到 {status.key}")
+        return status
+
     def _set_status(self, ticket: Ticket, target: str | TicketStatus, operator: str | None = None, *, natural_end: bool = False) -> None:
-        if isinstance(target, TicketStatus):
-            status = target
-            key = target.key
-            if ticket.status_id == target.pk:
-                return
-            allowed = set(StatusTransition.objects.filter(from_status_id=ticket.status_id).values_list("to_status_id", flat=True))
-            if allowed and target.pk not in allowed:
-                raise ValueError("不允许变更到目标状态")
-        else:
-            key = target
-            current_key = ticket.status.key if ticket.status_id else ""
-            if current_key == key:
-                return
-            status = TicketStatus.objects.filter(key=key).first()
-            if status is None:
-                raise ValueError(f"缺少状态 {key}")
-            allowed = set(StatusTransition.objects.filter(from_status__key=current_key).values_list("to_status__key", flat=True))
-            if allowed and key not in allowed:
-                raise ValueError(f"不允许从 {current_key} 转到 {key}")
+        approved = getattr(ticket, "_approved_transition", None)
+        status = approved if approved and target == approved.key else self._status_target(ticket, target)
+        if ticket.status_id == status.pk:
+            return
+        key = status.key
         ticket.status = status
         ticket.finished_at = timezone.now() if key == "finished" else None
         ticket.save(update_fields=["status", "finished_at", "updated_at"])
@@ -578,30 +614,28 @@ class TicketService:
 
         fire_triggers(ticket, action, operator)
 
-    def _process_active(self, process_instance_id: str) -> bool:
-        if not self.client or not process_instance_id:
-            return False
-        try:
-            payload = self.client.get_process_instance(process_instance_id)
-        except FlowableError as exc:
-            return exc.status != 404
-        if payload.get("ended"):
-            return False
-        try:
-            historic = self.client._request("GET", f"/flowable-rest/service/history/historic-process-instances/{process_instance_id}")
-        except FlowableError:
-            return True
-        return not historic.get("endTime")
-
     def finish_if_ended(self, ticket: Ticket, operator: str | None = None) -> None:
         if ticket.status_id and ticket.status.key in {"finished", "terminated", "cancelled"}:
             return
-        if self._process_active(ticket.process_instance_id):
-            return
+        if ticket.process_instance_id:
+            if not self.client:
+                return
+            try:
+                historic = self.client._request("GET", f"/flowable-rest/service/history/historic-process-instances/{ticket.process_instance_id}")
+            except FlowableError as exc:
+                if exc.status == 404:
+                    return
+                raise
+            if historic.get("id") != ticket.process_instance_id or not historic.get("endTime") or historic.get("deleteReason"):
+                return
         with transaction.atomic():
             current = Ticket.objects.select_for_update().get(pk=ticket.pk)
-            if current.process_instance_id != ticket.process_instance_id or (
-                current.status_id and current.status.key in {"finished", "terminated", "cancelled"}
+            from apps.itsm.services.ticket.manual_recovery import active_operations
+
+            if (
+                active_operations(current).exists()
+                or current.process_instance_id != ticket.process_instance_id
+                or (current.status_id and current.status.key in {"finished", "terminated", "cancelled"})
             ):
                 return
             if not TicketStatus.objects.filter(key="finished").exists():

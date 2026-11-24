@@ -12,6 +12,15 @@ class FlowableError(Exception):
         super().__init__(f"Flowable {status}")
 
 
+class NoStartedInstance(FlowableError):
+    def __init__(self):
+        super().__init__(409, "该轮启动尚无引擎记录")
+
+
+class FlowableNotSent(FlowableError):
+    """连接建立前失败，可以重新发送同一条操作。"""
+
+
 class FlowableClient:
     """封装 Flowable 7.1 REST。上下文是 /flowable-rest/service，不是旧的 process-api。"""
 
@@ -66,6 +75,8 @@ class FlowableClient:
             params={"businessKey": business_key, "processDefinitionId": definition_id},
         )
         rows = page.get("data") or []
+        if page.get("data") == [] and page.get("total") == 0:
+            raise NoStartedInstance()
         if (
             len(rows) != 1
             or page.get("total") != 1
@@ -171,8 +182,68 @@ class FlowableClient:
             json={"action": "suspend" if suspended else "activate"},
         )
 
-    def delete_process_instance(self, process_instance_id: str) -> dict[str, Any]:
-        return self._request("DELETE", f"/flowable-rest/service/runtime/process-instances/{process_instance_id}")
+    def delete_process_instance(self, process_instance_id: str, *, reason: str = "") -> dict[str, Any]:
+        return self._request(
+            "DELETE", f"/flowable-rest/service/runtime/process-instances/{process_instance_id}", params={"deleteReason": reason} if reason else None
+        )
+
+    def confirmed_manual_action(self, op) -> bool:
+        history = "/flowable-rest/service/history"
+        if op.action in {"approve", "submit", "reject"}:
+            name = "itsm_operation_receipt"
+            rows = self._request(
+                "GET",
+                f"{history}/historic-variable-instances",
+                params={
+                    "processInstanceId": op.process_id,
+                    "variableName": name,
+                    "excludeTaskVariables": "true",
+                },
+            )
+            return any(
+                row.get("processInstanceId") == op.process_id
+                and (row.get("variable") or {}).get("name") == name
+                and row["variable"].get("value") == str(op.token)
+                for row in rows.get("data", [])
+            )
+        if op.action in {"terminate", "withdraw", "close"}:
+            row = self._request("GET", f"{history}/historic-process-instances/{op.process_id}")
+            return bool(row.get("id") == op.process_id and row.get("endTime") and row.get("deleteReason") == str(op.token))
+        if op.action in {"claim", "transfer"}:
+            row = self._request("GET", f"/flowable-rest/service/runtime/tasks/{op.task_ref}")
+            target = op.operator if op.action == "claim" else op.payload["data"]["target"]
+            return row.get("id") == op.task_ref and row.get("processInstanceId") == op.process_id and row.get("assignee") == target
+        if op.action == "return":
+            old = self._request("GET", f"{history}/historic-task-instances/{op.task_ref}")
+            target = op.payload["data"]["return_node_id"]
+            return bool(
+                old.get("id") == op.task_ref
+                and old.get("processInstanceId") == op.process_id
+                and old.get("endTime")
+                and old.get("deleteReason") in {f"Change activity to {target}", f"Change parent activity to {target}"}
+                and any(row.get("taskDefinitionKey") == target for row in self.list_tasks(op.process_id)["data"])
+            )
+        if op.action in {"suspend", "resume"}:
+            row = self.get_process_instance(op.process_id)
+            return row.get("id") == op.process_id and row.get("suspended") is (op.action == "suspend")
+        return False
+
+    def manual_action_unchanged(self, op) -> bool:
+        if op.action in {"approve", "submit", "reject", "claim", "transfer", "return"}:
+            row = self._request("GET", f"/flowable-rest/service/runtime/tasks/{op.task_ref}")
+            if row.get("id") != op.task_ref or row.get("processInstanceId") != op.process_id:
+                return False
+            if row.get("taskDefinitionKey") != op.payload["node"].get("id"):
+                return False
+            if op.action in {"claim", "transfer"}:
+                return "assignee" in row and (row["assignee"] or "") == op.payload.get("previous_assignee")
+            return True
+        row = self.get_process_instance(op.process_id)
+        if row.get("id") != op.process_id or row.get("ended") is True:
+            return False
+        if op.action in {"suspend", "resume"}:
+            return row.get("suspended") is (op.action == "resume")
+        return op.action in {"terminate", "withdraw", "close"}
 
     def get_process_instance(self, process_instance_id: str) -> dict[str, Any]:
         return self._request("GET", f"/flowable-rest/service/runtime/process-instances/{process_instance_id}")
@@ -186,9 +257,17 @@ class FlowableClient:
     def _raw(self, method: str, path: str, **kwargs) -> requests.Response:
         last_error = None
         # 写请求超时不代表引擎未执行，禁止无幂等键重放。
-        for _ in range(3 if method.upper() in {"GET", "HEAD"} else 1):
+        reading = method.upper() in {"GET", "HEAD"}
+        if not reading:
+            kwargs["allow_redirects"] = False
+        for _ in range(3 if reading else 1):
             try:
                 response = self.session.request(method, f"{self.base_url}{path}", timeout=self.timeout, **kwargs)
+            except requests.ConnectTimeout as exc:
+                if not reading:
+                    raise FlowableNotSent(0, "连接建立超时") from exc
+                last_error = exc
+                continue
             except requests.RequestException as exc:
                 last_error = exc
                 itsm_logger.warning("Flowable 请求失败: %s", type(exc).__name__)
@@ -196,6 +275,8 @@ class FlowableClient:
             if response.status_code >= 500:
                 last_error = FlowableError(response.status_code, response.text[:500])
                 continue
+            if 300 <= response.status_code < 400:
+                raise FlowableError(502, "Flowable 返回了重定向")
             if response.status_code >= 400:
                 raise FlowableError(response.status_code, response.text[:500])
             return response
