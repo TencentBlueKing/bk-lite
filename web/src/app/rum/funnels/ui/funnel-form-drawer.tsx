@@ -1,9 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Drawer, Form, Input, Select } from 'antd';
 
 import { useRumQueries, type RumFunnelItem } from '@/app/rum/api';
+import {
+  FUNNEL_STEP_MAX,
+  FUNNEL_STEP_MIN,
+  addFunnelStepRow,
+  blankFunnelStepRows,
+  funnelStepPlaceholder,
+  funnelStepRowsFromSteps,
+  removeFunnelStepRow,
+  validateFunnelStepRows,
+} from '@/app/rum/funnels/ui/funnel-step-rows';
 import { rumErrorMessage } from '@/app/rum/lib/error-message';
 import { useTranslation } from '@/utils/i18n';
 
@@ -21,7 +32,8 @@ export default function FunnelFormDrawer({
   const { t } = useTranslation();
   const { createFunnel, updateFunnel, listApplications } = useRumQueries();
   const [name, setName] = useState('');
-  const [steps, setSteps] = useState('/,/checkout,/success');
+  const [rows, setRows] = useState<string[]>(() => blankFunnelStepRows());
+  const [invalidIndexes, setInvalidIndexes] = useState<number[]>([]);
   const [application, setApplication] = useState('');
   const [apps, setApps] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
@@ -31,13 +43,14 @@ export default function FunnelFormDrawer({
     if (!open) return;
     if (initial) {
       setName(initial.name);
-      setSteps((initial.steps || []).join(','));
+      setRows(funnelStepRowsFromSteps(initial.steps));
       setApplication(initial.application || '');
     } else {
       setName('');
-      setSteps('/,/checkout,/success');
+      setRows(blankFunnelStepRows());
       setApplication('');
     }
+    setInvalidIndexes([]);
     setError('');
     void listApplications(true)
       .then((items) => setApps(items.map((item) => item.application).filter(Boolean)))
@@ -45,20 +58,22 @@ export default function FunnelFormDrawer({
   }, [open, initial, listApplications]);
 
   async function submit() {
+    const stepResult = validateFunnelStepRows(rows);
+    setInvalidIndexes(stepResult.invalidIndexes);
+    if (!name.trim() || stepResult.countError) {
+      setError(t('rum.funnels.required', '请填写名称，并至少提供 2 个路由步骤'));
+      return;
+    }
+    if (!stepResult.ok) {
+      setError('');
+      return;
+    }
     setPending(true);
     setError('');
     try {
-      const stepList = steps
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (!name.trim() || stepList.length < 2) {
-        setError(t('rum.funnels.required', '请填写名称，并至少提供 2 个路由步骤'));
-        return;
-      }
       const body = {
         name: name.trim(),
-        steps: stepList,
+        steps: stepResult.steps,
         application: application.trim() || undefined,
       };
       if (initial?.id) await updateFunnel(initial.id, body);
@@ -111,13 +126,63 @@ export default function FunnelFormDrawer({
             />
           </Form.Item>
           <Form.Item label={t('rum.funnels.steps', '步骤')} className="mb-0">
-            <Input
-              value={steps}
-              onChange={(e) => setSteps(e.target.value)}
-              placeholder="/,/checkout,/success"
-            />
+            <div className="space-y-2">
+              {rows.map((row, index) => {
+                const invalid = invalidIndexes.includes(index);
+                return (
+                  <div key={index} className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        value={row}
+                        placeholder={funnelStepPlaceholder(index)}
+                        status={invalid ? 'error' : undefined}
+                        aria-invalid={invalid || undefined}
+                        aria-label={`${t('rum.funnels.step', '步骤')} ${index + 1}`}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setRows((current) =>
+                            current.map((item, rowIndex) => (rowIndex === index ? value : item)),
+                          );
+                          setInvalidIndexes((current) => current.filter((rowIndex) => rowIndex !== index));
+                        }}
+                      />
+                      {invalid ? (
+                        <p className="mt-1 text-xs text-[var(--color-fail)]">
+                          {t('rum.funnels.stepInvalid', '路由需以 / 开头')}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Button
+                      type="default"
+                      size="small"
+                      className="size-8 shrink-0 px-0"
+                      icon={<MinusOutlined aria-hidden="true" />}
+                      disabled={rows.length <= FUNNEL_STEP_MIN}
+                      aria-label={t('rum.funnels.removeStep', '删除路由')}
+                      onClick={() => {
+                        setRows((current) => removeFunnelStepRow(current, index));
+                        setInvalidIndexes([]);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+              <Button
+                type="link"
+                size="small"
+                className="h-auto px-0"
+                icon={<PlusOutlined aria-hidden="true" />}
+                disabled={rows.length >= FUNNEL_STEP_MAX}
+                onClick={() => {
+                  setRows((current) => addFunnelStepRow(current));
+                  setInvalidIndexes([]);
+                }}
+              >
+                {t('rum.funnels.addStep', '添加路由')}
+              </Button>
+            </div>
             <p className="mt-1 text-xs text-[var(--color-text-3)]">
-              {t('rum.funnels.stepsHint', '用逗号分隔 2–8 个路由，例如 /,/checkout,/success')}
+              {t('rum.funnels.stepsHint', '每行一个路由，共 2–8 个，每个以 / 开头')}
             </p>
           </Form.Item>
         </Form>

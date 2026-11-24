@@ -8,13 +8,13 @@ export const useTopologyApi = () => {
   const shareDetailOverride = useShareCanvasDetailOverride();
   const playbackDetail = usePlaybackInitialDetail();
 
-  const getTopologyDetail = useCallback(async (id: string | number) => {
+  const getTopologyDetail = useCallback(async (id: string | number, signal?: AbortSignal) => {
     if (shareDetailOverride) {
       return shareDetailOverride();
     }
-    return loadPlaybackCanvasDetail(playbackDetail, 'topology', id, () => (
-      get(`/operation_analysis/api/topology/${id}/`)
-    ));
+    return loadPlaybackCanvasDetail(playbackDetail, 'topology', id, (requestSignal) => (
+      get(`/operation_analysis/api/topology/${id}/`, { signal: requestSignal })
+    ), signal);
   }, [get, playbackDetail, shareDetailOverride]);
 
   const saveTopology = useCallback(async (id: string | number, data: any) => {

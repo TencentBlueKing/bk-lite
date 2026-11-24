@@ -51,13 +51,68 @@ class PipelineHealth:
 
 
 @dataclass(frozen=True)
+class EnabledApplications:
+    """Enabled names for one read.
+
+    ``applications`` is the controller registry when that list succeeds, otherwise
+    the enabled Postgres catalog (and then the requested subset). ``catalog_empty``
+    is about that full catalog, before the requested subset is applied.
+    ``control_down`` is true only when the controller list failed as unavailable.
+    """
+
+    applications: list[str]
+    control_down: bool = False
+    catalog_empty: bool = False
+
+
+@dataclass(frozen=True)
 class ProductScope:
     applications: list[str]
     reason: str | None = None  # "control" | "analytics" | None
+    control_down: bool = False
 
     @property
     def degraded(self) -> bool:
-        return self.reason is not None
+        return self.reason is not None or self.control_down
+
+
+def postgres_enabled_application_names() -> list[str]:
+    """Enabled application names from the Postgres catalog."""
+
+    from apps.rum.models import RumApplication
+
+    return list(RumApplication.objects.filter(enabled=True).order_by("-created_at", "name").values_list("name", flat=True))
+
+
+def list_enabled_applications(
+    control: ControlPlane,
+    actor: str,
+    requested: list[str] | None = None,
+) -> EnabledApplications:
+    """Resolve enabled application names for a read.
+
+    A successful controller list is the registry. When that list fails as
+    unavailable, the enabled Postgres ``RumApplication`` rows are the catalog.
+    Disabled applications stay out of both paths.
+    """
+
+    try:
+        _, data = control.request(SUBJECT_APPLICATION_LIST, actor, {})
+    except ControlError as exc:
+        if not control_unavailable(exc):
+            raise
+        catalog = postgres_enabled_application_names()
+        control_down = True
+    else:
+        registry = data if isinstance(data, list) else []
+        catalog = [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)]
+        control_down = False
+    if requested:
+        allowed = set(catalog)
+        scoped = [name for name in requested if name in allowed]
+    else:
+        scoped = list(catalog)
+    return EnabledApplications(applications=scoped, control_down=control_down, catalog_empty=not catalog)
 
 
 def probe_pipeline_health(
@@ -134,25 +189,34 @@ def resolve_product_scope(
     control: ControlPlane | None = None,
     analytics=None,
 ) -> ProductScope:
-    """Empty page + reason when the control/analytics pipeline is down."""
+    """Enabled names plus which plane is down.
+
+    Controller failure still returns the Postgres enabled names and sets
+    ``control_down``. ``reason`` stays a single string: ``control`` only when
+    that fallback catalog is empty, ``analytics`` when the analytics plane is
+    unavailable.
+    """
 
     from apps.rum.services.analytics import get_analytics
 
     control = control or get_control_plane()
     analytics = analytics if analytics is not None else get_analytics()
-    try:
-        _, data = control.request(SUBJECT_APPLICATION_LIST, actor, {})
-    except ControlError as exc:
-        if control_unavailable(exc):
-            return ProductScope(applications=[], reason=REASON_CONTROL)
-        raise
-    registry = data if isinstance(data, list) else []
-    enabled = [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)]
+    found = list_enabled_applications(control, actor)
+    if found.control_down and found.catalog_empty:
+        return ProductScope(applications=[], reason=REASON_CONTROL, control_down=True)
     if not analytics.available():
-        return ProductScope(applications=enabled, reason=REASON_ANALYTICS)
-    requested = [name.strip() for name in (requested or []) if str(name).strip()]
-    if not requested:
-        return ProductScope(applications=enabled, reason=None)
-    enabled_set = set(enabled)
-    scoped = [name for name in requested if name in enabled_set]
-    return ProductScope(applications=scoped, reason=None)
+        return ProductScope(
+            applications=list(found.applications),
+            reason=REASON_ANALYTICS,
+            control_down=found.control_down,
+        )
+    requested_names = [name.strip() for name in (requested or []) if str(name).strip()]
+    if not requested_names:
+        return ProductScope(
+            applications=list(found.applications),
+            reason=None,
+            control_down=found.control_down,
+        )
+    allowed = set(found.applications)
+    scoped = [name for name in requested_names if name in allowed]
+    return ProductScope(applications=scoped, reason=None, control_down=found.control_down)

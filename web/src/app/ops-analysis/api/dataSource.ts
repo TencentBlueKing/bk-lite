@@ -18,7 +18,18 @@ import {
 
 export interface SourceDataRequestOptions {
   suppressErrorNotification?: boolean;
+  signal?: AbortSignal;
 }
+
+export const sourceDataRequestConfig = (options?: SourceDataRequestOptions) => {
+  if (!options?.suppressErrorNotification && !options?.signal) return undefined;
+  return {
+    ...(options.suppressErrorNotification
+      ? { suppressErrorNotification: true as const }
+      : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  };
+};
 
 export const withRuntimeSourceDataErrorSuppression = (
   getSourceDataByApiId: (
@@ -26,8 +37,8 @@ export const withRuntimeSourceDataErrorSuppression = (
     params?: unknown,
     options?: SourceDataRequestOptions,
   ) => Promise<SourceDataResult>,
-) => (id: number, params?: unknown) =>
-  getSourceDataByApiId(id, params, { suppressErrorNotification: true });
+) => (id: number, params?: unknown, signal?: AbortSignal) =>
+  getSourceDataByApiId(id, params, { suppressErrorNotification: true, signal });
 
 export const useDataSourceApi = () => {
   const { get, post, put, del, patch } = useApiClient();
@@ -54,27 +65,30 @@ export const useDataSourceApi = () => {
     sourceId?: number;
     builtinKey?: string;
     sourceRef?: string;
-  }) => {
+  }, signal?: AbortSignal) => {
     if (sharedAccess) {
-      return sharedAccess.resolveOptionSource(body);
+      return sharedAccess.resolveOptionSource(body, signal);
     }
     const response = await post('/operation_analysis/api/data_source/resolve_option_source/', {
       sourceId: body.sourceId,
       builtinKey: body.builtinKey,
       sourceRef: body.sourceRef ? { type: 'rest_api', value: body.sourceRef } : undefined,
-    });
+    }, signal ? { signal } : undefined);
     return response as { status?: string; id?: number };
   }, [post, sharedAccess]);
 
-  const getDataSourceList = useCallback(async (params?: any) => {
+  const getDataSourceList = useCallback(async (params?: any, signal?: AbortSignal) => {
     const onDisplayPage = typeof window !== 'undefined'
       && window.location.pathname.startsWith('/ops-analysis/display/');
     // 投屏页没有登录目录。机房下拉要在当前大屏已声明的数据源里用 rest_api 对上。
     if (sharedAccess && onDisplayPage) {
-      const response = await sharedAccess.getDataSourceDetails([]);
+      const response = await sharedAccess.getDataSourceDetails([], signal);
       return normalizeDataSourceResponse(response);
     }
-    const response = await get('/operation_analysis/api/data_source/', { params });
+    const response = await get(
+      '/operation_analysis/api/data_source/',
+      signal ? { params, signal } : { params },
+    );
     return normalizeDataSourceResponse(response);
   }, [get, normalizeDataSourceResponse, sharedAccess]);
 
@@ -85,7 +99,7 @@ export const useDataSourceApi = () => {
     return normalizeDataSourceResponse(response);
   }, [get, normalizeDataSourceResponse]);
 
-  const getDataSourceDetails = useCallback(async (ids: Array<number | string>) => {
+  const getDataSourceDetails = useCallback(async (ids: Array<number | string>, signal?: AbortSignal) => {
     const normalizedIds = Array.from(
       new Set(
         ids
@@ -98,7 +112,7 @@ export const useDataSourceApi = () => {
       return [];
     }
     if (sharedAccess) {
-      const response = await sharedAccess.getDataSourceDetails(normalizedIds);
+      const response = await sharedAccess.getDataSourceDetails(normalizedIds, signal);
       const items = readDatasourceLookupList(response) as Array<{
         id?: unknown;
         params?: ParamItem[] | null;
@@ -110,12 +124,14 @@ export const useDataSourceApi = () => {
       );
     }
 
-    const response = await get('/operation_analysis/api/data_source/', {
-      params: {
-        mode: 'detail',
-        ids: normalizedIds.join(','),
-      },
-    });
+    const detailParams = {
+      mode: 'detail',
+      ids: normalizedIds.join(','),
+    };
+    const response = await get(
+      '/operation_analysis/api/data_source/',
+      signal ? { params: detailParams, signal } : { params: detailParams },
+    );
     return normalizeDataSourceResponse(response);
   }, [get, normalizeDataSourceResponse, sharedAccess]);
 
@@ -145,9 +161,7 @@ export const useDataSourceApi = () => {
     params?: unknown,
     options?: SourceDataRequestOptions,
   ): Promise<SourceDataResult> => {
-    const requestConfig = options?.suppressErrorNotification
-      ? { suppressErrorNotification: true as const }
-      : undefined;
+    const requestConfig = sourceDataRequestConfig(options);
     const raw = sharedAccess
       ? await sharedAccess.queryDataSource(id, params, options)
       : await post(

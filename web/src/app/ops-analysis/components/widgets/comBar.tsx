@@ -3,6 +3,11 @@ import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import {
+  CHART_DISPLAY_I18N,
+  presentBar,
+  readChartDisplay,
+} from '@/app/ops-analysis/utils/chartDisplay';
 import { withChartLinkPoints } from '@/app/ops-analysis/utils/interactionLink';
 import {
   resolveDataLinkTooltipTheme,
@@ -95,8 +100,16 @@ const BarChart: React.FC<BarChartProps> = ({
     [config, dataSource?.field_schema],
   );
   const chartData = useMemo(
-    () => ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
-    [fieldMapping, rawData],
+    () => presentBar(
+      ChartDataTransformer.transformToLineBarData(rawData, fieldMapping),
+      readChartDisplay(config),
+      {
+        rawData,
+        mapping: fieldMapping,
+        otherName: t(CHART_DISPLAY_I18N.other),
+      },
+    ),
+    [config?.displayLimit, config?.sortByValue, fieldMapping, rawData, t],
   );
   const isDataReady = chartData.categories.length > 0;
   const openTrendRef = useRef<(offsetX: number, offsetY: number) => void>(() => {});

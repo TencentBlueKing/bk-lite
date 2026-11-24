@@ -626,10 +626,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
     }
 
     let cancelled = false;
+    const detailController = new AbortController();
     setLoading(true);
     void (async () => {
       try {
-        const data = await getScreenDetail(screenId);
+        const data = await getScreenDetail(screenId, detailController.signal);
         if (cancelled) return;
 
         const normalized = labelSceneFilters(
@@ -654,6 +655,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
           organizationId: selectedOrganizationIdRef.current,
         });
       } catch (error) {
+        if (cancelled || detailController.signal.aborted) return;
         console.error("Failed to load screen:", error);
         if (!cancelled) {
           const fallback = buildDefaultScreenViewSets();
@@ -678,6 +680,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({
 
     return () => {
       cancelled = true;
+      detailController.abort();
     };
   }, [
     getScreenDetail,

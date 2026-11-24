@@ -39,6 +39,7 @@ import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
+import { chartDisplayPatch, CHART_DISPLAY_KEYS } from '@/app/ops-analysis/utils/chartDisplay';
 import { persistLineBarFormFields } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   persistSingleValueStyle,
@@ -74,6 +75,8 @@ export interface WidgetConfigFormValues {
   valueFields?: string[];
   seriesField?: string;
   pieScalarFields?: Array<{ field?: string; label?: string }>;
+  displayLimit?: number;
+  sortByValue?: boolean;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';
@@ -540,6 +543,7 @@ const SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT = [
   'valueFields',
   'seriesField',
   'nodeGraphTargetPortField',
+  ...CHART_DISPLAY_KEYS,
 ] as const;
 
 const isBlankOptionalValue = (value: unknown) => {
@@ -880,6 +884,14 @@ export const buildWidgetSubmitConfig = ({
 
   if (filterBindings && Object.keys(filterBindings).length > 0) {
     result.filterBindings = filterBindings;
+  }
+
+  const displayPatch = chartDisplayPatch({ ...values, chartType });
+  if (displayPatch.displayLimit !== undefined) {
+    result.displayLimit = displayPatch.displayLimit;
+  }
+  if (displayPatch.sortByValue !== undefined) {
+    result.sortByValue = displayPatch.sortByValue;
   }
 
   return { config: result };

@@ -18,6 +18,7 @@ export interface ContentCardsProps {
   state: ChatContentState;
   content?: string;
   readOnly?: boolean;
+  activeChoiceId?: string | null;
   onApproval?: (id: string, status: "approved" | "rejected") => void;
   onChoice?: (
     id: string,
@@ -33,6 +34,7 @@ export function ContentCards({
   state,
   content,
   readOnly = true,
+  activeChoiceId,
   onApproval,
   onChoice,
   onSendMessage,
@@ -81,8 +83,8 @@ export function ContentCards({
           key={request.choice_id}
           request={request}
           token=""
-          readOnly={readOnly}
-          onSubmit={onChoice || (() => undefined)}
+          readOnly={activeChoiceId === undefined ? readOnly : request.choice_id !== activeChoiceId}
+          onSubmit={onChoice}
           onSendMessage={onSendMessage}
         />
       ))}

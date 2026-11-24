@@ -7,9 +7,10 @@ import os
 from pathlib import Path
 
 from django.apps import apps as django_apps
+from django.core.exceptions import MultipleObjectsReturned
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.core.logger import logger, safe_exception_info
 from apps.core.utils.loader import preload_language_cache
@@ -133,17 +134,58 @@ class Command(BaseCommand):
     def _bootstrap_admin(self) -> None:
         migrate_existing_password = self._should_migrate_admin_password()
         with transaction.atomic():
-            if self._any_admin_username_exists() and not migrate_existing_password:
-                return
-            admin_password = self._get_admin_password()
-            call_command(
-                "create_user",
-                "admin",
-                admin_password,
-                email="admin@bklite.net",
-                is_superuser=True,
-                update_existing_password=migrate_existing_password,
+            if not (self._any_admin_username_exists() and not migrate_existing_password):
+                admin_password = self._get_admin_password()
+                call_command(
+                    "create_user",
+                    "admin",
+                    admin_password,
+                    email="admin@bklite.net",
+                    is_superuser=True,
+                    update_existing_password=migrate_existing_password,
+                )
+        self._ensure_admin_runtime_user()
+
+    def _ensure_admin_runtime_user(self) -> None:
+        """补齐默认域 admin 的 AUTH_USER_MODEL 行。失败不得回滚或阻断初始化。"""
+        try:
+            self._create_admin_runtime_user()
+        except Exception as error:  # noqa: BLE001 - 运行时账号可在首次登录补齐，不得阻断启动
+            logger.warning(
+                "event=admin_runtime_user_init_failed failed_stage=ensure_admin_runtime_user error_type=%s",
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
             )
+            self.stdout.write(
+                self.style.WARNING(f"默认域 admin 运行时账号初始化跳过（{type(error).__name__}），首次登录后仍可自动补齐")
+            )
+
+    @staticmethod
+    def _create_admin_runtime_user() -> None:
+        from apps.base.models.user import User as BaseUser
+        from apps.system_mgmt.models import User as SystemUser
+
+        sys_user = SystemUser.objects.filter(username="admin", domain="domain.com").first()
+        if sys_user is None:
+            return
+        defaults = {
+            "email": sys_user.email or "admin@bklite.net",
+            "is_superuser": True,
+            "is_staff": True,
+            "is_active": True,
+        }
+        try:
+            BaseUser._default_manager.get_or_create(
+                username="admin",
+                domain="domain.com",
+                defaults=defaults,
+            )
+        except IntegrityError:
+            if BaseUser._default_manager.filter(username="admin", domain="domain.com").exists():
+                return
+            raise
+        except MultipleObjectsReturned:
+            return
 
     @staticmethod
     def _any_admin_username_exists() -> bool:
@@ -204,20 +246,15 @@ class Command(BaseCommand):
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
         self._schedule_ci_context_rebuild()
-        # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
+        # UUID 存量清洗改为手工 manage.py；启动只拆除历史周期任务，禁止同步 --apply。
         try:
-            from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime
+            from apps.cmdb.tasks.uuid_migration import disable_uuid_migration_periodic_task
 
-            ensure_uuid_migration_periodic_task()
-            try:
-                migrate_cmdb_instance_uuid_runtime.delay()
-            except Exception as exc:
-                # Broker 暂不可达时不阻断启动；周期任务会在 Beat/Worker 就绪后收敛。
-                logger.warning("投递 CMDB UUID 运行期清洗任务失败（将由周期任务重试）: %s", exc)
-            self.stdout.write("已注册 CMDB UUID 运行期清洗任务（异步收敛，不阻断启动）")
+            disable_uuid_migration_periodic_task()
+            self.stdout.write("已停用 CMDB UUID 周期清洗（改为手工 migrate_cmdb_instance_uuid_runtime）")
         except Exception as exc:
-            logger.warning("注册 CMDB UUID 运行期清洗失败（不阻断启动）: %s", exc)
-            self.stdout.write(self.style.WARNING(f"CMDB UUID 运行期清洗注册跳过: {exc}"))
+            logger.warning("停用 CMDB UUID 周期清洗失败（不阻断启动）: %s", exc)
+            self.stdout.write(self.style.WARNING(f"CMDB UUID 周期任务拆除跳过: {exc}"))
 
     def _schedule_display_field_backfill(self) -> None:
         """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""

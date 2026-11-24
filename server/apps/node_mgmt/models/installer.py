@@ -112,6 +112,46 @@ class ControllerTaskNode(models.Model):
         return super().save(*args, **kwargs)
 
 
+class ControllerBulkBatch(TimeInfo, MaintainerInfo):
+    """一条可分发到多台 Linux 主机的控制器安装命令。"""
+
+    token = models.CharField(max_length=64, unique=True, verbose_name="批次令牌")
+    cloud_region = models.ForeignKey(CloudRegion, on_delete=models.CASCADE, verbose_name="云区域")
+    organization_id = models.PositiveIntegerField(verbose_name="组织")
+    package_version_id = models.PositiveIntegerField(verbose_name="控制器版本")
+    max_success_count = models.PositiveIntegerField(verbose_name="最多成功台数")
+    expires_at = models.DateTimeField(verbose_name="到期时间")
+    status = models.CharField(max_length=20, default="active", verbose_name="批次状态")
+    revoked_by = models.CharField(max_length=32, blank=True, default="", verbose_name="撤销人")
+    push_targets = JSONField(default=list, verbose_name="推送目标")
+    actor_scope = JSONField(default=dict, verbose_name="推送身份")
+
+    class Meta:
+        verbose_name = "控制器批量安装"
+        verbose_name_plural = "控制器批量安装"
+
+
+class ControllerBulkAttempt(TimeInfo):
+    """批量命令在一台主机上的一次受理结果。"""
+
+    batch = models.ForeignKey(ControllerBulkBatch, on_delete=models.CASCADE, related_name="attempts", verbose_name="批次")
+    ip = models.CharField(max_length=64, blank=True, default="", verbose_name="IP地址")
+    node_name = models.CharField(max_length=100, blank=True, default="", verbose_name="节点名称")
+    cpu_architecture = models.CharField(max_length=20, blank=True, default="", verbose_name="CPU架构")
+    node_id = models.CharField(max_length=100, blank=True, default="", verbose_name="节点ID")
+    status = models.CharField(max_length=20, verbose_name="受理状态")
+    message = models.CharField(max_length=500, blank=True, default="", verbose_name="结果说明")
+    counts_toward_disable = models.BooleanField(default=False, verbose_name="计入失败停用")
+
+    class Meta:
+        verbose_name = "控制器批量安装受理"
+        verbose_name_plural = "控制器批量安装受理"
+        indexes = [
+            models.Index(fields=["ip", "status"], name="nm_bulk_attempt_ip_st_idx"),
+            models.Index(fields=["batch", "status"], name="nm_bulk_attempt_batch_st_idx"),
+        ]
+
+
 class CollectorTask(TimeInfo, MaintainerInfo):
     type = models.CharField(max_length=100, verbose_name="任务类型")
     package_version_id = models.IntegerField(default=0, verbose_name="采集器版本")

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 
 export type WidgetQueryErrorCode =
   | 'widget_query_timeout'
@@ -13,6 +14,7 @@ export type WidgetQueryErrorCode =
 export const classifyWidgetQueryError = (
   error: unknown,
 ): WidgetQueryErrorCode | undefined => {
+  if (isTransportCanceled(error)) return undefined;
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     const code = (error.code || '').toUpperCase();

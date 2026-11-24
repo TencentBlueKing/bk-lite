@@ -16,13 +16,13 @@ export const useArchitectureApi = () => {
   const shareDetailOverride = useShareCanvasDetailOverride();
   const playbackDetail = usePlaybackInitialDetail();
 
-  const getArchitectureDetail = async (id: string | number) => {
+  const getArchitectureDetail = async (id: string | number, signal?: AbortSignal) => {
     if (shareDetailOverride) {
       return shareDetailOverride();
     }
-    return loadPlaybackCanvasDetail(playbackDetail, 'architecture', id, () => (
-      get(`/operation_analysis/api/architecture/${id}/`)
-    ));
+    return loadPlaybackCanvasDetail(playbackDetail, 'architecture', id, (requestSignal) => (
+      get(`/operation_analysis/api/architecture/${id}/`, { signal: requestSignal })
+    ), signal);
   };
 
   const saveArchitecture = async (id: string | number, data: any) => {
@@ -37,34 +37,41 @@ export const useArchitectureApi = () => {
     return del(`/operation_analysis/api/architecture/${id}/`);
   };
 
-  const queryNodeStatus = async (instUuids: string[]) => {
+  const queryNodeStatus = async (instUuids: string[], signal?: AbortSignal) => {
     return post('/operation_analysis/api/architecture/node_status/', {
       inst_uuids: instUuids,
-    });
+    }, signal ? { signal } : undefined);
   };
 
   const getArchitectureModels = useCallback(
-    () => get('/operation_analysis/api/architecture/models/'),
+    (signal?: AbortSignal) => get('/operation_analysis/api/architecture/models/', signal ? { signal } : undefined),
     [get],
   );
 
   const searchArchitectureResources = useCallback(
-    (params: ArchitectureResourceSearchParams) =>
-      post('/operation_analysis/api/architecture/resource_search/', params),
+    (params: ArchitectureResourceSearchParams, signal?: AbortSignal) =>
+      post(
+        '/operation_analysis/api/architecture/resource_search/',
+        params,
+        signal ? { signal } : undefined,
+      ),
     [post],
   );
 
-  const queryDisplayMetrics = async (instUuids: string[]) => {
+  const queryDisplayMetrics = async (instUuids: string[], signal?: AbortSignal) => {
     return post('/operation_analysis/api/architecture/display_metrics/', {
       inst_uuids: instUuids,
-    });
+    }, signal ? { signal } : undefined);
   };
 
   const getMonitorLink = useCallback(
-    (monitorId: string) =>
-      get('/operation_analysis/api/architecture/monitor_link/', {
-        params: { monitor_id: monitorId },
-      }),
+    (monitorId: string, signal?: AbortSignal) =>
+      get(
+        '/operation_analysis/api/architecture/monitor_link/',
+        signal
+          ? { params: { monitor_id: monitorId }, signal }
+          : { params: { monitor_id: monitorId } },
+      ),
     [get],
   );
 

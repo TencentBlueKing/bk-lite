@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { foldPptSkillToolCalls } from '@bk-lite/chat-content/pptSkillToolFold';
 import type { ToolCall } from '../contentChunks';
 import { useTranslator } from '../useTranslator';
 
@@ -69,27 +70,42 @@ const ToolItem: React.FC<{ tool: ToolCall }> = ({ tool }) => {
 export const ToolCallGroup: React.FC<{ toolCalls: ToolCall[] }> = ({ toolCalls }) => {
   const t = useTranslator();
   const [expanded, setExpanded] = useState(false);
-  if (toolCalls.length === 0) return null;
-  const running = toolCalls.some((tool) => tool.status === 'running');
+  const visibleCalls = foldPptSkillToolCalls(toolCalls, {
+    name: t('chat.toolCall.pptSkill', 'PPT 技能'),
+    action: t('chat.toolCall.pptSkillAction', '写页面并导出'),
+  });
+  if (visibleCalls.length === 0) return null;
+  const running = visibleCalls.some((tool) => tool.status === 'running');
+  const pptSkillName = t('chat.toolCall.pptSkill', 'PPT 技能');
+  const onlyPptSkill = visibleCalls.length === 1 && visibleCalls[0]?.name === pptSkillName;
+  const headerLabel = onlyPptSkill
+    ? `${pptSkillName} · ${t('chat.toolCall.pptSkillAction', '写页面并导出')}`
+    : t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: visibleCalls.length });
+  const hasError = visibleCalls.some((tool) => (tool.status as string) === 'error');
+  const canOpen = !onlyPptSkill || hasError;
   return (
     <div className="my-1">
       <button
         type="button"
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-2 py-1 text-xs text-[var(--color-text-3)]"
-        onClick={() => setExpanded((value) => !value)}
+        className={`inline-flex items-center gap-1.5 rounded border-0 bg-transparent px-2 py-1 text-xs text-[var(--color-text-3)] ${canOpen ? 'cursor-pointer' : 'cursor-default'}`}
+        onClick={() => canOpen && setExpanded((value) => !value)}
       >
-        <span className="text-[8px] text-[var(--color-text-4)]">{expanded || running ? '▾' : '▸'}</span>
+        {canOpen ? (
+          <span className="text-[8px] text-[var(--color-text-4)]">{expanded || running ? '▾' : '▸'}</span>
+        ) : (
+          <span className="inline-flex w-3" />
+        )}
         <span className="text-xs text-[var(--color-success)]">{running ? '…' : '✓'}</span>
-        <span>{t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: toolCalls.length })}</span>
-        {!running ? (
+        <span>{headerLabel}</span>
+        {canOpen && !running ? (
           <span className="text-[var(--color-text-4)]">
             {expanded ? t('chat.toolCall.collapseHint', '点击收起') : t('chat.toolCall.expandHint', '点击展开查看详情')}
           </span>
         ) : null}
       </button>
-      {expanded || running ? (
+      {canOpen && (expanded || running || hasError) ? (
         <div className="mt-1">
-          {toolCalls.map((tool) => <ToolItem key={tool.id} tool={tool} />)}
+          {visibleCalls.map((tool) => <ToolItem key={tool.id} tool={tool} />)}
         </div>
       ) : null}
     </div>

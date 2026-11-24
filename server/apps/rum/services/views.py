@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
-from apps.rum.services.query import empty_view_list, parse_range_params
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
+from apps.rum.services.health import list_enabled_applications
+from apps.rum.services.query import empty_view_list, parse_range_params, stamp_pipeline_flags
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.validation import ValidationError
 
@@ -133,16 +133,6 @@ class ViewsService:
         self.saved_views = saved_views or DjangoSavedViewStore()
         self.settings = load_rum_settings()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
-
     def _requested_apps(self, params: dict[str, Any]) -> list[str]:
         apps: list[str] = []
         single = (params.get("application") or "").strip()
@@ -163,20 +153,18 @@ class ViewsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_view_list(mode=mode, reason="control")
-        requested = self._requested_apps(params)
-        apps = [name for name in requested if name in enabled] if requested else enabled
         if not self.analytics.available():
-            return empty_view_list(mode=mode, reason="analytics")
+            return stamp_pipeline_flags(empty_view_list(mode=mode, reason="analytics"), control=found.control_down)
         try:
-            return self.analytics.list_views(
+            page = self.analytics.list_views(
                 self.settings.tenant_id,
                 {
                     "from": start,
                     "to": end,
-                    "applications": apps,
+                    "applications": found.applications,
                     "mode": mode,
                     "traffic": params.get("traffic") or "visitors",
                     "release": params.get("release") or "",
@@ -188,7 +176,8 @@ class ViewsService:
                 "rum views list analytics failed failed_stage=list_views error_type=%s",
                 type(exc).__name__,
             )
-            return empty_view_list(mode=mode, reason="analytics")
+            return stamp_pipeline_flags(empty_view_list(mode=mode, reason="analytics"), control=found.control_down)
+        return stamp_pipeline_flags(page, control=found.control_down)
 
     def list_saved_views(self, actor: str, screen: str | None) -> list[dict]:
         return self.saved_views.list(actor, screen)

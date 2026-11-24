@@ -153,5 +153,6 @@ class NodeMgmtView(ViewSet):
             request.data.get("monitor_plugin_id"),
             actor_context,
             discard_hand_edited=request.data.get("discard_hand_edited") in (True, 1, "1", "true", "True"),
+            force_redispatch=request.data.get("force_redispatch") in (True, 1, "1", "true", "True"),
         )
         return WebUtils.response_success(result)

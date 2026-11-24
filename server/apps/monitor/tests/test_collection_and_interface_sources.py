@@ -14,7 +14,7 @@ from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceO
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.collection_query import query_collection_rows
 from apps.monitor.services.generic_query import GenericQueryError
-from apps.monitor.services.interface_current import _rate_text, query_interface_current_rows
+from apps.monitor.services.interface_current import _rate_text, query_interface_current_count, query_interface_current_rows
 
 pytestmark = pytest.mark.django_db
 
@@ -260,7 +260,9 @@ def _vector(rows):
 
 class _InterfaceVM:
     def query(self, query, step=None):
-        assert "{" in query and "instance_id=~" not in query
+        assert 'instance_id=~"^(?:' in query
+        assert "interface_ifHighSpeed" not in query
+        assert "interface_ifSpeed{" not in query
         if query.startswith("interface_ifOperStatus"):
             return _vector([("sw-1", "Gi0/1", "2"), ("sw-1", "Gi0/2", "5"), ("sw-1", "Gi0/3", "1"), ("other", "Gi9", "2")])
         if "ifHCInOctets" in query:
@@ -353,3 +355,248 @@ def test_collection_and_interface_handlers_share_category_scope(monkeypatch):
     missing = query_interface_current_counts(instance_ids=["missing"], user_info=user_info)
     assert missing["result"] is False
     assert missing["data"]["status"] == "forbidden"
+
+
+def _recording_vm(responder):
+    calls = []
+    lock = threading.Lock()
+
+    class _Recording:
+        def query(self, query, step=None):
+            with lock:
+                calls.append(("query", query))
+            return responder(query)
+
+        def query_form(self, query, step=None):
+            with lock:
+                calls.append(("form", query))
+            return responder(query)
+
+    return _Recording(), calls
+
+
+def test_interface_page_keeps_the_full_filtered_count():
+    obj = _object("page-switch", display_name="交换机")
+    switch = _instance(obj, "swpage", name="core")
+
+    def responder(query):
+        assert 'instance_id=~"^(?:' in query
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swpage", "Gi0/1", "1"), ("swpage", "Gi0/2", "2"), ("swpage", "Gi0/3", "1")])
+        if "ifHCInOctets" in query:
+            return _vector([("swpage", "Gi0/1", "1"), ("swpage", "Gi0/2", "900"), ("swpage", "Gi0/3", "50")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, calls = _recording_vm(responder)
+    page = query_interface_current_rows(
+        [switch],
+        order_by="in_rate",
+        order_dir="desc",
+        page=1,
+        page_size=1,
+        vm_api=vm,
+    )
+    assert page["count"] == 3
+    assert [row["if_name"] for row in page["items"]] == ["Gi0/2"]
+    assert page["items"][0]["in_rate"] == "900 B/s"
+    assert all(kind == "query" for kind, _query in calls)
+
+
+def test_interface_count_reads_only_the_match_metrics():
+    obj = _object("count-switch")
+    switch = _instance(obj, "swcount", name="core")
+
+    def responder(query):
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swcount", "Gi0/1", "2"), ("swcount", "Gi0/2", "1")])
+        if "ifInErrors" in query:
+            return _vector([("swcount", "Gi0/2", "0.4")])
+        if "ifOutDiscards" in query:
+            return _vector([("swcount", "Gi0/1", "0.2")])
+        return {"status": "success", "data": {"result": []}}
+
+    down_vm, down_calls = _recording_vm(responder)
+    assert query_interface_current_count([switch], interface_match="down", vm_api=down_vm) == 1
+    assert down_calls
+    assert all(query.startswith("interface_ifOperStatus{") for _kind, query in down_calls)
+
+    error_vm, error_calls = _recording_vm(responder)
+    assert query_interface_current_count([switch], interface_match="error", vm_api=error_vm) == 1
+    assert {query.split("{", 1)[0] for _kind, query in error_calls} == {
+        "rate(interface_ifInErrors",
+        "rate(interface_ifOutErrors",
+    }
+
+    empty_vm, empty_calls = _recording_vm(responder)
+    assert query_interface_current_count([], vm_api=empty_vm) == 0
+    assert empty_calls == []
+
+
+def test_interface_snapshot_keeps_32bit_only_and_skips_speed(monkeypatch):
+    obj = _object("identity-switch")
+    switch = _instance(obj, "swid", name="core")
+
+    def responder(query):
+        if "interface_ifHighSpeed" in query or "interface_ifSpeed{" in query:
+            return _vector([("swid", "Speed0", "1000")])
+        if query.startswith("rate(interface_ifInOctets"):
+            return _vector([("swid", "Gi0/9", "1000")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, calls = _recording_vm(responder)
+    rows = query_interface_current_rows([switch], vm_api=vm)
+    assert [row["if_name"] for row in rows] == ["Gi0/9"]
+    assert rows[0]["in_rate"] == "1 KB/s"
+    assert all("interface_ifHighSpeed" not in query and "interface_ifSpeed{" not in query for _kind, query in calls)
+
+    monkeypatch.setattr("apps.monitor.services.interface_current._SELECTOR_BUDGET", 1)
+    left = _instance(obj, "alpha", name="alpha-box")
+    right = _instance(obj, "beta", name="beta-box")
+
+    def chunked(query):
+        if not query.startswith("interface_ifOperStatus"):
+            return {"status": "success", "data": {"result": []}}
+        rows = []
+        if "alpha" in query:
+            rows.append(("alpha", "Gi0/1", "1"))
+        if "beta" in query:
+            rows.append(("beta", "Gi0/2", "1"))
+        return _vector(rows)
+
+    chunk_vm, chunk_calls = _recording_vm(chunked)
+    paged = query_interface_current_rows([left, right], page=1, page_size=1, vm_api=chunk_vm)
+    status_queries = [query for _kind, query in chunk_calls if query.startswith("interface_ifOperStatus")]
+    assert len(status_queries) == 2
+    assert all("alpha" in query or "beta" in query for query in status_queries)
+    assert paged["count"] == 2
+    assert [row["if_name"] for row in paged["items"]] == ["Gi0/1"]
+
+
+def test_interface_long_selector_uses_query_form(monkeypatch):
+    obj = _object("form-switch")
+    switch = _instance(obj, "swform", name="core")
+    monkeypatch.setattr("apps.monitor.services.interface_current._LONG_QUERY", 0)
+
+    def responder(query):
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swform", "Gi0/1", "2")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, calls = _recording_vm(responder)
+    rows = query_interface_current_rows([switch], interface_match="down", vm_api=vm)
+    assert [row["if_name"] for row in rows] == ["Gi0/1"]
+    assert calls
+    assert all(kind == "form" for kind, _query in calls)
+
+
+def test_interface_snapshot_queries_run_concurrently():
+    obj = _object("concurrent-switch")
+    switch = _instance(obj, "swcon", name="core")
+    state = {"active": 0, "peak": 0}
+    lock = threading.Lock()
+
+    class _Slow:
+        def query(self, query, step=None):
+            with lock:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            try:
+                time.sleep(0.05)
+                return {"status": "success", "data": {"result": []}}
+            finally:
+                with lock:
+                    state["active"] -= 1
+
+    query_interface_current_rows([switch], vm_api=_Slow())
+    assert state["peak"] >= 2
+
+
+def test_interface_metric_failure_fails_the_whole_snapshot():
+    obj = _object("fail-switch")
+    switch = _instance(obj, "swfail", name="core")
+
+    class _Broken:
+        def query(self, query, step=None):
+            if "ifHCInOctets" in query:
+                raise RuntimeError("vm down")
+            return {"status": "success", "data": {"result": []}}
+
+    with pytest.raises(GenericQueryError, match="接口指标查询失败"):
+        query_interface_current_rows([switch], vm_api=_Broken())
+
+
+def test_interface_count_fans_out_one_vm_label_to_each_owner():
+    obj = _object("fanout-switch")
+    left = MonitorInstance.objects.create(
+        id=str(("swfan", "a")),
+        name="left",
+        monitor_object=obj,
+        is_active=True,
+        ip="10.0.0.8",
+    )
+    right = MonitorInstance.objects.create(
+        id=str(("swfan", "b")),
+        name="right",
+        monitor_object=obj,
+        is_active=True,
+        ip="10.0.0.9",
+    )
+
+    def responder(query):
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swfan", "Gi0/1", "2")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, _calls = _recording_vm(responder)
+    assert query_interface_current_count([left, right], interface_match="down", vm_api=vm) == 2
+
+
+def test_interface_handler_does_not_hold_the_shared_nats_thread(monkeypatch):
+    from django.conf import settings
+
+    from apps.monitor.nats import generic_query as handlers
+    from nats_client.handlers import nats_handler
+    from nats_client.registry import default_registry
+
+    class _EmptyQueryset:
+        def select_related(self, *args, **kwargs):
+            del args, kwargs
+            return self
+
+        def distinct(self):
+            return self
+
+        def __iter__(self):
+            return iter(())
+
+    interface_entered = threading.Event()
+    other_entered = threading.Event()
+    monkeypatch.setattr(handlers, "_scoped_monitor_instances", lambda *args, **kwargs: _EmptyQueryset())
+
+    def slow_rows(*args, **kwargs):
+        del args, kwargs
+        interface_entered.set()
+        assert other_entered.wait(2), "其他 handler 在接口查询占住线程时没有开始"
+        return []
+
+    def other_handler(*args, **kwargs):
+        del args, kwargs
+        assert interface_entered.wait(2), "接口查询没有进入工作线程"
+        other_entered.set()
+        return {"result": True, "data": [], "message": ""}
+
+    monkeypatch.setattr(handlers, "query_interface_current_rows", slow_rows)
+    namespace = settings.NATS_NAMESPACE
+    interface_key = f"{namespace}.query_interface_current"
+    other_key = f"{namespace}.query_monitor_instance_counts"
+    assert default_registry.registry[interface_key]["func"]._nats_thread_sensitive is False
+    assert default_registry.registry[f"{namespace}.query_interface_current_counts"]["func"]._nats_thread_sensitive is False
+    monkeypatch.setitem(default_registry.registry[other_key], "func", other_handler)
+
+    async def exercise():
+        await asyncio.gather(
+            nats_handler(interface_key, {"kwargs": {"user_info": {"user": "ada", "team": 1}, "page": 1, "page_size": 10}}),
+            nats_handler(other_key, {"kwargs": {"user_info": {"user": "ada", "team": 1}}}),
+        )
+
+    asyncio.run(exercise())

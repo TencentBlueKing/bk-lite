@@ -51,6 +51,7 @@ import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/o
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { toLineBarFieldMapping } from "@/app/ops-analysis/utils/lineBarFieldMapping";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
+import { isTransportCanceled } from "@/utils/requestCancellation";
 import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
 import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
 import {
@@ -238,6 +239,13 @@ export interface WidgetWrapperProps {
   suppliedRawDataVersion?: number;
 }
 
+function forgetOwnedConsumer(ids: string[], consumerId: string) {
+  const index = ids.indexOf(consumerId);
+  if (index >= 0) {
+    ids.splice(index, 1);
+  }
+}
+
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   dashboardId,
   chartType,
@@ -306,6 +314,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dashboardViewAuth?.isScenePermissionDenied(widgetId),
   );
   const runtimeScheduler = useDashboardRuntimeScheduler();
+  const runtimeSchedulerRef = useRef(runtimeScheduler);
+  runtimeSchedulerRef.current = runtimeScheduler;
+  const ownedConsumerIdsRef = useRef<string[]>([]);
+  const localAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const seenDashboardIdRef = useRef(dashboardId);
   const { getSourceDataByApiId } = useDataSourceApi();
   const optionConsumerSequenceRef = useRef(0);
   const getRuntimeSourceDataByApiId = useMemo(
@@ -358,17 +371,27 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [dataSources, t],
   );
   const scheduleOptionsPhysical = useCallback(
-    <T,>(physicalKey: string, start: () => Promise<T>) => {
+    <T,>(physicalKey: string, start: (signal?: AbortSignal) => Promise<T>) => {
       if (!runtimeActiveRef.current) {
         return Promise.reject(new RuntimeRequestCancelledError());
       }
-      if (!runtimeScheduler) return start();
+      if (!runtimeScheduler) {
+        const controller = new AbortController();
+        localAbortControllersRef.current.add(controller);
+        return start(controller.signal).finally(() => {
+          localAbortControllersRef.current.delete(controller);
+        });
+      }
+      const consumerId = `${widgetId}:options:${++optionConsumerSequenceRef.current}`;
+      ownedConsumerIdsRef.current.push(consumerId);
       return runtimeScheduler.schedule({
-        consumerId: `${widgetId}:options:${++optionConsumerSequenceRef.current}`,
+        consumerId,
         ownerId: widgetId,
         physicalKey,
         priority: { ...runtimePriority, cause: 1 },
-        start,
+        start: (signal) => start(signal),
+      }).finally(() => {
+        forgetOwnedConsumer(ownedConsumerIdsRef.current, consumerId);
       });
     },
     [runtimePriority, runtimeScheduler, widgetId],
@@ -377,7 +400,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     (id: number, params?: unknown, options?: { suppressErrorNotification?: boolean }) => {
       return scheduleOptionsPhysical(
         `options:source:${JSON.stringify(componentSwitchParam?.inputConfig)}:${id}:${JSON.stringify(params ?? {})}`,
-        () => getSourceDataByApiId(id, params, options),
+        (signal) => getSourceDataByApiId(id, params, { ...options, signal }),
       );
     },
     [
@@ -477,6 +500,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     componentSwitchOptionsLoaderOptions,
     {
       enabled: runtimeActive,
+      reloadKey: String(dashboardId ?? ""),
       getSourceDataByApiId: scheduledOptionsSourceData,
       resolvedQueryParams: componentSwitchQuery.params,
       optionsBlocked: componentSwitchQuery.blocked,
@@ -505,13 +529,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       if (previous.scopeKey !== runtimeParamScopeKey) {
         return {
           scopeKey: runtimeParamScopeKey,
-          value: optionState.status === "error" ? undefined : savedComponentSwitchValue,
+          value: savedComponentSwitchValue,
         };
       }
       if (optionState.status === "error") {
-        return previous.value === undefined
-          ? previous
-          : { ...previous, value: undefined };
+        return previous;
       }
       const reconciled = optionState.status === "blocked"
         ? null
@@ -989,6 +1011,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     const fetchTicket = sampleTicketRef.current;
     inflightCountRef.current += 1;
     runtimeScheduler?.cancelQueuedForOwner(widgetId);
+    const directController = runtimeScheduler ? null : new AbortController();
+    if (directController) {
+      localAbortControllersRef.current.add(directController);
+    }
     const hasSuccessfulPayload =
       rawDataRef.current !== null && rawDataRef.current !== undefined;
     const causePriority = isSilentCanvasRuntimeRefresh(cause)
@@ -1005,15 +1031,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return Promise.reject(new RuntimeRequestCancelledError());
       }
       if (!runtimeScheduler) {
-        return getRuntimeSourceDataByApiId(id, params);
+        return getRuntimeSourceDataByApiId(id, params, directController?.signal);
       }
       const consumerId = `${widgetId}:${currentFetchId}:${++physicalConsumerSequenceRef.current}`;
+      ownedConsumerIdsRef.current.push(consumerId);
       return runtimeScheduler.schedule({
         consumerId,
         ownerId: widgetId,
         physicalKey: `${requestKey}:source:${id}:${JSON.stringify(params ?? {})}`,
         priority: { ...runtimePriority, cause: causePriority },
-        start: () => getRuntimeSourceDataByApiId(id, params),
+        start: (signal) => getRuntimeSourceDataByApiId(id, params, signal),
+      }).finally(() => {
+        forgetOwnedConsumer(ownedConsumerIdsRef.current, consumerId);
       });
     };
 
@@ -1054,7 +1083,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
     } catch (err) {
-      if (err instanceof RuntimeRequestCancelledError) {
+      if (err instanceof RuntimeRequestCancelledError || isTransportCanceled(err)) {
         if (currentFetchId === fetchIdRef.current) {
           previousRequestRef.current = {
             ...previousRequestRef.current,
@@ -1085,6 +1114,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         });
       }
     } finally {
+      if (directController) {
+        localAbortControllersRef.current.delete(directController);
+      }
       inflightCountRef.current = finishOwnerRequest({
         inflightCount: inflightCountRef.current,
       }).inflightCount;
@@ -1111,17 +1143,48 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   }, [runtimeActive, runtimePriority, runtimeScheduler, widgetId]);
 
   useEffect(() => {
+    if (seenDashboardIdRef.current === dashboardId) return;
+    seenDashboardIdRef.current = dashboardId;
+    fetchIdRef.current += 1;
+    const consumerIds = ownedConsumerIdsRef.current.splice(0);
+    consumerIds.forEach((consumerId) => {
+      runtimeSchedulerRef.current?.releaseConsumer(consumerId);
+    });
+    localAbortControllersRef.current.forEach((controller) => controller.abort());
+    localAbortControllersRef.current.clear();
+  }, [dashboardId]);
+
+  useEffect(() => {
     const lifecycle = ++lifecycleRef.current;
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      const consumerIds = ownedConsumerIdsRef.current.splice(0);
+      const controllers = Array.from(localAbortControllersRef.current);
+      localAbortControllersRef.current.clear();
       queueMicrotask(() => {
-        if (lifecycleRef.current === lifecycle) {
-          runtimeScheduler?.cancelQueuedForOwner(widgetId);
+        // StrictMode 会先卸载再挂上同一实例。这次取数不会重发，controller 必须放回，
+        // 真正卸载才能 abort。调度器上的消费者同样放回，重放期间不 release。
+        if (lifecycleRef.current !== lifecycle) {
+          consumerIds.forEach((consumerId) => {
+            if (!ownedConsumerIdsRef.current.includes(consumerId)) {
+              ownedConsumerIdsRef.current.push(consumerId);
+            }
+          });
+          controllers.forEach((controller) => {
+            if (!controller.signal.aborted) {
+              localAbortControllersRef.current.add(controller);
+            }
+          });
+          return;
         }
+        const scheduler = runtimeSchedulerRef.current;
+        consumerIds.forEach((consumerId) => scheduler?.releaseConsumer(consumerId));
+        scheduler?.cancelQueuedForOwner(widgetId);
+        controllers.forEach((controller) => controller.abort());
       });
     };
-  }, [runtimeScheduler, widgetId]);
+  }, [widgetId]);
 
   useEffect(() => {
     if (isSceneWidget) {

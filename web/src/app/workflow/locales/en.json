@@ -16,6 +16,8 @@
     },
     "action": {
       "run": "Run",
+      "orchestrate": "Orchestrate",
+      "modify": "Edit",
       "moreFor": "More actions: {name}",
       "copyToWorkflows": "Copy to Workflows",
       "confirmDuplicate": "Duplicate"
@@ -32,7 +34,8 @@
       "custom": "Custom",
       "create": "New Workflow",
       "editProfile": "Edit Workflow",
-      "basicInfo": "Basic Information",
+      "updatedSuccess": "Workflow updated",
+      "updatedElsewhere": "Workflow updated. Switch to {organizations} to see it.",
       "description": "Description",
       "organization": "Organization",
       "organizationRequired": "Select an organization",

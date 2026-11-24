@@ -207,6 +207,8 @@ export interface ValueConfig {
   topNScalarFields?: Array<{ field: string; label?: string }>;
   barMode?: 'relative' | 'absolute';
   barMax?: number;
+  displayLimit?: number;
+  sortByValue?: boolean;
   dimensionField?: string;
   valueField?: string;
   valueFields?: string[];

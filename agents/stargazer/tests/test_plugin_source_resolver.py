@@ -1,4 +1,4 @@
-"""插件目录查找。storage 采集槽位对应 oceanstor 目录。"""
+"""插件目录查找。槽位名和目录名不一致时走别名。"""
 
 from pathlib import Path
 
@@ -45,6 +45,35 @@ def test_existing_storage_plugin_is_not_replaced_by_oceanstor(tmp_path):
 
     assert resolution.model_id == "storage"
     assert resolution.plugin_path == oss_plugins / "storage" / "plugin.yml"
+
+
+def test_vmware_resolves_to_vmware_vc_plugin_and_keeps_model_id():
+    resolution = _resolver(OSS_PLUGINS, ENTERPRISE_ROOT).resolve("vmware")
+
+    assert resolution.model_id == "vmware"
+    assert resolution.source == "oss"
+    assert resolution.plugin_path == OSS_PLUGINS / "vmware_vc" / "plugin.yml"
+    assert resolution.plugin_root == OSS_PLUGINS / "vmware_vc"
+
+
+def test_vmware_vc_keeps_its_own_directory():
+    resolution = _resolver(OSS_PLUGINS, ENTERPRISE_ROOT).resolve("vmware_vc")
+
+    assert resolution.model_id == "vmware_vc"
+    assert resolution.plugin_path == OSS_PLUGINS / "vmware_vc" / "plugin.yml"
+
+
+def test_existing_vmware_plugin_is_not_replaced_by_vmware_vc(tmp_path):
+    oss_plugins = tmp_path / "plugins" / "inputs"
+    (oss_plugins / "vmware").mkdir(parents=True)
+    (oss_plugins / "vmware_vc").mkdir()
+    (oss_plugins / "vmware" / "plugin.yml").write_text("name: vmware\n", encoding="utf-8")
+    (oss_plugins / "vmware_vc" / "plugin.yml").write_text("name: vmware_vc\n", encoding="utf-8")
+
+    resolution = _resolver(oss_plugins, tmp_path / "enterprise").resolve("vmware")
+
+    assert resolution.model_id == "vmware"
+    assert resolution.plugin_path == oss_plugins / "vmware" / "plugin.yml"
 
 
 def test_storage_alias_uses_oceanstor_when_storage_directory_is_absent(tmp_path):

@@ -306,6 +306,7 @@ def execute_skill_channel_chat(request, channel_id):
             distribute_file_ids=distribute_file_ids,
             choice_id=str(kwargs.get("choice_id") or "") or None,
             choice_option=str(kwargs.get("choice_option") or "") or None,
+            reply_to_choice_id=str(kwargs.get("reply_to_choice_id") or "") if "reply_to_choice_id" in kwargs else None,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))
@@ -340,6 +341,9 @@ def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=No
             session_id=session_id or None,
             identity_user=user_secret,
             attachment_ids=attachment_ids,
+            choice_id=str(kwargs.get("choice_id") or "") or None,
+            choice_option=str(kwargs.get("choice_option") or "") or None,
+            reply_to_choice_id=str(kwargs.get("reply_to_choice_id") or "") if "reply_to_choice_id" in kwargs else None,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))

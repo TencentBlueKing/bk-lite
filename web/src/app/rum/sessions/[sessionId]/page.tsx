@@ -38,7 +38,7 @@ import {
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
 import { groupTimelineByView } from '@/app/rum/sessions/lib/group-timeline';
-import { presentTimelineError } from '@/app/rum/sessions/lib/timeline-error';
+import { presentTimelineError, rumTraceHref } from '@/app/rum/sessions/lib/timeline-error';
 import { useTranslation } from '@/utils/i18n';
 
 interface TimelineItem {
@@ -685,6 +685,7 @@ export default function SessionDetailPage() {
                                 presentedError?.fingerprint && app
                                   ? `/rum/errors/detail?fingerprint=${encodeURIComponent(presentedError.fingerprint)}&application=${encodeURIComponent(app)}&range=${range}`
                                   : null;
+                              const traceHref = rumTraceHref(presentedError?.traceId);
                               return (
                                 <div
                                   key={item.id}
@@ -710,8 +711,13 @@ export default function SessionDetailPage() {
                                     {item.detail ? (
                                       <span className="ml-2 font-mono text-xs text-[var(--color-text-3)]">{item.detail}</span>
                                     ) : null}
-                                    {presentedError?.traceId ? (
-                                      <span className="ml-2 font-mono text-xs text-[var(--color-text-3)]">Trace: {presentedError.traceId}</span>
+                                    {traceHref ? (
+                                      <Link
+                                        href={traceHref}
+                                        className="ml-2 font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)] hover:underline"
+                                      >
+                                        Trace: {presentedError?.traceId}
+                                      </Link>
                                     ) : null}
                                   </div>
                                   <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--color-text-3)]">

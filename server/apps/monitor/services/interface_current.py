@@ -1,4 +1,4 @@
-"""监控接口查询。按 IF-MIB 即时查询后，与有权实例相交，一行一个接口。"""
+"""监控接口查询。先把范围收进有权实例，算完当前值，再过滤、排序和分页。"""
 
 from __future__ import annotations
 
@@ -6,9 +6,15 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.services.generic_query import GenericQueryError, _checked_sort, _optional_page, _table
 from apps.monitor.services.generic_query_limits import INSTANCE_LIST_MAX
 from apps.monitor.services.instance_distribution import _object_labels
-from apps.monitor.services.interface_metrics_query import INTERFACE_METRIC_QUERIES, merge_interface_metric_rows, parse_instant_vector
+from apps.monitor.services.interface_metrics_query import (
+    INTERFACE_METRIC_QUERIES,
+    build_instance_id_selector,
+    merge_interface_metric_rows,
+    parse_instant_vector,
+)
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 MATCH_ALL = "all"
 MATCH_UP = "up"
@@ -17,6 +23,29 @@ MATCH_ERROR = "error"
 MATCH_DISCARD = "discard"
 _MATCHES = {MATCH_ALL, MATCH_UP, MATCH_DOWN, MATCH_ERROR, MATCH_DISCARD}
 _SORT_FIELDS = {"in_rate", "out_rate", "error_rate", "if_name"}
+_OPER = "interface_ifOperStatus"
+_HC_IN = "interface_ifHCInOctets"
+_HC_OUT = "interface_ifHCOutOctets"
+_IN = "interface_ifInOctets"
+_OUT = "interface_ifOutOctets"
+_ERR_IN = "interface_ifInErrors"
+_ERR_OUT = "interface_ifOutErrors"
+_DISC_IN = "interface_ifInDiscards"
+_DISC_OUT = "interface_ifOutDiscards"
+# ifHighSpeed、ifSpeed 不参与。32 位和 64 位同批读取，这样只有 32 位的接口仍在统计里；两边都有时用 64 位。
+_SNAPSHOT_METRICS = (_OPER, _HC_IN, _HC_OUT, _IN, _OUT, _ERR_IN, _ERR_OUT, _DISC_IN, _DISC_OUT)
+_COUNT_METRICS = {
+    MATCH_ALL: _SNAPSHOT_METRICS,
+    MATCH_UP: (_OPER,),
+    MATCH_DOWN: (_OPER,),
+    MATCH_ERROR: (_ERR_IN, _ERR_OUT),
+    MATCH_DISCARD: (_DISC_IN, _DISC_OUT),
+}
+_TEMPLATES = {name: template for name, template, _is_rate in INTERFACE_METRIC_QUERIES}
+# 与采集查询同一量级：一条选择器里的实例标签预算，超出后拆块。
+_SELECTOR_BUDGET = 8000
+# 超过后走 form POST，避免选择器撑破 URL。
+_LONG_QUERY = 3000
 _OPER_UP = 1
 _OPER_DOWN = 2
 _OPER_LABELS = {
@@ -49,6 +78,22 @@ def query_interface_current_rows(
     return _page(rows, page, page_size, bounded=bounded, present=_with_rate_units)
 
 
+def query_interface_current_count(instances, *, interface_match=None, vm_api=None) -> int:
+    """范围内按接口情况计数。只读判定指标，不算明细列，不排序。"""
+    match = _match(interface_match)
+    scoped = list(instances)
+    if not scoped:
+        return 0
+    by_id, by_label = _indexes(scoped)
+    items = _query_metrics(vm_api or VictoriaMetricsAPI(), _scope_labels(scoped), _COUNT_METRICS[match])
+    total = 0
+    for item in items:
+        owners = _owners(item.get("instance_id"), by_id, by_label)
+        if owners and _keeps(_stat_row(item), match):
+            total += len(owners)
+    return total
+
+
 def _match(value) -> str:
     if value in (None, ""):
         return MATCH_ALL
@@ -61,21 +106,19 @@ def _match(value) -> str:
 def _rows(instances, *, match: str, locale, vm_api) -> list[dict]:
     if not instances:
         return []
+    by_id, by_label = _indexes(instances)
     objects = []
     seen = set()
-    by_id = {}
-    by_label: dict[str, list] = {}
     for instance in instances:
-        by_id[str(instance.id)] = instance
-        label = _vm_label(instance.id)
-        by_label.setdefault(label, []).append(instance)
         monitor_object = instance.monitor_object
         if monitor_object is not None and monitor_object.id not in seen:
             seen.add(monitor_object.id)
             objects.append(monitor_object)
     object_labels = _object_labels(objects, locale)
+    # 块只划分实例范围。合并全部块之后才过滤、排序和分页。
+    items = _query_metrics(vm_api, _scope_labels(instances), _SNAPSHOT_METRICS)
     matched = []
-    for item in _query_interface_rows(vm_api):
+    for item in items:
         owners = _owners(item.get("instance_id"), by_id, by_label)
         for instance in owners:
             matched.append(_present(instance, item, object_labels))
@@ -83,6 +126,89 @@ def _rows(instances, *, match: str, locale, vm_api) -> list[dict]:
     for row in kept:
         row["oper_status"] = _oper_label(row["oper_status"])
     return kept
+
+
+def _indexes(instances):
+    by_id = {}
+    by_label: dict[str, list] = {}
+    for instance in instances:
+        by_id[str(instance.id)] = instance
+        by_label.setdefault(_vm_label(instance.id), []).append(instance)
+    return by_id, by_label
+
+
+def _scope_labels(instances) -> list[str]:
+    labels = []
+    seen = set()
+    for instance in instances:
+        label = _vm_label(instance.id)
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+    return labels
+
+
+def _label_chunks(labels: list[str]) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    for label in labels:
+        trial = current + [label]
+        if current and len(build_instance_id_selector(trial)) > _SELECTOR_BUDGET:
+            chunks.append(current)
+            current = [label]
+        else:
+            current = trial
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _query_metrics(vm_api, labels: list[str], metric_names: tuple[str, ...]) -> list[dict]:
+    if not labels:
+        return []
+    jobs = []
+    for chunk in _label_chunks(labels):
+        selector = build_instance_id_selector(chunk)
+        for name in metric_names:
+            jobs.append((name, _TEMPLATES[name].format(selector=selector)))
+    results, errors = run_unique_vm_queries(
+        (promql for _name, promql in jobs),
+        lambda promql: _read_instant(vm_api, promql),
+    )
+    if errors:
+        failed = next(promql for promql in errors)
+        metric_name = next(name for name, promql in jobs if promql == failed)
+        _fail_metric_query(metric_name, errors[failed])
+    rows = []
+    for name, promql in jobs:
+        rows.extend(parse_instant_vector(results.get(promql), name))
+    return merge_interface_metric_rows(rows)
+
+
+def _read_instant(vm_api, promql: str):
+    if len(promql) > _LONG_QUERY and hasattr(vm_api, "query_form"):
+        return vm_api.query_form(promql, step="5m")
+    return vm_api.query(promql, step="5m")
+
+
+def _fail_metric_query(metric_name: str, exc: Exception):
+    try:
+        raise exc
+    except Exception:
+        logger.exception("interface metric query failed metric=%s", metric_name)
+        raise GenericQueryError("接口指标查询失败") from exc
+
+
+def _stat_row(item: dict) -> dict:
+    metrics = item.get("metrics") or {}
+    return {
+        "oper_status": _number(metrics.get(_OPER)),
+        "in_errors": _number(metrics.get(_ERR_IN)),
+        "out_errors": _number(metrics.get(_ERR_OUT)),
+        "in_discards": _number(metrics.get(_DISC_IN)),
+        "out_discards": _number(metrics.get(_DISC_OUT)),
+    }
 
 
 def _vm_label(instance_id) -> str:
@@ -100,19 +226,6 @@ def _owners(vm_instance_id, by_id, by_label):
     if exact is not None:
         return [exact]
     return list(by_label.get(vm_id, []))
-
-
-def _query_interface_rows(vm_api) -> list[dict]:
-    rows = []
-    for metric_name, template, _is_rate in INTERFACE_METRIC_QUERIES:
-        query = template.format(selector="")
-        try:
-            payload = vm_api.query(query, step="5m")
-        except Exception as exc:
-            logger.exception("interface metric query failed metric=%s", metric_name)
-            raise GenericQueryError("接口指标查询失败") from exc
-        rows.extend(parse_instant_vector(payload, metric_name))
-    return merge_interface_metric_rows(rows)
 
 
 def _present(instance, item: dict, object_labels: dict) -> dict:

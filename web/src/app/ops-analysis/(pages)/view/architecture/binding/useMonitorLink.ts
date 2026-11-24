@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   monitorLinkContextFromPayload,
   type MonitorLinkContext,
@@ -17,16 +18,17 @@ export function useArchitectureMonitorLink(monitorId: string): MonitorLinkContex
     const id = monitorId.trim();
     setContext(null);
     if (!id) return undefined;
-    let cancelled = false;
-    getMonitorLinkRef.current(id)
+    const controller = new AbortController();
+    getMonitorLinkRef.current(id, controller.signal)
       .then((payload) => {
-        if (!cancelled) setContext(monitorLinkContextFromPayload(id, payload));
+        if (!controller.signal.aborted) setContext(monitorLinkContextFromPayload(id, payload));
       })
-      .catch(() => {
-        if (!cancelled) setContext(null);
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isTransportCanceled(error)) return;
+        setContext(null);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [monitorId]);
 

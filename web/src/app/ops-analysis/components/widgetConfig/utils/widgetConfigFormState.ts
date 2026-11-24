@@ -32,6 +32,7 @@ import {
   normalizeLineBarFieldList,
 } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
+import { readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
@@ -232,6 +233,8 @@ function buildClearedChartDependentFormFields() {
     },
     compare: false,
     compareMode: 'percent' as const,
+    displayLimit: undefined,
+    sortByValue: false,
   };
 }
 
@@ -453,6 +456,9 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  const openedChartDisplay = readChartDisplay(valueConfig);
+  formValues.displayLimit = openedChartDisplay.displayLimit;
+  formValues.sortByValue = openedChartDisplay.sortByValue === true;
   if (
     normalizeLineBarFieldList(formValues.selectedFields).length === 0
     && (formValues.chartType === 'single' || formValues.chartType === 'gauge')

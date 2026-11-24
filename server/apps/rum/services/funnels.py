@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
-from apps.rum.services.query import parse_range_params
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
+from apps.rum.services.health import list_enabled_applications
+from apps.rum.services.query import parse_range_params, stamp_pipeline_flags
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.validation import ValidationError, valid_application
 
@@ -156,15 +156,13 @@ class FunnelsService:
         self.store = store or get_funnel_store()
         self.settings = load_rum_settings()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
+    def _require_enabled_application(self, actor: str, application: str) -> None:
+        found = list_enabled_applications(self.control, actor)
+        if application in found.applications:
+            return
+        if found.control_down and found.catalog_empty:
+            raise ControlError("unavailable", "RUM controller is unavailable")
+        raise ControlError("not_found", "application not found")
 
     def list_funnels(self) -> list[dict]:
         return self.store.list()
@@ -173,11 +171,7 @@ class FunnelsService:
         normalized = normalize_funnel(body)
         application = normalized["application"]
         if application and application != "*":
-            enabled, reason = self._list_enabled_apps(actor)
-            if reason == "control":
-                raise ControlError("unavailable", "RUM controller is unavailable")
-            if application not in enabled:
-                raise ControlError("not_found", "application not found")
+            self._require_enabled_application(actor, application)
         return self.store.save({**normalized, "createdBy": actor})
 
     def update_funnel(self, actor: str, funnel_id: str, body: dict) -> dict:
@@ -187,11 +181,7 @@ class FunnelsService:
         normalized = normalize_funnel(body)
         application = normalized["application"]
         if application and application != "*":
-            enabled, reason = self._list_enabled_apps(actor)
-            if reason == "control":
-                raise ControlError("unavailable", "RUM controller is unavailable")
-            if application not in enabled:
-                raise ControlError("not_found", "application not found")
+            self._require_enabled_application(actor, application)
         return self.store.save({**existing, **normalized, "id": funnel_id})
 
     def delete_funnel(self, funnel_id: str) -> None:
@@ -206,13 +196,6 @@ class FunnelsService:
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         steps = list(funnel.get("steps") or [])
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
-            return {
-                "steps": steps,
-                "reached": [],
-                "controlUnavailable": True,
-            }
         requested: list[str] = []
         app = (funnel.get("application") or "").strip()
         if app and app != "*":
@@ -223,21 +206,33 @@ class FunnelsService:
                 requested = [part.strip() for part in multi.split(",") if part.strip()]
             elif isinstance(multi, list):
                 requested = [str(part).strip() for part in multi if str(part).strip()]
-        apps = [name for name in requested if name in enabled] if requested else enabled
-        if not self.analytics.available():
+        found = list_enabled_applications(self.control, actor, requested or None)
+        if found.control_down and found.catalog_empty:
             return {
                 "steps": steps,
                 "reached": [],
-                "analyticsUnavailable": True,
+                "controlUnavailable": True,
             }
-        return self.analytics.funnel_reach(
-            self.settings.tenant_id,
-            steps,
-            {
-                "from": start,
-                "to": end,
-                "applications": apps,
-                "windowSeconds": int(params.get("windowSeconds") or 0),
-                "traffic": params.get("traffic") or "visitors",
-            },
+        if not self.analytics.available():
+            return stamp_pipeline_flags(
+                {
+                    "steps": steps,
+                    "reached": [],
+                    "analyticsUnavailable": True,
+                },
+                control=found.control_down,
+            )
+        return stamp_pipeline_flags(
+            self.analytics.funnel_reach(
+                self.settings.tenant_id,
+                steps,
+                {
+                    "from": start,
+                    "to": end,
+                    "applications": found.applications,
+                    "windowSeconds": int(params.get("windowSeconds") or 0),
+                    "traffic": params.get("traffic") or "visitors",
+                },
+            ),
+            control=found.control_down,
         )

@@ -221,7 +221,17 @@ export default function ApplicationOverviewPage() {
           </div>
 
           {/* 会话趋势卡片 */}
-          <SessionTrendChart points={overview.trend} asCard />
+          <SessionTrendChart
+            points={overview.trend}
+            asCard
+            emptyText={
+              degrade === 'control'
+                ? t('rum.pipeline.emptyControl', '无法确认接入状态，列表暂时为空。')
+                : degrade === 'analytics'
+                  ? t('rum.pipeline.emptyAnalytics', '分析数据面暂不可用，列表暂时为空。')
+                  : undefined
+            }
+          />
 
           {/* 4 个分布板块：统一卡片化 */}
           <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">

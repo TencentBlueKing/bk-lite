@@ -130,25 +130,60 @@ def test_analytics_and_overview_mark_analytics_unavailable():
     assert overview["range"] == "1h"
 
 
+def _snippet_body(**extra):
+    body = {
+        "application": "checkout",
+        "browserKey": "browser-key-abcdefgh",
+        "collectUrl": "https://telemetry.example.test/rum/v1/collect",
+        "replayUrl": "https://telemetry.example.test/rum/v1/replay",
+        "sdkCdnUrl": "https://cdn.example.test/rum/bklite-rum-sdk.js",
+        "replay": {"enabled": False},
+    }
+    body.update(extra)
+    return body
+
+
+_SDK_CDN = "https://cdn.example.test/rum/bklite-rum-sdk.js"
+
+
 def test_snippets_use_bklite_rum_sdk():
-    set_ = build_snippet(
-        {
-            "application": "checkout",
-            "browserKey": "browser-key-abcdefgh",
-            "collectUrl": "https://telemetry.example.test/rum/v1/collect",
-            "replayUrl": "https://telemetry.example.test/rum/v1/replay",
-            "sdkCdnUrl": "https://cdn.example.test/rum/bklite-rum-sdk.js",
-            "replay": {"enabled": False},
-        },
-        "https://cdn.example.test/rum/bklite-rum-sdk.js",
-    )
-    assert "bklite-rum-sdk@0.1.0" in set_["npm"]
-    assert "from 'bklite-rum-sdk'" in set_["npm"]
+    set_ = build_snippet(_snippet_body(), _SDK_CDN)
+    npm = set_["npm"]
+    advanced = set_["advanced"]["npm"]
+    assert "from 'bklite-rum-sdk'" in npm
+    assert "bklite-rum-sdk@0.1.0" not in npm
+    assert "bklite-rum-sdk@0.1.0" in advanced
     assert "initCoreRum" in set_["cdn"]
     assert "bklite-rum-sdk.js" in set_["cdn"]
-    npm = set_["npm"]
-    assert npm.index("apiKey: 'browser-key-abcdefgh'") < npm.index("logicalViewNameForPathname")
-    assert npm.index("collectUrl: 'https://telemetry.example.test/rum/v1/collect'") < npm.index("logicalViewNameForPathname")
+    assert "logicalViewNameForPathname" not in npm
+    assert "bun add --exact" not in npm
+    assert "package.json overrides" not in npm
+    assert "logicalViewNameForPathname" in advanced
+    assert "pushState" in advanced
+    assert "package.json overrides" in advanced
+    assert "apiKey: 'browser-key-abcdefgh'" in npm
+    assert "collectUrl: 'https://telemetry.example.test/rum/v1/collect'" in npm
+    assert "FaroRouteView" not in set_["react"]
+    assert "logicalViewNameForPathname" not in set_["react"]
+    assert "FaroRouteView" in set_["advanced"]["react"]
+    assert "logicalViewNameForPathname" in set_["advanced"]["react"]
+
+
+def test_snippet_session_sampling_rate():
+    omitted = build_snippet(_snippet_body(), _SDK_CDN)
+    sampled = build_snippet(_snippet_body(sessionSamplingRate=0.2), _SDK_CDN)
+    explicit_one = build_snippet(_snippet_body(sessionSamplingRate=1), _SDK_CDN)
+    zero = build_snippet(_snippet_body(sessionSamplingRate=0), _SDK_CDN)
+    for key in ("npm", "react", "generic", "cdn"):
+        assert "sessionTracking: { enabled: true, samplingRate: 1 }" in omitted[key]
+        assert "sessionTracking: { enabled: true, samplingRate: 0.2 }" in sampled[key]
+        assert "samplingRate: 0.2" not in sampled["advanced"][key]
+        assert "sessionTracking: { enabled: true, samplingRate: 1 }" in explicit_one[key]
+        assert "samplingRate: 1.0" not in explicit_one[key]
+        assert "sessionTracking: { enabled: true, samplingRate: 0 }" in zero[key]
+    assert "replay: { enabled: false }" in sampled["npm"]
+    with pytest.raises(ValidationError, match="sessionSamplingRate must be between 0 and 1"):
+        build_snippet(_snippet_body(sessionSamplingRate=2), _SDK_CDN)
 
 
 def test_update_application_preserves_ingest_evidence():

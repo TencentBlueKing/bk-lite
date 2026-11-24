@@ -124,6 +124,7 @@ function StoredAttachmentCards({
 
 interface MessageBubbleProps {
   contentReadOnly?: boolean;
+  activeChoiceId?: string | null;
   onApproval?: ContentCardsProps['onApproval'];
   onChoice?: ContentCardsProps['onChoice'];
   onSendMessage?: ContentCardsProps['onSendMessage'];
@@ -187,7 +188,7 @@ function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, contentReadOnly, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
+  ({ message, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
@@ -335,7 +336,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           : hasContent
             ? renderBotAnswer(renderMarkdown(visibleText(message.content as string)))
             : null}
-        <ContentCards state={message.metadata || {}} content={typeof message.content === 'string' ? message.content : ''} readOnly={contentReadOnly} onApproval={onApproval} onChoice={onChoice} onSendMessage={onSendMessage} />
+        <ContentCards state={message.metadata || {}} content={typeof message.content === 'string' ? message.content : ''} readOnly={contentReadOnly} activeChoiceId={activeChoiceId} onApproval={onApproval} onChoice={onChoice} onSendMessage={onSendMessage} />
         <AttachmentDownloadCards files={downloads} />
         {choiceValue?.answered ? <AnsweredChoice value={choiceValue} /> : null}
       </div>

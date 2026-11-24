@@ -16,6 +16,7 @@ import { DataVariableRuntimeProvider, withDatasourceNamespace } from '@/app/ops-
 import { buildDataVariableRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { readDataVariables, type DataVariable } from '@/app/ops-analysis/utils/dataVariable';
 import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
+import { chartDisplayPatch } from '@/app/ops-analysis/utils/chartDisplay';
 import DashboardCanvas from './components/dashboardCanvas';
 import ModuleLicenseCanvasEmpty from './components/moduleLicenseCanvasEmpty';
 import DashboardToolbar from './components/dashboardToolbar';
@@ -167,7 +168,7 @@ interface DashboardProps {
   selectedDashboard?: DirItem | null;
   shareMode?: boolean;
   shareSessionId?: string;
-  getDashboardDetailOverride?: (id: string | number) => Promise<any>;
+  getDashboardDetailOverride?: (id: string | number, signal?: AbortSignal) => Promise<any>;
   renderMode?: boolean;
   /** 订阅渲染身份的授权 App 名。renderMode 下替代 get_client。 */
   renderAuthorizedAppNames?: readonly string[] | null;
@@ -798,6 +799,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     useEffect(() => {
       const requestId = dashboardLoadSeqRef.current + 1;
       dashboardLoadSeqRef.current = requestId;
+      const detailController = new AbortController();
       const isCurrentLoad = () => dashboardLoadSeqRef.current === requestId;
 
       const loadDashboardData = async () => {
@@ -829,7 +831,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             if (!seeded) {
               setLoading(true);
             }
-            const dashboardData = seeded ?? await getDashboardDetailRef.current(dashboard.data_id);
+            const dashboardData = seeded ?? await getDashboardDetailRef.current(
+              dashboard.data_id,
+              detailController.signal,
+            );
             if (!isCurrentLoad()) {
               return;
             }
@@ -852,6 +857,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setLoading(true);
           const dashboardData = await getDashboardDetailRef.current(
             dashboard.data_id,
+            detailController.signal,
           );
           if (!isCurrentLoad()) {
             return;
@@ -908,6 +914,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         if (dashboardLoadSeqRef.current === requestId) {
           dashboardLoadSeqRef.current += 1;
         }
+        detailController.abort();
       };
     }, [
       commitDashboardPlaybackDocument,
@@ -1207,6 +1214,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           message.warning(t('paramInput.dynamic.proposalQueryIgnored'));
         }
         void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
+          if (canvasDataSources == null) return;
           const latest = applyProposalRef.current;
           if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
           const nextNamespaceId = resolveLayoutNamespaceId(syncedLayout, canvasDataSources);
@@ -1436,6 +1444,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             topNScalarFields: config.topNScalarFields,
             barMode: config.barMode,
             barMax: config.barMax,
+            ...chartDisplayPatch(config),
             dimensionField: config.dimensionField,
             valueField: config.valueField,
             valueFields: config.valueFields,
@@ -1494,6 +1503,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setLayout(syncedLayout);
       void syncDashboardCanvasResources(syncedLayout).then(
         (canvasDataSources) => {
+          if (canvasDataSources == null) return;
           const nextNamespaceId = resolveLayoutNamespaceId(
             syncedLayout,
             canvasDataSources,
@@ -1979,6 +1989,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   topNScalarFields: values.topNScalarFields,
                   barMode: values.barMode,
                   barMax: values.barMax,
+                  ...chartDisplayPatch(values),
                   dimensionField: values.dimensionField,
                   valueField: values.valueField,
                   valueFields: values.valueFields,
@@ -2033,7 +2044,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         recordUndoRef.current();
         setLayout(syncedLayout);
-        void syncDashboardCanvasResources(syncedLayout).then(() => {
+        void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
+          if (canvasDataSources == null) return;
           syncFilterStateAfterLayoutChange(
             nextDefinitions,
             nextFilterValues,

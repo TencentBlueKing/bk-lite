@@ -414,6 +414,10 @@ def is_context_size_error(exc: BaseException | str) -> bool:
     return any(needle in text for needle in needles)
 
 
+# 规划只等一小段 JSON。LLM_INVOKE_TIMEOUT 是长回答的上限，再乘 SDK 默认 2 次重试，
+# 模型不回包时界面会停在「正在规划」。已完成的规划多在 15 秒内，日志里最长约 92 秒。
+PLANNER_LLM_TIMEOUT_SECONDS = 180
+PLANNER_LLM_MAX_RETRIES = 0
 _LLM_UPSTREAM_TYPE_NAMES = frozenset(
     {
         "internalservererror",

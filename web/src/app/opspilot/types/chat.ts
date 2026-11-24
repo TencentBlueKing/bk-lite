@@ -213,6 +213,7 @@ export interface CustomChatSSEProps {
   } | null>;
   initialMessages?: CustomChatMessage[];
   mode?: 'chat' | 'display';
+  startAtTop?: boolean;
   guide?: string;
   useAGUIProtocol?: boolean;
   showHeader?: boolean;
