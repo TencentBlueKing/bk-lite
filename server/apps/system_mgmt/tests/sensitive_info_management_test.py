@@ -1057,7 +1057,7 @@ def test_user_viewset_change_status_unlock_clears_lock_state_only_for_locked_use
 def test_create_authorization_writes_operation_log_as_system_manager(api_client, authenticated_user):
     pytest.importorskip("apps.system_mgmt.enterprise.viewset.sensitive_info_authorization_viewset")
     authenticated_user.is_superuser = True
-    authenticated_user.permission = {"system-manager": {"sensitive_info-Add"}}
+    authenticated_user.permission = {"system-manager": {"sensitive_info-Add", "sensitive_info-Delete"}}
     authenticated_user.save(update_fields=["is_superuser"])
 
     created = api_client.post(
@@ -1074,3 +1074,9 @@ def test_create_authorization_writes_operation_log_as_system_manager(api_client,
     log = OperationLog.objects.get(summary__startswith="新增敏感信息授权: audit-sensitive@")
     assert log.app == "system-manager"
     assert log.action_type == "create"
+    assert log.outcome == "success"
+
+    deleted = api_client.delete(f"/api/v1/system_mgmt/sensitive_info_authorization/{created.data['id']}/")
+    assert deleted.status_code == 200, deleted.content
+    deleted_log = OperationLog.objects.get(summary__startswith="删除敏感信息授权: audit-sensitive@")
+    assert deleted_log.outcome == "success"
