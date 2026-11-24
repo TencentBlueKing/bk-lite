@@ -935,7 +935,9 @@ _ATTACHMENT_GUIDANCE = (
     "询问已有或上传文件的内容时直接文字回复，不要生成文件。"
     "格式支持 txt、md、pdf、docx、pptx、xlsx、csv。用户要 txt 时用 file_type=txt，不要改成 md。"
     "用户要 PPT 时 file_type 必须是 pptx，文件名用 .pptx，禁止降级成 docx 或 pdf。"
-    "docx 和 pdf 的 content 用 Markdown，生成时会渲染成标题、段落和表格，不要指望原文符号留在文件里。"
+    "docx、pdf 和 pptx 的 content 用 Markdown，生成时会渲染成标题、段落、表格和幻灯片，不要指望 #、**、| 留在文件里。"
+    "pptx 的一级标题是封面，后面的短段落是副标题；二级标题分页。要突出几个数字时，列表每一条用数字开头。"
+    "要并排对比时用三级标题。行动项用有序列表，标题加粗，冒号后写说明。"
     "xlsx 和 csv 的 content 必须是带表头的逗号分隔数据，不要用 Markdown 表格。"
     "调用成功后只给简短摘要，不要在回复或正文里粘贴下载 URL、file://、/api/proxy 或加密 token。"
 )
