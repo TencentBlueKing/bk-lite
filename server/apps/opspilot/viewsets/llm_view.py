@@ -1406,12 +1406,19 @@ class SkillToolsViewSet(AuthViewSet):
 
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if getattr(instance, "is_build_in", False):
+            return Response(
+                {"result": False, "message": user_message(request, "error.builtin_tool_not_deletable", "内置工具不可删除", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         response = super().destroy(request, *args, **kwargs)
-        if response.status_code >= 200 and response.status_code < 300:
-            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
-            if not tool_name:
-                tool_name = request.data.get("name", "")
-            log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
+        if SkillTools.objects.filter(pk=instance.pk).exists():
+            return response
+        tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+        if not tool_name:
+            tool_name = request.data.get("name", "")
+        log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
         return response
 
     @action(methods=["POST"], detail=False)
