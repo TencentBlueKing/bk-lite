@@ -134,8 +134,9 @@ class _OwnedLarkClient(lark.ws.Client):
 
     def _remember_current_task(self) -> None:
         task = asyncio.current_task()
-        if task is not None:
+        if task is not None and task not in self._owned_tasks:
             self._owned_tasks.add(task)
+            task.add_done_callback(self._owned_tasks.discard)
 
     async def _receive_message_loop(self):
         self._remember_current_task()

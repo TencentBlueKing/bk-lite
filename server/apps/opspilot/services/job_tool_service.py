@@ -11,6 +11,8 @@ import json
 import os
 import re
 import time
+import unicodedata
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -746,6 +748,60 @@ def run_library_script(config, *, script_id, target_source, target_ids, params=N
     return _submit_script(user_info, session_key, body, user_text, confirmed_rerun)
 
 
+# 整句或同向短句才表达决定。条件、疑问以及改变目标的说明都要再问。
+_JOB_CONFIRM = re.compile(
+    r"(?:(?:我)?(?:好(?:的|啊|吧)?|是(?:的)?|可以|同意|确认|没问题|行)" r"|(?:那就|请|直接|现在|同意|确认|可以)?(?:按原计划|照原计划)?(?:执行|运行|开始|继续)(?:当前脚本|这个脚本|该脚本)?)(?:吧|啊|了)?"
+)
+_JOB_CANCEL = re.compile(r"(?:那就)?(?:取消(?:执行)?|算了|不管了|(?:暂时|先)?(?:不要|不用|别|不)(?:再)?(?:执行|运行|跑|继续|重跑|做|管)?(?:了)?|放弃(?:执行)?)(?:吧)?")
+_JOB_OPTION = re.compile(r"(?:选(?:择)?|就选)?第?([12一二两])(?:个选项|项|个)?")
+_JOB_YES_OPTIONS = {"确认执行", "确认执行新脚本", "确认高危执行", "确认重跑"}
+_JOB_NO_OPTIONS = {"取消", "不重跑"}
+
+
+def job_confirmation_decision(text, options):
+    """只解释当前单选确认卡；带问题、条件或相互冲突的意图交还用户确认。"""
+    labels = [option.get("label") if isinstance(option, dict) else option for option in options or []]
+    if len(labels) != 2 or not any(label in _JOB_YES_OPTIONS for label in labels) or not any(label in _JOB_NO_OPTIONS for label in labels):
+        return "unclear"
+    text = unicodedata.normalize("NFKC", text or "").strip().rstrip("。.!").strip()
+    decisions = set()
+    for clause in re.split(r"[,，、]", text):
+        phrase = clause.strip()
+        if phrase == "谢谢":
+            continue
+        index = _JOB_OPTION.fullmatch(phrase)
+        if index:
+            phrase = labels[0 if index[1] in {"1", "一"} else 1]
+        if phrase in labels:
+            decisions.add("confirm" if phrase in _JOB_YES_OPTIONS else "cancel")
+        elif _JOB_CANCEL.fullmatch(phrase):
+            decisions.add("cancel")
+        elif _JOB_CONFIRM.fullmatch(phrase):
+            decisions.add("confirm")
+        else:
+            return "unclear"
+    return decisions.pop() if len(decisions) == 1 else "unclear"
+
+
+def _ask_custom_script(key, fingerprint, body, question, options, *, stage="script", danger_confirmed=False, result=None):
+    confirmation_id = uuid.uuid4().hex
+    cache.set(
+        key,
+        {
+            "id": confirmation_id,
+            "fingerprint": fingerprint,
+            "stage": stage,
+            "danger_confirmed": danger_confirmed,
+            "question": question,
+            "options": options,
+            "name": body["name"],
+            "timeout": body["timeout"],
+        },
+        timeout=1800,
+    )
+    return {**(result or {}), "ask": True, "question": question, "options": options, "job_confirmation_id": confirmation_id}
+
+
 def run_custom_script(
     config,
     *,
@@ -758,68 +814,81 @@ def run_custom_script(
     name="",
     timeout=CUSTOM_TIMEOUT_SECONDS,
 ):
-    user_info, session_key, _configurable = session_context(config)
-    user_text = current_user_text(config, session_key)
+    user_info, session_key, configurable = session_context(config)
+    user_text = current_user_text(config, session_key).strip()
     content = str(script_content or "").strip()
     if script_type not in {"shell", "python", "powershell", "bat"} or not content:
         return {"result": False, "message": "请提供有效的脚本类型和非空脚本内容。"}
-    try:
-        timeout_value = int(timeout or CUSTOM_TIMEOUT_SECONDS)
-    except (TypeError, ValueError):
-        timeout_value = CUSTOM_TIMEOUT_SECONDS
-    if timeout_value != CUSTOM_TIMEOUT_SECONDS and str(timeout_value) not in user_text:
-        timeout_value = CUSTOM_TIMEOUT_SECONDS
-    job_name = str(name or "").strip()
-    if not job_name or job_name == content or job_name not in user_text:
-        job_name = "自定义脚本"
-    body = {
-        "mode": "custom",
-        "script_type": script_type,
-        "script_content": content,
-        "target_source": {"作业管理目标": "manual", "节点管理目标": "node_mgmt"}.get(target_source, target_source),
-        "target_ids": target_ids,
-        "name": job_name,
-        "timeout": timeout_value,
-        "danger_confirmed": False,
-    }
     key_material = json.dumps([user_info, session_key], ensure_ascii=False, sort_keys=True)
     key = "opspilot:job-custom-confirm:" + hashlib.sha256(key_material.encode()).hexdigest()
-    fingerprint = _fingerprint("custom-confirm", {**body, "params": {"timeout": timeout_value}})
-    pending = cache.get(key)
-    confirmed = pending and user_text.strip() == pending.get("confirmation")
-    if not pending or pending.get("fingerprint") != fingerprint or not confirmed or pending.get("prompt_user_text") == user_text:
-        confirmation = "确认执行新脚本" if user_text.strip() == "确认执行" else "确认执行"
-        cache.set(key, {"fingerprint": fingerprint, "prompt_user_text": user_text, "stage": "script", "confirmation": confirmation}, timeout=1800)
-        return {
-            "ask": True,
-            "question": f"请确认在 {body['target_source']} 目标 {target_ids} 上执行以下 {script_type} 脚本：\n```{script_type}\n{content}\n```",
-            "options": [confirmation, "取消"],
-        }
-    body["danger_confirmed"] = pending.get("stage") == "danger" or pending.get("danger_confirmed", False)
     lock_key = key + ":submitting"
     if not cache.add(lock_key, True, timeout=360):
         return {"result": False, "message": "该脚本正在提交或等待结果，请勿重复执行。"}
     try:
-        if cache.get(key) != pending:
-            return {"result": False, "message": "确认状态已变化，请重新确认脚本。"}
-        result = _submit_script(user_info, session_key, body, user_text, confirmed_rerun)
-        if isinstance(result, dict) and result.get("code") == "confirm":
-            cache.set(key, {"fingerprint": fingerprint, "prompt_user_text": user_text, "stage": "danger", "confirmation": "确认高危执行"}, timeout=1800)
-            result = {**result, "message": "请先向用户展示命中的高危规则，等待用户选择「确认高危执行」后再提交。"}
-        elif isinstance(result, dict) and result.get("ask"):
-            cache.set(
-                key,
-                {
-                    "fingerprint": fingerprint,
-                    "prompt_user_text": user_text,
-                    "stage": "rerun",
-                    "confirmation": "确认重跑",
-                    "danger_confirmed": body["danger_confirmed"],
-                },
-                timeout=1800,
-            )
-        else:
+        pending = cache.get(key) or {}
+        reply = configurable.get("job_confirmation_reply")
+        if reply is not None and (not isinstance(reply, dict) or not reply.get("id") or reply["id"] != pending.get("id")):
+            return {"result": False, "message": "确认卡已失效，请重新获取当前脚本的确认卡。"}
+        try:
+            timeout_value = int(timeout or CUSTOM_TIMEOUT_SECONDS)
+        except (TypeError, ValueError):
+            timeout_value = CUSTOM_TIMEOUT_SECONDS
+        if timeout_value != pending.get("timeout") and str(timeout_value) not in user_text:
+            timeout_value = CUSTOM_TIMEOUT_SECONDS
+        job_name = str(name or "").strip()
+        if not job_name or job_name == content or (job_name != pending.get("name") and job_name not in user_text):
+            job_name = "自定义脚本"
+        body = {
+            "mode": "custom",
+            "script_type": script_type,
+            "script_content": content,
+            "target_source": {"作业管理目标": "manual", "节点管理目标": "node_mgmt"}.get(target_source, target_source),
+            "target_ids": target_ids,
+            "name": job_name,
+            "timeout": timeout_value,
+            "danger_confirmed": False,
+        }
+        fingerprint = _fingerprint("custom-confirm", {**body, "params": {"timeout": timeout_value}})
+        same_proposal = bool(pending and fingerprint == pending.get("fingerprint"))
+        prompt = f"请确认在 {body['target_source']} 目标 {target_ids} 上执行以下 {script_type} 脚本（超时 {timeout_value} 秒）：\n```{script_type}\n{content}\n```"
+        decision = reply.get("decision") if reply else "unclear"
+        if same_proposal and decision == "cancel":
             cache.delete(key)
+            return {"result": True, "status": "cancelled", "message": "已取消本次脚本执行。"}
+        if not same_proposal or decision != "confirm":
+            if same_proposal and pending.get("question"):
+                return _ask_custom_script(
+                    key,
+                    fingerprint,
+                    body,
+                    pending["question"],
+                    pending["options"],
+                    stage=pending["stage"],
+                    danger_confirmed=pending.get("danger_confirmed", False),
+                )
+            confirmation = "确认执行新脚本" if pending and not same_proposal else "确认执行"
+            return _ask_custom_script(key, fingerprint, body, prompt, [confirmation, "取消"])
+
+        body["danger_confirmed"] = pending.get("stage") == "danger" or pending.get("danger_confirmed", False)
+        confirmation = pending["options"][0]
+        # 先消耗本次确认。作业提交后的轮询可能耗时或中断，重试不得复用同一次授权。
+        cache.delete(key)
+        result = _submit_script(user_info, session_key, body, confirmation, confirmed_rerun or pending.get("stage") == "rerun")
+        if isinstance(result, dict) and result.get("code") == "confirm":
+            rules = "、".join(result.get("rules") or [])
+            question = f"当前脚本命中高危规则：{rules}。\n{prompt}"
+            return _ask_custom_script(key, fingerprint, body, question, ["确认高危执行", "取消"], stage="danger", result=result)
+        if isinstance(result, dict) and result.get("ask"):
+            return _ask_custom_script(
+                key,
+                fingerprint,
+                body,
+                f"{result['question']}\n{prompt}",
+                result["options"],
+                stage="rerun",
+                danger_confirmed=body["danger_confirmed"],
+                result=result,
+            )
         return result
     finally:
         cache.delete(lock_key)

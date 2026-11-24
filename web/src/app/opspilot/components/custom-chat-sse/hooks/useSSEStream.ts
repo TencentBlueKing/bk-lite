@@ -107,7 +107,7 @@ export const useSSEStream = ({
   }, [setLoading]);
 
   const handleSSEStream = useCallback(
-    async (url: string, payload: any, botMessage: CustomChatMessage, interruptRequest?: InterruptRequestConfig) => {
+    async (url: string, payload: any, botMessage: CustomChatMessage, interruptRequest?: InterruptRequestConfig, onAccepted?: () => void) => {
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
       interruptRequestRef.current = interruptRequest || null;
@@ -150,6 +150,7 @@ export const useSSEStream = ({
           throw new Error('Failed to get response reader');
         }
 
+        onAccepted?.();
         const decoder = new TextDecoder();
         let buffer = '';
         
@@ -251,6 +252,7 @@ export const useSSEStream = ({
           return;
         }
 
+        if (!handler && onAccepted) throw error;
         console.error('SSE stream error:', error);
         streamTerminal = 'error';
         streamCloseReason = `${t('chat.connectionError')}: ${error.message}`;

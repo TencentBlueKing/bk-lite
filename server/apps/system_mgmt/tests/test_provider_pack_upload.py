@@ -586,6 +586,7 @@ def test_upload_audit_log_omits_archive(authenticated_user, tmp_path, caplog):
     logs = OperationLog.objects.filter(action_type="create", summary__contains="acmelog")
     assert logs.exists()
     for record in logs:
+        assert record.outcome == "success"
         assert sentinel not in str(record.summary).encode()
         assert "archive" not in (record.detail or {})
     assert sentinel not in caplog.text.encode()
@@ -886,6 +887,8 @@ def test_uninstall_without_instances_removes_pack_from_list_and_create_candidate
     assert len(records) == 1
     assert records[0].msg == "event=provider_pack_uninstalled pack_key=%s pack_revision=%s"
     assert records[0].args == ("acme", 1)
+    uninstall_log = OperationLog.objects.get(action_type="delete", target_type="provider_pack", target_id="acme")
+    assert uninstall_log.outcome == "success"
     assert not UploadedProviderPack.objects.filter(key="acme").exists()
     assert provider_registry.get("acme") is None
     listed = {item["key"]: item for item in client.get(UPLOAD_URL).data}

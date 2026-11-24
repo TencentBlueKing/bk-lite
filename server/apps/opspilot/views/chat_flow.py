@@ -35,7 +35,7 @@ from apps.opspilot.utils.bot_utils import insert_skill_log
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.execution_interrupt import request_interrupt
-from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
+from apps.opspilot.utils.pending_question import job_confirmation_owner, peek_pending_question, resolve_conversation_key
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
@@ -475,7 +475,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
         return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
-        # 续接上一轮终止式提问：读后即删，并把提问节点与证据交给本轮执行。
+        # 续接上一轮终止式提问：在此只读路由，由被选中的对话节点消费。
         conversation_key = resolve_conversation_key(bot_id=bot_id, session_id=session_id)
         pending_question = None
         if session_id and not is_test:
@@ -494,7 +494,10 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
         node_type = node_obj.get("type") if node_obj else None
         engine.entry_type = node_type  # 设置入口类型
         if conversation_key and node_type not in {"celery", "nats", "restful"} and not parse_auto_command(message)[0]:
-            pending_question = await sync_to_async(consume_pending_question, thread_sensitive=False)(conversation_key)
+            pending_question = await sync_to_async(peek_pending_question, thread_sensitive=False)(conversation_key)
+            marker = (pending_question or {}).get("job_confirmation")
+            if marker and marker.get("owner") != job_confirmation_owner(caller_snapshot):
+                pending_question = None
 
         # 准备输入数据
         input_data = {
@@ -510,6 +513,11 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "user_timezone": getattr(user, "timezone", "") or "",
             CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,
         }
+        if "reply_to_choice_id" in kwargs:
+            input_data["reply_to_choice_id"] = kwargs["reply_to_choice_id"]
+        if kwargs.get("choice_id"):
+            input_data["choice_id"] = kwargs["choice_id"]
+            input_data["choice_option"] = kwargs.get("choice_option") or ""
         if isinstance(pending_question, dict):
             input_data["pending_question"] = pending_question
 

@@ -1,5 +1,4 @@
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.system_mgmt.models import UserLoginLog
@@ -131,6 +130,8 @@ def test_log_user_login_成功写库():
     assert entry.browser_info == "Chrome 120.0"
     # 成功状态下 failure_reason 被清空
     assert entry.failure_reason == ""
+    assert entry.login_method == ""
+    assert entry.used_otp is False
 
 
 def test_log_user_login_失败保留原因():
@@ -167,6 +168,44 @@ def test_log_user_login_from_request(rf, mocker):
     assert entry.source_ip == "9.9.9.9"
     assert entry.os_info == "Linux"
     assert entry.username == "carol"
+
+
+def test_log_user_login_saves_method_and_otp_flag():
+    entry = login_log_utils.log_user_login(
+        username="otp-user",
+        source_ip="1.2.3.4",
+        status=UserLoginLog.STATUS_SUCCESS,
+        login_method="feishu",
+        used_otp=True,
+    )
+    assert entry.login_method == "feishu"
+    assert entry.used_otp is True
+    assert login_log_utils.format_login_method_display(entry.login_method, entry.used_otp).endswith("(OTP)")
+
+
+def test_login_log_serializer_empty_method_is_unrecorded_not_inferred_from_domain():
+    from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
+
+    entry = login_log_utils.log_user_login(
+        username="legacy",
+        source_ip="1.2.3.4",
+        status=UserLoginLog.STATUS_SUCCESS,
+        domain="domain.com",
+    )
+    payload = UserLoginLogSerializer(entry).data
+    assert payload["login_method"] == ""
+    assert payload["domain"] == "domain.com"
+    assert payload["login_method_display"] == "Not recorded"
+    assert payload["used_otp"] is False
+
+
+def test_format_login_method_display_empty_is_unrecorded_not_domain():
+    assert login_log_utils.format_login_method_display("", False) == "未记录"
+    assert login_log_utils.format_login_method_display("domain.com", False) == "domain.com"
+    assert login_log_utils.format_login_method_display("bk_lite_builtin", False) == "本地密码"
+    assert login_log_utils.format_login_method_display("unknown-src", False) == "unknown-src"
+    assert login_log_utils.format_client_display("", "") == "未记录"
+    assert login_log_utils.format_client_display("macOS", "Chrome") == "macOS Chrome"
 
 
 def test_log_user_login_from_request_无ip回退(rf, mocker):

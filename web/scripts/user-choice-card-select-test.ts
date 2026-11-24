@@ -80,6 +80,16 @@ assert.doesNotMatch(source, /if \(isCompleted\) \{\s*return null/);
   assert.equal(clicked[0].userChoiceRequests?.[0].status, 'submitted');
   assert.deepEqual(clicked[0].userChoiceRequests?.[0].selected, ['host']);
 
+  const superseded = { ...request, choice_id: 'earlier' };
+  const history = applyAnsweredUserChoices([
+    { role: 'bot', content: '', userChoiceRequests: [superseded] },
+    { role: 'bot', content: '', userChoiceRequests: [superseded, request] },
+    { role: 'user', content: '主机' },
+  ]);
+  assert.deepEqual(history[0].userChoiceRequests?.[0], superseded);
+  assert.deepEqual(history[1].userChoiceRequests?.[0], superseded);
+  assert.deepEqual(history[1].userChoiceRequests?.[1].selected, ['host']);
+
   const typed = applyAnsweredUserChoices([
     { role: 'bot', content: '', userChoiceRequests: [{ ...request, choice_id: 'c2' }] },
     { role: 'user', content: '我想自己说' },

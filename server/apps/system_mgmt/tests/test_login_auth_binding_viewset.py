@@ -74,9 +74,7 @@ def test_list_returns_bindings(api_client, authenticated_user, login_binding):
 
 
 @pytest.mark.django_db
-def test_list_returns_provider_key_for_binding_with_unavailable_instance(
-    api_client, authenticated_user, login_binding
-):
+def test_list_returns_provider_key_for_binding_with_unavailable_instance(api_client, authenticated_user, login_binding):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"login_auth-View"}}
     authenticated_user.save(update_fields=["is_superuser"])
@@ -115,6 +113,9 @@ def test_create_logs_operation(api_client, authenticated_user, ready_login_insta
     assert response.status_code == 201
     assert LoginAuthBinding.objects.filter(name="created-binding").exists() is True
     mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert mock_log.call_args.kwargs["target_type"] == "login_auth_binding"
+    assert mock_log.call_args.kwargs["target_name"] == "created-binding"
 
 
 @pytest.mark.django_db

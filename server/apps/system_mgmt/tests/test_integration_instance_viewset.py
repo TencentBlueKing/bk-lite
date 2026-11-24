@@ -1,4 +1,4 @@
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, patch
 
 import pytest
 
@@ -230,36 +230,37 @@ class TestIntegrationInstanceViewSet:
 
     @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
     def test_retrieve_forwards_same_origin_redirect_origin_query(
-        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+        self,
+        mock_get_login_auth_callback_uri,
+        api_client,
+        authenticated_user,
+        draft_instance,
     ):
         """V1:?redirect_origin=<同源> 时透传给生成函数,字段值取 mock 返回。"""
-        mock_get_login_auth_callback_uri.return_value = (
-            "http://testserver/api/v1/core/api/login_auth/callback/"
-        )
+        mock_get_login_auth_callback_uri.return_value = "http://testserver/api/v1/core/api/login_auth/callback/"
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
         authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
         authenticated_user.save(update_fields=["group_list"])
 
-        response = api_client.get(
-            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/?redirect_origin=http://testserver"
-        )
+        response = api_client.get(f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/?redirect_origin=http://testserver")
 
         assert response.status_code == 200
-        assert response.data["login_auth_callback_url"] == (
-            "http://testserver/api/v1/core/api/login_auth/callback/"
-        )
+        assert response.data["login_auth_callback_url"] == ("http://testserver/api/v1/core/api/login_auth/callback/")
         mock_get_login_auth_callback_uri.assert_called_once_with(
-            request=ANY, redirect_origin="http://testserver",
+            request=ANY,
+            redirect_origin="http://testserver",
         )
 
     @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
     def test_retrieve_normalizes_empty_redirect_origin_query(
-        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+        self,
+        mock_get_login_auth_callback_uri,
+        api_client,
+        authenticated_user,
+        draft_instance,
     ):
         """V2/V3:无 query 或空串 query 都归一化为 None,行为兼容。"""
-        mock_get_login_auth_callback_uri.return_value = (
-            "http://testserver/api/v1/core/api/login_auth/callback/"
-        )
+        mock_get_login_auth_callback_uri.return_value = "http://testserver/api/v1/core/api/login_auth/callback/"
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
         authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
         authenticated_user.save(update_fields=["group_list"])
@@ -272,39 +273,42 @@ class TestIntegrationInstanceViewSet:
             response = api_client.get(url)
             assert response.status_code == 200
             mock_get_login_auth_callback_uri.assert_called_once_with(
-                request=ANY, redirect_origin=None,
+                request=ANY,
+                redirect_origin=None,
             )
 
     @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
     def test_retrieve_passes_cross_origin_redirect_origin_through(
-        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+        self,
+        mock_get_login_auth_callback_uri,
+        api_client,
+        authenticated_user,
+        draft_instance,
     ):
         """V4:跨域 origin 仍按契约透传给生成函数(契约层);具体降级由生成函数负责。"""
-        mock_get_login_auth_callback_uri.return_value = (
-            "http://testserver/api/v1/core/api/login_auth/callback/"
-        )
+        mock_get_login_auth_callback_uri.return_value = "http://testserver/api/v1/core/api/login_auth/callback/"
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
         authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
         authenticated_user.save(update_fields=["group_list"])
 
-        response = api_client.get(
-            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/"
-            "?redirect_origin=http://evil.com"
-        )
+        response = api_client.get(f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/" "?redirect_origin=http://evil.com")
 
         assert response.status_code == 200
         mock_get_login_auth_callback_uri.assert_called_once_with(
-            request=ANY, redirect_origin="http://evil.com",
+            request=ANY,
+            redirect_origin="http://evil.com",
         )
 
     @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
     def test_retrieve_passes_redirect_origin_with_path_through(
-        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+        self,
+        mock_get_login_auth_callback_uri,
+        api_client,
+        authenticated_user,
+        draft_instance,
     ):
         """V5:redirect_origin 带 path 时仍按契约透传(契约层校验非此处职责)。"""
-        mock_get_login_auth_callback_uri.return_value = (
-            "http://testserver/api/v1/core/api/login_auth/callback/"
-        )
+        mock_get_login_auth_callback_uri.return_value = "http://testserver/api/v1/core/api/login_auth/callback/"
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
         authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
         authenticated_user.save(update_fields=["group_list"])
@@ -316,7 +320,8 @@ class TestIntegrationInstanceViewSet:
 
         assert response.status_code == 200
         mock_get_login_auth_callback_uri.assert_called_once_with(
-            request=ANY, redirect_origin="http://testserver/x",
+            request=ANY,
+            redirect_origin="http://testserver/x",
         )
 
     def test_retrieve_rejects_instance_outside_user_team(self, api_client, authenticated_user, draft_instance):
@@ -476,9 +481,7 @@ class TestIntegrationInstanceViewSet:
         provider_keys = {item["key"] for item in response.data}
         assert {"feishu", "wechat"}.issubset(provider_keys)
 
-    def test_providers_follow_account_locale_when_auth_user_locale_differs(
-        self, api_client, authenticated_user
-    ):
+    def test_providers_follow_account_locale_when_auth_user_locale_differs(self, api_client, authenticated_user):
         from apps.system_mgmt.models import User as AccountUser
 
         authenticated_user.is_superuser = True
@@ -498,9 +501,7 @@ class TestIntegrationInstanceViewSet:
         providers = {item["key"]: item for item in response.data}
         assert providers["feishu"]["name"] == "Feishu"
         connection_fields = {
-            field["key"]: field
-            for group in providers["ad"]["instance_templates"]["base_connection"]["groups"]
-            for field in group["fields"]
+            field["key"]: field for group in providers["ad"]["instance_templates"]["base_connection"]["groups"] for field in group["fields"]
         }
         assert connection_fields["connection_url"]["label"] == "Server IP"
 
@@ -517,9 +518,7 @@ class TestIntegrationInstanceViewSet:
         assert "登录认证" in zh_providers["feishu"]["description"]
         assert zh_providers["wechat"]["name"] == "微信"
         zh_ad_fields = {
-            field["key"]: field
-            for group in zh_providers["ad"]["instance_templates"]["base_connection"]["groups"]
-            for field in group["fields"]
+            field["key"]: field for group in zh_providers["ad"]["instance_templates"]["base_connection"]["groups"] for field in group["fields"]
         }
         assert zh_ad_fields["connection_url"]["label"] == "服务器 IP"
 
@@ -531,11 +530,7 @@ class TestIntegrationInstanceViewSet:
         assert "login authentication" in en_providers["feishu"]["description"]
 
         ad = en_providers["ad"]
-        connection_fields = {
-            field["key"]: field
-            for group in ad["instance_templates"]["base_connection"]["groups"]
-            for field in group["fields"]
-        }
+        connection_fields = {field["key"]: field for group in ad["instance_templates"]["base_connection"]["groups"] for field in group["fields"]}
         assert connection_fields["connection_url"]["label"] == "Server IP"
         identity = next(
             field
@@ -589,6 +584,10 @@ class TestIntegrationInstanceViewSet:
         assert draft_instance.capability_status["user_sync"] == IntegrationInstanceStatusChoices.READY
         assert draft_instance.status == IntegrationInstanceStatusChoices.READY
         mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["outcome"] == "success"
+        assert mock_log.call_args.kwargs["target_type"] == "integration_instance"
+        assert mock_log.call_args.kwargs["target_id"] == draft_instance.id
+        assert mock_log.call_args.kwargs["target_name"] == draft_instance.name
 
     def test_capability_test_requires_a_ready_base_connection(self, api_client, authenticated_user, draft_instance):
         authenticated_user.is_superuser = True
@@ -656,7 +655,9 @@ class TestIntegrationInstanceViewSet:
         with patch(
             "apps.system_mgmt.viewset.integration_instance_viewset.RuntimeApplicationService.test_connection",
             return_value=result,
-        ), patch("apps.system_mgmt.viewset.integration_instance_viewset.logger") as mock_logger:
+        ), patch(
+            "apps.system_mgmt.viewset.integration_instance_viewset.logger"
+        ) as mock_logger, patch("apps.system_mgmt.viewset.integration_instance_viewset.log_operation") as mock_log:
             response = api_client.post(
                 f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/test_connection/",
                 {},
@@ -674,3 +675,7 @@ class TestIntegrationInstanceViewSet:
         }
         mock_logger.warning.assert_not_called()
         assert "test_connection: failed" in str(mock_logger.debug.call_args_list)
+        mock_log.assert_called_once()
+        assert mock_log.call_args.kwargs["outcome"] == "failure"
+        assert mock_log.call_args.kwargs["failure_reason"] == "failed"
+        assert mock_log.call_args.kwargs["target_id"] == draft_instance.id

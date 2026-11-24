@@ -45,7 +45,7 @@ def local_gateway(monkeypatch):
 
         return run(pending())
 
-    yield sdk_tasks
+    yield sdk_tasks, run, server
 
     async def stop():
         tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
@@ -59,7 +59,7 @@ def local_gateway(monkeypatch):
 
 
 def test_issue_6886_closed_transport_releases_sdk_tasks(local_gateway):
-    sdk_tasks = local_gateway
+    sdk_tasks, _run, _server = local_gateway
     for _cycle in range(3):
         transport = transport_sdk.open_feishu_sdk_transport("fixture", "fixture")
         reference = weakref.ref(transport)
@@ -67,3 +67,69 @@ def test_issue_6886_closed_transport_releases_sdk_tasks(local_gateway):
         del transport
         assert sdk_tasks() == []
         assert reference() is None
+
+
+@pytest.mark.parametrize("payload", [sdk._new_ping_frame(1).SerializeToString(), b"invalid-protobuf"])
+def test_issue_7143_online_transport_releases_completed_message_tasks(local_gateway, payload):
+    sdk_tasks, run, server = local_gateway
+    references = []
+
+    async def observe():
+        loop = asyncio.get_running_loop()
+        previous = loop.get_task_factory()
+
+        def create_task(loop, coroutine, **kwargs):
+            task = previous(loop, coroutine, **kwargs) if previous else asyncio.Task(coroutine, loop=loop, **kwargs)
+            if coroutine.__qualname__.endswith("._handle_message"):
+                references.append(weakref.ref(task))
+            return task
+
+        loop.set_task_factory(create_task)
+        return previous
+
+    async def send():
+        for connection in server.connections:
+            await connection.send(payload)
+
+    async def restore(previous):
+        asyncio.get_running_loop().set_task_factory(previous)
+
+    transport = transport_sdk.open_feishu_sdk_transport("fixture", "fixture")
+    previous = run(observe())
+    try:
+        for count in range(1, 6):
+            run(send())
+            sdk_tasks()
+            assert len(references) == count
+            assert all(reference() is None for reference in references)
+    finally:
+        transport.close()
+        transport.close()
+        run(restore(previous))
+    assert sdk_tasks() == []
+
+
+def test_issue_7143_close_releases_cancelled_message_task(local_gateway, monkeypatch):
+    sdk_tasks, run, server = local_gateway
+    references = []
+
+    async def blocked_handler(self, frame):
+        references.append(weakref.ref(asyncio.current_task()))
+        await asyncio.Event().wait()
+
+    async def send():
+        for connection in server.connections:
+            await connection.send(sdk._new_ping_frame(1).SerializeToString())
+
+    monkeypatch.setattr(sdk.Client, "_handle_control_frame", blocked_handler)
+    transport = transport_sdk.open_feishu_sdk_transport("fixture", "fixture")
+    try:
+        run(send())
+        sdk_tasks()
+        assert len(references) == 1
+        assert references[0]() is not None
+    finally:
+        transport.close()
+        transport.close()
+    assert sdk_tasks() == []
+    assert references[0]() is None

@@ -29,7 +29,7 @@ JOB_MGMT_PROMPT = """
 Playbook 只能用 job_mgmt_list_playbook_scripts 按名称或路径查看可选脚本路径。只使用返回的路径，不要索要或复述文件内容。
 列出路径只用于查看，不表示这些工具能执行 Playbook，也不会提交作业。job_mgmt_run_library 和 job_mgmt_run_custom 只执行作业脚本（脚本库脚本和自定义脚本），不能执行 Playbook。
 每个参数单独问使用默认值还是自己填写。必填且没有默认值的必须填写。加密默认值保持 ******。枚举只能选已有选项。
-自定义脚本只接受 shell、python、powershell、bat。可以根据用户意图生成脚本；选定目标后调用工具获取确认问题，必须用 request_user_choice 原样展示完整问题和选项，用户选「确认执行」后用相同参数再次调用。脚本或目标变化要重新确认，不要让用户重新输入脚本。
+自定义脚本只接受 shell、python、powershell、bat。可以根据用户意图生成脚本。选定目标后调用 job_mgmt_run_custom 提交脚本供确认。系统展示完整脚本和目标，接收用户对当前卡片的点击或回复。脚本或目标变更时重新提交供确认。
 目标先按名称或 IP 查询。用户已经说了节点管理或作业管理目标时，只在这个来源里找，不要把另一个来源放进选项。
 唯一命中直接用。多个命中只在这些结果里用 request_user_choice。用户还没说来源且一台都没有时，再让用户选来源。
 用户消息里已经有 (node_mgmt:编号) 或 (manual:编号) 时，直接用括号里的编号执行，不要再搜索，不要再问是不是节点管理。
@@ -58,6 +58,10 @@ def _run(func):
 
 def _run_with_job_artifact(func):
     result = _run(func)
+    if isinstance(result, dict) and result.get("job_confirmation_id"):
+        visible = dict(result)
+        marker = {"id": visible.pop("job_confirmation_id"), "question": visible["question"], "options": visible["options"]}
+        return visible, {"job_confirmation": marker}
     payload = json.loads(result) if isinstance(result, str) and result.startswith("{") else result
     artifact = {"task_id": payload["task_id"]} if isinstance(payload, dict) and payload.get("task_id") else None
     return result, artifact
@@ -165,8 +169,8 @@ def job_mgmt_run_library(
     response_format="content_and_artifact",
     description=(
         "执行自定义脚本，类型只能是 shell、python、powershell、bat。可以根据用户意图生成脚本。"
-        "先调用本工具，再用 request_user_choice 原样展示返回的完整确认问题和选项；用户确认后用相同参数再次调用。"
-        "高危规则要单独展示，等待用户选择「确认高危执行」。不要让用户重新输入脚本。"
+        "选定目标后调用一次。系统展示完整脚本和目标，接收用户对当前卡片的点击或回复，并按原参数续接。"
+        "脚本命中高危规则时，系统展示规则并单独请求确认。"
         "Linux 只能执行 shell 和 python，Windows 只能执行 powershell 和 bat。"
         "target_ids 填查询结果的 id，不填 IP。操作系统不匹配时不会创建作业。"
         "返回作业号、状态和 targets 中各主机的 stdout、stderr、exit_code、timed_out，可直接分析输出；没有输出时附带 result_url。"
