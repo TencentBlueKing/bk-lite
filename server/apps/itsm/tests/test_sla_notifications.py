@@ -138,3 +138,11 @@ def test_policy_checks_domain_and_preserves_existing_clock(sample):
     assert policy.warning_minutes == 10
     record.refresh_from_db()
     assert record.warning_at == FRIDAY + timedelta(minutes=15)
+
+
+def test_calendar_timezone_round_trip():
+    perms = ["workflow-View", "workflow-Edit"]
+    saved = sla_settings(request("post", {"kind": "calendar", "name": "纽约", "timezone": "America/New_York"}, permissions=perms))
+    assert saved.status_code == 200
+    calendars = json.loads(sla_settings(request(permissions=perms)).content)["data"]["calendars"]
+    assert calendars[0]["timezone"] == "America/New_York"
