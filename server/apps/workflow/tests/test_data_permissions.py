@@ -76,6 +76,19 @@ def test_workflow_write_requires_instance_operate_permission(scoped_user, mocker
 
 
 @pytest.mark.django_db
+def test_workflow_operator_cannot_move_workflow_to_unauthorized_organization(scoped_user, mocker):
+    workflow = Workflow.objects.create(name="巡检", team=[7], definition={}, current_version=1)
+    mocker.patch("apps.workflow.permissions.get_permission_rules", return_value={"team": [7]})
+    update = WorkflowViewSet.as_view({"patch": "partial_update"})
+
+    response = update(request(APIRequestFactory(), "patch", f"/workflows/{workflow.id}/", scoped_user, {"team": [8]}), pk=workflow.id)
+
+    assert response.status_code == 403
+    workflow.refresh_from_db()
+    assert workflow.team == [7]
+
+
+@pytest.mark.django_db
 def test_execution_visibility_inherits_workflow_data_permission(scoped_user, mocker):
     allowed_workflow = Workflow.objects.create(name="allowed", team=[7], definition={})
     denied_workflow = Workflow.objects.create(name="denied", team=[7], definition={})

@@ -16,6 +16,8 @@
     },
     "action": {
       "run": "运行",
+      "orchestrate": "编排",
+      "modify": "修改",
       "moreFor": "更多操作：{name}",
       "copyToWorkflows": "复制到流程",
       "confirmDuplicate": "确认复制"
@@ -31,8 +33,9 @@
       "builtin": "是否内置",
       "custom": "自定义",
       "create": "新建流程",
-      "editProfile": "编辑流程",
-      "basicInfo": "基本信息",
+      "editProfile": "修改流程",
+      "updatedSuccess": "流程已修改",
+      "updatedElsewhere": "已修改流程，切换到 {organizations} 后可见",
       "description": "描述",
       "organization": "组织",
       "organizationRequired": "请选择组织",

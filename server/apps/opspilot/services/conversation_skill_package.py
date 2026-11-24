@@ -241,7 +241,7 @@ def try_commit_conversation_skill_package(params) -> str | None:
             return _STALE_REPLY
         return None
 
-    consumed = consume_pending_question(key)
+    consumed = consume_pending_question(key, expected=pending)
     if not isinstance(consumed, dict) or not isinstance(consumed.get("skill_package_draft"), dict):
         if _is_confirm_click(params):
             logger.info(_REJECTED_LOG, "stale", _param_skill_id(params))

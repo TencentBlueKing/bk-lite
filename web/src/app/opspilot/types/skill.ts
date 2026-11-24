@@ -1,3 +1,5 @@
+import type { SelectTool } from './tool';
+
 export interface Skill {
   id: number;
   name: string;
@@ -103,7 +105,7 @@ export interface SkillDetail extends Skill {
   enable_conversation_history?: boolean;
   conversation_window_size?: number;
   run_model_call_limit?: number;
-  tools?: unknown[];
+  tools?: SelectTool[];
   wiki_knowledge_bases?: number[];
   force_wiki_grounded?: boolean;
   allow_wiki_material_write?: boolean;

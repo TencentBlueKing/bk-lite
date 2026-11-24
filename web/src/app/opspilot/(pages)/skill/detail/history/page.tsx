@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Drawer, Input, Select, Tooltip } from 'antd';
-import { SyncOutlined } from '@ant-design/icons';
+import { FundOutlined, SyncOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -14,6 +14,8 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
 import type { CustomChatMessage } from '@/app/opspilot/types/global';
+
+import AnalysisDrawer from './AnalysisDrawer';
 
 interface SkillChannelOption {
   id: number;
@@ -69,6 +71,11 @@ const SkillHistoryPage: React.FC = () => {
   const [channels, setChannels] = useState<SkillChannelOption[]>([]);
   const [channelId, setChannelId] = useState<number | undefined>();
   const [person, setPerson] = useState('');
+  const [appliedPerson, setAppliedPerson] = useState('');
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [source, setSource] = useState<{ sessionId: string; messageId?: number }>();
+  const [sourceError, setSourceError] = useState(false);
+  const sourceRequest = useRef(0);
   const [items, setItems] = useState<AdminConversationRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -77,8 +84,8 @@ const SkillHistoryPage: React.FC = () => {
   const [drawerTitle, setDrawerTitle] = useState('');
   const [drawerMessages, setDrawerMessages] = useState<CustomChatMessage[]>([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
-  const filtersRef = useRef({ channelId, person });
-  filtersRef.current = { channelId, person };
+  const filtersRef = useRef({ channelId, person: appliedPerson });
+  filtersRef.current = { channelId, person: appliedPerson };
 
   const apiRef = useRef({
     fetchSkillChannels,
@@ -145,20 +152,25 @@ const SkillHistoryPage: React.FC = () => {
 
   useEffect(() => {
     loadConversations(pagination.current, pagination.pageSize);
-  }, [loadConversations, pagination.current, pagination.pageSize, channelId]);
+  }, [loadConversations, pagination.current, pagination.pageSize, channelId, appliedPerson]);
 
-  const openConversation = useCallback(async (record: AdminConversationRow) => {
+  const openConversation = useCallback(async (record: Pick<AdminConversationRow, 'session_id' | 'title'>, messageId?: number) => {
+    const request = ++sourceRequest.current;
+    setSource({ sessionId: record.session_id, messageId });
+    setSourceError(false);
     setDrawerTitle(record.title || t('skill.history.drawerTitle', '会话详情'));
     setDrawerOpen(true);
     setDrawerLoading(true);
     setDrawerMessages([]);
     try {
-      const messages = await apiRef.current.fetchAdminSkillSessionMessages(record.session_id);
-      setDrawerMessages(toChatMessages(messages));
+      const messages = messageId
+        ? await apiRef.current.fetchAdminSkillSessionMessages(record.session_id, messageId)
+        : await apiRef.current.fetchAdminSkillSessionMessages(record.session_id);
+      if (request === sourceRequest.current) setDrawerMessages(toChatMessages(messages));
     } catch {
-      setDrawerMessages([]);
+      if (request === sourceRequest.current) setSourceError(true);
     } finally {
-      setDrawerLoading(false);
+      if (request === sourceRequest.current) setDrawerLoading(false);
     }
   }, [t]);
 
@@ -257,14 +269,18 @@ const SkillHistoryPage: React.FC = () => {
               placeholder={t('skill.history.filterUser', '请输入用户名进行搜索...')}
               value={person}
               onChange={(event) => setPerson(event.target.value)}
-              onSearch={() => {
+              onSearch={value => {
+                setAppliedPerson(value.trim());
                 setPagination((prev) => ({ ...prev, current: 1 }));
-                loadConversations(1, pagination.pageSize);
+                if (value.trim() === appliedPerson && pagination.current === 1) loadConversations(1, pagination.pageSize);
               }}
             />
             <Tooltip title={t('common.refresh', '刷新')}>
               <Button icon={<SyncOutlined />} onClick={() => loadConversations(pagination.current, pagination.pageSize)} />
             </Tooltip>
+            <Button icon={<FundOutlined />} disabled={!skillId} onClick={() => setAnalysisOpen(true)}>
+              {t('skill.analysis.title', '智能分析')}
+            </Button>
           </>
         }
       />
@@ -290,7 +306,14 @@ const SkillHistoryPage: React.FC = () => {
           />
         )}
       </div>
+      {analysisOpen && <AnalysisDrawer key={skillId} skillId={skillId} channel={channelId} person={appliedPerson}
+        channelName={channels.find(c => c.id === channelId)?.name} onClose={() => setAnalysisOpen(false)}
+        onEvidence={ref => openConversation({ session_id: ref.session_id, title: `${t('skill.analysis.evidence')} #${ref.message_id}` }, ref.message_id)} />}
       <Drawer
+        zIndex={analysisOpen ? 1100 : undefined}
+        extra={source?.messageId && <Button onClick={() => openConversation({ session_id: source.sessionId, title: '' })}>
+          {t('skill.analysis.fullConversation')}
+        </Button>}
         title={drawerTitle || t('skill.history.drawerTitle', '会话详情')}
         open={drawerOpen}
         width={1000}
@@ -300,11 +323,14 @@ const SkillHistoryPage: React.FC = () => {
       >
         {drawerLoading ? (
           <div className="py-10 text-center text-[var(--color-text-3)]">{t('common.loading', '加载中')}</div>
+        ) : sourceError ? (
+          <p className="p-6">{t('skill.analysis.sourceError')}</p>
         ) : (
           <div className="h-full">
             <CustomChatSSE
               initialMessages={drawerMessages}
               mode="display"
+              startAtTop={!!source?.messageId}
               showHeader={false}
               requirePermission={false}
             />

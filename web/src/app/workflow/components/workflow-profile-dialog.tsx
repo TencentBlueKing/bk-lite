@@ -43,7 +43,6 @@ export function WorkflowProfileDialog({
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
   const [form] = Form.useForm<WorkflowProfileValue>();
-  const organizationLocked = mode === 'edit' && Boolean(workflow?.current_version);
   const submit = () => {
     form.validateFields().then((values) => onSubmit({
       name: values.name.trim(),
@@ -55,7 +54,7 @@ export function WorkflowProfileDialog({
     ? t('workflowOrchestration.workflow.create', '新建流程')
     : mode === 'copy'
       ? t('workflowOrchestration.action.copyToWorkflows', '复制到流程')
-      : t('workflowOrchestration.workflow.editProfile', '编辑流程');
+      : t('workflowOrchestration.workflow.editProfile', '修改流程');
 
   useEffect(() => {
     if (!open) return;
@@ -108,7 +107,7 @@ export function WorkflowProfileDialog({
           label={t('workflowOrchestration.workflow.organization', '组织')}
           rules={[{ required: true, type: 'array', min: 1, message: t('workflowOrchestration.workflow.organizationRequired', '请选择组织') }]}
         >
-          <GroupTreeSelect multiple disabled={organizationLocked} placeholder={t('workflowOrchestration.workflow.organizationRequired', '请选择组织')} />
+          <GroupTreeSelect multiple placeholder={t('workflowOrchestration.workflow.organizationRequired', '请选择组织')} />
         </Form.Item>
         <Form.Item name="description" label={t('workflowOrchestration.workflow.description', '描述')}>
           <Input.TextArea rows={3} maxLength={500} />

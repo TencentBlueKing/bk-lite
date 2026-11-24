@@ -175,6 +175,7 @@ export interface OwnedStreamRun {
   lifecycle: StreamLifecycle;
   stream: StreamLease;
   request: (signal?: AbortSignal) => Promise<Response>;
+  onAccepted?: () => void;
   onChunk: (chunk: Uint8Array) => void;
   onError: (error: Error) => void;
   onComplete: () => void;
@@ -190,6 +191,7 @@ export async function runOwnedStream({
   lifecycle,
   stream,
   request,
+  onAccepted,
   onChunk,
   onError,
   onComplete,
@@ -205,6 +207,7 @@ export async function runOwnedStream({
       return;
     }
 
+    onAccepted?.();
     while (lifecycle.isActive(stream)) {
       const { done, value } = await reader.read();
       if (done || !lifecycle.isActive(stream)) {
