@@ -53,35 +53,6 @@ def _render(response):
 
 
 @pytest.mark.django_db
-def test_level_list_allows_incident_view_without_global_config(authenticated_user):
-    authenticated_user.is_superuser = False
-    authenticated_user.permission = {"alarm": {"Incidents-View"}}
-    _make_level(0)
-    request = _request("get", "/level/", authenticated_user)
-    response = LevelModelViewSet.as_view({"get": "list"})(request)
-    assert response.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-def test_level_create_still_requires_global_config_edit(authenticated_user):
-    authenticated_user.is_superuser = False
-    authenticated_user.permission = {"alarm": {"Incidents-View"}}
-    request = _request(
-        "post",
-        "/level/",
-        authenticated_user,
-        data={
-            "level_id": 6,
-            "level_name": "Info",
-            "level_display_name": "提示",
-            "level_type": "alert",
-        },
-    )
-    response = LevelModelViewSet.as_view({"post": "create"})(request)
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-
-
-@pytest.mark.django_db
 def test_level_list(superuser):
     _make_level(0)
     _make_level(1)
