@@ -15,6 +15,7 @@ from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
+from apps.itsm.services.form.fetch import walk
 from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
@@ -232,7 +233,28 @@ def ticket_form_view(ticket, design, own_task, status_key, *, include_legacy_fie
     return fields, visible_values, schema, permissions
 
 
-def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False):
+def select_task(pending, principals, privileged, task_id=None):
+    for task in pending:
+        if (privileged or task.assignee in principals) and (task_id is None or str(task.id) == str(task_id)):
+            return task
+    if task_id is not None:
+        raise PermissionError()
+    return None
+
+
+def editable_task(request, ticket, task_id):
+    if not has_permission(request, "ticket-Operate") or not has_permission(request, "ticket-View"):
+        raise PermissionError()
+    if ticket.status_id and ticket.status.key in {"suspended", "finished", "terminated", "cancelled"}:
+        raise PermissionError()
+    pending = ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED])
+    task = select_task(pending, ticket_principals(ticket, _user(request)), getattr(request.user, "is_superuser", False), task_id)
+    if task is None:
+        raise PermissionError()
+    return task
+
+
+def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False, task_id=None):
     from apps.itsm.services.ticket.history import current_round_start
 
     principals = ticket_principals(ticket, username)
@@ -249,8 +271,15 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     pending = [task for task in tasks if task.status in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}]
     pending_ids = {task.node_id for task in pending}
     status_key = ticket.status.key if ticket.status_id else ""
-    own_task = next((task for task in pending if privileged or task.assignee in principals), None)
-    fields, values, _, _ = ticket_form_view(ticket, design, own_task, status_key)
+    if task_id is not None and (not can_operate or status_key in {"suspended", "finished", "terminated", "cancelled"}):
+        raise PermissionError()
+    own_task = select_task(pending, principals, privileged, task_id)
+    fields, values, schema, _ = ticket_form_view(ticket, design, own_task, status_key)
+    visible_keys = {field["key"] for field in walk(fields)}
+    form_rules = [
+        rule for rule in (schema or {}).get("rules", [])
+        if rule.get("type") in {"required", "visible"} and rule.get("field") in visible_keys
+    ]
 
     stages = []
     if ticket.workflow_id:
@@ -346,9 +375,11 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         "creator": ticket.creator,
         "form_data": values,
         "fields": fields,
+        "form_rules": form_rules,
         "stages": stages,
         "extra_actions": extra_actions,
         "tasks": task_rows,
+        "selected_task_id": own_task.id if own_task else None,
         "nodes": [
             node_progress(
                 {
@@ -410,6 +441,7 @@ def ticket_detail(request, ticket_id):
             bool(getattr(request.user, "is_superuser", False)),
             can_operate,
             can_operate and has_permission(request, "workflow-Edit"),
+            task_id=request.GET.get("task_id"),
         )
     )
 

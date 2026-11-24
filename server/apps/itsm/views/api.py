@@ -74,8 +74,9 @@ def forms(request):
 @csrf_exempt
 @api_errors
 @HasPermission("form-Publish")
+@transaction.atomic
 def publish_form(request, form_id):
-    form = FormModel.objects.filter(domain=domain_of(request)).get(id=form_id)
+    form = FormModel.objects.select_for_update().filter(domain=domain_of(request)).get(id=form_id)
     payload = _body(request)
     from apps.itsm.services.form.fetch import freeze_schema
 
@@ -103,11 +104,16 @@ def _version_item(item):
 @csrf_exempt
 @api_errors
 @method_permission("form-View", "form-Edit")
+@transaction.atomic
 def form_detail(request, form_id):
-    form = FormModel.objects.filter(domain=domain_of(request)).get(id=form_id)
+    forms = FormModel.objects.filter(domain=domain_of(request))
+    form = (forms.select_for_update() if request.method == "PUT" else forms).get(id=form_id)
     if request.method == "PUT":
         schema = _body(request).get("schema") or {"version": 1, "fields": []}
-        draft = form.versions.filter(is_published=False).order_by("-version_no").first()
+        drafts = form.versions.filter(is_published=False)
+        if form.current_version_id:
+            drafts = drafts.filter(version_no__gt=form.current_version.version_no)
+        draft = drafts.order_by("-version_no").first()
         if draft is None:
             version_no = (form.versions.order_by("-version_no").values_list("version_no", flat=True).first() or 0) + 1
             draft = FormVersion.objects.create(
@@ -124,8 +130,11 @@ def form_detail(request, form_id):
             draft.updated_by = _user(request)
             draft.save(update_fields=["schema", "updated_by", "updated_at"])
         return WebUtils.response_success({"id": draft.id, "version_no": draft.version_no})
-    latest = form.versions.order_by("-version_no").first()
-    versions = form.versions.order_by("-version_no")
+    versions = list(form.versions.order_by("-version_no"))
+    latest = versions[0] if versions else None
+    if latest and latest.is_published:
+        # 旧版本曾在发布后继续写入较早的草稿，仍应允许编辑者找回这些修改。
+        latest = next((item for item in versions if not item.is_published and item.updated_at > latest.created_at), latest)
     return WebUtils.response_success(
         {
             "id": form.id,

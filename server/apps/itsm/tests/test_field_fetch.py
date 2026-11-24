@@ -210,11 +210,19 @@ def test_service_and_ticket_field_endpoints_enforce_scope(setup):
     assert json.loads(response.content)["data"]["options"][0]["value"] == "a1"
     # 空的非必填选项可以先创建草稿，再由当前节点处理人取数。
     ticket = TicketService().create(version, {"department": "研发"}, "reader")
-    TicketTask.objects.create(ticket=ticket, node_id="submit", assignee="reader")
+    first = TicketTask.objects.create(ticket=ticket, node_id="submit", assignee="reader")
+    second = TicketTask.objects.create(ticket=ticket, node_id="parallel", assignee="reader")
     body.pop("service_id")
     body["ticket_id"] = ticket.id
     with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "done", "output": [{"id": "a1", "name": "资产一"}]}):
-        assert field_fetch(request("post", body, username="reader")).status_code == 200
+        selected = field_fetch(request("post", {**body, "task_id": second.id}, username="reader"))
+        assert selected.status_code == 200
+    proof = json.loads(selected.content)["data"]["receipt"]
+    update = {"action": "save", "form_data": {"asset": "a1", "_field_receipts": {"asset": [proof]}}}
+    from apps.itsm.views.tickets import operate_ticket
+
+    assert operate_ticket(request("post", {**update, "task_id": first.id}, username="reader"), ticket.id).status_code == 400
+    assert operate_ticket(request("post", {**update, "task_id": second.id}, username="reader"), ticket.id).status_code == 200
     body["field"] = "unknown"
     assert field_fetch(request("post", body, username="reader")).status_code == 403
     body["field"] = "asset"

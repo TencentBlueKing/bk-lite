@@ -74,3 +74,17 @@ def test_readonly_group_protects_children():
     cleaned, errors = validator.apply({"private": "attack"})
     assert errors == {}
     assert "private" not in cleaned
+
+
+def test_nested_visibility_and_conditional_required_follow_group():
+    schema = {
+        "fields": [
+            {"key": "kind", "type": "input"},
+            {"key": "section", "type": "section", "visibleWhen": {"field": "kind", "op": "=", "value": "show"}, "children": [
+                {"key": "notes", "type": "input", "visibleWhen": {"field": "kind", "op": "not_empty"}},
+            ]},
+        ],
+        "rules": [{"field": "notes", "type": "required", "when": {"field": "kind", "op": "!=", "value": "other"}}],
+    }
+    assert FormValidator(schema).validate({"kind": "hide"}) == {}
+    assert FormValidator(schema).validate({"kind": "show"}) == {"notes": "必填"}

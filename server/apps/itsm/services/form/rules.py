@@ -7,11 +7,11 @@ class ExpressionError(ValueError):
     pass
 
 
-def match_when(when: dict[str, Any] | None, data: dict[str, Any]) -> bool:
+def match_when(when: dict[str, Any] | None, data: dict[str, Any], *, strict=True) -> bool:
     if not when:
         return True
     if "logic" in when:
-        items = [match_when(item, data) for item in when.get("items") or []]
+        items = [match_when(item, data, strict=strict) for item in when.get("items") or []]
         return all(items) if when.get("logic") == "and" else any(items)
     actual = _value_at(data, str(when.get("field") or ""))
     op = when.get("op")
@@ -31,16 +31,26 @@ def match_when(when: dict[str, Any] | None, data: dict[str, Any]) -> bool:
     if op == "in":
         expected_list = expected or []
         if isinstance(actual, list):
-            return any(item in expected_list for item in actual)
-        return actual in expected_list
+            return any(_contains(expected_list, item, strict) for item in actual)
+        return _contains(expected_list, actual, strict)
     if op == "not_in":
-        return actual not in (expected or [])
+        return not _contains(expected or [], actual, strict)
     if op == "contains":
-        return expected in actual if actual is not None else False
+        return _contains(actual, expected, strict)
     if op == "is_empty":
         return actual in (None, "", [], {})
     if op == "not_empty":
         return actual not in (None, "", [], {})
+    return False
+
+
+def _contains(collection, value, strict):
+    if strict:
+        return value in collection if collection is not None else False
+    if isinstance(collection, list):
+        return value in collection
+    if isinstance(collection, (str, dict)) and isinstance(value, str):
+        return value in collection
     return False
 
 

@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import Service, StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
-from apps.itsm.services.form.fetch import validate_submission
+from apps.itsm.services.form.fetch import task_fetch_context, validate_submission
 from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
@@ -292,7 +292,7 @@ class TicketService:
         task.save(update_fields=["status", "assignee", "updated_at"])
         if action == "claim" and self.client and task.flowable_task_id:
             self.client.update_task_assignee(task.flowable_task_id, operator)
-        self._save_form(ticket, node, data)
+        self._save_form(ticket, node, data, task)
         TicketLog.objects.create(
             ticket=ticket,
             task=task,
@@ -398,7 +398,7 @@ class TicketService:
         elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
             raise PermissionError()
 
-    def _save_form(self, ticket, node, data):
+    def _save_form(self, ticket, node, data, task=None):
         incoming = data.get("form_data") or {}
         if not isinstance(incoming, dict):
             raise ValueError("表单必须是对象")
@@ -412,6 +412,7 @@ class TicketService:
                 f"ticket:{ticket.id}",
                 original=original,
                 field_perm=_normalize_perm(node.get("field_perm")),
+                receipt_context=task_fetch_context(ticket, task) if task else None,
             )
             ticket.form_data = {**original, **cleaned}
         elif incoming:
@@ -469,7 +470,7 @@ class TicketService:
         elif action == "save":
             if task is None:
                 node = _find_node(ticket.workflow_version.design, node_type="submit")
-            self._save_form(ticket, node, data)
+            self._save_form(ticket, node, data, task)
         elif action == "transfer":
             target = data["target"]
             if self.client and task.flowable_task_id:

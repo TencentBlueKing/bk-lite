@@ -11,8 +11,8 @@ from apps.core.utils.web_utils import WebUtils
 from apps.itsm.models import DataDictionary, DataTable
 from apps.itsm.models.integration import Integration
 from apps.itsm.services.form.capabilities import FIELD_CAPABILITIES
-from apps.itsm.services.form.fetch import fetch_field, field_safe, freeze_schema, walk
-from apps.itsm.services.form.validator import FormValidator, _is_visible
+from apps.itsm.services.form.fetch import fetch_field, field_safe, freeze_schema, task_fetch_context, walk
+from apps.itsm.services.form.validator import FormValidator, visible_field_keys
 from apps.itsm.services.integrations import request_identity
 from apps.itsm.services.service_access import visible_services
 from apps.itsm.services.ticket.service import _find_node, _normalize_perm, workflow_schema
@@ -102,14 +102,12 @@ def field_fetch(request):
     elif body.get("ticket_id"):
         require(request, "ticket-Operate")
         ticket = get_ticket(request, body["ticket_id"])
-        from apps.itsm.views.tickets import _ticket_detail
+        from apps.itsm.views.tickets import editable_task
 
-        detail = _ticket_detail(ticket, request.user.username, bool(getattr(request.user, "is_superuser", False)))
-        task = next((t for t in detail["tasks"] if t["can_operate"]), None)
-        if not task:
-            raise PermissionError()
+        task = editable_task(request, ticket, body.get("task_id"))
         schema = workflow_schema(ticket.workflow_version)
-        perm, context, original = task["field_perm"], f"ticket:{ticket.id}", ticket.form_data or {}
+        perm = _find_node(ticket.workflow_version.design, node_id=task.node_id).get("field_perm")
+        context, original = task_fetch_context(ticket, task), ticket.form_data or {}
     else:
         raise ValueError("请指定服务或工单")
     validator = FormValidator(schema, _normalize_perm(perm))
@@ -118,7 +116,7 @@ def field_fetch(request):
     values = {**original, **{k: v for k, v in values.items() if k in writable}}
     key = body.get("field")
     field = next((f for f in walk(schema.get("fields", [])) if f["key"] == key), None)
-    if key not in writable or not field or not _is_visible(validator.schema, key, values):
+    if key not in writable or not field or key not in visible_field_keys(validator.schema, values):
         raise PermissionError()
     if set((field.get("fetch") or {}).get("dependencies", [])) - visible:
         raise PermissionError()

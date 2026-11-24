@@ -492,11 +492,15 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
     return result
 
 
-def validate_submission(schema, values, identity, context, original=None, field_perm=None):
+def task_fetch_context(ticket, task):
+    return f"ticket:{ticket.id}:task:{task.id}"
+
+
+def validate_submission(schema, values, identity, context, original=None, field_perm=None, *, receipt_context=None):
     """先按节点权限过滤，再验证取数凭据；只保存服务端验证过的标签。"""
     from apps.itsm.services.form.schema import LAYOUT_ONLY
     from apps.itsm.services.form.table_columns import TABLE_FIELDS, merge_table_rows
-    from apps.itsm.services.form.validator import FormValidator, _is_visible
+    from apps.itsm.services.form.validator import FormValidator, visible_field_keys
 
     original = original or {}
     validator = FormValidator(schema, field_perm)
@@ -507,9 +511,9 @@ def validate_submission(schema, values, identity, context, original=None, field_
         if field.type in TABLE_FIELDS:
             incoming[key] = merge_table_rows(field.model_dump(), original.get(key), value, validator.field_perm, context)
     merged = {**original, **incoming}
-    allowed = {k for k in editable if _is_visible(validator.schema, k, merged)}
+    allowed = editable.keys() & visible_field_keys(validator.schema, merged)
     merged["_field_receipts"] = values.get("_field_receipts", {})
-    verified = verify_fields(schema, merged, identity, context=context, original=original, allowed=allowed)
+    verified = verify_fields(schema, merged, identity, context=receipt_context or context, original=original, allowed=allowed)
     # 动态选项由凭据验证，不能再拿旧静态选项二次判断。
     checked_schema = copy.deepcopy(schema)
     for field in walk(checked_schema.get("fields", [])):

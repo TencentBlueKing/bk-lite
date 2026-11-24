@@ -79,14 +79,15 @@ class FormValidator:
         compute_rules = {rule.field: rule for rule in self.schema.rules if rule.type == "compute" and rule.expr}
         errors: dict[str, str] = {}
         cleaned: dict[str, Any] = {}
-        required_by_rule = {rule.field for rule in self.schema.rules if rule.type == "required" and match_when(rule.when, values)}
+        visible_keys = visible_field_keys(self.schema, values)
+        required_by_rule = {rule.field for rule in self.schema.rules if rule.type == "required" and match_when(rule.when, values, strict=False)}
         for field, inherited_mode in self._fields():
             if field.type in LAYOUT_ONLY:
                 continue
             if field.type not in FIELD_TYPES:
                 errors[field.key] = "未知控件"
                 continue
-            visible = _is_visible(self.schema, field.key, values)
+            visible = field.key in visible_keys
             mode = inherited_mode
             if not visible or mode == "hidden" or field.state == "hidden":
                 continue
@@ -97,6 +98,7 @@ class FormValidator:
                 try:
                     raw = evaluate_expr(compute_rules[field.key].expr or "", values)
                     values[field.key] = raw
+                    visible_keys = visible_field_keys(self.schema, values)
                 except ExpressionError as exc:
                     errors[field.key] = str(exc)
                     continue
@@ -127,14 +129,18 @@ def _coerce(kind: str, value: Any) -> Any:
         return value
 
 
-def _is_visible(schema: FormSchemaModel, key: str, data: dict[str, Any]) -> bool:
-    visible = True
-    field = schema.field_map().get(key)
-    if field is not None and field.visibleWhen:
-        visible = match_when(field.visibleWhen, data)
-    for rule in schema.rules:
-        if rule.type == "visible" and rule.field == key:
-            visible = match_when(rule.when, data)
+def visible_field_keys(schema: FormSchemaModel, data: dict[str, Any]) -> set[str]:
+    rules = {rule.field: rule.when for rule in schema.rules if rule.type == "visible"}
+    visible = set()
+
+    def visit(fields):
+        for field in fields:
+            if field.state == "hidden" or not match_when(rules.get(field.key, field.visibleWhen), data, strict=False):
+                continue
+            visible.add(field.key)
+            visit(field.children)
+
+    visit(schema.fields)
     return visible
 
 

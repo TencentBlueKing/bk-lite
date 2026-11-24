@@ -767,3 +767,62 @@ def test_print_escapes_ticket_values_and_ignores_stored_template(sample):
     html = json.loads(response.content)["data"]["html"]
     assert "<h1>&lt;img src=x onerror=alert(1)&gt;</h1>" in html
     assert "<img" not in html
+
+
+def test_published_form_reopens_latest_draft_without_changing_runtime():
+    from apps.itsm.views import api
+
+    perms = ["form-View", "form-Add", "form-Edit", "form-Publish"]
+    def call(view, method, data, *args):
+        response = view(request(method, data, permissions=perms), *args)
+        assert response.status_code == 200, response.content
+        return json.loads(response.content)["data"]
+
+    form = call(api.forms, "post", {"name": "申请", "key": "application"})["id"]
+    schema = {"fields": [{"key": "a", "label": "A", "type": "input"}], "layout": [{"field": "a"}],
+              "rules": [{"type": "required", "field": "a"}]}
+    original = call(api.form_detail, "put", {"schema": schema}, form)
+    published = call(api.publish_form, "post", {"schema": schema}, form)
+    schema["fields"][0]["label"] = "B"
+    old_draft = FormVersion.objects.get(id=original["id"])
+    old_draft.schema = schema
+    old_draft.save()
+    assert call(api.form_detail, "get", {}, form)["schema"] == schema
+    draft = call(api.form_detail, "put", {"schema": schema}, form)
+    assert call(api.form_detail, "get", {}, form)["schema"] == schema
+    assert draft["version_no"] > published["version_no"]
+    assert FormModel.objects.get(id=form).current_version.schema["fields"][0]["label"] == "A"
+
+
+def test_selected_parallel_task_controls_detail_fetch_and_upload(sample):
+    from apps.itsm.views.attachments import presign_attachment
+    from apps.itsm.views.field_fetch import field_fetch
+
+    ticket, first = sample
+    version = ticket.workflow_version
+    version.design["nodes"].append({"id": "second", "type": "approval", "field_perm": {"secret": "hidden"}})
+    version.save()
+    other = TicketTask.objects.create(ticket=ticket, node_id="second", assignee="handler")
+    selected = json.loads(ticket_detail(request(payload={"task_id": other.id}, username="handler"), ticket.id).content)["data"]
+    assert selected["selected_task_id"] == other.id
+    assert "secret" not in selected["form_data"]
+    assert ticket_detail(request(payload={"task_id": first.id}, username="owner"), ticket.id).status_code == 403
+    original = ticket.workflow.form.current_version
+    original.schema["fields"].append({"key": "files", "type": "attachment"})
+    original.save()
+    params = {"ticket_id": ticket.id, "task_id": other.id, "field": "files", "filename": "test.txt"}
+    with patch("apps.itsm.views.attachments.presign_upload", return_value={"url": "test", "object_name": "example.txt"}):
+        assert presign_attachment(request("post", params, "handler")).status_code == 200
+        assert presign_attachment(request("post", params, "owner")).status_code == 403
+    with patch("apps.itsm.views.field_fetch.fetch_field", return_value={}) as fetch:
+        assert field_fetch(request("post", {**params, "field": "secret"}, "handler")).status_code == 403
+        assert field_fetch(request("post", params, "handler")).status_code == 200
+        assert fetch.call_count == 1
+
+
+def test_form_condition_contract():
+    from pathlib import Path
+    from apps.itsm.services.form.rules import match_when
+
+    for rule, values, expected in json.loads((Path(__file__).parent / "fixtures/form_conditions.json").read_text()):
+        assert match_when(rule, values, strict=False) is expected, rule
