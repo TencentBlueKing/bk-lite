@@ -28,7 +28,6 @@ from apps.itsm.models.extend import (
     DutyShift,
     EmailRule,
     Handover,
-    KnowledgeArticle,
     PrintTemplate,
     ReportCard,
     ScheduledRun,
@@ -47,6 +46,7 @@ from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
 from apps.itsm.services.trigger_config import TriggerConfigError, normalize_trigger
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
+from apps.itsm.views.knowledge import knowledge_resources
 from apps.itsm.views.tickets import _service, _user
 
 KINDS = {
@@ -57,7 +57,6 @@ KINDS = {
     "schedules": (ScheduledTask, ["name", "cron", "action", "is_enabled"]),
     "announcements": (Announcement, ["title", "content", "is_enabled"]),
     "changes": (ChangeWindow, ["name", "start_at", "end_at"]),
-    "knowledge": (KnowledgeArticle, ["title", "content", "status"]),
     "duties": (DutyShift, ["name", "members"]),
     "surveys": (SurveyTemplate, ["name", "questions"]),
     "prints": (PrintTemplate, ["name", "body"]),
@@ -221,6 +220,8 @@ def _list_resources(request, kind, model, fields):
 @api_errors
 @resource_permission
 def resources(request, kind):
+    if kind == "knowledge":
+        return knowledge_resources(request)
     spec = KINDS.get(kind)
     if spec is None:
         return WebUtils.response_error("未知资源")
@@ -285,10 +286,6 @@ def resources(request, kind):
         from apps.itsm.services.dmn import deploy_table
 
         return WebUtils.response_success({**_public(item, fields), "dmn": deploy_table(item)})
-    if kind == "knowledge" and item.status == "published":
-        from apps.itsm.services.knowledge_sync import sync_article
-
-        return WebUtils.response_success({**_public(item, fields), "sync": sync_article(item)})
     return WebUtils.response_success(_public(item, fields))
 
 
@@ -296,6 +293,8 @@ def resources(request, kind):
 @api_errors
 @resource_permission
 def resource_item(request, kind, item_id):
+    if kind == "knowledge":
+        return knowledge_resources(request, item_id=item_id)
     spec = KINDS.get(kind)
     if spec is None:
         return WebUtils.response_error("未知资源")

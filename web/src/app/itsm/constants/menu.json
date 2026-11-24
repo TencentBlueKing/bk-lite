@@ -147,7 +147,7 @@
       "url": "/itsm/apps",
       "name": "knowledge",
       "children": [
-        {"title": "知识", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
         {"title": "打印", "url": "/itsm/apps/print", "name": "print"},
@@ -239,7 +239,7 @@
       "url": "/itsm/apps",
       "name": "knowledge",
       "children": [
-        {"title": "Knowledge", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
         {"title": "Print", "url": "/itsm/apps/print", "name": "print"},

@@ -137,12 +137,30 @@ class ChangeWindow(ItsmModel):
 
 
 class KnowledgeArticle(ItsmModel):
+    class ContentFormat(models.TextChoices):
+        TEXT = "text", "纯文本"
+        RICH_TEXT = "richtext", "富文本"
+        MARKDOWN = "markdown", "Markdown"
+
     title = models.CharField(max_length=200)
     content = models.TextField(default="")
+    content_format = models.CharField(max_length=16, choices=ContentFormat.choices, default=ContentFormat.TEXT)
+    category = models.CharField(max_length=128, blank=True, default="")
     status = models.CharField(max_length=16, default="draft")
+    tickets = models.ManyToManyField(Ticket, blank=True, related_name="knowledge_articles")
 
     class Meta:
         db_table = "itsm_knowledge_article"
+
+
+class KnowledgeAttachment(models.Model):
+    article = models.ForeignKey(KnowledgeArticle, on_delete=models.CASCADE, related_name="attachments")
+    name = models.CharField(max_length=255)
+    size = models.PositiveIntegerField()
+    object_name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        db_table = "itsm_knowledge_attachment"
 
 
 class DutyShift(ItsmModel):

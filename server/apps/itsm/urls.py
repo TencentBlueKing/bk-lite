@@ -40,6 +40,7 @@ from apps.itsm.views.extend import (
 from apps.itsm.views.field_fetch import field_catalog, field_fetch, field_gateway
 from apps.itsm.views.health import health
 from apps.itsm.views.integrations import integration_catalog, integration_detail, integration_test, integrations, retry_delivery
+from apps.itsm.views.knowledge import delete_knowledge_attachment, download_knowledge_attachment, upload_knowledge_attachment
 from apps.itsm.views.m2 import (
     attachment_item,
     attachments,
@@ -103,6 +104,13 @@ urlpatterns = [
     path("api/health/", health, name="itsm-health"),
     path("api/resources/<str:kind>/", resources, name="itsm-resources"),
     path("api/resources/<str:kind>/<int:item_id>/", resource_item, name="itsm-resource-item"),
+    path("api/knowledge/<int:article_id>/attachments/", upload_knowledge_attachment, name="itsm-knowledge-attachment-upload"),
+    path("api/knowledge/<int:article_id>/attachments/<int:attachment_id>/", delete_knowledge_attachment, name="itsm-knowledge-attachment-delete"),
+    path(
+        "api/knowledge/<int:article_id>/attachments/<int:attachment_id>/download/",
+        download_knowledge_attachment,
+        name="itsm-knowledge-attachment-download",
+    ),
     path("api/handovers/candidates/", handover_candidates, name="itsm-handover-candidates"),
     path("api/handovers/<int:handover_id>/retry/", retry_handover, name="itsm-handover-retry"),
     path("api/tickets/batch_options/", batch_options, name="itsm-ticket-batch-options"),
