@@ -10,7 +10,8 @@ from apps.itsm.models import Handover, TicketLog, TicketStatus, TicketTask
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.tests.test_review_regressions import request
 from apps.itsm.tests.test_review_regressions import sample as sample_ticket
-from apps.itsm.views.extend import batch_operate, batch_options, handover_candidates, resources
+from apps.itsm.views.extend import handover_candidates, resources
+from apps.itsm.views.ticket_operations import batch_operate, batch_options
 from apps.itsm.views.tickets import operate_ticket, ticket_detail
 from apps.system_mgmt.models import User
 
@@ -104,7 +105,7 @@ def test_batch_opinion_metadata_blocks_empty_value_without_mutation(approval_tic
     selection = {"ids": [ticket.id]}
     options = response_data(batch_options(request("post", selection, "handler")))
     assert options["required_opinion_actions"] == ["approve"]
-    with patch("apps.itsm.views.extend._service", return_value=TicketService()):
+    with patch("apps.itsm.views.ticket_operations._service", return_value=TicketService()):
         result = response_data(batch_operate(request("post", {**selection, "action": "approve", "opinion": " "}, "handler")))
     assert result["items"][0]["ok"] is False
     assert "处理意见" in result["items"][0]["error"]

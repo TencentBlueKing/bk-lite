@@ -417,6 +417,48 @@ def test_hidden_field_is_not_serialized_to_handler(sample):
     assert "secret" not in [field["key"] for field in data["fields"]]
 
 
+def test_hidden_table_cells_are_filtered_and_preserved_on_visible_edits(sample):
+    ticket, task = sample
+    version = ticket.workflow_version
+    version.design["nodes"][1]["field_perm"]["cost"] = "hidden"
+    version.design["form_schema"] = {
+        "fields": [
+            {"key": "title", "type": "input"},
+            {
+                "key": "items",
+                "type": "table",
+                "children": [
+                    {"key": "name", "label": "名称", "type": "input"},
+                    {"key": "cost", "label": "成本", "type": "number"},
+                    {"key": "memo", "label": "备注", "type": "input", "state": "hidden"},
+                ],
+            },
+        ],
+    }
+    version.save(update_fields=["design"])
+    ticket.form_data["items"] = [
+        {"name": "第一行", "cost": 100, "memo": "隐藏备注一"},
+        {"name": "第二行", "cost": 200, "memo": "隐藏备注二"},
+    ]
+    ticket.save(update_fields=["form_data"])
+
+    result = json.loads(ticket_detail(request(username="handler"), ticket.id).content)["data"]
+    assert [field["key"] for field in result["fields"][1]["children"]] == ["name"]
+    first, second = result["form_data"]["items"]
+    assert not ({"cost", "memo"} & (first.keys() | second.keys()))
+    owner = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
+    assert owner["form_data"]["items"][1]["cost"] == 200
+
+    payload = {"action": "save", "task_id": task.pk, "form_data": {"items": [{**second, "name": "已修改", "cost": 1}, {"name": "新行"}]}}
+    assert operate_ticket(request("post", payload, username="handler"), ticket.id).status_code == 200
+    ticket.refresh_from_db()
+    assert ticket.form_data["items"] == [{"name": "已修改", "cost": 200, "memo": "隐藏备注二"}, {"name": "新行"}]
+
+    assert operate_ticket(request("post", payload, username="handler"), ticket.id).status_code == 400
+    ticket.refresh_from_db()
+    assert ticket.form_data["items"][0]["name"] == "已修改"
+
+
 @pytest.mark.parametrize("method", ["POST", "PUT", "DELETE"])
 def test_flowable_mutations_are_not_replayed_after_timeout(method):
     import requests
@@ -714,7 +756,7 @@ def test_handover_updates_engine_and_claimed_local_task(sample):
 
 def test_print_escapes_ticket_values_and_ignores_stored_template(sample):
     from apps.itsm.models.extend import PrintTemplate
-    from apps.itsm.views.extend import render_print
+    from apps.itsm.views.ticket_operations import render_print
 
     ticket, _ = sample
     ticket.title = "<img src=x onerror=alert(1)>"

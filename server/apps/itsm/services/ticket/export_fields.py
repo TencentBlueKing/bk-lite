@@ -10,7 +10,8 @@ from django.utils.html import strip_tags
 
 from apps.itsm.models import SLAPolicy, TicketLog, TicketSLARecord, TicketTag, TicketTask
 from apps.itsm.services.form.options import resolve_options
-from apps.itsm.services.ticket.form_filters import TABLE_FIELDS, InvalidFormFilter, is_number, version_fields, workflow_versions
+from apps.itsm.services.form.table_columns import TABLE_FIELDS
+from apps.itsm.services.ticket.form_filters import InvalidFormFilter, is_number, version_fields, workflow_versions
 
 
 def excel_time(value):

@@ -495,12 +495,18 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
 def validate_submission(schema, values, identity, context, original=None, field_perm=None):
     """先按节点权限过滤，再验证取数凭据；只保存服务端验证过的标签。"""
     from apps.itsm.services.form.schema import LAYOUT_ONLY
+    from apps.itsm.services.form.table_columns import TABLE_FIELDS, merge_table_rows
     from apps.itsm.services.form.validator import FormValidator, _is_visible
 
     original = original or {}
     validator = FormValidator(schema, field_perm)
-    editable = {f.key for f, mode in validator._fields() if mode not in {"hidden", "readonly"} and f.type not in LAYOUT_ONLY}
-    merged = {**original, **{k: v for k, v in values.items() if k in editable}}
+    editable = {f.key: f for f, mode in validator._fields() if mode not in {"hidden", "readonly"} and f.type not in LAYOUT_ONLY}
+    incoming = {key: value for key, value in values.items() if key in editable}
+    for key, value in incoming.items():
+        field = editable[key]
+        if field.type in TABLE_FIELDS:
+            incoming[key] = merge_table_rows(field.model_dump(), original.get(key), value, validator.field_perm, context)
+    merged = {**original, **incoming}
     allowed = {k for k in editable if _is_visible(validator.schema, k, merged)}
     merged["_field_receipts"] = values.get("_field_receipts", {})
     verified = verify_fields(schema, merged, identity, context=context, original=original, allowed=allowed)

@@ -5,7 +5,6 @@ from functools import wraps
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -13,11 +12,10 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import itsm_logger as logger
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import TicketRelation, TicketTask, VipUser
+from apps.itsm.models import TicketTask, VipUser
 from apps.itsm.models.extend import (
     AiSetting,
     Announcement,
-    AutoExecution,
     BizObject,
     BizRecord,
     ChangeWindow,
@@ -41,20 +39,14 @@ from apps.itsm.models.extend import (
 )
 from apps.itsm.services.ticket.actions import node_actions, node_required_opinions
 from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
-from apps.itsm.services.ticket.printing import (
-    PrintTemplateError,
-    PrintTicketContext,
-    normalize_print_template,
-    render_print_example,
-    render_ticket_print,
-)
+from apps.itsm.services.ticket.printing import PrintTemplateError, normalize_print_template
 from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
 from apps.itsm.services.trigger_config import TriggerConfigError, normalize_trigger
 from apps.itsm.services.work_schedules import WorkScheduleError, mutate_change_window, save_duty_shift
-from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
+from apps.itsm.views.access import api_errors, domain_of, has_permission, json_object, ticket_scope
 from apps.itsm.views.knowledge import knowledge_resources
-from apps.itsm.views.tickets import _service, _user, ticket_form_view, ticket_principals
+from apps.itsm.views.tickets import _service, _user
 
 KINDS = {
     "views": (TicketSavedView, ["name", "filters", "columns"]),
@@ -123,12 +115,6 @@ def resource_permission(view):
 def resource_scope(request, kind, model):
     queryset = model.objects.filter(domain=domain_of(request))
     return queryset.filter(username=_user(request)) if kind in PERSONAL_RESOURCES else queryset
-
-
-def _body(request):
-    if not request.body:
-        return {}
-    return json.loads(request.body.decode("utf-8"))
 
 
 def _public(item, fields):
@@ -239,7 +225,7 @@ def resources(request, kind):
         return _write_work_schedule(request, kind, fields)
     if kind in {"surveys", "prints", "triggers"} and request.method != "POST":
         return WebUtils.response_error("不支持的请求方法", status_code=405)
-    payload = _body(request)
+    payload = json_object(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
     if kind == "schedules":
@@ -310,7 +296,7 @@ def resource_item(request, kind, item_id):
         return WebUtils.response_success({"id": item_id})
     if request.method not in {"PUT", "PATCH"}:
         return WebUtils.response_error("不支持的方法")
-    payload = _body(request)
+    payload = json_object(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
     if kind == "schedules":
@@ -363,7 +349,7 @@ def _write_work_schedule(request, kind, fields, *, item_id=None):
         else:
             DutyShift.objects.get(domain=domain, id=item_id).delete()
         return WebUtils.response_success({"id": item_id})
-    payload = _body(request)
+    payload = json_object(request)
     if kind == "duties" and "check_in" in payload:
         return WebUtils.response_error("值班排班不接受签到请求")
     values = {field: payload[field] for field in fields if field in payload}
@@ -429,90 +415,10 @@ def retry_handover(request, handover_id):
 
 @csrf_exempt
 @api_errors
-@HasPermission("ticket-View")
-def batch_options(request):
-    from apps.itsm.services.ticket.batch import selection, validate_ids
-
-    if request.method != "POST":
-        return WebUtils.response_error("不支持的请求方法", status_code=405)
-    options, _ = selection(request, validate_ids(_body(request).get("ids")))
-    return WebUtils.response_success(options)
-
-
-@csrf_exempt
-@api_errors
-@HasPermission("ticket-View")
-def batch_operate(request):
-    from django.http import Http404
-
-    from apps.itsm.flowable.client import FlowableError
-    from apps.itsm.models import TicketFollower
-
-    if request.method != "POST":
-        return WebUtils.response_error("不支持的请求方法", status_code=405)
-    payload = _body(request)
-    ids = payload.get("ids")
-    action = payload.get("action")
-    if not isinstance(ids, list) or not 1 <= len(ids) <= 50 or any(type(pk) is not int or pk <= 0 for pk in ids):
-        raise ValueError("请选择1至50张工单")
-    if action not in {"submit", "approve", "reject", "claim", "urge", "suspend", "resume", "follow", "unfollow"}:
-        raise ValueError("不支持的批量操作")
-    if action not in {"follow", "unfollow"} and not has_permission(request, "ticket-Operate"):
-        raise PermissionError()
-    opinion = payload.get("opinion", "")
-    if not isinstance(opinion, str) or len(opinion) > 1000:
-        raise ValueError("意见过长")
-    from apps.itsm.services.ticket.batch import selection
-
-    options, _ = selection(request, list(dict.fromkeys(ids)))
-    if action not in {"follow", "unfollow"} and options["mixed_nodes"]:
-        return WebUtils.response_success({"items": [{"id": pk, "ok": False, "error": options["reason"]} for pk in dict.fromkeys(ids)]})
-    if action in options["required_opinion_actions"] and not opinion.strip():
-        return WebUtils.response_success({"items": [{"id": pk, "ok": False, "error": "请填写处理意见"} for pk in dict.fromkeys(ids)]})
-    username = _user(request)
-    privileged = bool(getattr(request.user, "is_superuser", False))
-    principals = {
-        username,
-        *TicketProxy.objects.filter(domain=domain_of(request), agent=username, is_enabled=True).values_list("principal", flat=True),
-    }
-    results = []
-    for pk in dict.fromkeys(ids):
-        try:
-            ticket = get_ticket(request, pk)
-            if action == "follow":
-                TicketFollower.objects.get_or_create(ticket=ticket, username=username, defaults={"domain": ticket.domain, "created_by": username})
-            elif action == "unfollow":
-                ticket.followers.filter(username=username).delete()
-            else:
-                task = None
-                if action in {"submit", "approve", "reject", "claim"}:
-                    tasks = ticket.tasks.filter(status__in=["pending", "claimed"])
-                    if not privileged:
-                        tasks = tasks.filter(assignee__in=principals)
-                    candidates = list(tasks[:2])
-                    if len(candidates) != 1:
-                        raise ValueError("待办任务不唯一或无处理权限，请进入详情确认")
-                    task = candidates[0]
-                _service().operate(ticket, task, action, {"opinion": opinion}, username, privileged=privileged)
-            results.append({"id": pk, "ok": True})
-        except Http404:
-            results.append({"id": pk, "ok": False, "error": "工单不存在或无查看权限"})
-        except PermissionError:
-            results.append({"id": pk, "ok": False, "error": "无操作权限或当前节点不支持此操作"})
-        except (ValueError, TicketTask.DoesNotExist) as exc:
-            detail = "必填字段未完成，请进入详情补齐" if exc.args and isinstance(exc.args[0], dict) else str(exc)
-            results.append({"id": pk, "ok": False, "error": detail or "任务已变化，请刷新"})
-        except FlowableError:
-            results.append({"id": pk, "ok": False, "error": "流程引擎暂不可用，请刷新核对后再操作"})
-    return WebUtils.response_success({"items": results})
-
-
-@csrf_exempt
-@api_errors
 @HasPermission("workflow-Edit")
 def execute_decision(request, decision_id):
     table = DecisionTable.objects.filter(domain=domain_of(request)).get(id=decision_id)
-    form_data = _body(request).get("form_data") or {}
+    form_data = json_object(request).get("form_data") or {}
     matched = {}
     for rule in table.rules or []:
         when = rule.get("when") or {}
@@ -524,76 +430,9 @@ def execute_decision(request, decision_id):
 
 @csrf_exempt
 @api_errors
-@HasPermission("ticket-Add")
-def create_child(request, ticket_id):
-    parent = ticket_scope(request).select_related("workflow_version").get(id=ticket_id)
-    payload = _body(request)
-    child = _service().create(parent.workflow_version, payload.get("form_data") or {"title": parent.title}, _user(request))
-    TicketRelation.objects.create(
-        ticket=parent,
-        related=child,
-        relation_type="child",
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
-    return WebUtils.response_success({"id": child.id, "sn": child.sn})
-
-
-@csrf_exempt
-@require_POST
-@api_errors
-@HasPermission("print-View")
-def preview_print_template(request):
-    return WebUtils.response_success({"html": render_print_example()})
-
-
-@require_GET
-@api_errors
-@HasPermission("ticket-View")
-def render_print(request, ticket_id):
-    scoped = ticket_scope(request).select_related(
-        "status", "service", "workflow__form__current_version", "workflow_version__workflow__form__current_version"
-    )
-    ticket = get_object_or_404(scoped.prefetch_related("tasks"), pk=ticket_id)
-    active = [task for task in ticket.tasks.all() if task.status in ACTIVE_STATUSES]
-    privileged = bool(getattr(request.user, "is_superuser", False))
-    principals = set() if privileged or not active else ticket_principals(ticket, _user(request))
-    own_task = next((task for task in active if privileged or task.assignee in principals), None)
-    design = ticket.workflow_version.design if ticket.workflow_version_id else {}
-    status_key = ticket.status.key if ticket.status_id else ""
-    form = ticket_form_view(ticket, design, own_task, status_key, include_legacy_fields=False)
-    return WebUtils.response_success({"html": render_ticket_print(PrintTicketContext(ticket, active, *form))})
-
-
-@csrf_exempt
-@api_errors
-@HasPermission("ticket-Operate")
-def run_auto(request, ticket_id):
-    ticket = get_ticket(request, ticket_id)
-    payload = _body(request)
-    if not has_permission(request, "workflow-Edit"):
-        raise PermissionError()
-    kind = payload.get("kind") or "table"
-    config = payload.get("config") or {}
-    from apps.itsm.services.auto_runner import run_auto_action
-
-    status, detail = run_auto_action(ticket, kind, config, _user(request))
-    item = AutoExecution.objects.create(
-        ticket=ticket,
-        kind=kind,
-        status=status,
-        detail=detail,
-        created_by=_user(request),
-        updated_by=_user(request),
-    )
-    return WebUtils.response_success({"id": item.id, "status": item.status})
-
-
-@csrf_exempt
-@api_errors
 @HasPermission("ticket-View")
 def cmdb_search(request):
-    payload = _body(request)
+    payload = json_object(request)
     try:
         from apps.rpc.cmdb import CMDB
 
@@ -602,6 +441,12 @@ def cmdb_search(request):
         logger.warning("CMDB 查询失败 error_type=%s", type(exc).__name__)
         return WebUtils.response_error(type(exc).__name__)
     return WebUtils.response_success({"items": data})
+
+
+def _body(request):
+    if not request.body:
+        return {}
+    return json.loads(request.body.decode("utf-8"))
 
 
 @csrf_exempt

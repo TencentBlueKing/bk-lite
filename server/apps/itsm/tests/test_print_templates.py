@@ -5,7 +5,8 @@ import pytest
 
 from apps.itsm.models.extend import PrintTemplate
 from apps.itsm.tests import test_review_regressions
-from apps.itsm.views.extend import preview_print_template, render_print, resource_item, resources
+from apps.itsm.views.extend import resource_item, resources
+from apps.itsm.views.ticket_operations import preview_print_template, render_print
 
 pytestmark = pytest.mark.django_db
 request = test_review_regressions.request

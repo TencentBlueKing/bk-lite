@@ -22,20 +22,14 @@ from apps.itsm.views.api import (
 )
 from apps.itsm.views.attachments import presign_attachment
 from apps.itsm.views.extend import (
-    batch_operate,
-    batch_options,
     biz_records,
     chat_messages,
     cmdb_search,
-    create_child,
     execute_decision,
     handover_candidates,
-    preview_print_template,
-    render_print,
     resource_item,
     resources,
     retry_handover,
-    run_auto,
     schedule_runs,
 )
 from apps.itsm.views.field_fetch import field_catalog, field_fetch, field_gateway
@@ -70,6 +64,7 @@ from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
 from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
 from apps.itsm.views.ticket_export import download_export, export_fields, export_tasks, export_tickets, retry_export
+from apps.itsm.views.ticket_operations import batch_operate, batch_options, create_child, preview_print_template, render_print, run_auto
 from apps.itsm.views.tickets import (
     operate_ticket,
     retry_auto_node,

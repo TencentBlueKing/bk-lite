@@ -10,8 +10,8 @@ from apps.itsm.models import Ticket, TicketTask
 from apps.itsm.services.form.fetch import walk
 from apps.itsm.services.form.options import resolve_options
 from apps.itsm.services.form.rules import match_when
+from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns
 from apps.itsm.services.ticket.export_fields import FORM_FIELDS, OPTION_TYPES, format_form_value, joined, option_labels
-from apps.itsm.services.ticket.form_filters import TABLE_FIELDS, configured_table_columns
 
 
 def _time(value):

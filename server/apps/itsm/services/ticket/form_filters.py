@@ -11,12 +11,12 @@ from django.utils.dateparse import parse_date
 
 from apps.itsm.models import WorkflowVersion
 from apps.itsm.services.form.options import resolve_options
+from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns
 from apps.itsm.views.access import domain_of
 
 MAX_FORM_FILTERS = 8
 MAX_VALUE_LENGTH = 200
 CHOICE_TYPES = {"radio", "select"}
-TABLE_FIELDS = {"table", "nestedTable", "cab", "task"}
 OPERATORS = {
     "input": ("contains", "eq"),
     "textarea": ("contains", "eq"),
@@ -61,19 +61,6 @@ def read_form_filters(value):
 
 def is_number(value):
     return type(value) in {float, int} and abs(value) <= 10**100 and math.isfinite(value)
-
-
-def configured_table_columns(field):
-    columns = field.get("children") or field.get("columns")
-    if columns:
-        return columns
-    configured = (field.get("props") or {}).get("columns") or "名称:name\n数量:quantity:number"
-    columns = []
-    for line in str(configured).splitlines():
-        label, *rest = line.split(":")
-        key = (rest[0] if rest else label).strip()
-        columns.append({"key": key, "label": label.strip(), "type": rest[1] if len(rest) > 1 else "input"})
-    return columns
 
 
 def version_fields(design, *, export=False):

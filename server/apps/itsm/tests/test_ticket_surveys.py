@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from apps.itsm.models import SurveyTemplate, TicketSurvey
+from apps.itsm.models import PrintTemplate, SurveyTemplate, TicketSurvey
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.tests import test_review_regressions
 from apps.itsm.tests.test_review_regressions import request
@@ -90,3 +90,21 @@ def test_template_api_enforces_questions_and_permissions():
             item["id"],
         )
     )["questions"] == [{"id": "service", "title": "修订问题", "required": False}]
+
+
+@pytest.mark.parametrize(("kind", "menu", "model"), [
+    ("surveys", "survey", SurveyTemplate),
+    ("prints", "print", PrintTemplate),
+])
+@pytest.mark.parametrize("invalid", ["name", ["name"]])
+def test_template_resources_require_json_object(kind, menu, model, invalid):
+    permissions = [f"{menu}-Add", f"{menu}-Edit"]
+    create = resources(request("post", invalid, permissions=permissions), kind)
+    assert create.status_code == 400
+    assert not model.objects.exists()
+
+    item = model.objects.create(name="原始模板")
+    update = resource_item(request("patch", invalid, permissions=permissions), kind, item.id)
+    assert update.status_code == 400
+    item.refresh_from_db()
+    assert item.name == "原始模板"

@@ -1,5 +1,6 @@
 """ITSM 请求边界：统一对象范围与预期错误响应。"""
 
+import json
 from functools import wraps
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -34,6 +35,15 @@ def api_errors(view):
             return WebUtils.response_error({"errors": errors}, "请求参数或表单校验失败")
 
     return wrapped
+
+
+def json_object(request):
+    if not request.body:
+        return {}
+    payload = json.loads(request.body.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError({"body": ["请求体必须为 JSON 对象"]})
+    return payload
 
 
 def domain_of(request):

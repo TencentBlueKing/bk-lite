@@ -11,7 +11,7 @@ from apps.itsm.models import TicketTask
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.tests import test_review_regressions as review
 from apps.itsm.tests.test_review_regressions import request
-from apps.itsm.views.extend import batch_operate
+from apps.itsm.views.ticket_operations import batch_operate
 from apps.itsm.views.tickets import tickets
 
 pytestmark = pytest.mark.django_db
@@ -91,7 +91,7 @@ def test_projection_queries_do_not_load_tasks_or_sla(sample):
 
 def test_batch_returns_all_items_and_selects_actor_task(sample):
     ticket, task = sample
-    with patch("apps.itsm.views.extend._service", return_value=TicketService()):
+    with patch("apps.itsm.views.ticket_operations._service", return_value=TicketService()):
         result = data(batch_operate(request("post", {"ids": [ticket.id, 999999], "action": "approve"}, "handler")))
     assert result["items"][0]["ok"] is True
     assert result["items"][1]["ok"] is False
@@ -107,7 +107,7 @@ def test_batch_validation_and_partial_failure(sample):
     assert batch_operate(request("post", {"ids": [ticket.id], "action": "approve"}, "owner", ["ticket-View"])).status_code == 403
     result = data(batch_operate(request("post", {"ids": [ticket.id], "action": "approve"}, "owner")))
     assert not result["items"][0]["ok"]
-    with patch("apps.itsm.views.extend._service") as service:
+    with patch("apps.itsm.views.ticket_operations._service") as service:
         service.return_value.operate.side_effect = FlowableError(502, "failed")
         result = data(batch_operate(request("post", {"ids": [ticket.id, 999999], "action": "approve"}, "handler")))
     assert len(result["items"]) == 2 and not any(x["ok"] for x in result["items"])
@@ -212,7 +212,7 @@ def test_mixed_nodes_block_process_before_any_write(sample):
     TicketTask.objects.create(ticket=second, node_id="submit", assignee="handler")
     options, _ = selection(request(username="handler"), [ticket.id, second.id])
     assert options["mixed_nodes"] and set(options["actions"]) == {"follow", "unfollow"}
-    with patch("apps.itsm.views.extend._service") as service:
+    with patch("apps.itsm.views.ticket_operations._service") as service:
         result = data(batch_operate(request("post", {"ids": [ticket.id, second.id], "action": "approve"}, "handler")))
     assert not any(item["ok"] for item in result["items"])
     service.assert_not_called()

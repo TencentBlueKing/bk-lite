@@ -13,6 +13,7 @@ from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import request_retry, retry_available
+from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
@@ -183,23 +184,39 @@ def ticket_form_view(ticket, design, own_task, status_key, *, include_legacy_fie
         if own_task
         else _find_node(design, node_type="submit").get("field_perm", {})
     )
-    visible_keys = set()
+    visible_values = {}
 
     def visible_fields(items):
         result = []
         for field in items:
-            hidden = field.get("state") == "hidden" or permissions.get(field.get("key"), permissions.get("*")) == "hidden"
-            if hidden:
+            if hidden_column(field, permissions):
                 continue
-            visible_keys.add(field.get("key"))
+            key = field.get("key")
             copied = dict(field)
-            if copied.get("children"):
-                copied["children"] = visible_fields(copied["children"])
+            if field.get("type") in TABLE_FIELDS:
+                columns = configured_table_columns(field)
+                allowed = [column for column in columns if column.get("key") and not hidden_column(column, permissions)]
+                if not allowed:
+                    continue
+                copied["children"] = allowed
+                if key in values:
+                    visible_values[key] = visible_table_rows(
+                        values[key],
+                        {column["key"] for column in allowed},
+                        f"ticket:{ticket.pk}",
+                        key,
+                        preserve_hidden=any(hidden_column(column, permissions) for column in columns),
+                    )
+            else:
+                if key in values:
+                    visible_values[key] = values[key]
+                if copied.get("children"):
+                    copied["children"] = visible_fields(copied["children"])
             result.append(copied)
         return result
 
     fields = visible_fields(fields)
-    return fields, {key: value for key, value in values.items() if key in visible_keys}, schema, permissions
+    return fields, visible_values, schema, permissions
 
 
 def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False):
