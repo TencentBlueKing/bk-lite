@@ -3,15 +3,16 @@ from string import Template
 from typing import Annotated, Literal
 
 from django.conf import settings
+from django.db import DatabaseError
 from jinja2 import TemplateError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from apps.core.logger import itsm_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.itsm.models import HandlerGroup, NotifyTemplate, TicketTask
 from apps.itsm.services.notify.service import (
     render_notification_template,
     render_template,
-    send_im_channel,
     send_site_notification,
     ticket_notice_variables,
 )
@@ -81,17 +82,8 @@ class NoticeConfigError(ValueError):
     pass
 
 
-def notice_options(domain, user, field_groups):
-    return {
-        "groups": list(HandlerGroup.objects.filter(domain=domain).order_by("name", "id").values("id", "name")),
-        "channels": [{"id": item.pk, "name": item.name} for item in _ready_channels(domain, user=user).values()],
-        "templates": list(
-            NotifyTemplate.objects.filter(domain=domain, channel_type__in=("site", "im"))
-            .order_by("event", "channel_type", "id")
-            .values("id", "event", "channel_type", "title_tpl")
-        ),
-        "form_field_groups": field_groups,
-    }
+class NoticeClaimLost(Exception):
+    pass
 
 
 def _ready_channels(domain, *, user=None, ids=None):
@@ -188,7 +180,7 @@ def resolve_notice(ticket, notice, *, current_tasks=None):
     return receivers, variables
 
 
-def deliver_configured_notice(notice, variables, receivers, *, domain, event_key, is_test):
+def deliver_configured_notice(notice, variables, receivers, *, domain, event_key, is_test, im_sender):
     channel_ids = [route.channel_id for route in notice.channels if isinstance(route, IMRoute)]
     channels = _ready_channels(domain, ids=channel_ids)
     templates = _notice_templates(domain, notice.channels)
@@ -221,10 +213,20 @@ def deliver_configured_notice(notice, variables, receivers, *, domain, event_key
                     domain=domain,
                     event_key=event_key,
                     custom_message=custom_message,
+                    im_sender=im_sender,
                 )
+            except (DatabaseError, NoticeClaimLost):
+                raise
             except Exception as error:
                 ok, outcome = False, "发送失败"
-                logger.warning("触发器渠道投递失败 event_key=%s channel_id=%s error_type=%s", event_key, channel_id, type(error).__name__)
+                logger.error(
+                    "触发器渠道投递失败 event_key=%s channel_id=%s failed_stage=%s error_type=%s",
+                    event_key,
+                    channel_id,
+                    "dispatch_site" if channel_id is None else "dispatch_im",
+                    type(error).__name__,
+                    exc_info=safe_exception_info(error),
+                )
         results.append(f"{label} {outcome}")
         failures += not ok
     message = "；".join(results)
@@ -240,7 +242,7 @@ def _mapped_notice_users(channels, receivers):
     return result
 
 
-def _deliver_route(route, variables, receivers, template, mapped_user_ids, *, domain, event_key, custom_message):
+def _deliver_route(route, variables, receivers, template, mapped_user_ids, *, domain, event_key, custom_message, im_sender):
     if custom_message is not None:
         title, content = custom_message
     elif route.template_id is None:
@@ -250,7 +252,14 @@ def _deliver_route(route, variables, receivers, template, mapped_user_ids, *, do
             return False, "模板不可用"
         try:
             title, content = render_notification_template(template, variables)
-        except TemplateError:
+        except TemplateError as error:
+            logger.error(
+                "触发器模板渲染失败 event_key=%s template_id=%s failed_stage=render error_type=%s",
+                event_key,
+                template.pk,
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
             return False, "模板渲染失败"
     if isinstance(route, SiteRoute):
         sent = send_site_notification(f"{title}\n{content}".strip(), [username for _, username in receivers], domain, variables["url"], event_key)
@@ -259,19 +268,15 @@ def _deliver_route(route, variables, receivers, template, mapped_user_ids, *, do
         return False, f"{len(receivers)} 人无有效映射"
     link = variables["ticket_link"]
     body = content if link in content else f"{content}\n工单详情：{link}"
-    success = _send_im_batches(route.channel_id, title, body, mapped_user_ids)
-    if not success:
+    results = [
+        im_sender(route.channel_id, title, body, mapped_user_ids[start : start + IM_BATCH_SIZE])
+        for start in range(0, len(mapped_user_ids), IM_BATCH_SIZE)
+    ]
+    if any(result.get("unknown") for result in results):
+        return False, "有通知投递结果未知，请核对"
+    if any(not result.get("result") or (result.get("data") or {}).get("partial_success") for result in results):
         return False, "有通知未发送成功"
     skipped = len(receivers) - len(mapped_user_ids)
     if skipped:
         return False, f"已发送 {len(mapped_user_ids)} 人，{skipped} 人无有效映射"
     return True, f"已发送 {len(mapped_user_ids)} 人"
-
-
-def _send_im_batches(channel_id, title, body, user_ids):
-    succeeded = True
-    for start in range(0, len(user_ids), IM_BATCH_SIZE):
-        result = send_im_channel(channel_id, title, body, user_ids[start : start + IM_BATCH_SIZE])
-        if not result.get("result") or (result.get("data") or {}).get("partial_success"):
-            succeeded = False
-    return succeeded

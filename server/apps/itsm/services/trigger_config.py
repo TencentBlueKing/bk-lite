@@ -1,6 +1,6 @@
 import re
 
-from django.db.models import Q
+from django.db.models import Case, OuterRef, Q, Subquery, When
 from pydantic import ValidationError
 
 from apps.core.models.maintainer_info import DEFAULT_MAINTAINER_DOMAIN
@@ -130,13 +130,12 @@ def status_target(domain, key):
     return row
 
 
-def status_options(domain):
-    choices = {}
-    for row in sorted(_status_candidates(domain), key=lambda item: _status_priority(item, domain)):
-        choices.setdefault(row.key, row)
-    rows = sorted(choices.values(), key=lambda item: (item.order, item.id))
-    all_options = [{"key": row.key, "name": row.name} for row in rows]
-    return [option for row, option in zip(rows, all_options) if _eligible_status(row)], all_options
+def status_option_queryset(domain):
+    candidates = _status_candidates(domain)
+    preferred = candidates.filter(key=OuterRef("key")).order_by(
+        Case(When(domain=domain, then=0), When(domain="", then=1), default=2), "id"
+    )
+    return candidates.filter(pk=Subquery(preferred.values("pk")[:1])).order_by("order", "id")
 
 
 def _normalize_actions(action, config, name):

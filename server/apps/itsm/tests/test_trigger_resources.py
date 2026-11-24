@@ -304,3 +304,34 @@ def test_form_scope_uses_the_ticket_version_form_snapshot():
     assert scope_matches(updated_scope, ticket)
     ticket.workflow_version = custom
     assert not scope_matches(updated_scope, ticket)
+
+
+def test_trigger_catalog_fetches_bounded_pages_and_preserves_saved_choices():
+    workflows = [Workflow.objects.create(name=f"流程 {i}", key=f"flow-{i}") for i in range(4)]
+    forms = [FormModel.objects.create(name=f"表单 {i}", key=f"form-{i}") for i in range(4)]
+    for i, workflow in enumerate(workflows):
+        version = WorkflowVersion.objects.create(
+            workflow=workflow, version_no=1, is_published=True,
+            design={"form_schema": {"fields": [{"key": f"memo{i}", "type": "input"}]}},
+        )
+        Workflow.objects.filter(pk=workflow.pk).update(current_version=version, form=forms[i])
+    services = [Service.objects.create(name=f"服务 {i}", workflow=workflow) for i, workflow in enumerate(reversed(workflows))]
+    outsider = Workflow.objects.create(name="外组织", key="foreign", domain="foreign.example")
+    path = "/api/v1/itsm/api/triggers/options/"
+    selected = {"workflows": [workflows[3].pk, outsider.pk], "services": [services[3].pk]}
+    first = response_data(get(path, permissions=["rule-View"], query={"page_size": 1, "selected": json.dumps(selected)}))
+    assert first["has_more"]
+    assert [row["id"] for row in first["workflows"]] == [workflows[0].pk, workflows[3].pk]
+    assert [row["id"] for row in first["forms"]] == [forms[0].pk]
+    assert [row["id"] for row in first["services"]] == [services[0].pk, services[3].pk]
+    fields = {group["workflow_id"]: group for group in first["form_field_groups"]}
+    assert fields[workflows[3].pk]["service_ids"] == [services[0].pk]
+    assert fields[workflows[3].pk]["form_id"] == forms[3].pk
+    assert fields[workflows[3].pk]["fields"][0]["key"] == "$form.memo3"
+
+    second = response_data(get(path, permissions=["rule-View"], query={"page_size": 1, "page": 2}))
+    assert [row["id"] for row in second["workflows"]] == [workflows[1].pk]
+    last = response_data(get(path, permissions=["rule-View"], query={"page_size": 1, "page": 4}))
+    assert not last["has_more"]
+    assert [row["id"] for row in last["workflows"]] == [workflows[3].pk]
+    assert get(path, permissions=["rule-View"], query={"page_size": "-1"}).status_code == 400

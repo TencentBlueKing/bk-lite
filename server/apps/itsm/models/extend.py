@@ -78,10 +78,17 @@ class TriggerLog(ItsmModel):
     position = models.PositiveIntegerField(null=True, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.LEGACY)
     message = models.CharField(max_length=200, default="")
+    delivery_payload = models.JSONField(null=True, default=None)
+    delivery_claimed_at = models.DateTimeField(null=True)
+    delivery_attempts = models.PositiveSmallIntegerField(default=0)
+    delivery_receipts = models.JSONField(default=dict)
 
     class Meta:
         db_table = "itsm_trigger_log"
-        indexes = [models.Index(fields=("ticket_id", "domain", "id"), name="itsm_triglog_ticket_idx")]
+        indexes = [
+            models.Index(fields=("ticket_id", "domain", "id"), name="itsm_triglog_ticket_idx"),
+            models.Index(fields=("status", "action", "id"), name="itsm_triglog_pending_idx"),
+        ]
 
 
 class ScheduledTask(ItsmModel):

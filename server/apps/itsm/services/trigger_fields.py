@@ -4,7 +4,7 @@ from collections import defaultdict
 from itertools import islice
 from operator import attrgetter
 
-from django.db.models import F
+from django.db.models import Case, F, JSONField, When
 
 from apps.itsm.models import FormModel, Service, Workflow
 from apps.itsm.services.form.options import resolve_options
@@ -41,39 +41,6 @@ def trigger_condition_values(ticket):
     return {**data, "status": system["status"], "$ticket": system, "$form": data}
 
 
-def trigger_option_catalog(domain, user):
-    from apps.itsm.services.trigger_config import status_options
-    from apps.itsm.services.trigger_notice import notice_options
-
-    workflows = list(Workflow.objects.filter(domain=domain).order_by("name", "id").values("id", "name"))
-    forms = _forms(domain)
-    services, service_ids = _services(domain)
-    schemas = _form_schema_groups(domain, forms, service_ids)
-    action_statuses, condition_statuses = status_options(domain)
-    choices = {
-        "status": _options(condition_statuses, "key"),
-        "workflow_id": _options(workflows),
-        "service_id": _options(services),
-        "is_test": [{"label": "是", "value": True}, {"label": "否", "value": False}],
-    }
-    return {
-        "workflows": workflows,
-        "forms": forms,
-        "services": services,
-        "statuses": action_statuses,
-        "system_fields": [
-            {"key": f"$ticket.{key}", "label": label, "type": kind, **({"options": choices[key]} if key in choices else {})}
-            for key, (label, kind, _) in SYSTEM_FIELDS.items()
-        ],
-        "form_field_groups": _catalog_fields(schemas, _form_fields),
-        "notice": notice_options(domain, user, _catalog_fields(schemas, person_form_fields)),
-    }
-
-
-def _options(rows, key="id"):
-    return [{"label": row["name"], "value": row[key]} for row in rows]
-
-
 def _forms(domain):
     return list(FormModel.objects.filter(domain=domain).order_by("name", "id").values("id", "name"))
 
@@ -86,31 +53,48 @@ def _services(domain):
     return services, service_ids
 
 
-def _form_schema_groups(domain, forms, service_ids):
-    form_schemas = dict(
-        FormModel.objects.filter(
-            domain=domain, current_version__domain=domain, current_version__is_published=True, current_version__form_id=F("id")
-        ).values_list("id", "current_version__schema")
-    )
-    workflows = (
-        Workflow.objects.filter(
-            domain=domain, current_version__domain=domain, current_version__is_published=True, current_version__workflow_id=F("id")
-        )
-        .order_by("name", "id")
-        .values("id", "name", "form_id", "current_version__design")
+def _form_schema_groups(domain, forms, service_ids, *, workflow_ids=None):
+    workflows = Workflow.objects.filter(
+        domain=domain, current_version__domain=domain, current_version__is_published=True, current_version__workflow_id=F("id")
+    ).order_by("name", "id")
+    if workflow_ids is not None:
+        workflows = workflows.filter(pk__in=workflow_ids)
+    workflow_rows = list(
+        workflows.annotate(
+            snapshot=F("current_version__design__form_schema"),
+            snapshot_form_id=F("current_version__design__form_model_id"),
+            snapshot_has_form=Case(When(current_version__design__has_key="form_model_id", then=True), default=False),
+        ).values("id", "name", "form_id", "snapshot", "snapshot_form_id", "snapshot_has_form")
     )
     form_ids = {form["id"] for form in forms}
+    for workflow in workflow_rows:
+        if type(workflow["snapshot_form_id"]) is int:
+            form_ids.add(workflow["snapshot_form_id"])
+        if workflow["form_id"] is not None:
+            form_ids.add(workflow["form_id"])
+    form_schemas = dict(
+        FormModel.objects.filter(domain=domain, pk__in=form_ids)
+        .annotate(
+            schema=Case(
+                When(
+                    current_version__domain=domain,
+                    current_version__is_published=True,
+                    current_version__form_id=F("id"),
+                    then=F("current_version__schema"),
+                ),
+                output_field=JSONField(),
+            )
+        )
+        .values_list("id", "schema")
+    )
     groups = []
-    for workflow in workflows:
-        design = workflow["current_version__design"]
-        if not isinstance(design, dict):
-            design = {}
-        schema = design.get("form_schema")
+    for workflow in workflow_rows:
+        schema = workflow["snapshot"]
         if not isinstance(schema, dict):
             schema = form_schemas.get(workflow["form_id"])
         group = {"name": workflow["name"], "workflow_id": workflow["id"], "service_ids": service_ids[workflow["id"]]}
-        form_id = design.get("form_model_id", workflow["form_id"])
-        if type(form_id) is int and form_id in form_ids:
+        form_id = workflow["snapshot_form_id"] if workflow["snapshot_has_form"] else workflow["form_id"]
+        if type(form_id) is int and form_id in form_schemas:
             group["form_id"] = form_id
         groups.append((group, schema))
     for form in forms:

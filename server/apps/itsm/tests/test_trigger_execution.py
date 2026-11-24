@@ -187,3 +187,51 @@ def test_notification_contains_detail_link_and_does_not_run_before_commit(workfl
         else:
             assert f"https://itsm.example/itsm/tickets/{ticket.pk}" in send.call_args.args[1]
     assert rule.logs.get().status == "success"
+
+
+def test_trigger_notice_recovers_when_commit_callback_was_lost(workflow, django_capture_on_commit_callbacks):
+    from apps.itsm.tasks import trigger_notice_tick
+
+    rule = make_rule("ticket_create", action="notice", config={"response": "待恢复通知"})
+    with django_capture_on_commit_callbacks(execute=False):
+        ticket = TicketService().create(workflow, {"title": "申请"}, "owner", is_test=True)
+    assert rule.logs.get().status == "pending"
+    assert not Notification.objects.filter(target_url=f"/itsm/tickets/{ticket.pk}").exists()
+
+    trigger_notice_tick()
+    trigger_notice_tick()
+
+    assert rule.logs.get().status == "success"
+    assert Notification.objects.filter(target_url=f"/itsm/tickets/{ticket.pk}").count() == 1
+
+
+def test_parallel_task_creation_triggers_once_per_active_node(workflow, django_capture_on_commit_callbacks):
+    rule = make_rule("activity_into", config={"response": "进入审批"})
+    ticket = TicketService().create(workflow, {"title": "申请"}, "owner", is_test=True)
+    ticket.process_instance_id = "parent"
+    ticket.save(update_fields=["process_instance_id"])
+    client = Mock()
+    task = {"processInstanceId": "child", "taskDefinitionKey": "review", "name": "审批"}
+    records = [
+        {**task, "id": "review-1", "assignee": "alice"},
+        {**task, "id": "review-2", "assignee": "bob"},
+    ]
+    client.list_tasks_including_children.return_value = records
+    service = TicketService(client)
+    with django_capture_on_commit_callbacks(execute=False):
+        service.sync_ticket(ticket)
+        client.list_tasks_including_children.return_value = [*records, {**task, "id": "review-3", "assignee": "carol"}]
+        service.sync_ticket(ticket)
+    assert rule.logs.count() == 1
+    assert ticket.tasks.count() == 3
+
+    child_review = {**task, "processInstanceId": "other-child", "id": "child-review"}
+    client.list_tasks_including_children.return_value = [*records, child_review]
+    with django_capture_on_commit_callbacks(execute=False):
+        service.sync_ticket(ticket)
+    assert rule.logs.count() == 2
+
+    client.list_tasks_including_children.return_value = [child_review, {**task, "id": "review-return", "assignee": "alice"}]
+    with django_capture_on_commit_callbacks(execute=False):
+        service.sync_ticket(ticket)
+    assert rule.logs.count() == 3

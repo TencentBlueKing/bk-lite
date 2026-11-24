@@ -128,9 +128,19 @@ class TicketService:
         except FlowableError:
             raise
         seen = set()
+        task_ids = [str(item.get("id") or "") for item in items]
+        known_tasks = set(
+            ticket.tasks.filter(flowable_task_id__in=task_ids, status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).values_list(
+                "flowable_task_id", flat=True
+            )
+        )
+        active_nodes = {
+            (str(item.get("processInstanceId") or ticket.process_instance_id), item.get("taskDefinitionKey") or task_id)
+            for item, task_id in zip(items, task_ids)
+            if task_id in known_tasks
+        }
         current_tasks = [(str(item.get("assignee") or "").strip('"'), item.get("name") or "") for item in items]
-        for item in items:
-            task_id = str(item.get("id") or "")
+        for item, task_id in zip(items, task_ids):
             seen.add(task_id)
             assignee = str(item.get("assignee") or "").strip('"')
             process_id = str(item.get("processInstanceId") or "")
@@ -152,7 +162,10 @@ class TicketService:
             if created:
                 from apps.itsm.services.triggers import fire_triggers
 
-                fire_triggers(ticket, "task_enter", "system", current_tasks=current_tasks)
+                node_key = (process_id or ticket.process_instance_id, task.node_id or task_id)
+                if node_key not in active_nodes:
+                    active_nodes.add(node_key)
+                    fire_triggers(ticket, "task_enter", "system", current_tasks=current_tasks)
                 entered = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
                 if entered.get("enter_status"):
                     self._set_status(ticket, entered["enter_status"])

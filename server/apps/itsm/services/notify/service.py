@@ -63,7 +63,15 @@ def send_site_notification(content: str, receivers: list[str], domain: str, url:
 
 
 def dispatch_notification(
-    event: str, variables: dict, receivers: list[str], event_key: str = "", site_only: bool = False, *, domain: str = "", im_link: str = ""
+    event: str,
+    variables: dict,
+    receivers: list[str],
+    event_key: str = "",
+    site_only: bool = False,
+    *,
+    domain: str = "",
+    im_link: str = "",
+    im_sender=None,
 ) -> dict:
     receivers = list(dict.fromkeys(name.strip() for name in receivers if isinstance(name, str) and name.strip()))
     title, content = render_template(event, variables, domain=domain, channel_type="site")
@@ -73,12 +81,13 @@ def dispatch_notification(
         im_title, im_content = render_template(event, variables, domain=domain, channel_type="im", fallback=(title, content))
         if im_link and im_link not in im_content:
             im_content = f"{im_content}\n工单详情：{im_link}"
-        im = _send_im_if_configured(im_title, im_content, receivers, domain=domain)
+        options = {"im_sender": im_sender} if im_sender is not None else {}
+        im = _send_im_if_configured(im_title, im_content, receivers, domain=domain, **options)
     itsm_logger.info("ITSM 通知 %s site=%s im=%s", event, site.get("result"), im.get("result"))
     return {"title": title, "content": content, "receivers": receivers, "site": site, "im": im}
 
 
-def _send_im_if_configured(title: str, content: str, receivers: list[str], *, domain: str) -> dict:
+def _send_im_if_configured(title: str, content: str, receivers: list[str], *, domain: str, im_sender=None) -> dict:
     candidates = (
         IMNotificationUserMapping.objects.filter(
             user__domain=domain,
@@ -103,17 +112,23 @@ def _send_im_if_configured(title: str, content: str, receivers: list[str], *, do
     if not batches:
         return {"result": False, "skipped": True, "message": "no_im_channel"}
 
-    results = [send_im_channel(channel_id, title, content, user_ids) for channel_id, user_ids in batches.items()]
+    sender = im_sender or send_im_channel
+    results = [sender(channel_id, title, content, user_ids) for channel_id, user_ids in batches.items()]
 
     succeeded = any(result.get("result") for result in results)
     partial = any(not result.get("result") or (result.get("data") or {}).get("partial_success") for result in results)
-    return {"result": succeeded, "partial_success": succeeded and partial}
+    result = {"result": succeeded, "partial_success": succeeded and partial}
+    if im_sender is not None:
+        result["unknown"] = any(response.get("unknown") for response in results)
+    return result
 
 
-def send_im_channel(channel_id: int, title: str, content: str, user_ids: list[int]) -> dict:
+def send_im_channel(channel_id: int, title: str, content: str, user_ids: list[int], *, raise_on_error: bool = False) -> dict:
     try:
         return SystemMgmt().send_msg_with_channel(channel_id, title, content, user_ids, channel_type=IMNotificationChannel.CHANNEL_TYPE)
     except Exception as exc:
+        if raise_on_error:
+            raise
         itsm_logger.warning("ITSM 即时通知发送结果未知 channel_id=%s error=%s", channel_id, type(exc).__name__)
         return {"result": False}
 

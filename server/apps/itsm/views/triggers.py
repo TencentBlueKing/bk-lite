@@ -6,7 +6,7 @@ from django.views.decorators.http import require_GET
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.itsm.models import TriggerLog
-from apps.itsm.services.trigger_fields import trigger_option_catalog
+from apps.itsm.services.trigger_catalog import CatalogPage, trigger_option_catalog
 from apps.itsm.views.access import api_errors, domain_of, get_ticket
 
 
@@ -14,7 +14,7 @@ from apps.itsm.views.access import api_errors, domain_of, get_ticket
 @api_errors
 @HasPermission("rule-View")
 def trigger_options(request):
-    return WebUtils.response_success(trigger_option_catalog(domain_of(request), request.user))
+    return WebUtils.response_success(trigger_option_catalog(domain_of(request), request.user, CatalogPage.parse(request.GET)))
 
 
 @require_GET

@@ -12,6 +12,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.itsm.tasks.email_poll",
         "schedule": 300,
     },
+    "itsm-trigger-notice-tick": {
+        "task": "apps.itsm.tasks.trigger_notice_tick",
+        "schedule": 30,
+    },
     "itsm-auto-tick": {
         "task": "apps.itsm.tasks.auto_tick",
         "schedule": 30,

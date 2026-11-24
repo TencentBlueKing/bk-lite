@@ -109,6 +109,13 @@ def auto_tick():
     return {"acquired": done, "reconciled": reconciled}
 
 
+@shared_task(ignore_result=True)
+def trigger_notice_tick():
+    from apps.itsm.services.trigger_delivery import drain_trigger_notices
+
+    drain_trigger_notices()
+
+
 @shared_task(ignore_result=True, soft_time_limit=180, time_limit=210)
 def generate_ticket_export(task_id):
     from apps.itsm.services.ticket.export_jobs import generate

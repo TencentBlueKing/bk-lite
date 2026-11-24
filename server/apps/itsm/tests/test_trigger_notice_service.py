@@ -324,7 +324,12 @@ def test_sends_each_selected_route_even_if_another_route_raises(fixture, django_
     log = TriggerLog.objects.get(ticket_id=ticket.pk)
     assert log.status == "failed" and "站内通知 发送失败" in log.message and "测试飞书二 已发送 5 人" in log.message
     records = [record for record in caplog.records if record.msg.startswith("触发器渠道投递失败")]
-    assert len(records) == 1 and records[0].args == (f"itsm-trigger-{log.pk}", None, "RuntimeError")
+    assert len(records) == 1
+    record = records[0]
+    assert record.args == (f"itsm-trigger-{log.pk}", None, "dispatch_site", "RuntimeError")
+    assert record.getMessage().endswith("failed_stage=dispatch_site error_type=RuntimeError")
+    assert record.exc_info is not None
+    assert record.exc_info[2] is not None
     assert "内容不应进入日志" not in caplog.text
 
 
@@ -382,3 +387,95 @@ def test_im_batches_larger_user_groups_and_reports_missing_mapping(fixture, djan
     assert {user_id for entry in calls for user_id in entry.args[3]} == {person.pk for person in people[:-1]}
     log = TriggerLog.objects.get(ticket_id=ticket.pk)
     assert log.status == "failed" and "已发送 101 人，1 人无有效映射" in log.message
+
+
+def test_recovery_does_not_resend_unknown_im_and_completes_other_routes(fixture, django_capture_on_commit_callbacks):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.itsm.tasks import trigger_notice_tick
+
+    class WorkerStopped(BaseException):
+        pass
+
+    payload = fixture["rule"]
+    notice = payload["config"]["actions"][0]["notice"]
+    notice["channels"].insert(0, {"type": "site", "template_id": fixture["site_template"].pk})
+    notice["channels"].append({"type": "im", "channel_id": fixture["other"].pk, "template_id": fixture["im_template"].pk})
+    response_data(resources(rule_request("post", payload), "triggers"))
+    ticket = make_ticket(fixture)
+
+    with patch("apps.itsm.services.notify.service.SystemMgmt") as rpc:
+        with django_capture_on_commit_callbacks(execute=False) as callbacks:
+            fire_triggers(ticket, "save", "owner")
+        sender = rpc.return_value.send_msg_with_channel
+        sender.side_effect = [WorkerStopped(), {"result": True}]
+        with pytest.raises(WorkerStopped):
+            callbacks[0]()
+
+        log = TriggerLog.objects.get(ticket_id=ticket.pk)
+        assert log.status == "pending"
+        assert sender.call_count == 1
+        trigger_notice_tick()
+        assert sender.call_count == 1
+
+        TriggerLog.objects.filter(pk=log.pk).update(delivery_claimed_at=timezone.now() - timedelta(minutes=6))
+        trigger_notice_tick()
+        trigger_notice_tick()
+
+    log.refresh_from_db()
+    assert log.status == "failed"
+    assert "投递结果未知，请核对" in log.message
+    assert "测试飞书二 已发送 5 人" in log.message
+    assert [entry.args[0] for entry in sender.call_args_list] == [fixture["selected"].pk, fixture["other"].pk]
+    assert Notification.objects.filter(target_url=f"/itsm/tickets/{ticket.pk}").count() == 1
+
+
+def test_retry_after_result_write_failure_reuses_confirmed_receipts(fixture, django_capture_on_commit_callbacks, monkeypatch, caplog):
+    from datetime import timedelta
+
+    from django.db import DatabaseError
+    from django.db.models import QuerySet
+    from django.utils import timezone
+
+    from apps.itsm.tasks import trigger_notice_tick
+
+    response_data(resources(rule_request("post", fixture["rule"]), "triggers"))
+    ticket = make_ticket(fixture)
+    original_update = QuerySet.update
+    storage_error = DatabaseError("通知正文不应出现在回写日志")
+    fail_once = True
+
+    def update(queryset, **fields):
+        nonlocal fail_once
+        if fail_once and queryset.model is TriggerLog and fields.get("status") == TriggerLog.Status.SUCCESS:
+            fail_once = False
+            raise storage_error
+        return original_update(queryset, **fields)
+
+    monkeypatch.setattr(QuerySet, "update", update)
+    with patch("apps.itsm.services.notify.service.SystemMgmt") as rpc:
+        sender = rpc.return_value.send_msg_with_channel
+        sender.return_value = {"result": True}
+        with django_capture_on_commit_callbacks(execute=True):
+            fire_triggers(ticket, "save", "owner")
+
+        log = TriggerLog.objects.get(ticket_id=ticket.pk)
+        assert log.status == "pending"
+        assert sender.call_count == 1
+
+        TriggerLog.objects.filter(pk=log.pk).update(delivery_claimed_at=timezone.now() - timedelta(minutes=6))
+        trigger_notice_tick()
+
+    sender.assert_called_once()
+    log.refresh_from_db()
+    assert log.status == "success"
+    assert log.delivery_payload is None
+    records = [record for record in caplog.records if record.msg.startswith("触发器通知处理失败")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.args == (log.pk, "persist", "DatabaseError")
+    assert record.exc_info[2] is storage_error.__traceback__
+    assert str(storage_error) == "通知正文不应出现在回写日志"
+    assert str(storage_error) not in caplog.text
