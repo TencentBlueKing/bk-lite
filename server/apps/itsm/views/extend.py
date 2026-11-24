@@ -51,6 +51,7 @@ from apps.itsm.services.ticket.printing import (
 from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
 from apps.itsm.services.trigger_config import TriggerConfigError, normalize_trigger
+from apps.itsm.services.work_schedules import WorkScheduleError, mutate_change_window, save_duty_shift
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.knowledge import knowledge_resources
 from apps.itsm.views.tickets import _service, _user, ticket_form_view, ticket_principals
@@ -63,7 +64,7 @@ KINDS = {
     "schedules": (ScheduledTask, ["name", "cron", "action", "is_enabled"]),
     "announcements": (Announcement, ["title", "content", "is_enabled"]),
     "changes": (ChangeWindow, ["name", "start_at", "end_at"]),
-    "duties": (DutyShift, ["name", "members"]),
+    "duties": (DutyShift, ["name", "day", "members"]),
     "surveys": (SurveyTemplate, ["name", "questions"]),
     "prints": (PrintTemplate, ["name", "body"]),
     "handovers": (Handover, ["from_user", "to_user", "ticket_ids"]),
@@ -209,7 +210,7 @@ def _list_resources(request, kind, model, fields):
     page = paginator.get_page(int(request.GET.get("page") or 1))
     items = [_public(item, fields) for item in page]
     data = {"items": items, "count": paginator.count}
-    if kind in {"schedules", "triggers", "surveys", "prints"}:
+    if kind in {"schedules", "triggers", "changes", "duties", "surveys", "prints"}:
         menu = RESOURCE_MENUS[kind]
         data.update(
             can_add=has_permission(request, f"{menu}-Add"),
@@ -234,6 +235,8 @@ def resources(request, kind):
     model, fields = spec
     if request.method == "GET":
         return _list_resources(request, kind, model, fields)
+    if kind in {"changes", "duties"}:
+        return _write_work_schedule(request, kind, fields)
     if kind in {"surveys", "prints", "triggers"} and request.method != "POST":
         return WebUtils.response_error("不支持的请求方法", status_code=405)
     payload = _body(request)
@@ -254,17 +257,6 @@ def resources(request, kind):
         return WebUtils.response_success(_public(item, fields))
     if kind == "views":
         values["username"] = _user(request)
-    if kind == "duties" and payload.get("check_in"):
-        return _check_in_duty(request, model, fields, payload)
-    if kind == "changes":
-        from django.utils.dateparse import parse_datetime
-
-        start = parse_datetime(str(values.get("start_at") or "")) if values.get("start_at") else None
-        end = parse_datetime(str(values.get("end_at") or "")) if values.get("end_at") else None
-        values["start_at"] = start
-        values["end_at"] = end
-        if start and end and ChangeWindow.objects.filter(domain=domain_of(request)).filter(start_at__lt=end, end_at__gt=start).exists():
-            return WebUtils.response_error("变更窗口冲突")
     if kind in {"prints", "surveys"}:
         normalize = normalize_print_template if kind == "prints" else normalize_survey_template
         try:
@@ -306,6 +298,8 @@ def resource_item(request, kind, item_id):
     if spec is None:
         return WebUtils.response_error("未知资源")
     model, fields = spec
+    if kind in {"changes", "duties"}:
+        return _write_work_schedule(request, kind, fields, item_id=item_id)
     item = resource_scope(request, kind, model).filter(id=item_id).first()
     if item is None:
         return WebUtils.response_error("记录不存在", status_code=404) if kind == "prints" else WebUtils.response_error("记录不存在")
@@ -358,18 +352,27 @@ def _save_trigger(request, values, item=None):
     return WebUtils.response_success(_public(item, KINDS["triggers"][1]))
 
 
-def _check_in_duty(request, model, fields, payload):
-    shift = resource_scope(request, "duties", model).filter(name=payload.get("name")).first()
-    if shift is None:
-        return WebUtils.response_error("值班记录不存在")
-    members = list(shift.members or [])
-    username = _user(request)
-    if username not in members:
-        members.append(username)
-    shift.members = members
-    shift.updated_by = username
-    shift.save(update_fields=["members", "updated_by", "updated_at"])
-    return WebUtils.response_success(_public(shift, fields))
+def _write_work_schedule(request, kind, fields, *, item_id=None):
+    allowed = {"POST"} if item_id is None else {"PUT", "PATCH", "DELETE"}
+    if request.method not in allowed:
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
+    domain, username = domain_of(request), _user(request)
+    if request.method == "DELETE":
+        if kind == "changes":
+            mutate_change_window(domain, username, {}, item_id=item_id, delete=True)
+        else:
+            DutyShift.objects.get(domain=domain, id=item_id).delete()
+        return WebUtils.response_success({"id": item_id})
+    payload = _body(request)
+    if kind == "duties" and "check_in" in payload:
+        return WebUtils.response_error("值班排班不接受签到请求")
+    values = {field: payload[field] for field in fields if field in payload}
+    save = mutate_change_window if kind == "changes" else save_duty_shift
+    try:
+        item = save(domain, username, values, item_id=item_id)
+    except WorkScheduleError as exc:
+        return WebUtils.response_error(error_message=str(exc))
+    return WebUtils.response_success(_public(item, fields))
 
 
 def _apply_handover(item: Handover) -> None:
