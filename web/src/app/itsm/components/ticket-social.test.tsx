@@ -84,7 +84,7 @@ it('三个快捷图标无可见文字，新标签使用选中配色', async () =
   render(<TicketHeaderSocial ticketId={1} sn="REQ1" />);
   const group = await screen.findByRole('group', { name: '工单快捷操作' });
   expect(group.textContent).toBe('');
-  fireEvent.click(screen.getByRole('button', { name: '标签', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '标签' }));
   fireEvent.change(await screen.findByRole('textbox', { name: '标签名称' }), { target: { value: '紫色标签' } });
   fireEvent.click(screen.getByRole('button', { name: '配色 #722ed1' }));
   fireEvent.click(screen.getByRole('button', { name: /添\s*加/ }));
