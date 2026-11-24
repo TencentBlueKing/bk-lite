@@ -18,6 +18,7 @@ from apps.alerts.enrichment.projection import project
 from apps.alerts.enrichment.providers.base import FetchBatchResult, get_provider
 from apps.alerts.enrichment.providers.cmdb import ci_context_scopes_from_projection
 from apps.alerts.enrichment.result import EnrichmentBatchResult, EnrichmentSummary, RuleOutcome
+from apps.alerts.enrichment.service_name import apply_cmdb_service, remember_cmdb_service
 from apps.alerts.enrichment.telemetry import EnrichmentTelemetry
 from apps.core.logger import alert_logger as logger
 
@@ -168,12 +169,13 @@ class EnrichmentEngine:
         outcomes: List[RuleOutcome] = []
         writers: Dict[tuple, List[int]] = {}
         owner_ids = {}
+        service_names = {}
         try:
             rules = self._active_rules()
         except Exception:
             logger.error("[Enrichment] 加载丰富规则失败", exc_info=True)
             summary.failed = len(events)
-            return self._finish(events, summary, outcomes, started_at, owner_ids)
+            return self._finish(events, summary, outcomes, started_at, owner_ids, service_names)
 
         for rule in rules:
             if self._clock() >= deadline:
@@ -189,18 +191,19 @@ class EnrichmentEngine:
                 self._append_outcome(outcomes, rule, getattr(rule, "resolved_namespace", ""), "budget_exhausted", len(events))
                 break
             try:
-                self._apply_rule(rule, events, summary, outcomes, writers, deadline, owner_ids)
+                self._apply_rule(rule, events, summary, outcomes, writers, deadline, owner_ids, service_names)
             except Exception:
                 logger.error("[Enrichment] 规则执行失败 rule=%s", getattr(rule, "name", "?"), exc_info=True)
                 summary.failed += 1
                 self._append_outcome(outcomes, rule, getattr(rule, "resolved_namespace", ""), "provider_failed", 1)
 
         summary.enriched = sum(bool(event.get("enrichment")) for event in events)
-        return self._finish(events, summary, outcomes, started_at, owner_ids)
+        return self._finish(events, summary, outcomes, started_at, owner_ids, service_names)
 
-    def _finish(self, events, summary, outcomes, started_at, owner_ids=None):
+    def _finish(self, events, summary, outcomes, started_at, owner_ids=None, service_names=None):
         self._finalize_event_meta(events)
         apply_enriched_owners(events, {} if owner_ids is None else owner_ids)
+        apply_cmdb_service(events, {} if service_names is None else service_names)
         summary.duration_ms = max(0, int((self._clock() - started_at) * 1000))
         result = EnrichmentBatchResult(events=events, summary=summary, outcomes=outcomes)
         if self._telemetry is not None:
@@ -210,7 +213,7 @@ class EnrichmentEngine:
                 logger.debug("[Enrichment] 运行指标记录失败 error_type=%s", type(exc).__name__)
         return result
 
-    def _apply_rule(self, rule, events, summary, outcomes, writers, deadline, owner_ids=None) -> None:
+    def _apply_rule(self, rule, events, summary, outcomes, writers, deadline, owner_ids=None, service_names=None) -> None:
         rule_team = {int(team_id) for team_id in (getattr(rule, "team", None) or [])}
         events_by_scope: Dict[tuple, List[Dict]] = {}
         missing_team = 0
@@ -247,9 +250,21 @@ class EnrichmentEngine:
                 writers,
                 deadline,
                 owner_ids,
+                service_names,
             )
 
-    def _apply_rule_for_scope(self, rule, events, effective_team, summary, outcomes, writers, deadline, owner_ids=None) -> None:  # noqa: C901
+    def _apply_rule_for_scope(  # noqa: C901
+        self,
+        rule,
+        events,
+        effective_team,
+        summary,
+        outcomes,
+        writers,
+        deadline,
+        owner_ids=None,
+        service_names=None,
+    ) -> None:
         namespace = rule.resolved_namespace
         provider_type = rule.provider_type
 
@@ -277,6 +292,8 @@ class EnrichmentEngine:
         cache_config = dict(rule.provider_config or {})
         cache_config["_authorized_team_ids"] = effective_team
         cache_config["_ci_context_scopes"] = ci_context_scopes_from_projection(getattr(rule, "output_projection", None))
+        if provider_type == "cmdb":
+            cache_config["_cmdb_service_lookup"] = True
         records_by_key: Dict = {}
         status_by_key: Dict = {}
         miss_keys = []
@@ -368,6 +385,7 @@ class EnrichmentEngine:
             records = records_by_key.get(binding_key, [])
             status = status_by_key.get(binding_key, "projection_empty")
             remember_owner_ids(owner_ids if owner_ids is not None else {}, rule, records, status, key_to_events[binding_key])
+            remember_cmdb_service(service_names if service_names is not None else {}, rule, records, status, key_to_events[binding_key])
             projected = project(records, rule.output_projection, rule.on_multiple)
             if not projected:
                 status = status_by_key.get(binding_key, "projection_empty")

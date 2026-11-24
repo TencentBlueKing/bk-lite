@@ -11,7 +11,7 @@ export type ObjectType =
   | 'networkTopology'
   | 'datasource'
   | 'namespace';
-export type ConflictAction = 'skip' | 'overwrite' | 'rename';
+export type ConflictAction = 'skip' | 'overwrite' | 'rename' | 'reuse_target' | 'import_as_new';
 
 export interface ExportRequest {
   object_type: ObjectType;

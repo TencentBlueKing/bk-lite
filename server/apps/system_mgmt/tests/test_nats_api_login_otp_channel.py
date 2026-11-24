@@ -449,7 +449,10 @@ def test_send_msg_unknown_channel_and_unsupported_type():
     assert nats_api.send_msg_with_channel(999999, "t", "c", [1]) == {"result": False, "message": "Channel not found"}
     channel = Channel.objects.create(name="weird", channel_type="unknown-type", config={}, description="", team=[1])
     out = nats_api.send_msg_with_channel(channel.id, "t", "c", [1])
-    assert out == {"result": False, "message": "Unsupported channel type"}
+    assert out["result"] is False
+    assert out["retryable"] is False
+    assert out["message"] == "通知渠道包未加载"
+    assert out["recipients"] == []
 
 
 def test_send_msg_email_requires_recipients():

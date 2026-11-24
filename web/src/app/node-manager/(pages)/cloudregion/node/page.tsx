@@ -40,7 +40,6 @@ import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import ControllerInstall from './controllerInstall';
-import EnvironmentInstall from '@/app/node-manager/components/environment-install';
 import ControllerUninstall from './controllerUninstall';
 import CollectorOperation from './collectorOperation';
 import { useSearchParams } from 'next/navigation';
@@ -136,7 +135,6 @@ const Node = () => {
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
   const [unassignedOnly, setUnassignedOnly] = useState(false);
-  const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [exporting, setExporting] = useState<boolean>(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
@@ -630,9 +628,12 @@ const Node = () => {
         title: t('node-manager.cloudregion.node.hostedProgram'),
         dataIndex: 'collectors',
         key: 'collectors',
+        width: 220,
         onCell: () => ({
           style: {
-            minWidth: 200
+            minWidth: 160,
+            maxWidth: 280,
+            whiteSpace: 'normal'
           }
         }),
         render: (_: any, record: TableDataItem) => {
@@ -720,7 +721,7 @@ const Node = () => {
             return <span>--</span>;
           }
           return (
-            <div className="flex flex-nowrap gap-1">
+            <div className="flex flex-wrap gap-1">
               {upgradeableTags}
               {focusTags}
               {statusTags}
@@ -867,9 +868,6 @@ const Node = () => {
                         </Space>
                       </Button>
                     </Dropdown>
-                    <PermissionWrapper requiredPermissions={['InstallController']}>
-                      <Button className="mr-[8px]" onClick={() => setEnvironmentOpen(true)}>{t('node-manager.environmentBundle.title')}</Button>
-                    </PermissionWrapper>
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >
@@ -949,7 +947,6 @@ const Node = () => {
                     onChange={handleTableChange}
                   />
                 </div>
-                <EnvironmentInstall open={environmentOpen} cloudId={cloudId} onClose={() => setEnvironmentOpen(false)} />
                 <CollectorModal
                   ref={collectorRef}
                   onSuccess={(config) => {

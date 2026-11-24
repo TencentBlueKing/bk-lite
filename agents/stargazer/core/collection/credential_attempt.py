@@ -5,7 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
+from core.collection.access_check import (
+    conclusion_for,
+    credential_label,
+    credential_public_id,
+    log_access_conclusion,
+    skipped_row,
+    stops_remaining_credentials,
+)
 from core.collection.contracts import (
+    AccessCheckRow,
     AccessProbe,
     AccessProbeResult,
     AccessProbeStatus,
@@ -110,6 +119,14 @@ class CredentialAttemptRunner:
         *,
         target_started_at: float,
     ) -> TargetCollectionResult:
+        if request.access_check:
+            return await self._run_access_check(
+                request,
+                target,
+                credentials,
+                context,
+                target_started_at=target_started_at,
+            )
         attempts = 0
         no_response_attempts = 0
         last_no_response_error_code = ""
@@ -206,6 +223,65 @@ class CredentialAttemptRunner:
                 if attempts > 0 and no_response_attempts == attempts
                 else (FailureStage.COLLECTION if all_attempts_no_response else rotated_stage)
             ),
+        )
+
+    async def _run_access_check(
+        self,
+        request: CollectionRequest,
+        target: str,
+        credentials,
+        context: TargetCollectionContext,
+        *,
+        target_started_at: float,
+    ) -> TargetCollectionResult:
+        """同一条探测循环。探测结果即结论，不采集、不写凭据冷冻或亲和。"""
+        rows: list[AccessCheckRow] = []
+        credential_list = list(credentials)
+        for index, credential in enumerate(credential_list, 1):
+            access = await self._operations.run_access_probe(
+                target,
+                credential,
+                context,
+                index,
+                enabled=True,
+                target_started_at=target_started_at,
+            )
+            credential_id = credential_public_id(credential, index)
+            if isinstance(access, TargetCollectionResult):
+                rows.append(
+                    AccessCheckRow(
+                        target=target,
+                        credential_id=credential_id,
+                        credential_name=credential_label(credential, index),
+                        conclusion="system_error",
+                        detail_code="system_error",
+                        attempted=True,
+                    )
+                )
+                continue
+            conclusion, attempted = conclusion_for(access.status)
+            detail_code = access.error_code or ""
+            log_access_conclusion(target, credential_id, conclusion, detail_code)
+            rows.append(
+                AccessCheckRow(
+                    target=target,
+                    credential_id=credential_id,
+                    credential_name=credential_label(credential, index),
+                    conclusion=conclusion,
+                    detail_code=detail_code,
+                    attempted=attempted,
+                )
+            )
+            if stops_remaining_credentials(request, access.status):
+                for rest_index, rest in enumerate(credential_list[index:], index + 1):
+                    rows.append(skipped_row(target, rest, rest_index))
+                break
+        return TargetCollectionResult(
+            target=target,
+            status="success" if any(row.conclusion == "credential_ok" for row in rows) else "failed",
+            attempts=len(rows),
+            access_rows=tuple(rows),
+            failed_stage=None if any(row.conclusion == "credential_ok" for row in rows) else FailureStage.ACCESS_PROBE,
         )
 
     async def _apply_access_probe(

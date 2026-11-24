@@ -11,8 +11,11 @@ from apps.core.utils.internal_event_auth import (
     verify_internal_event,
 )
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
+from apps.system_mgmt.services.cloud_notify.config import masked_config
+from apps.system_mgmt.services.cloud_notify.delivery import send_cloud_notification
 from apps.system_mgmt.services.group_channel_mention import mentions_for_group_channel
 from apps.system_mgmt.services.im_notification_service import send_im_notification
+from apps.system_mgmt.services.notification_channel_pack import public_channel_config, send_loaded_notification_channel
 from apps.system_mgmt.utils.channel_utils import send_wecom_workflow_file
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.i18n import OPSPILOT_NATS_DESCRIPTION_MARKER, localized_channel_description, system_mgmt_message
@@ -34,7 +37,9 @@ def get_channel_detail(channel_id, locale=None):
     return_data = {
         "name": channel_obj.name,
         "description": localized_channel_description(channel_obj.description, locale),
-        "config": channel_obj.config,
+        "config": masked_config(channel_obj)
+        if channel_obj.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}
+        else public_channel_config(channel_obj),
         "team": channel_obj.team,
         "channel_type": channel_obj.channel_type,
     }
@@ -201,6 +206,8 @@ ALERT_EVENT_COPY_METHOD = "receive_alert_events"
 SYSTEM_USER_CHANNEL_TYPES = {
     ChannelChoices.EMAIL,
     ChannelChoices.ENTERPRISE_WECHAT,
+    ChannelChoices.SMS,
+    ChannelChoices.VOICE,
 }
 # 这些渠道由 webhook 决定投递目标。接收人只用于在正文后追加 @，可以留空。
 OPTIONAL_RECIPIENT_CHANNEL_TYPES = {
@@ -699,7 +706,17 @@ def _with_group_mention(content, mention_text, separator):
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None, append_receivers=True, channel_type=None):
+def send_msg_with_channel(
+    channel_id,
+    title,
+    content,
+    receivers,
+    attachments=None,
+    internal_auth=None,
+    append_receivers=True,
+    channel_type=None,
+    template_params=None,
+):
     """
     通过指定通道发送消息
     :param channel_id: 通道ID
@@ -761,6 +778,8 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
             at_user_ids=at_user_ids,
             at_mobiles=at_mobiles,
         )
+    elif channel_obj.channel_type in {ChannelChoices.SMS, ChannelChoices.VOICE}:
+        return send_cloud_notification(channel_obj, title, content, receivers, template_params=template_params)
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
         return send_by_custom_webhook(channel_obj, content, receivers if append_receivers else [])
     elif channel_obj.channel_type == ChannelChoices.NATS:
@@ -781,7 +800,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         if error:
             return error
         return send_nats_message(channel_obj, normalized)
-    return {"result": False, "message": "Unsupported channel type"}
+    return send_loaded_notification_channel(channel_obj, title, content, receivers, template_params=template_params)
 
 
 OPSPILOT_CHANNEL_SOURCE = "opspilot"

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import type { ArchitectureNodeStatusItem } from './model';
 import {
   chunkBoundUuids,
@@ -43,6 +44,7 @@ export function useArchitectureNodeStatus(options: {
     let cancelled = false;
     let timer = 0;
     let seq = 0;
+    let activeAbort: AbortController | null = null;
     const apply = (
       next: Record<string, ArchitectureNodeStatusItem>,
       nextPhase: 'ready' | 'failed',
@@ -57,17 +59,23 @@ export function useArchitectureNodeStatus(options: {
       if (shouldPauseArchitectureStatusRefresh(typeof document !== 'undefined' && document.hidden)) {
         return;
       }
+      activeAbort?.abort();
+      const abort = new AbortController();
+      activeAbort = abort;
       const current = ++seq;
       const batches = chunkBoundUuids(requested);
       Promise.all(batches.map(async (uuids) => {
         try {
-          const data = await queryRef.current(uuids);
+          const data = await queryRef.current(uuids, abort.signal);
           return {
             uuids,
             ok: true,
             items: Array.isArray(data?.items) ? data.items : [],
           };
-        } catch {
+        } catch (error) {
+          if (abort.signal.aborted || isTransportCanceled(error)) {
+            return { uuids, ok: true, items: [] as ArchitectureNodeStatusItem[] };
+          }
           return { uuids, ok: false };
         }
       })).then((settled) => {
@@ -94,6 +102,7 @@ export function useArchitectureNodeStatus(options: {
     }
     return () => {
       cancelled = true;
+      activeAbort?.abort();
       window.clearTimeout(timer);
       if (refreshOnVisible) {
         document.removeEventListener('visibilitychange', onVisibility);

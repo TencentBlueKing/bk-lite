@@ -6,6 +6,8 @@ from core.collection.metrics import CollectionMetrics
 from core.collection.runtime import CollectionRequest
 from core.plugin.yaml_reader import ExecutorConfig, PluginYamlReader
 
+PLUGIN_INPUTS = Path(__file__).resolve().parents[1] / "plugins" / "inputs"
+
 
 def _write_plugin(root: Path, body: str) -> None:
     plugin_dir = root / "network"
@@ -238,6 +240,26 @@ executors:
     )
 
     assert plan.collection_timeout_seconds == 120
+
+
+def test_vmware_monitor_request_uses_vmware_vc_budget():
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(PLUGIN_INPUTS)),
+        defaults=TimeoutDefaults(collection_seconds=60),
+    )
+
+    plan = resolver.resolve(
+        CollectionRequest(
+            task_id="vmware-timeout",
+            plugin_ref="vmware.monitor",
+            targets=("10.0.0.10",),
+            params={"monitor_type": "vmware", "timeout": 300},
+        )
+    )
+
+    assert plan.collection_timeout_seconds == 300
+    assert plan.capacity_group == "sync_sdk"
+    assert plan.execution_mode == "sync"
 
 
 def test_execution_plan_uses_final_fallback_executor_config_without_rereading_yaml():

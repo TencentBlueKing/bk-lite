@@ -8,7 +8,7 @@ from apps.rum.services.analytics import UnavailableAnalytics, get_analytics, set
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.health import REASON_ANALYTICS, REASON_CONTROL, probe_pipeline_health, resolve_product_scope
-from apps.rum.services.query import apply_degradation, empty_release_list, empty_session_list
+from apps.rum.services.query import apply_degradation, empty_release_list, empty_session_list, stamp_pipeline_flags
 from apps.rum.services.settings import RumRuntimeSettings
 
 pytestmark = pytest.mark.django_db
@@ -41,6 +41,15 @@ def test_apply_degradation_is_exclusive():
     assert "controlUnavailable" not in page
 
 
+def test_stamp_pipeline_flags_keeps_both():
+    page = stamp_pipeline_flags({"sessions": []}, control=True, analytics=True)
+    assert page["controlUnavailable"] is True
+    assert page["analyticsUnavailable"] is True
+    page = stamp_pipeline_flags({"controlUnavailable": True, "sessions": []}, analytics=True)
+    assert page["controlUnavailable"] is True
+    assert page["analyticsUnavailable"] is True
+
+
 def test_empty_helpers_emit_pipeline_flags():
     control = empty_session_list(reason="control")
     assert control["controlUnavailable"] is True
@@ -51,6 +60,15 @@ def test_empty_helpers_emit_pipeline_flags():
 
 
 def test_resolve_product_scope_control_and_analytics():
+    empty = resolve_product_scope(
+        "tester",
+        control=UnavailableControl(),
+        analytics=UnavailableAnalytics(),
+    )
+    assert empty.reason == REASON_CONTROL
+    assert empty.applications == []
+    assert empty.control_down is True
+
     control = MemoryControl()
     ApplicationsService(control, _settings(), analytics=UnavailableAnalytics()).create_application(
         "tester",
@@ -61,8 +79,9 @@ def test_resolve_product_scope_control_and_analytics():
         control=UnavailableControl(),
         analytics=UnavailableAnalytics(),
     )
-    assert scoped.reason == REASON_CONTROL
-    assert scoped.applications == []
+    assert scoped.applications == ["checkout"]
+    assert scoped.control_down is True
+    assert scoped.reason == REASON_ANALYTICS
 
     scoped = resolve_product_scope(
         "tester",
@@ -71,6 +90,7 @@ def test_resolve_product_scope_control_and_analytics():
     )
     assert scoped.reason == REASON_ANALYTICS
     assert scoped.applications == ["checkout"]
+    assert scoped.control_down is False
 
 
 def test_meta_and_health_report_degraded_flags():

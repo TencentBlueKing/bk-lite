@@ -8,6 +8,7 @@ import type { ProviderManifest } from '@/app/system-manager/types/integration-ce
 import {
   filterIntegrationProvidersByQuery,
   collectIntegrationCapabilityFilterOptions,
+  excludeNotificationChannelProviders,
   getIntegrationCapabilityLabel,
   canEnterCreateInfoStep,
   getCreateModalFooterMode,
@@ -80,14 +81,19 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
     form.resetFields();
   }, [form, initialProvider, initialValues, mode, open]);
 
+  const selectableProviders = useMemo(
+    () => excludeNotificationChannelProviders(providers),
+    [providers],
+  );
+
   const capabilityFilterOptions = useMemo(
-    () => collectIntegrationCapabilityFilterOptions(providers, t),
-    [providers, t],
+    () => collectIntegrationCapabilityFilterOptions(selectableProviders, t),
+    [selectableProviders, t],
   );
 
   const providerCards = useMemo(
     () => {
-      const cards = providers.map((provider) => ({
+      const cards = selectableProviders.map((provider) => ({
         id: provider.key,
         name: provider.name || provider.key,
         icon: provider.key,
@@ -97,7 +103,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
       }));
       return filterIntegrationProvidersByQuery(cards, '', capabilityFilters, t);
     },
-    [capabilityFilters, providers, t],
+    [capabilityFilters, selectableProviders, t],
   );
 
   const footerMode = getCreateModalFooterMode({

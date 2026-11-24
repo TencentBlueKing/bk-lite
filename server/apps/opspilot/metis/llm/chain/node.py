@@ -44,7 +44,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _skill_package_script_lines,
     compact_completed_step_line,
 )
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
+from apps.opspilot.metis.llm.chain.entity import PLANNED_FINAL_TEXT_KEY, BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -275,7 +275,7 @@ class BasicNode:
         trace_id = config["configurable"]["trace_id"]
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False):
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None, max_retries=None):
         """
         获取LLM客户端
 
@@ -283,11 +283,19 @@ class BasicNode:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+            timeout: 单次调用超时（秒）。不传时用 LLM_INVOKE_TIMEOUT。
+            max_retries: HTTP 重试次数。不传时用 SDK 默认。
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
+        return LLMClientFactory.create_client(
+            request,
+            disable_stream=disable_stream,
+            isolated=isolated,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     async def _prepare_messages_for_llm(self, messages, graph_request, *, tools=None):
         if graph_request is None:
@@ -2528,6 +2536,8 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
                 DECLARED_CMDB_MODEL_KEY,
                 MISSING_PARAMS_CHOICE_HINT,
+                PLANNER_LLM_MAX_RETRIES,
+                PLANNER_LLM_TIMEOUT_SECONDS,
                 TOOL_FAILURE_AUTHZ,
                 TOOL_FAILURE_CONFIG,
                 TOOL_FAILURE_INTERNAL,
@@ -2817,7 +2827,13 @@ class ToolsNodes(
                     raise
                 return {"messages": new_messages}
 
-            planner_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+            planner_llm = self.get_llm_client(
+                graph_request,
+                disable_stream=True,
+                isolated=True,
+                timeout=PLANNER_LLM_TIMEOUT_SECONDS,
+                max_retries=PLANNER_LLM_MAX_RETRIES,
+            )
             planner = ToolExecutionPlanner(
                 planner_llm,
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
@@ -2855,6 +2871,10 @@ class ToolsNodes(
                         ppt_master_packages=matched_for_ppt,
                     )
             except Exception as planning_exc:
+                # 上游模型不可用时与步骤失败同一收口，禁止落入零工具直答编造「正在获取…」。
+                if is_llm_upstream_error(planning_exc):
+                    await _emit_planned_execution_status("idle", reason="planning_failed_upstream")
+                    return _llm_upstream_failure_result(planning_exc, failed_stage="tool_execution_planning")
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
                 logger.exception(
                     "DeepAgent 工具执行规划失败，将以零工具模式回答: %s",
@@ -3144,7 +3164,7 @@ class ToolsNodes(
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
                 ppt_run = current_ppt_run(graph_request) or (begin_ppt_run(graph_request) if ppt_authoring else None)
-                ppt_workspace_text = "/workspace/ppt-workspace" if ppt_run else ""
+                ppt_workspace_text = "/ppt-workspace" if ppt_run else ""
 
                 while pending_steps:
                     step = pending_steps.pop(0)
@@ -3184,6 +3204,8 @@ class ToolsNodes(
                             "单设一节「核心结论」，其中最多两个关键数字写成加粗，例如失败 **5** 次。"
                             "做统计、汇总或清单时，不要只写数量。步骤摘要里有逐条字段，就按这些字段逐条展开。摘要里没有的字段不要编造。"
                             "系统会另加封面。Word 目录带页码，PDF 目录不带页码。"
+                            "PPT 按一级标题分页。第一页只放标题和最多四行短说明。其余每页最多四条短句，不要把整段报告写成项目符号。"
+                            "标题是核心结论、执行摘要或决议时，每条单独一行。"
                             "official 不要写封面、目录和运维分析报告，标题只放在 title。"
                             "meeting_minutes 在第一个章节前各写一行「会议时间：」「会议地点：」「主持人：」「记录人：」。"
                             "正文用「出席人员」「议题」「决议」「待办」。出席人员用表格。不要写运维分析报告，也不要写目录。"
@@ -3748,7 +3770,8 @@ class ToolsNodes(
                 clear_planned_step_holder(config)
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
-                self._set_hide_planned_step_text(graph_request, False)
+                if not ppt_authoring:
+                    self._set_hide_planned_step_text(graph_request, False)
                 if choice_stopped:
                     result = {"messages": list(agent_state.get("messages") or [])}
                 elif ppt_authoring:
@@ -3761,6 +3784,7 @@ class ToolsNodes(
                         notice = "PPT 已经生成，但下载登记失败。请确认对象存储可用后再试。"
                     elif not notice:
                         notice = "这次没有导出 pptx。"
+                    self._set_planned_final_text(graph_request, notice)
                     _collect_output_messages([AIMessage(content=notice)])
                     result = {"messages": list(agent_state.get("messages") or [])}
                     final_message = None
@@ -3856,7 +3880,8 @@ class ToolsNodes(
                 except Exception:
                     return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
             finally:
-                self._set_hide_planned_step_text(graph_request, False)
+                if not str((getattr(graph_request, "extra_config", None) or {}).get(PLANNED_FINAL_TEXT_KEY) or "").strip():
+                    self._set_hide_planned_step_text(graph_request, False)
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
                 # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时

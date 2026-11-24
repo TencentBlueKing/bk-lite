@@ -10,7 +10,12 @@ export interface SharedDataSourceAccess {
     params?: unknown,
     options?: SourceDataRequestOptions,
   ) => Promise<unknown>;
-  getDataSourceDetails: (ids: Array<number | string>) => Promise<unknown>;
+  getDataSourceDetails: (ids: Array<number | string>, signal?: AbortSignal) => Promise<unknown>;
+  resolveOptionSource: (body: {
+    sourceId?: number;
+    builtinKey?: string;
+    sourceRef?: string;
+  }, signal?: AbortSignal) => Promise<{ status?: string; id?: number }>;
 }
 
 const ShareDataSourceContext = createContext<SharedDataSourceAccess | null>(null);

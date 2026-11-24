@@ -83,6 +83,7 @@ import {
 } from './widgetConfig/configTitles';
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
+import { ChartDisplayFields } from './widgetConfig/sections/chartDisplayFields';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { NodeGraphSettingsSection } from './widgetConfig/sections/nodeGraphSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
@@ -235,6 +236,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onDirtyChange,
   previewSingleStyle,
   previewHost = null,
+  canRepairOptionSource = false,
   onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
@@ -1901,6 +1903,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             dataVariables={dataVariables}
             onFilterBindingsChange={handleFilterBindingsChange}
             onEditInputConfig={handleEditInputConfig}
+            canRepairOptionSource={canRepairOptionSource}
             onParamOptionsResolved={(param, options) =>
               reconcileParamWithOptions(param.name, options)
             }
@@ -2084,6 +2087,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 loadingFields={loadingRoleFields}
                 onRefreshFields={fetchRoleFields}
               />
+            )}
+
+            {(chartType === 'topN' || chartType === 'pie' || chartType === 'bar') && (
+              <ChartDisplayFields t={t} chartType={chartType} />
             )}
 
             {chartType === 'cardList' && (

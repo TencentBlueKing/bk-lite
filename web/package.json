@@ -111,6 +111,7 @@
     "test:monitor-capability-matrix": "pnpm exec tsx scripts/monitor-capability-matrix-test.ts",
     "test:opspilot-download-url-security": "pnpm exec tsx scripts/opspilot-download-url-security-test.ts",
     "test:opspilot-planned-execution-step": "pnpm exec tsx scripts/opspilot-planned-execution-step-test.ts",
+    "test:ppt-skill-tool-fold": "pnpm exec tsx scripts/ppt-skill-tool-fold-test.ts",
     "test:opspilot-user-choice-select": "pnpm exec tsx scripts/user-choice-card-select-test.ts",
     "test:storybook-auth-isolation": "pnpm exec tsx scripts/storybook-auth-isolation-test.ts",
     "gen:capability-matrix": "pnpm exec tsx scripts/generate-capability-matrix.ts",

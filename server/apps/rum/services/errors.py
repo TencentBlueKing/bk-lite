@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
-from apps.rum.services.query import empty_error_detail, empty_error_list, parse_range_params
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
+from apps.rum.services.health import list_enabled_applications
+from apps.rum.services.query import empty_error_detail, empty_error_list, parse_range_params, stamp_pipeline_flags
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.sourcemap import (
     OUTCOME_INVALID,
@@ -254,16 +254,6 @@ class ErrorsService:
         self.sourcemaps = sourcemaps or get_sourcemap_store()
         self.settings = load_rum_settings()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
-
     def _requested_apps(self, params: dict[str, Any]) -> list[str]:
         apps: list[str] = []
         single = (params.get("application") or "").strip()
@@ -281,13 +271,11 @@ class ErrorsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_error_list(reason="control")
-        requested = self._requested_apps(params)
-        apps = [name for name in requested if name in enabled] if requested else enabled
         if not self.analytics.available():
-            return empty_error_list(reason="analytics")
+            return stamp_pipeline_flags(empty_error_list(reason="analytics"), control=found.control_down)
         display_limit = int(params.get("limit") or 100)
         if display_limit <= 0:
             display_limit = 100
@@ -300,7 +288,7 @@ class ErrorsService:
                 {
                     "from": start,
                     "to": end,
-                    "applications": apps,
+                    "applications": found.applications,
                     "userId": params.get("userId") or "",
                     "release": params.get("release") or "",
                     "traffic": params.get("traffic") or "visitors",
@@ -313,7 +301,7 @@ class ErrorsService:
                 "rum errors list analytics failed failed_stage=list_errors error_type=%s",
                 type(exc).__name__,
             )
-            return empty_error_list(reason="analytics")
+            return stamp_pipeline_flags(empty_error_list(reason="analytics"), control=found.control_down)
         rows = page.get("issues") or []
         kept = []
         for row in rows:
@@ -326,7 +314,7 @@ class ErrorsService:
             if not match_issue_status(status, status_filter):
                 continue
             kept.append(row)
-        return {"issues": kept[:display_limit]}
+        return stamp_pipeline_flags({"issues": kept[:display_limit]}, control=found.control_down)
 
     def error_detail(self, actor: str, fingerprint: str, params: dict[str, Any]) -> dict:
         fingerprint = (fingerprint or "").strip()
@@ -336,13 +324,11 @@ class ErrorsService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_error_detail(reason="control")
-        requested = self._requested_apps(params)
-        apps = [name for name in requested if name in enabled] if requested else enabled
         if not self.analytics.available():
-            return empty_error_detail(reason="analytics")
+            return stamp_pipeline_flags(empty_error_detail(reason="analytics"), control=found.control_down)
         try:
             detail = self.analytics.error_detail(
                 self.settings.tenant_id,
@@ -350,7 +336,7 @@ class ErrorsService:
                 {
                     "from": start,
                     "to": end,
-                    "applications": apps,
+                    "applications": found.applications,
                     "traffic": params.get("traffic") or "visitors",
                     "limit": int(params.get("limit") or 0),
                 },
@@ -360,7 +346,7 @@ class ErrorsService:
                 "rum error detail analytics failed failed_stage=error_detail error_type=%s",
                 type(exc).__name__,
             )
-            return empty_error_detail(reason="analytics")
+            return stamp_pipeline_flags(empty_error_detail(reason="analytics"), control=found.control_down)
         if not detail.get("fingerprint"):
             raise ControlError("not_found", "error issue not found")
         stored = self.issues.get(fingerprint)
@@ -372,7 +358,7 @@ class ErrorsService:
             detail["ignoredUntil"] = stored.get("ignoredUntil")
         detail.setdefault("signals", [])
         detail.setdefault("occurrences", [])
-        return detail
+        return stamp_pipeline_flags(detail, control=found.control_down)
 
     def patch_issue(self, actor: str, fingerprint: str, body: dict) -> dict:
         fingerprint = (fingerprint or "").strip()
@@ -398,10 +384,10 @@ class ErrorsService:
         release = (body.get("release") or "").strip()
         if not application or not valid_application(application):
             raise ValidationError("application is required")
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor)
+        if found.control_down:
             raise ControlError("unavailable", "RUM controller is unavailable")
-        if application not in enabled:
+        if application not in found.applications:
             raise ControlError("not_found", "application not found")
         try:
             frames = parse_frames(body.get("frames") or [])

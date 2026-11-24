@@ -33,6 +33,7 @@ from apps.opspilot.metis.llm.agent.stage_timing import elapsed_ms, log_stage_tim
 from apps.opspilot.metis.llm.chain.entity import (
     HIDDEN_STEP_TEXT_EVENT_NAME,
     HIDE_PLANNED_STEP_TEXT_KEY,
+    PLANNED_FINAL_TEXT_KEY,
     STREAM_KEEPALIVE_EVENT_NAME,
     BasicLLMRequest,
     BasicLLMResponse,
@@ -81,6 +82,46 @@ _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
 def _hide_planned_step_text(request: BasicLLMRequest) -> bool:
     extra = getattr(request, "extra_config", None) or {}
     return bool(extra.get(HIDE_PLANNED_STEP_TEXT_KEY))
+
+
+def _planned_final_text(request: BasicLLMRequest) -> str:
+    extra = getattr(request, "extra_config", None) or {}
+    if not isinstance(extra, dict):
+        return ""
+    return str(extra.get(PLANNED_FINAL_TEXT_KEY) or "").strip()
+
+
+def _assistant_text_hidden(request: BasicLLMRequest, text: str = "") -> bool:
+    """终稿句已经定下时只放行这一句。否则分步执行期间藏起步内正文。"""
+    final = _planned_final_text(request)
+    if final:
+        return str(text or "").strip() != final
+    return _hide_planned_step_text(request)
+
+
+def _chain_end_messages(output) -> list:
+    messages = []
+    if isinstance(output, dict):
+        messages = output.get("messages") or []
+    elif hasattr(output, "messages"):
+        messages = getattr(output, "messages") or []
+    if messages.__class__.__name__ == "Overwrite" and hasattr(messages, "value"):
+        messages = messages.value or []
+    return list(messages or [])
+
+
+def _chain_end_assistant_text(event_data: Dict[str, Any]) -> str:
+    output = event_data.get("output") if isinstance(event_data, dict) else None
+    text = ""
+    for message in _chain_end_messages(output):
+        if getattr(message, "tool_calls", None):
+            continue
+        if getattr(message, "type", "") not in {"ai", "assistant"} and message.__class__.__name__ != "AIMessage":
+            continue
+        content = str(getattr(message, "content", "") or "").strip()
+        if content:
+            text = content
+    return text
 
 
 def _is_replayed_choice_marker(tool_message: Any) -> bool:
@@ -1910,7 +1951,7 @@ class BasicGraph(ABC):
                     elif text_piece:
                         pending_turn_text += text_piece
                         turn_plain_text_chunks += 1
-                        hide_step_text = _hide_planned_step_text(request)
+                        hide_step_text = _assistant_text_hidden(request, pending_turn_text)
                         if hide_step_text:
                             # 不进气泡，但必须有 data 帧，否则工具结束后模型仍在吐字时 HTTP 空闲断连。
                             yield encode_hidden_step_text(encoder, text_piece)
@@ -1967,7 +2008,7 @@ class BasicGraph(ABC):
                     output = event_data.get("output")
                     end_tool_calls = getattr(output, "tool_calls", None) or []
                     turn_has_tools = bool(end_tool_calls) or turn_saw_tool_call_chunks
-                    hide_step_text = _hide_planned_step_text(request)
+                    hide_step_text = _assistant_text_hidden(request, pending_turn_text)
                     if hide_step_text and leftover_text and not turn_has_tools:
                         yield encode_hidden_step_text(encoder, leftover_text)
                     # 有工具：丢弃本轮旁白缓冲，只补工具事件。
@@ -2084,7 +2125,9 @@ class BasicGraph(ABC):
                 elif event_type == "on_chain_end":
                     # add_chat_history_node 结束时 last=上一轮助手，不得当成本轮直答。
                     # 仍回填 ToolMessage（若有），但不 emit 文本。
-                    if str(event.get("name") or "") == "add_chat_history_node" or _hide_planned_step_text(request):
+                    if str(event.get("name") or "") == "add_chat_history_node" or _assistant_text_hidden(
+                        request, _chain_end_assistant_text(event_data)
+                    ):
                         chain_events = self._handle_chain_end_tool_results_only(
                             event_data,
                             encoder,

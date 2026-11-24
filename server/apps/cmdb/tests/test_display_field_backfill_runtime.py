@@ -206,8 +206,7 @@ def test_init_cmdb_enqueues_backfill_and_survives_broker_outage(monkeypatch, cap
 
     monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", _call)
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
-    monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task", lambda: None)
-    monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.disable_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay", lambda: None)

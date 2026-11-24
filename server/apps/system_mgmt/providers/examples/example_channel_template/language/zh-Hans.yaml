@@ -1,0 +1,16 @@
+name: 通知渠道示例
+description: 通知渠道包示例。不会真正投递消息。
+
+templates:
+  connection:
+    title: 连接
+    groups:
+      main:
+        title: 连接信息
+        fields:
+          endpoint:
+            label: 地址
+          api_secret:
+            label: 密钥
+          template_id:
+            label: 模板 ID

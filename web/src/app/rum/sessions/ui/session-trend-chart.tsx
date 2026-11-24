@@ -14,6 +14,7 @@ export default function SessionTrendChart({
   compact = false,
   hideTitle = false,
   asCard = false,
+  emptyText,
 }: {
   points: RumSessionTrendPoint[];
   /** 嵌入双栏工作台时用更矮的趋势条 */
@@ -21,6 +22,8 @@ export default function SessionTrendChart({
   hideTitle?: boolean;
   /** 卡片化外壳 */
   asCard?: boolean;
+  /** Shown when the pipeline is down. A real empty range keeps the default copy. */
+  emptyText?: string;
 }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
@@ -80,7 +83,7 @@ export default function SessionTrendChart({
     const emptyContent = (
       <div className={`flex items-center justify-center ${emptyH}`}>
         <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('rum.sessions.trendEmpty', '范围内暂无会话样本')}
+          {emptyText || t('rum.sessions.trendEmpty', '范围内暂无会话样本')}
         </p>
       </div>
     );

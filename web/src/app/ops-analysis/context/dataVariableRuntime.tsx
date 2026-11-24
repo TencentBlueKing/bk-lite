@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   collectVariableIds,
   executionOrder,
@@ -112,6 +113,7 @@ export const DataVariableRuntimeProvider: React.FC<{
   useEffect(() => {
     if (roots.length === 0 || inheritedColumns) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
     const list = variablesRef.current;
     const needed = executionOrder(list, roots);
     const nextKeys: Record<string, string> = {};
@@ -158,6 +160,7 @@ export const DataVariableRuntimeProvider: React.FC<{
         if (!prepared) throw new Error('data-variable-request-blocked');
         const response = await fetchRowsRef.current(variable.dataSourceId, prepared, {
           suppressErrorNotification: true,
+          signal: controller.signal,
         });
         return response.data;
       },
@@ -173,8 +176,8 @@ export const DataVariableRuntimeProvider: React.FC<{
       settledRef.current = true;
       setColumns(nextColumns);
       setSettled(true);
-    }).catch(() => {
-      if (cancelled) return;
+    }).catch((error: unknown) => {
+      if (cancelled || controller.signal.aborted || isTransportCanceled(error)) return;
       if (contextChanged) {
         columnsRef.current = {};
         setColumns({});
@@ -184,6 +187,7 @@ export const DataVariableRuntimeProvider: React.FC<{
     });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [requestKey, inheritedColumns, roots, contextKey]);
 

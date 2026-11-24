@@ -329,7 +329,7 @@ class LLMClientFactory:
         return max(resolved_timeout, 1.0)
 
     @staticmethod
-    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None) -> BaseChatModel:
+    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None, max_retries=None) -> BaseChatModel:
         """
         创建LLM客户端
 
@@ -338,6 +338,7 @@ class LLMClientFactory:
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
             timeout: 可选，单次 LLM 调用超时（秒）；不传时使用 LLM_INVOKE_TIMEOUT，默认 300 秒
+            max_retries: 可选，HTTP 重试次数；不传时沿用各 SDK 默认
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
@@ -350,9 +351,9 @@ class LLMClientFactory:
         if capabilities.use_anthropic_compatible_adapter:
             llm = LLMClientFactory._create_anthropic_compatible_client(request, disable_stream, timeout)
         elif request.protocol_type == "anthropic":
-            llm = LLMClientFactory._create_anthropic_client(request, disable_stream, timeout)
+            llm = LLMClientFactory._create_anthropic_client(request, disable_stream, timeout, max_retries=max_retries)
         else:
-            llm = LLMClientFactory._create_openai_client(request, disable_stream, timeout)
+            llm = LLMClientFactory._create_openai_client(request, disable_stream, timeout, max_retries=max_retries)
 
         # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
         if isolated:
@@ -361,13 +362,14 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatOpenAI:
+    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None, max_retries: int | None = None) -> ChatOpenAI:
         """创建 OpenAI 兼容客户端"""
         # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
         base_url = request.openai_api_base
         if base_url:
             SSRFValidator.validate_llm_endpoint(base_url)
 
+        retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
         llm = ChatOpenAI(
             model=request.model,
             base_url=base_url,
@@ -378,6 +380,7 @@ class LLMClientFactory:
             default_headers=openai_compat_user_agent_headers(),
             **sdk_http_options(request.skip_ssl_verify),
             http_async_client=httpx.AsyncClient(verify=False) if request.skip_ssl_verify else None,
+            **retry_kwargs,
             **_client_temperature_kwargs(request),
         )
         _attach_openai_compat_sdk_headers(llm)
@@ -391,7 +394,9 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_anthropic_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatAnthropic:
+    def _create_anthropic_client(
+        request: BasicLLMRequest, disable_stream: bool, timeout: int = None, max_retries: int | None = None
+    ) -> ChatAnthropic:
         """创建 Anthropic 客户端"""
         # Anthropic API base URL 处理
         base_url = request.openai_api_base
@@ -412,6 +417,7 @@ class LLMClientFactory:
             model_kwargs["thinking"] = {"type": thinking_type}
 
         client_class = _VendorTLSChatAnthropic if request.skip_ssl_verify else ChatAnthropic
+        retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
         llm = client_class(
             model=request.model,
             anthropic_api_url=base_url,
@@ -420,6 +426,7 @@ class LLMClientFactory:
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             model_kwargs=model_kwargs,
+            **retry_kwargs,
             **_client_temperature_kwargs(request),
         )
 

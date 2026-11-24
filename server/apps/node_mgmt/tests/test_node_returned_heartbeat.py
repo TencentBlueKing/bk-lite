@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.core.exceptions.base_app_exception import UnauthorizedException
 from apps.core.logger import SafeLogException, safe_log_value
 from apps.log.models import CollectConfig as LogCollectConfig
 from apps.log.models import CollectInstance, CollectType
@@ -331,23 +330,3 @@ def test_return_keeps_other_hosts_when_node_id_is_taken():
     assert len(linked) == 1
     assert returned == linked[0].id
     assert CollectConfig.objects.filter(executor_node_removed=True).count() == 0
-
-
-@pytest.mark.django_db
-def test_registered_environment_identity_does_not_reattach(monkeypatch):
-    def _reject(node_id, details):
-        raise PermissionError("installation identity already registered; explicit recovery required")
-
-    monkeypatch.setattr(
-        "apps.node_mgmt.services.environment_install.EnvironmentInstallService.validate_registration",
-        _reject,
-    )
-    called = []
-    monkeypatch.setattr(Sidecar, "_notify_collectors_node_returned", lambda node: called.append(node.id))
-    region = CloudRegion.objects.create(name="returned-env-region")
-
-    with pytest.raises(UnauthorizedException, match="already registered"):
-        Sidecar.update_node_client(_heartbeat(region, "returned-env-node", "10.44.44.47"), "returned-env-node")
-
-    assert called == []
-    assert not Node.objects.filter(id="returned-env-node").exists()

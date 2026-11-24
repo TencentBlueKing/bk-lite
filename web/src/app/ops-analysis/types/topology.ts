@@ -224,6 +224,8 @@ export interface NodeConfPanelProps {
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
   editingNodeData?: TopologyNodeData | null;
+  /** 有 EditChart 时组件参数显示修复文案。不授予保存权限。 */
+  canRepairOptionSource?: boolean;
 }
 
 export interface ContextMenuProps {
@@ -345,6 +347,8 @@ export interface ViewConfigFormValues {
   topNScalarFields?: Array<{ field: string; label?: string }>;
   barMode?: 'relative' | 'absolute';
   barMax?: number;
+  displayLimit?: number;
+  sortByValue?: boolean;
   nodeGraphIdentityMode?: 'ip' | 'service';
   nodeGraphSourceField?: string;
   nodeGraphTargetField?: string;

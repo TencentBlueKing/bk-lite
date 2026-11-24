@@ -16,7 +16,8 @@ def test_cloud_region_options_have_no_chart_and_no_params():
 
 
 def test_model_association_options_fix_host_model():
-    source = _sources()["cmdb/get_model_association_options"]
+    sources = json.loads(SOURCE_API.read_text(encoding="utf-8"))
+    source = next(item for item in sources if item.get("key") == "模型关联列表::cmdb/get_model_association_options")
     assert source["chart_type"] == []
     assert source["params"] == [
         {
@@ -38,7 +39,7 @@ def test_classification_instance_counts_select_many_classifications():
     assert param["required"] is True
     assert param["inputConfig"]["multiple"] is True
     options = param["inputConfig"]["optionsSource"]
-    assert options["sourceRef"]["value"] == "cmdb/get_model_classification_options"
+    assert options["sourceRef"]["value"] == "CMDB 模型分类列表::cmdb/get_model_classification_options"
     assert options["valueField"] == "classification_id"
     assert options["labelField"] == "classification_name"
 
@@ -47,9 +48,9 @@ def test_cloud_region_resource_counts_bind_option_sources():
     source = _sources()["cmdb/get_cloud_region_resource_counts"]
     params = {item["name"]: item for item in source["params"]}
     assert params["cloud_region_ids"]["inputConfig"]["multiple"] is True
-    assert params["cloud_region_ids"]["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "cmdb/get_cloud_region_options"
+    assert params["cloud_region_ids"]["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "云区域列表::cmdb/get_cloud_region_options"
     assert params["model_asst_ids"]["inputConfig"]["multiple"] is True
-    assert params["model_asst_ids"]["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "cmdb/get_model_association_options"
+    assert params["model_asst_ids"]["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "模型关联列表::cmdb/get_model_association_options"
     assert params["supplement_tag_key"].get("required") is not True
     assert params["supplement_tag_value"].get("required") is not True
     assert {field["key"] for field in source["field_schema"]} >= {"model_id", "model_name", "value", "inst_uuids"}

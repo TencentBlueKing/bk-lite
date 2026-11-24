@@ -7,7 +7,8 @@ from .runtime import SandboxUnavailable
 
 
 def sync_ppt_workspace(sandbox, workspace):
-    ppt_root = sandbox.workspace + "/ppt-workspace"
+    # Git Bash collapses \\ in the sh.exe argument, so a repr() of C:\Users becomes the illegal \U escape.
+    ppt_root = (Path(sandbox.workspace) / "ppt-workspace").as_posix()
     script = (
         "import json, pathlib\nroot = pathlib.Path("
         + repr(ppt_root)

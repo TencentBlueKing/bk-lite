@@ -1,12 +1,11 @@
 import { findRegenerationMessage } from '@bk-lite/chat-content/regeneration';
-import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
 import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import { ChatContentProvider, renderChatMarkdown, sanitizeChatHtml as sanitizeHtml } from '@bk-lite/chat-content/ui';
 import '@bk-lite/chat-content/style.css';
 import useApiClient from '@/utils/request';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
@@ -17,6 +16,7 @@ import PlannedExecutionSteps from './PlannedExecutionSteps';
 import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './PlannedExecutionStatus';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
+import WikiMaterialWriteCard from './WikiMaterialWriteCard';
 import UserChoiceCard from './UserChoiceCard';
 import { applyAnsweredUserChoices, pendingUserChoice, stripChoicePromptFromContent } from './userChoiceOptions';
 import DiffReportCard from './DiffReportCard';
@@ -266,6 +266,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         (target.toolCalls && target.toolCalls.length > 0) ||
         (target.userChoiceRequests && target.userChoiceRequests.length > 0) ||
         (target.approvalRequests && target.approvalRequests.length > 0) ||
+        (target.wikiMaterialWrites && target.wikiMaterialWrites.length > 0) ||
         (target.configDiffReports && target.configDiffReports.length > 0) ||
         (target.configAnalysisReports && target.configAnalysisReports.length > 0) ||
         (target.reportFileDownloads && target.reportFileDownloads.length > 0) ||
@@ -763,7 +764,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
+    const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools, wikiMaterialWrites } = msg;
     const renderChoice = (request: UserChoiceRequest) => (
       <UserChoiceCard
         key={request.choice_id}
@@ -843,6 +844,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onDecision={handleApprovalDecision}
+                    readOnly={mode === 'display'}
+                  />
+                ))}
+              </div>
+            )}
+            {Array.isArray(wikiMaterialWrites) && wikiMaterialWrites.length > 0 && (
+              <div className="mt-2">
+                {wikiMaterialWrites.map(item => (
+                  <WikiMaterialWriteCard
+                    key={item.material_id}
+                    materialId={item.material_id}
+                    phase={item.phase}
+                    summary={item.summary}
                     readOnly={mode === 'display'}
                   />
                 ))}
@@ -962,6 +976,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onDecision={handleApprovalDecision}
+                readOnly={mode === 'display'}
+              />
+            ))}
+          </div>
+        );
+      }
+      if (Array.isArray(wikiMaterialWrites) && wikiMaterialWrites.length > 0) {
+        elements.push(
+          <div key="wiki-material-writes" className="mt-2">
+            {wikiMaterialWrites.map(item => (
+              <WikiMaterialWriteCard
+                key={item.material_id}
+                materialId={item.material_id}
+                phase={item.phase}
+                summary={item.summary}
                 readOnly={mode === 'display'}
               />
             ))}

@@ -44,6 +44,12 @@ export function errorRateTone(rate: number): CwvTone {
   return 'success';
 }
 
+/** No sessions means the rate is unknown. A real zero still reads as healthy. */
+export function presentErrorRate(sessions: number, rate: number): { text: string; tone: CwvTone } {
+  if (!Number.isFinite(sessions) || sessions <= 0) return { text: '—', tone: 'neutral' };
+  return { text: formatPct(rate), tone: errorRateTone(rate) };
+}
+
 export function formatPct(rate: number): string {
   const unit = Number.isFinite(rate) ? Math.min(1, Math.max(0, rate)) : 0;
   return `${(unit * 100).toFixed(2)}%`;

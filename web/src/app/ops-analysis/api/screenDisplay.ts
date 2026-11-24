@@ -1,5 +1,10 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import { shareSingleFlight } from '@/app/ops-analysis/api/dashboardShare';
+import {
+  sourceDataRequestConfig,
+  type SourceDataRequestOptions,
+} from '@/app/ops-analysis/api/dataSource';
 
 export type ScreenDisplayGrantState = 'absent' | 'active' | 'paused' | 'expired';
 
@@ -32,14 +37,16 @@ const unwrapProxyPayload = async (response: Response) => {
   return payload;
 };
 
-export async function activateScreenDisplay(token: string) {
-  const response = await fetch('/api/proxy/operation_analysis/api/screen_display/activate/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-    credentials: 'include',
+export function activateScreenDisplay(token: string) {
+  return shareSingleFlight(`display:${token}`, async () => {
+    const response = await fetch('/api/proxy/operation_analysis/api/screen_display/activate/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+      credentials: 'include',
+    });
+    return unwrapProxyPayload(response);
   });
-  return unwrapProxyPayload(response);
 }
 
 export const useScreenDisplayApi = () => {
@@ -84,23 +91,51 @@ export const useScreenDisplayApi = () => {
   );
 
   const getDisplayCanvas = useCallback(
-    () => get('/operation_analysis/api/screen_display/current/'),
+    (signal?: AbortSignal) => get(
+      '/operation_analysis/api/screen_display/current/',
+      signal ? { signal } : undefined,
+    ),
     [get],
   );
 
   const queryDisplayDataSource = useCallback(
-    (dataSourceId: number, params?: unknown) =>
+    (dataSourceId: number, params?: unknown, options?: SourceDataRequestOptions) =>
       post(
         `/operation_analysis/api/screen_display/current/query/${dataSourceId}/`,
         params,
-        { suppressErrorNotification: true },
+        sourceDataRequestConfig({
+          suppressErrorNotification: true,
+          signal: options?.signal,
+        }),
       ),
     [post],
   );
 
   const getDisplayDataSources = useCallback(
-    () => get('/operation_analysis/api/screen_display/current/data_sources/'),
+    (signal?: AbortSignal) => get(
+      '/operation_analysis/api/screen_display/current/data_sources/',
+      signal ? { signal } : undefined,
+    ),
     [get],
+  );
+
+  const resolveDisplayOptionSource = useCallback(
+    (
+      body: { sourceId?: number; builtinKey?: string; sourceRef?: string },
+      signal?: AbortSignal,
+    ) =>
+      post(
+        '/operation_analysis/api/screen_display/current/resolve_option_source/',
+        {
+          sourceId: body.sourceId,
+          builtinKey: body.builtinKey,
+          sourceRef: body.sourceRef
+            ? { type: 'rest_api', value: body.sourceRef }
+            : undefined,
+        },
+        { suppressErrorNotification: true, ...(signal ? { signal } : {}) },
+      ) as Promise<{ status?: string; id?: number }>,
+    [post],
   );
 
   return {
@@ -112,5 +147,6 @@ export const useScreenDisplayApi = () => {
     getDisplayCanvas,
     queryDisplayDataSource,
     getDisplayDataSources,
+    resolveDisplayOptionSource,
   };
 };

@@ -409,11 +409,9 @@ def test_reconcile_for_instance_aggregates_source_rules(monkeypatch):
     rules = [_rule([_pair("ip", "host_ip")])]
     monkeypatch.setattr(SVC, "_list_enabled_rules_by_src_model", classmethod(lambda cls, mid: [(assoc, rules)]))
     monkeypatch.setattr(SVC, "_list_enabled_rule_ids_by_dst_model", classmethod(lambda cls, mid: []))
-    monkeypatch.setattr(
-        SVC,
-        "_query_instances_by_model",
-        classmethod(lambda cls, mid, **kwargs: [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]),
-    )
+    dest = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
+    monkeypatch.setattr(SVC, "_query_instances_by_model", classmethod(lambda cls, mid, **kwargs: dest))
+    monkeypatch.setattr(SVC, "_query_instances_by_values", classmethod(lambda cls, *args, **kwargs: dest))
     monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
 
     out = SVC.reconcile_for_instance(1)
@@ -516,23 +514,22 @@ def test_full_sync_rule_full_sync_path(monkeypatch):
         },
     }
     monkeypatch.setattr("apps.cmdb.services.auto_relation_reconcile.model_association_info_search", lambda mid: association)
-    # 目标 + 源
+    src = [{"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}]
+    dest = [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
+    monkeypatch.setattr(SVC, "_query_instance_page", classmethod(lambda cls, *args, **kwargs: src))
+    monkeypatch.setattr(SVC, "_query_instances_by_values", classmethod(lambda cls, *args, **kwargs: dest))
     monkeypatch.setattr(
         SVC,
         "_query_instances_by_model",
-        classmethod(
-            lambda cls, mid, **kwargs: [{"_id": 11, "inst_uuid": str(UUID(int=11, version=4)), "host_ip": "10.0.0.1"}]
-            if mid == "host"
-            else [{"_id": 1, "inst_uuid": str(UUID(int=1, version=4)), "ip": "10.0.0.1", "model_id": "vm"}]
-        ),
+        classmethod(lambda cls, mid, **kwargs: dest if mid == "host" else src),
     )
     fake = FakeGraph(query_edge=lambda *a: [])
     monkeypatch.setattr(mod, "GraphClient", lambda *a, **k: fake)
     monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage.check_asso_mapping", lambda data: None)
     out = SVC.full_sync_rule("vm_run_host")
     assert out["mode"] == "full_sync"
-    assert out["source_instances"] == 1
     assert out["created"] == 1
+    assert out["source_instances"] == 2
 
 
 # --------------------------------------------------------------------------

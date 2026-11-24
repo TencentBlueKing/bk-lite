@@ -1537,6 +1537,8 @@
       "analyzing": "Analyzing tool results...",
       "expandHint": "Click to expand",
       "calledCount": "{count} tools called",
+      "pptSkill": "PPT skill",
+      "pptSkillAction": "Write the slides and export",
       "error": "Error",
       "runError": "Run error",
       "streamInterrupted": "Tool call ended, but no result event arrived before the stream broke.",
@@ -1848,6 +1850,7 @@
       "groupIm": "Messaging",
       "groupImDesc": "WeCom / DingTalk / Feishu / Official Account (org check skipped)",
       "accountAssociation": "Account association",
+      "accountAssociationTooltip": "When a message is received, use this account association's matching rules and the sender's IM account to determine the corresponding platform user.",
       "accountAssociationPlaceholder": "Select an account association",
       "manageAccountAssociation": "Manage account associations",
       "fields": {

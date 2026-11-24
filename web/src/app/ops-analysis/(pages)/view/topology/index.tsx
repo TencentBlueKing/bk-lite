@@ -179,6 +179,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       clearOperationHistory,
       refreshAllSingleValueNodes,
       refreshAllChartNodes,
+      abortInflightChartRequests,
+      abortInflightSingleValueRequests,
       loadChartNodeData,
       updateSingleNodeData,
     } = useGraphOperations(
@@ -477,7 +479,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         setDefinitions(loadedDefinitions);
         setFilterValues(nextValues);
         setAppliedFilterValues(nextValues);
-        void syncTopologyCanvasResources().then(() => {
+        void syncTopologyCanvasResources().then((canvasDataSources) => {
+          if (canvasDataSources == null) return;
           refreshTopologyNodes(
             'reload',
             nextValues,
@@ -546,6 +549,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       loadCanvasNamespaces,
       refreshAllSingleValueNodes,
       refreshAllChartNodes,
+      abortInflightDataRequests: () => {
+        abortInflightChartRequests();
+        abortInflightSingleValueRequests();
+      },
       refreshTopologyNodes,
       scheduleTopologyInitialization,
       startInitialization,
@@ -647,6 +654,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onSearch={handleFilterSearch}
           onReset={handleFilterSearch}
           onApplyInitial={setAppliedFilterValues}
+          canEditCanvas={hasPermission(['EditChart'])}
           prefixContent={namespaceSelectorElement}
           popupZIndex={isFullscreen ? 1200 : undefined}
         />
@@ -730,6 +738,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           title={nodeTitle}
           nodeType={nodeType}
           readonly={nodeReadonly}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           builtinNamespaceId={namespaceDraftId}
           editingNodeData={addNodeVisible ? null : state.editingNodeData}
           filterDefinitions={definitions}
@@ -754,6 +763,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
+          canRepairOptionSource={hasPermission(['EditChart'])}
           showChartThemeMode={true}
           filterTemplateTokens={false}
           showSingleValueStyle={false}
@@ -766,6 +776,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onCancel={() => setFilterConfigModalVisible(false)}
           layoutItems={convertNodesToLayoutItems(state.graphInstance)}
           dataSources={dataSourceManager.dataSources}
+          canRepairOptionSource={hasPermission(['EditChart'])}
         />
       </div>
     );

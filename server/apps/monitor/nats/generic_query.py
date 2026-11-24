@@ -303,6 +303,10 @@ def query_monitor_collection(
     )
 
 
+# 全量排序会连续读取 VictoriaMetrics。留在唯一的 NATS 同步线程上会堵住其他画布。
+query_monitor_collection._nats_thread_sensitive = False
+
+
 @nats_client.register
 @_guard("query_monitor_collection_counts")
 def query_monitor_collection_counts(
@@ -331,6 +335,9 @@ def query_monitor_collection_counts(
         bounded=False,
     )
     return _ok([{"instance_count": len(rows)}])
+
+
+query_monitor_collection_counts._nats_thread_sensitive = False
 
 
 @nats_client.register
