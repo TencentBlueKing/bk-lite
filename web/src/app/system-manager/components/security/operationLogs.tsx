@@ -9,6 +9,7 @@ import type { TableRowSelection } from 'antd/es/table/interface';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useClientData } from '@/context/client';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { buildOperationLogParams } from '@/app/system-manager/utils/operationLogParams';
 import {
@@ -55,6 +56,7 @@ const OperationLogs: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { clientData } = useClientData();
+  const { selectedGroup } = useUserInfoContext();
   const timeSelectorRef = useRef<any>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -99,8 +101,11 @@ const OperationLogs: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!selectedGroup?.id) {
+      return;
+    }
     fetchOperationLogs(1);
-  }, []);
+  }, [selectedGroup?.id]);
 
   const handleSearch = () => {
     fetchOperationLogs(1, pagination.pageSize);

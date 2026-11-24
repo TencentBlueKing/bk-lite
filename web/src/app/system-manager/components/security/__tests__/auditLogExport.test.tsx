@@ -6,11 +6,12 @@ import type { TableRowSelection } from 'antd/es/table/interface';
 import OperationLogs from '../operationLogs';
 import UserLoginLogs from '../loginLogs';
 
-const { getOperationLogs, exportOperationLogs, getUserLoginLogs, exportUserLoginLogs } = vi.hoisted(() => ({
+const { getOperationLogs, exportOperationLogs, getUserLoginLogs, exportUserLoginLogs, userInfo } = vi.hoisted(() => ({
   getOperationLogs: vi.fn().mockResolvedValue({ items: [], count: 0 }),
   exportOperationLogs: vi.fn().mockResolvedValue(new Blob(['operation'])),
   getUserLoginLogs: vi.fn().mockResolvedValue({ items: [], count: 0 }),
   exportUserLoginLogs: vi.fn().mockResolvedValue(new Blob(['login'])),
+  userInfo: { selectedGroup: { id: '1', name: 'Default' } as { id: string; name: string } | null },
 }));
 
 let operationSelection: TableRowSelection<unknown> | undefined;
@@ -26,6 +27,10 @@ vi.mock('@/hooks/useLocalizedTime', () => ({
 
 vi.mock('@/context/client', () => ({
   useClientData: () => ({ clientData: [] }),
+}));
+
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => ({ selectedGroup: userInfo.selectedGroup }),
 }));
 
 vi.mock('@/app/system-manager/api/security', () => ({
@@ -59,6 +64,7 @@ vi.mock('react-diff-viewer-continued', () => ({
 }));
 
 beforeEach(() => {
+  userInfo.selectedGroup = { id: '1', name: 'Default' };
   getOperationLogs.mockResolvedValue({ items: [], count: 0 });
   exportOperationLogs.mockResolvedValue(new Blob(['operation']));
   getUserLoginLogs.mockResolvedValue({ items: [], count: 0 });
@@ -78,6 +84,18 @@ afterEach(() => {
 });
 
 describe('OperationLogs export', () => {
+  it('waits for the current organization before listing', async () => {
+    userInfo.selectedGroup = null;
+    const { rerender } = render(<OperationLogs />);
+    expect(getOperationLogs).not.toHaveBeenCalled();
+
+    userInfo.selectedGroup = { id: '1', name: 'Default' };
+    rerender(<OperationLogs />);
+    await waitFor(() => {
+      expect(getOperationLogs).toHaveBeenCalled();
+    });
+  });
+
   it('exports current filters without pagination, and selected ids when rows are chosen', async () => {
     render(<OperationLogs />);
     const exportButton = await screen.findByRole('button', { name: /common\.export/ });
@@ -139,6 +157,18 @@ describe('OperationLogs export', () => {
 });
 
 describe('UserLoginLogs export', () => {
+  it('waits for the current organization before listing', async () => {
+    userInfo.selectedGroup = null;
+    const { rerender } = render(<UserLoginLogs />);
+    expect(getUserLoginLogs).not.toHaveBeenCalled();
+
+    userInfo.selectedGroup = { id: '1', name: 'Default' };
+    rerender(<UserLoginLogs />);
+    await waitFor(() => {
+      expect(getUserLoginLogs).toHaveBeenCalled();
+    });
+  });
+
   it('queries username and source_ip directly and exports like the OpenAPI page', async () => {
     render(<UserLoginLogs />);
     const exportButton = await screen.findByRole('button', { name: /common\.export/ });

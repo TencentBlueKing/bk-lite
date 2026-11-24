@@ -31,7 +31,7 @@ const STYLE_BY_METHOD: Record<string, { backgroundColor: string; color: string }
 
 const HttpMethodBadge = ({
   method,
-  className = '',
+  className,
   style,
 }: HttpMethodBadgeProps) => {
   const normalizedMethod = (method || 'GET').toUpperCase();
@@ -39,7 +39,12 @@ const HttpMethodBadge = ({
 
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-[12px] font-medium leading-4 ${className}`.trim()}
+      className={[
+        'inline-flex w-[52px] shrink-0 items-center justify-center rounded px-2 py-0.5 font-mono text-[11px] font-semibold leading-4 tracking-wide select-none',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       style={{
         backgroundColor: palette.backgroundColor,
         color: palette.color,

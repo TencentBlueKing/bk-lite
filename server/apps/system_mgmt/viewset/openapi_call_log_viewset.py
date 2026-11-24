@@ -13,19 +13,21 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, OpenAPICallLog
 from apps.system_mgmt.serializers.openapi_call_log_serializer import OpenAPICallLogSerializer
+from apps.system_mgmt.utils.audit_log_export import export_limit_rejection
+from apps.system_mgmt.utils.openapi_call_result import format_openapi_call_result_label, openapi_call_result_outcome_q
 
 EXPORT_HEADERS = [
     "时间",
+    "调用账号",
+    "组织",
     "源IP",
-    "用户名",
-    "认证时组织",
-    "凭据类型",
-    "钥匙ID",
+    "密钥类型",
     "密钥名称",
     "系统ID",
     "接口类型",
     "方法",
     "路径",
+    "调用结果",
     "HTTP状态码",
     "错误码",
 ]
@@ -38,6 +40,9 @@ class OpenAPICallLogFilter(filters.FilterSet):
     credential_type = filters.CharFilter(field_name="credential_type", lookup_expr="exact")
     path = filters.CharFilter(field_name="path", lookup_expr="icontains")
     api_kind = filters.CharFilter(field_name="api_kind", lookup_expr="exact")
+    token_name = filters.CharFilter(field_name="token_name", lookup_expr="icontains")
+    source_ip = filters.CharFilter(field_name="source_ip", lookup_expr="icontains")
+    http_status = filters.NumberFilter(field_name="http_status", lookup_expr="exact")
     outcome = filters.CharFilter(method="filter_outcome")
 
     class Meta:
@@ -49,23 +54,22 @@ class OpenAPICallLogFilter(filters.FilterSet):
             "credential_type",
             "path",
             "api_kind",
+            "token_name",
+            "source_ip",
+            "http_status",
             "outcome",
         ]
 
     def filter_outcome(self, queryset, name, value):
-        if value == "success":
-            return queryset.filter(http_status__lt=400)
-        if value == "failure":
-            return queryset.filter(http_status__gte=400)
-        return queryset
+        q = openapi_call_result_outcome_q(value)
+        if q is None:
+            return queryset
+        return queryset.filter(q)
 
 
 class OpenAPICallLogViewSet(LanguageViewSet):
-    queryset = (
-        OpenAPICallLog.objects.annotate(
-            team_name=Subquery(Group.objects.filter(id=OuterRef("team_id")).values("name")[:1])
-        )
-        .order_by("-created_at")
+    queryset = OpenAPICallLog.objects.annotate(team_name=Subquery(Group.objects.filter(id=OuterRef("team_id")).values("name")[:1])).order_by(
+        "-created_at"
     )
     serializer_class = OpenAPICallLogSerializer
     filterset_class = OpenAPICallLogFilter
@@ -96,6 +100,10 @@ class OpenAPICallLogViewSet(LanguageViewSet):
                 return Response({"result": False, "message": "Invalid filter parameters", "errors": filterset.errors}, status=400)
             queryset = filterset.qs
 
+        rejection = export_limit_rejection(request, queryset)
+        if rejection is not None:
+            return rejection
+
         workbook = Workbook()
         sheet = workbook.active
         sheet_title = self.loader.get("export.openapi_call_log_sheet", "API Call Log") if self.loader else "API Call Log"
@@ -114,18 +122,18 @@ class OpenAPICallLogViewSet(LanguageViewSet):
             sheet.append(
                 [
                     log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "",
+                    log.username or "",
+                    getattr(log, "team_name", None) or "",
                     log.source_ip,
-                    log.username,
-                    log.team_id if log.team_id is not None else "",
                     log.credential_type,
-                    log.token_id if log.token_id is not None else "",
                     log.token_name,
                     log.system_id,
                     log.api_kind,
                     log.method,
                     log.path,
+                    format_openapi_call_result_label(log.api_kind, log.http_status, log.error_code),
                     log.http_status,
-                    log.error_code,
+                    log.error_code or "",
                 ]
             )
 

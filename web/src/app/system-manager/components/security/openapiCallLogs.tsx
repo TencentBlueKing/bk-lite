@@ -1,22 +1,21 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Space, Tag, message } from 'antd';
+import { Button, Descriptions, Drawer, Input, Select, Space, Tag, Typography, message } from 'antd';
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import CustomTable from '@/components/custom-table';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import HttpMethodBadge from '@/components/http-method-badge';
 import TimeSelector from '@/components/time-selector';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import {
-  formatOpenApiCallRequest,
   formatOpenApiCallResult,
   formatOpenApiCallTokenKind,
   formatOpenApiCallTokenSystemId,
   openApiCallErrorCode,
-  openApiCallSucceeded,
+  openApiCallResultPositive,
   type OpenApiCallLogRow,
 } from '@/app/system-manager/utils/openapiCallLogs';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -40,6 +39,9 @@ const OUTCOME_OPTIONS = [
 const EMPTY_FILTERS = {
   username: '',
   path: '',
+  token_name: '',
+  source_ip: '',
+  http_status: '',
   credential_type: undefined as string | undefined,
   api_kind: undefined as string | undefined,
   outcome: undefined as string | undefined,
@@ -73,6 +75,8 @@ const OpenApiCallLogs: React.FC = () => {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [timeSelectorKey, setTimeSelectorKey] = useState(0);
   const [timeRange, setTimeRange] = useState<number[]>(freshDefaultRange);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<OpenApiCallLogRow | null>(null);
 
   const apiKindLabel = (value?: string) => {
     const option = API_KIND_OPTIONS.find((item) => item.value === value);
@@ -81,6 +85,8 @@ const OpenApiCallLogs: React.FC = () => {
 
   const resultLabels = {
     success: t('system.security.loginStatusSuccess'),
+    authPassed: t('system.security.apiCallResultAuthPassed'),
+    authDenied: t('system.security.apiCallResultAuthDenied'),
     failure: t('system.security.loginStatusFailed'),
   };
 
@@ -195,89 +201,85 @@ const OpenApiCallLogs: React.FC = () => {
       title: t('system.security.operationTime'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 180,
+      width: 148,
       render: (text: string) => convertToLocalizedTime(text),
     },
     {
-      title: t('system.user.table.username'),
+      title: t('system.security.callAccount'),
       dataIndex: 'username',
       key: 'username',
       width: 140,
-      render: (text: string) => text || '--',
-    },
-    {
-      title: t('system.security.teamName'),
-      dataIndex: 'team_name',
-      key: 'team_name',
-      width: 140,
-      render: (text: string) => text || '--',
+      render: (text: string) => text || '',
     },
     {
       title: t('system.security.sourceIp'),
       dataIndex: 'source_ip',
       key: 'source_ip',
-      width: 140,
+      width: 108,
       render: (text: string) => text || '--',
     },
     {
-      title: t('system.security.tokenKind'),
-      dataIndex: 'credential_type',
-      key: 'credential_type',
-      width: 140,
-      render: (_: unknown, record: OpenApiCallLogRow) => {
-        const systemId = formatOpenApiCallTokenSystemId(record);
-        return (
-          <div className="min-w-0">
-            <div className="truncate">{formatOpenApiCallTokenKind(record, tokenKindLabels)}</div>
-            {systemId ? (
-              <div className="truncate text-xs text-[var(--color-text-3)]">
-                {t('system.security.systemIdPrefix')}:{systemId}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
-    },
-    {
-      title: t('system.security.secretName'),
-      dataIndex: 'token_name',
-      key: 'token_name',
-      width: 140,
-      render: (text: string) => text || '--',
+      title: t('system.security.apiCallMethod'),
+      dataIndex: 'method',
+      key: 'method',
+      width: 88,
+      render: (method: string) => (method ? <HttpMethodBadge method={method} /> : '--'),
     },
     {
       title: t('system.security.apiCallRequest'),
-      key: 'request',
+      dataIndex: 'path',
+      key: 'path',
+      width: 520,
       ellipsis: true,
-      render: (_: unknown, record: OpenApiCallLogRow) => (
-        <EllipsisWithTooltip
-          text={formatOpenApiCallRequest(record)}
-          className="overflow-hidden text-ellipsis whitespace-nowrap"
-        />
-      ),
-    },
-    {
-      title: t('system.security.apiKind'),
-      dataIndex: 'api_kind',
-      key: 'api_kind',
-      width: 120,
-      render: (value: string) => apiKindLabel(value),
+      render: (path: string) =>
+        path ? (
+          <Typography.Text
+            className="max-w-full"
+            copyable
+            onClick={(event) => event.stopPropagation()}
+          >
+            {path}
+          </Typography.Text>
+        ) : (
+          '--'
+        ),
     },
     {
       title: t('system.security.apiCallResult'),
       key: 'result',
-      width: 100,
+      width: 120,
       render: (_: unknown, record: OpenApiCallLogRow) => (
-        <Tag className="m-0" color={openApiCallSucceeded(record) ? 'green' : 'red'}>
+        <Tag className="m-0" color={openApiCallResultPositive(record) ? 'green' : 'red'}>
           {formatOpenApiCallResult(record, resultLabels)}
         </Tag>
       ),
     },
     {
+      title: t('system.security.httpStatus'),
+      dataIndex: 'http_status',
+      key: 'http_status',
+      width: 120,
+      render: (status?: number) => (status == null ? '--' : status),
+    },
+    {
       title: t('system.security.errorCode'),
       key: 'error_code',
-      width: 180,
-      render: (_: unknown, record: OpenApiCallLogRow) => openApiCallErrorCode(record) || '--',
+      width: 160,
+      render: (_: unknown, record: OpenApiCallLogRow) => openApiCallErrorCode(record),
+    },
+    {
+      title: t('common.actions'),
+      key: 'detail',
+      width: 100,
+      fixed: 'right',
+      render: (_: unknown, record: OpenApiCallLogRow) => (
+        <Button type="link" size="small" onClick={() => {
+          setDetailRecord(record);
+          setDetailVisible(true);
+        }}>
+          {t('common.detail')}
+        </Button>
+      ),
     },
   ];
 
@@ -286,7 +288,7 @@ const OpenApiCallLogs: React.FC = () => {
       <div className="flex-none flex justify-end mb-3">
         <Space wrap>
           <Input
-            placeholder={t('system.user.table.username')}
+            placeholder={t('system.security.callAccount')}
             className="w-[160px]"
             allowClear
             value={filters.username}
@@ -298,6 +300,27 @@ const OpenApiCallLogs: React.FC = () => {
             allowClear
             value={filters.path}
             onChange={(e) => setFilters({ ...filters, path: e.target.value })}
+          />
+          <Input
+            placeholder={t('system.security.secretName')}
+            className="w-[160px]"
+            allowClear
+            value={filters.token_name}
+            onChange={(e) => setFilters({ ...filters, token_name: e.target.value })}
+          />
+          <Input
+            placeholder={t('system.security.sourceIp')}
+            className="w-[160px]"
+            allowClear
+            value={filters.source_ip}
+            onChange={(e) => setFilters({ ...filters, source_ip: e.target.value })}
+          />
+          <Input
+            placeholder={t('system.security.httpStatus')}
+            className="w-[140px]"
+            allowClear
+            value={filters.http_status}
+            onChange={(e) => setFilters({ ...filters, http_status: e.target.value })}
           />
           <Select
             placeholder={t('system.security.tokenKind')}
@@ -364,7 +387,7 @@ const OpenApiCallLogs: React.FC = () => {
           loading={loading}
           rowKey="id"
           rowSelection={rowSelection}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -376,6 +399,98 @@ const OpenApiCallLogs: React.FC = () => {
           }}
         />
       </div>
+      <Drawer
+        title={t('common.detail')}
+        width={520}
+        open={detailVisible}
+        onClose={() => {
+          setDetailVisible(false);
+          setDetailRecord(null);
+        }}
+        destroyOnHidden
+      >
+        {detailRecord && (
+          <div className="flex flex-col gap-4">
+            <Descriptions
+              title={t('system.security.apiCallDetailInfo')}
+              column={1}
+              bordered
+              size="small"
+            >
+              <Descriptions.Item label={t('system.security.operationTime')}>
+                {detailRecord.created_at ? convertToLocalizedTime(detailRecord.created_at) : '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.apiCallMethod')}>
+                {detailRecord.method ? (
+                  <HttpMethodBadge method={detailRecord.method} />
+                ) : (
+                  '--'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.apiCallRequest')}>
+                {detailRecord.path ? (
+                  <Typography.Text copyable>{detailRecord.path}</Typography.Text>
+                ) : (
+                  '--'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.apiKind')}>
+                {apiKindLabel(detailRecord.api_kind)}
+              </Descriptions.Item>
+            </Descriptions>
+            <Descriptions
+              title={t('system.security.apiCallDetailIdentity')}
+              column={1}
+              bordered
+              size="small"
+            >
+              <Descriptions.Item label={t('system.security.callAccount')}>
+                {detailRecord.username || ''}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.secretName')}>
+                {detailRecord.token_name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.tokenKind')}>
+                {formatOpenApiCallTokenKind(detailRecord, tokenKindLabels)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.systemIdPrefix')}>
+                {formatOpenApiCallTokenSystemId(detailRecord) || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.teamName')}>
+                {detailRecord.team_name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.sourceIp')}>
+                {detailRecord.source_ip || '--'}
+              </Descriptions.Item>
+            </Descriptions>
+            <Descriptions
+              title={t('system.security.apiCallDetailResult')}
+              column={1}
+              bordered
+              size="small"
+            >
+              <Descriptions.Item label={t('system.security.apiCallResult')}>
+                {formatOpenApiCallResult(detailRecord, resultLabels)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.httpStatus')}>
+                {detailRecord.http_status == null ? '--' : detailRecord.http_status}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.errorCode')}>
+                {openApiCallErrorCode(detailRecord) ? (
+                  <Typography.Text copyable>{openApiCallErrorCode(detailRecord)}</Typography.Text>
+                ) : (
+                  ''
+                )}
+              </Descriptions.Item>
+            </Descriptions>
+            {detailRecord.call_result === 'auth_passed' ? (
+              <p className="m-0 text-[var(--color-text-3)]">
+                {t('system.security.apiCallResultAuthPassedHint')}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };

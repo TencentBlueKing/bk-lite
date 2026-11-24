@@ -5,6 +5,7 @@ import { message, Select, Space, Button, Tag, Input, Drawer, Descriptions } from
 import { SearchOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useUserInfoContext } from '@/context/userInfo';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { useSecurityApi } from '@/app/system-manager/api/security';
@@ -38,6 +39,7 @@ interface UserLoginLog {
 const UserLoginLogs: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { selectedGroup } = useUserInfoContext();
   const { getUserLoginLogs, exportUserLoginLogs } = useSecurityApi();
   const timeSelectorRef = useRef<any>(null);
   const [loading, setLoading] = useState(false);
@@ -59,8 +61,11 @@ const UserLoginLogs: React.FC = () => {
   const [detailRecord, setDetailRecord] = useState<UserLoginLog | null>(null);
 
   useEffect(() => {
+    if (!selectedGroup?.id) {
+      return;
+    }
     fetchLogs();
-  }, []);
+  }, [selectedGroup?.id]);
 
   const unrecorded = t('system.security.outcomeUnrecorded');
 
