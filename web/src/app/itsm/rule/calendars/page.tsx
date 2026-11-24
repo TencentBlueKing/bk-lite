@@ -18,6 +18,7 @@ interface CalendarItem {
   work_days: number[];
   work_start: string;
   work_end: string;
+  timezone: string;
 }
 
 const DAY_VALUES = [1, 2, 3, 4, 5, 6, 7];
@@ -33,6 +34,7 @@ export default function CalendarsPage() {
   const [name, setName] = useState('');
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [start, setStart] = useState('09:00');
+  const [zone, setZone] = useState('Asia/Shanghai');
   const [end, setEnd] = useState('18:00');
 
   const load = useCallback(async () => {
@@ -52,6 +54,7 @@ export default function CalendarsPage() {
     setName(item?.name || '');
     setDays(item?.work_days?.length ? item.work_days : [1, 2, 3, 4, 5]);
     setStart(item?.work_start || '09:00');
+    setZone(item?.timezone || 'Asia/Shanghai');
     setEnd(item?.work_end || '18:00');
     setOpen(true);
   };
@@ -61,7 +64,7 @@ export default function CalendarsPage() {
       message.warning(t('itsm.rule.needCalendar'));
       return;
     }
-    await api.saveSla({ kind: 'calendar', id: editing?.id, name: name.trim(), work_days: days, work_start: start, work_end: end });
+    await api.saveSla({ kind: 'calendar', id: editing?.id, name: name.trim(), work_days: days, work_start: start, work_end: end, timezone: zone.trim() });
     setOpen(false);
     await load();
   };
@@ -78,11 +81,12 @@ export default function CalendarsPage() {
             { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: CalendarItem) => <ItsmListEntry onClick={() => startEdit(item)}>{value}</ItsmListEntry> },
             { title: t('itsm.rule.workdays'), dataIndex: 'work_days', key: 'work_days', render: (value: number[]) => (value || []).map((day) => daysOptions.find((item) => item.value === day)?.label).filter(Boolean).join('、') },
             { title: t('itsm.rule.range'), key: 'range', render: (_value: unknown, item: CalendarItem) => `${item.work_start}-${item.work_end}` },
+            { title: '时区', dataIndex: 'timezone', key: 'timezone' },
             { fixed: 'right' as const, width: 120, title: t('itsm.ticket.action'), key: 'actions', render: (_value: unknown, item: CalendarItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => startEdit(item)}]} /> },
           ]}
         />
       </div>
-      <OperateModal formValue={{name,days,start,end}} title={editing ? t('itsm.rule.editCalendar') : t('itsm.rule.newCalendar')} open={open} onCancel={() => setOpen(false)} onOk={save}>
+      <OperateModal formValue={{name,days,start,end,zone}} title={editing ? t('itsm.rule.editCalendar') : t('itsm.rule.newCalendar')} open={open} onCancel={() => setOpen(false)} onOk={save}>
         <div className="flex flex-col gap-3 text-sm">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.rule.windowName')} value={name} onChange={(event) => setName(event.target.value)} />
@@ -90,6 +94,7 @@ export default function CalendarsPage() {
           <FieldRow label={t('itsm.rule.workdays')} align="start">
             <Checkbox.Group options={daysOptions} value={days} onChange={(value) => setDays(value as number[])} />
           </FieldRow>
+          <FieldRow label="时区"><Input aria-label="服务窗口时区" placeholder="例如 Asia/Shanghai" value={zone} onChange={event => setZone(event.target.value)} /></FieldRow>
           <FieldRow label={t('itsm.rule.range')}>
             <div className="flex gap-2">
               <Input placeholder={t('itsm.rule.start')} value={start} onChange={(event) => setStart(event.target.value)} />

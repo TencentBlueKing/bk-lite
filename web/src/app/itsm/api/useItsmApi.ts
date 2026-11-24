@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { TriggerOptions } from '../rule/triggers/trigger-config';
+import type { TriggerOptionsQuery } from '../rule/triggers/trigger-option-pages';
 import type { PortalLayout } from '../portal/workbench-types';
 import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
@@ -109,7 +110,9 @@ export function useItsmApi() {
   const downloadTicketExport = useCallback((id: number) => get<Blob>(`/itsm/api/tickets/export/tasks/${id}/download/`, { responseType: 'blob' }), [get]);
   const retryTicketExport = useCallback((id: number) => post<TicketExportRecord>(`/itsm/api/tickets/export/tasks/${id}/retry/`), [post]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
-  const getTriggerOptions = useCallback(() => get<TriggerOptions>('/itsm/api/triggers/options/'), [get]);
+  const getTriggerOptions = useCallback(({ page, selected }: TriggerOptionsQuery) => get<TriggerOptions>('/itsm/api/triggers/options/', {
+    params: { page, ...(selected && { selected: JSON.stringify(selected) }) },
+  }), [get]);
   const previewPrintTemplate = useCallback(() =>
     post<{ html: string }>('/itsm/api/print-templates/preview/', {}, { suppressErrorNotification: true }), [post]);
   const getTicketPrint = useCallback((id: number) =>
@@ -184,7 +187,7 @@ export function useItsmApi() {
   const listStatusAdmin = useCallback(() => get('/itsm/api/statuses/admin/'), [get]);
   const postStatus = useCallback((body: { id?: number; key?: string; name: string; color?: string; description?: string }) => post('/itsm/api/statuses/admin/', body), [post]);
   const listSla = useCallback(() => get('/itsm/api/sla/'), [get]);
-  const saveSla = useCallback((body: { policy_id?: number; category?: string; is_enabled?: boolean; kind?: string; name?: string; id?: number; work_days?: number[]; work_start?: string; work_end?: string; target?: string; minutes?: number; calendar_id?: number; workflow_id?: number; warning_minutes?: number; escalation_users?: string[] }) => post('/itsm/api/sla/', body), [post]);
+  const saveSla = useCallback((body: { policy_id?: number; category?: string; is_enabled?: boolean; kind?: string; name?: string; id?: number; work_days?: number[]; work_start?: string; work_end?: string; timezone?: string; target?: string; minutes?: number; calendar_id?: number; workflow_id?: number; warning_minutes?: number; escalation_users?: string[] }) => post('/itsm/api/sla/', body), [post]);
   const listViewTemplates = useCallback((formId?: number) => get('/itsm/api/view_templates/', formId ? { params: { form_id: formId } } : undefined), [get]);
   const createViewTemplate = useCallback((body: { form_id: number; name: string; layout?: { fields?: string[] }; match_rules?: { status?: string } }) => post('/itsm/api/view_templates/', body), [post]);
   const exportWorkflow = useCallback((id: number) => get(`/itsm/api/workflows/${id}/export/`), [get]);

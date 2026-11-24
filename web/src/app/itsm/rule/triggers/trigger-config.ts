@@ -105,6 +105,7 @@ export type TriggerOptions = Record<typeof TRIGGER_SCOPES[number]['options'], { 
   system_fields?: TriggerField[];
   form_field_groups?: FormFieldGroup<TriggerField>[];
   notice?: TriggerNoticeOptions;
+  has_more?: boolean;
 };
 
 export type ValueMode = 'text' | 'number' | 'boolean' | 'json';

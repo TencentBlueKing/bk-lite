@@ -64,7 +64,7 @@ function openEditor(
 }
 
 async function selectOption(name: string, label: string) {
-  const input = screen.getByRole('combobox', { name, exact: true });
+  const input = screen.getByRole('combobox', { name });
   fireEvent.mouseDown(input);
   const option = await waitFor(() => {
     const match = screen.queryAllByText(label, { exact: true }).find(element =>
@@ -143,9 +143,9 @@ it.each([
     workflows: [{ id: 38, name: '采购流程' }],
   }));
   expect((screen.getByRole('radio', { name: '不限' }) as HTMLInputElement).checked).toBe(true);
-  expect(screen.queryByRole('combobox', { name: '流程', exact: true })).toBeNull();
+  expect(screen.queryByRole('combobox', { name: '流程' })).toBeNull();
   fireEvent.click(screen.getByRole('radio', { name: scopeLabel }));
-  const workflow = screen.getByRole('combobox', { name: '流程', exact: true });
+  const workflow = screen.getByRole('combobox', { name: '流程' });
   expect(screen.getByRole('combobox', { name: '表单模型' })).toBeTruthy();
   expect(screen.getByRole('combobox', { name: '服务' })).toBeTruthy();
   await waitFor(() => expect(workflow.getAttribute('disabled')).toBeNull());
@@ -167,13 +167,13 @@ it('按生效范围搜索表单字段并以数值保存条件', async () => {
   const onSave = vi.fn().mockResolvedValue(undefined);
   openEditor(onSave);
   fireEvent.click(screen.getByRole('radio', { name: '仅在所选范围生效' }));
-  await waitFor(() => expect(screen.getByRole('combobox', { name: '流程', exact: true }).getAttribute('disabled')).toBeNull());
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '流程' }).getAttribute('disabled')).toBeNull());
   await selectOption('流程', '采购流程');
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: '流程条件' } });
   fireEvent.change(screen.getByLabelText('标签名称 1'), { target: { value: '大额采购' } });
   fireEvent.click(screen.getByRole('button', { name: '添加条件' }));
 
-  const fields = screen.getByRole('combobox', { name: '字段 1', exact: true });
+  const fields = screen.getByRole('combobox', { name: '字段 1' });
   fireEvent.mouseDown(fields);
   expect(await screen.findByText('系统变量')).toBeTruthy();
   expect(screen.getByText('表单字段')).toBeTruthy();
@@ -214,21 +214,21 @@ it('通过一个通知人入口组合四类选项，再保存所选渠道和模�
   openEditor(onSave);
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: '采购通知' } });
   fireEvent.click(screen.getByRole('radio', { name: '仅在所选范围生效' }));
-  await waitFor(() => expect(screen.getByRole('combobox', { name: '流程', exact: true }).getAttribute('disabled')).toBeNull());
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '流程' }).getAttribute('disabled')).toBeNull());
   await selectOption('流程', '采购流程');
   await selectOption('动作 1', '发送通知');
-  const recipients = screen.getByRole('button', { name: '通知人 1', exact: true });
+  const recipients = screen.getByRole('button', { name: '通知人 1' });
   expect(screen.queryByRole('combobox', { name: '工单角色 1' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: '用户组 1' })).toBeNull();
   fireEvent.click(recipients);
   await selectOption('工单角色 1', '当前处理人');
-  fireEvent.click(screen.getByRole('radio', { name: '指定人员', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '指定人员' }));
   expect(screen.queryByRole('combobox', { name: '工单角色 1' })).toBeNull();
   fireEvent.change(screen.getByLabelText('指定人员 1'), { target: { value: 'alice' } });
-  fireEvent.click(screen.getByRole('radio', { name: '用户组', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '用户组' }));
   await selectOption('用户组 1', 'IT 支持组');
 
-  fireEvent.click(screen.getByRole('radio', { name: '表单人员字段', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '表单人员字段' }));
   const field = screen.getByRole('combobox', { name: '表单人员字段 1' });
   fireEvent.mouseDown(field);
   expect(await screen.findByText(/采购联系人/)).toBeTruthy();
@@ -243,7 +243,7 @@ it('通过一个通知人入口组合四类选项，再保存所选渠道和模�
   expect(within(selections).queryByText('alice', { exact: true })).toBeNull();
   expect(recipients.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(recipients);
-  fireEvent.click(screen.getByRole('radio', { name: '指定人员', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '指定人员' }));
   fireEvent.change(screen.getByLabelText('指定人员 1'), { target: { value: 'alice' } });
   fireEvent.click(recipients);
 
@@ -288,12 +288,12 @@ it('通知模板与自定义正文互斥，切换时保留正文草稿', async (
   await selectOption('动作 1', '发送通知');
   expect(screen.queryByRole('textbox', { name: '通知内容 1' })).toBeNull();
   await selectOption('通知模板 1 · 站内通知', '站内完结提醒（ticket_end）');
-  fireEvent.click(screen.getByRole('radio', { name: '自定义内容', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '自定义内容' }));
   expect(screen.queryByRole('combobox', { name: '通知模板 1 · 站内通知' })).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: '通知内容 1' }), { target: { value: '请查看 $ticket_title' } });
-  fireEvent.click(screen.getByRole('radio', { name: '选择模板', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '选择模板' }));
   expect(screen.queryByRole('textbox', { name: '通知内容 1' })).toBeNull();
-  fireEvent.click(screen.getByRole('radio', { name: '自定义内容', exact: true }));
+  fireEvent.click(screen.getByRole('radio', { name: '自定义内容' }));
   expect((screen.getByRole('textbox', { name: '通知内容 1' }) as HTMLTextAreaElement).value).toBe('请查看 $ticket_title');
   fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
   await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
@@ -321,8 +321,8 @@ it('不同流程复用同一人员字段标识时显示两个来源并只保存�
   }));
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: '联系相关人员' } });
   await selectOption('动作 1', '发送通知');
-  fireEvent.click(screen.getByRole('button', { name: '通知人 1', exact: true }));
-  fireEvent.click(screen.getByRole('radio', { name: '表单人员字段', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '通知人 1' }));
+  fireEvent.click(screen.getByRole('radio', { name: '表单人员字段' }));
   const field = screen.getByRole('combobox', { name: '表单人员字段 1' });
   const sharedOption = /采购联系人 · 采购流程.+维护负责人 · 维护流程/;
   fireEvent.mouseDown(field);
@@ -342,5 +342,27 @@ it('不同流程复用同一人员字段标识时显示两个来源并只保存�
         channels: [{ type: 'site' }],
       },
     }] },
+  })));
+});
+
+it('分页加载触发器选项并保留后续页的已选范围', async () => {
+  const getOptions = vi.fn().mockResolvedValueOnce({
+    ...options, has_more: true, workflows: [...options.workflows, { id: 90, name: '已选采购审批' }],
+  }).mockResolvedValueOnce({ ...options, has_more: false, workflows: [{ id: 91, name: '下一页采购流程' }] });
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  openEditor(onSave, getOptions, {
+    id: 5, name: '分页规则', event: 'ticket_create', action: 'tag', is_enabled: true,
+    config: { scope: { mode: 'include', workflow_ids: [90] }, actions: [{ type: 'tag', value: '已加入' }] },
+  });
+  const next = await screen.findByRole('button', { name: '加载更多配置选项' });
+  fireEvent.click(next);
+  await selectOption('流程', '下一页采购流程');
+  expect(screen.getByText('已选采购审批')).toBeTruthy();
+  expect(getOptions).toHaveBeenNthCalledWith(1, expect.objectContaining({ page: 1, selected: { workflows: [90] } }));
+  expect(getOptions).toHaveBeenNthCalledWith(2, expect.objectContaining({ page: 2 }));
+  expect(screen.queryByRole('button', { name: '加载更多配置选项' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+    config: expect.objectContaining({ scope: { mode: 'include', workflow_ids: [90, 91] } }),
   })));
 });

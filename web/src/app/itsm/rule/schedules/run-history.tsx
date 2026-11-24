@@ -16,7 +16,7 @@ export interface ScheduleHistoryTarget {
 interface ScheduleRun {
   id: number;
   schedule_name: string;
-  status: 'running' | 'succeeded' | 'failed' | 'unconfirmed';
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'unconfirmed';
   due_at: string;
   finished_at: string | null;
   message: string;
@@ -24,6 +24,7 @@ interface ScheduleRun {
 }
 
 const STATUS = {
+  pending: { label: '待执行', color: 'default' },
   running: { label: '执行中', color: 'processing' },
   succeeded: { label: '成功', color: 'success' },
   failed: { label: '失败', color: 'error' },

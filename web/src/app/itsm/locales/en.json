@@ -446,6 +446,7 @@
       "triggerScopePlaceholder": "Search and select",
       "triggerScopeHint": "Match any selection within a type and all selected types.",
       "triggerEndHint": "Runs when the workflow reaches an end node.",
+      "triggerLoadMoreOptions": "Load more configuration options",
       "triggerOptionsFailed": "Could not load scope and status options",
       "triggerAddCondition": "Add condition",
       "triggerAddConditionGroup": "Add condition group",

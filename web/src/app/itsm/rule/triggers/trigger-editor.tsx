@@ -8,6 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ConditionFields } from './condition-fields';
 import { conditionFieldCatalog, type ConditionFieldCatalog } from './trigger-condition-fields';
 import { TriggerNotification } from './trigger-notification';
+import { mergeTriggerPages, savedTriggerChoices, type TriggerOptionsQuery } from './trigger-option-pages';
 import {
   buildTriggerPayload, newCondition, newConditionGroup, newTriggerAction, newTriggerNotice, readTriggerDraft,
   TRIGGER_ACTIONS, TRIGGER_EVENTS, TRIGGER_SCOPES,
@@ -71,7 +72,7 @@ function ConditionGroup({ group, change, catalog, depth = 0, position = '' }: Gr
 
 interface TriggerEditorProps {
   item?: TriggerItem;
-  getOptions: () => Promise<TriggerOptions>;
+  getOptions: (query: TriggerOptionsQuery) => Promise<TriggerOptions>;
   onCancel: () => void;
   onSave?: (payload: Payload) => Promise<void>;
 }
@@ -82,19 +83,27 @@ export function TriggerEditor({ item, getOptions, onCancel, onSave }: TriggerEdi
   const [draft, setDraft] = useState(() => readTriggerDraft(item));
   const [choices, setChoices] = useState<TriggerOptions | null>(null);
   const [choicesError, setChoicesError] = useState(false);
+  const [loadingChoices, setLoadingChoices] = useState(true);
+  const [page, setPage] = useState(1);
   const [attempt, setAttempt] = useState(0);
-  const optionsRequest = useRef<{ attempt: number; load: typeof getOptions; promise: Promise<TriggerOptions> } | null>(null);
+  const [selected] = useState(() => savedTriggerChoices(draft, item));
+  const optionsRequest = useRef<{ page: number; attempt: number; load: typeof getOptions; promise: Promise<TriggerOptions> } | null>(null);
 
   useEffect(() => {
     let active = true;
     const cached = optionsRequest.current;
-    if (!cached || cached.attempt !== attempt || cached.load !== getOptions) {
-      optionsRequest.current = { attempt, load: getOptions, promise: getOptions() };
+    if (!cached || cached.attempt !== attempt || cached.page !== page || cached.load !== getOptions) {
+      optionsRequest.current = { page, attempt, load: getOptions, promise: getOptions({ page, ...(page === 1 && { selected }) }) };
     }
-    void optionsRequest.current?.promise.then(result => { if (active) setChoices(result); })
-      .catch(() => { if (active) setChoicesError(true); });
+    void optionsRequest.current?.promise.then(result => {
+      if (active) setChoices(previous => page === 1 || !previous ? result : mergeTriggerPages(previous, result));
+    }).catch(() => {
+      if (active) setChoicesError(true);
+    }).finally(() => {
+      if (active) setLoadingChoices(false);
+    });
     return () => { active = false; };
-  }, [getOptions, attempt]);
+  }, [getOptions, attempt, page, selected]);
 
   const catalog = useMemo(() => conditionFieldCatalog(choices, draft.scope), [choices, draft.scope]);
   const patch = (changes: Partial<TriggerDraft>) => setDraft(current => ({ ...current, ...changes }));
@@ -131,9 +140,17 @@ export function TriggerEditor({ item, getOptions, onCancel, onSave }: TriggerEdi
         </div>
       </div>
       {choicesError && <Alert type="error" showIcon message={t('itsm.rule.triggerOptionsFailed')}
-        action={<Button size="small" disabled={false} onClick={() => { setChoicesError(false); setAttempt(current => current + 1); }}>
+        action={<Button size="small" disabled={false} onClick={() => {
+          setChoicesError(false);
+          setLoadingChoices(true);
+          setAttempt(current => current + 1);
+        }}>
           {t('common.retry')}
         </Button>} />}
+      {choices?.has_more && !choicesError && <Button size="small" disabled={loadingChoices} loading={loadingChoices}
+        onClick={() => { setLoadingChoices(true); setPage(current => current + 1); }}>
+        {t('itsm.rule.triggerLoadMoreOptions')}
+      </Button>}
       <Section title={t('itsm.rule.triggerScope')} hint={draft.scope.mode === 'all' ? undefined : t('itsm.rule.triggerScopeHint')}>
         <Radio.Group aria-label={t('itsm.rule.triggerScope')} value={draft.scope.mode}
           options={(['all', 'include', 'exclude'] satisfies ScopeMode[]).map(value => ({

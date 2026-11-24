@@ -446,6 +446,7 @@
       "triggerScopePlaceholder": "搜索并选择",
       "triggerScopeHint": "同一类型匹配任一项，不同类型须同时匹配。",
       "triggerEndHint": "流程走到结束节点时触发。",
+      "triggerLoadMoreOptions": "加载更多配置选项",
       "triggerOptionsFailed": "加载范围和状态选项失败",
       "triggerAddCondition": "添加条件",
       "triggerAddConditionGroup": "添加条件组",
