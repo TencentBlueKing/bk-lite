@@ -2,7 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.itsm.flowable.client import FlowableClient, FlowableError
-from apps.itsm.models import StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
+from apps.itsm.models import Service, StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
 from apps.itsm.services.form.fetch import validate_submission
 from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 from apps.itsm.services.sla import finish as finish_sla
@@ -38,7 +38,9 @@ class TicketService:
         self.identity = identity
 
     @transaction.atomic
-    def create(self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False) -> Ticket:
+    def create(
+        self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False, *, service: Service | None = None
+    ) -> Ticket:
         schema = workflow_schema(workflow_version)
         submit_node = _find_node(workflow_version.design, node_type="submit")
         if schema.get("fields"):
@@ -55,6 +57,7 @@ class TicketService:
             title=str(form_data.get("title") or workflow_version.workflow.name),
             workflow=workflow_version.workflow,
             workflow_version=workflow_version,
+            service=service,
             status=status,
             creator=creator,
             form_data=form_data,
@@ -75,6 +78,7 @@ class TicketService:
             ticket.process_instance_id = str(started.get("id") or "")
             ticket.save(update_fields=["process_instance_id", "updated_at"])
             self.sync_ticket(ticket)
+            ticket.refresh_from_db(fields=["status", "finished_at"])
         from apps.itsm.services.ticket.subforms import materialize_subforms
         from apps.itsm.services.triggers import fire_triggers
 
@@ -124,6 +128,7 @@ class TicketService:
         except FlowableError:
             raise
         seen = set()
+        current_tasks = [(str(item.get("assignee") or "").strip('"'), item.get("name") or "") for item in items]
         for item in items:
             task_id = str(item.get("id") or "")
             seen.add(task_id)
@@ -147,7 +152,7 @@ class TicketService:
             if created:
                 from apps.itsm.services.triggers import fire_triggers
 
-                fire_triggers(ticket, "task_enter", "system")
+                fire_triggers(ticket, "task_enter", "system", current_tasks=current_tasks)
                 entered = _find_node(ticket.workflow_version.design if ticket.workflow_version_id else {}, node_id=task.node_id)
                 if entered.get("enter_status"):
                     self._set_status(ticket, entered["enter_status"])
@@ -358,7 +363,7 @@ class TicketService:
         if not isinstance(incoming, dict):
             raise ValueError("表单必须是对象")
         original = dict(ticket.form_data or {})
-        schema = _ticket_schema(ticket)
+        schema = ticket_schema(ticket)
         if schema.get("fields"):
             cleaned = validate_submission(
                 schema,
@@ -485,24 +490,37 @@ class TicketService:
         finish_sla(ticket, "response")
         finish_sla(ticket, "resolve")
 
-    def _set_status(self, ticket: Ticket, key: str, operator: str | None = None) -> None:
-        if ticket.status_id and ticket.status.key == key:
-            return
-        status = TicketStatus.objects.filter(key=key).first()
-        if status is None:
-            raise ValueError(f"缺少状态 {key}")
-        current_key = ticket.status.key if ticket.status_id else ""
-        allowed = set(StatusTransition.objects.filter(from_status__key=current_key).values_list("to_status__key", flat=True))
-        if allowed and key not in allowed:
-            raise ValueError(f"不允许从 {current_key} 转到 {key}")
+    def _set_status(self, ticket: Ticket, target: str | TicketStatus, operator: str | None = None, *, natural_end: bool = False) -> None:
+        if isinstance(target, TicketStatus):
+            status = target
+            key = target.key
+            if ticket.status_id == target.pk:
+                return
+            allowed = set(StatusTransition.objects.filter(from_status_id=ticket.status_id).values_list("to_status_id", flat=True))
+            if allowed and target.pk not in allowed:
+                raise ValueError("不允许变更到目标状态")
+        else:
+            key = target
+            current_key = ticket.status.key if ticket.status_id else ""
+            if current_key == key:
+                return
+            status = TicketStatus.objects.filter(key=key).first()
+            if status is None:
+                raise ValueError(f"缺少状态 {key}")
+            allowed = set(StatusTransition.objects.filter(from_status__key=current_key).values_list("to_status__key", flat=True))
+            if allowed and key not in allowed:
+                raise ValueError(f"不允许从 {current_key} 转到 {key}")
         ticket.status = status
         ticket.finished_at = timezone.now() if key == "finished" else None
         ticket.save(update_fields=["status", "finished_at", "updated_at"])
         if key == "finished":
             from apps.itsm.services.triggers import fire_triggers
 
-            record_survey_invitation(ticket, operator or ticket.updated_by or ticket.creator)
-            fire_triggers(ticket, "finish", ticket.updated_by or ticket.creator)
+            actor = operator or ticket.updated_by or ticket.creator
+            record_survey_invitation(ticket, actor)
+            if natural_end:
+                fire_triggers(ticket, "end", actor)
+            fire_triggers(ticket, "finish", actor)
 
     def _log(self, ticket: Ticket, task: TicketTask | None, action: str, data: dict, operator: str) -> None:
         TicketLog.objects.create(
@@ -539,11 +557,17 @@ class TicketService:
             return
         if self._process_active(ticket.process_instance_id):
             return
-        finished = TicketStatus.objects.filter(key="finished").first()
-        if finished is None:
-            return
-        self._set_status(ticket, "finished", operator)
-        finish_sla(ticket, "resolve")
+        with transaction.atomic():
+            current = Ticket.objects.select_for_update().get(pk=ticket.pk)
+            if current.process_instance_id != ticket.process_instance_id or (
+                current.status_id and current.status.key in {"finished", "terminated", "cancelled"}
+            ):
+                return
+            if not TicketStatus.objects.filter(key="finished").exists():
+                return
+            self._set_status(current, "finished", operator, natural_end=bool(self.client and current.process_instance_id))
+            finish_sla(current, "resolve")
+            ticket.status, ticket.finished_at = current.status, current.finished_at
 
 
 _PERM_ALIAS = {"edit": "editable", "read": "readonly"}
@@ -580,7 +604,7 @@ def workflow_schema(version) -> dict:
     return {"fields": []}
 
 
-def _ticket_schema(ticket) -> dict:
+def ticket_schema(ticket) -> dict:
     if ticket.workflow_version_id:
         return workflow_schema(ticket.workflow_version)
     workflow = ticket.workflow

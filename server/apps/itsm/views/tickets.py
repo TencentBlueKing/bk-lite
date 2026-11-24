@@ -87,11 +87,8 @@ def tickets(request):
     service_id = payload.get("service_id")
     from apps.itsm.services.service_access import check_service_request
 
-    check_service_request(request, version, service_id)
-    ticket = _service(request).create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")))
-    if service_id:
-        ticket.service_id = service_id
-        ticket.save(update_fields=["service", "updated_at"])
+    service = check_service_request(request, version, service_id)
+    ticket = _service(request).create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")), service=service)
     return WebUtils.response_success({"id": ticket.id, "sn": ticket.sn, "status": ticket.status.key if ticket.status_id else ""})
 
 

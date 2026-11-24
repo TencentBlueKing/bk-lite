@@ -10,6 +10,7 @@ import { FormRenderer } from './form-renderer';
 import { TicketHeaderSocial, TicketRelations } from './ticket-social';
 import { TicketHistory } from './ticket-history';
 import { TicketSla } from './ticket-sla';
+import { TicketTriggerRecords } from './ticket-trigger-records';
 import { TicketSurveyPanel } from './ticket-survey';
 import { TicketFlowBoard } from './ticket-flow-board';
 import { TicketActions, type OperationInput } from './ticket-actions';
@@ -34,6 +35,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const api = useItsmApi();
   const { message } = App.useApp();
   const [existingTicket, setTicket] = useState<TicketDetail | null>(null);
+  const [triggerLogRevision, setTriggerLogRevision] = useState(0);
   const [form] = Form.useForm();
   const draft = useServiceDraft(serviceId, form);
   const ticket = serviceId ? draft.ticket : existingTicket;
@@ -44,6 +46,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const load = useCallback(async () => {
     const data = await api.getTicket(ticketId) as TicketDetail;
     setTicket(data);
+    setTriggerLogRevision(revision => revision + 1);
   }, [api.getTicket, ticketId]);
 
   useEffect(() => {
@@ -159,6 +162,8 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
               await load();
             }} /> },
           { key: 'relations', label: '关联单', children: <TicketRelations ticketId={ticketId} /> },
+          { key: 'triggers', label: t('itsm.rule.trigger'), destroyOnHidden: true,
+            children: <TicketTriggerRecords key={ticketId} ticketId={ticketId} refreshKey={triggerLogRevision} /> },
           ...(ticket.sla?.length ? [{ key: 'sla', label: 'SLA', children: <TicketSla records={ticket.sla} /> }] : []),
         ]}
         />}</>

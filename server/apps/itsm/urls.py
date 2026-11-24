@@ -79,6 +79,7 @@ from apps.itsm.views.tickets import (
     tickets,
     transfer_candidates,
 )
+from apps.itsm.views.triggers import trigger_logs, trigger_options
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 
 urlpatterns = [
@@ -91,6 +92,7 @@ urlpatterns = [
     path("api/integrations/<int:item_id>/test/", integration_test),
     path("api/integrations/<int:item_id>/deliveries/<int:delivery_id>/retry/", retry_delivery),
     path("api/schedules/runs/", schedule_runs, name="itsm-schedule-runs"),
+    path("api/triggers/options/", trigger_options, name="itsm-trigger-options"),
     path("api/services/layout/", portal_layout, name="itsm-portal-layout"),
     path("api/services/dashboard/", portal_dashboard, name="itsm-portal-dashboard"),
     path("api/tickets/filter_tags/", filter_tags, name="itsm-ticket-filter-tags"),
@@ -178,5 +180,6 @@ urlpatterns = [
     path("api/tickets/<int:ticket_id>/operate/", operate_ticket, name="itsm-ticket-operate"),
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/retry/", retry_auto_node, name="itsm-auto-retry"),
     path("api/tickets/<int:ticket_id>/logs/", ticket_logs, name="itsm-ticket-logs"),
+    path("api/tickets/<int:ticket_id>/trigger-logs/", trigger_logs, name="itsm-ticket-trigger-logs"),
     path("api/tickets/<int:ticket_id>/survey/", ticket_survey, name="itsm-ticket-survey"),
 ]

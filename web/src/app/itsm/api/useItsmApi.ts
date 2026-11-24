@@ -2,9 +2,24 @@
 
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
+import type { TriggerOptions } from '../rule/triggers/trigger-config';
 import type { PortalLayout } from '../portal/workbench-types';
 import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
+
+export interface TicketTriggerLogPage {
+  count: number;
+  items: {
+    id: number;
+    trigger_name: string;
+    event: string;
+    action: string;
+    position: number | null;
+    status: 'success' | 'failed' | 'pending' | 'legacy';
+    message: string;
+    created_at: string;
+  }[];
+}
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
 // 仅规范本模块路径，查询串和外部地址保持原样。
@@ -92,6 +107,7 @@ export function useItsmApi() {
   const downloadTicketExport = useCallback((id: number) => get<Blob>(`/itsm/api/tickets/export/tasks/${id}/download/`, { responseType: 'blob' }), [get]);
   const retryTicketExport = useCallback((id: number) => post<TicketExportRecord>(`/itsm/api/tickets/export/tasks/${id}/retry/`), [post]);
   const listResources = useCallback((kind: string) => readListPages(page => get(`/itsm/api/resources/${kind}/`, { params: { page, page_size: 100 } })), [get]);
+  const getTriggerOptions = useCallback(() => get<TriggerOptions>('/itsm/api/triggers/options/'), [get]);
   const listHandovers = useCallback(async () => await listResources('handovers') as unknown as {
     items: HandoverRecord[];
     can_add?: boolean;
@@ -121,6 +137,9 @@ export function useItsmApi() {
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
   const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
+  const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
+    `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
+  ), [get]);
   const retryAutoNode = useCallback((ticketId: number, executionId: number) => post(`/itsm/api/tickets/${ticketId}/auto/${executionId}/retry/`), [post]);
   const listScheduleRuns = useCallback((page: number, scheduleId?: number) => get('/itsm/api/schedules/runs/', { params: { page, schedule_id: scheduleId } }), [get]);
   const submitSurvey = useCallback(
@@ -262,7 +281,7 @@ export function useItsmApi() {
     saveDesign,
     publishWorkflow,
     listTickets, ticketFilterWorkflows, ticketFilterFields, exportTickets, ticketExportFields, listTicketExports, downloadTicketExport, retryTicketExport,
-    listResources,
+    listResources, getTriggerOptions,
     createResource,
     updateResource,
     deleteResource,
@@ -270,6 +289,7 @@ export function useItsmApi() {
     operateTicket,
     ticketLogs,
     getTicket,
+    getTicketTriggerLogs,
     retryAutoNode,
     listScheduleRuns,
     ticketForm,

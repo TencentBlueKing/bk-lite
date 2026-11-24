@@ -28,9 +28,7 @@ def render_template(event: str, variables: dict, *, domain: str, channel_type: s
         template = NotifyTemplate.objects.filter(domain=domain, event=event, channel_type=channel_type).first()
         if template is not None:
             try:
-                title = template_environment.from_string(template.title_tpl).render(**variables)
-                content = template_environment.from_string(template.content_tpl).render(**variables)
-                return title, content
+                return render_notification_template(template, variables)
             except TemplateError:
                 itsm_logger.warning("ITSM 通知模板渲染失败 event=%s channel=%s", event, channel_type)
     if fallback is not None:
@@ -39,7 +37,13 @@ def render_template(event: str, variables: dict, *, domain: str, channel_type: s
     return str(title), str(variables.get("content") or title)
 
 
-def _send_site(content: str, receivers: list[str], domain: str, url: str, event_key: str) -> dict:
+def render_notification_template(template: NotifyTemplate, variables: dict) -> tuple[str, str]:
+    title = template_environment.from_string(template.title_tpl).render(**variables)
+    content = template_environment.from_string(template.content_tpl).render(**variables)
+    return title, content
+
+
+def send_site_notification(content: str, receivers: list[str], domain: str, url: str, event_key: str) -> dict:
     if not domain or not receivers:
         return {"result": False, "skipped": True, "message": "缺少通知组织或收件人"}
     key = event_key or f"itsm-notify-{uuid4().hex}"
@@ -59,14 +63,16 @@ def _send_site(content: str, receivers: list[str], domain: str, url: str, event_
 
 
 def dispatch_notification(
-    event: str, variables: dict, receivers: list[str], event_key: str = "", site_only: bool = False, *, domain: str = ""
+    event: str, variables: dict, receivers: list[str], event_key: str = "", site_only: bool = False, *, domain: str = "", im_link: str = ""
 ) -> dict:
     receivers = list(dict.fromkeys(name.strip() for name in receivers if isinstance(name, str) and name.strip()))
     title, content = render_template(event, variables, domain=domain, channel_type="site")
-    site = _send_site(f"{title}\n{content}".strip(), receivers, domain, variables.get("url") or "", event_key)
+    site = send_site_notification(f"{title}\n{content}".strip(), receivers, domain, variables.get("url") or "", event_key)
     im = {"skipped": True}
     if not site_only and domain and receivers:
         im_title, im_content = render_template(event, variables, domain=domain, channel_type="im", fallback=(title, content))
+        if im_link and im_link not in im_content:
+            im_content = f"{im_content}\n工单详情：{im_link}"
         im = _send_im_if_configured(im_title, im_content, receivers, domain=domain)
     itsm_logger.info("ITSM 通知 %s site=%s im=%s", event, site.get("result"), im.get("result"))
     return {"title": title, "content": content, "receivers": receivers, "site": site, "im": im}
@@ -97,20 +103,19 @@ def _send_im_if_configured(title: str, content: str, receivers: list[str], *, do
     if not batches:
         return {"result": False, "skipped": True, "message": "no_im_channel"}
 
-    client = SystemMgmt()
-    results = []
-    for channel_id, user_ids in batches.items():
-        try:
-            result = client.send_msg_with_channel(channel_id, title, content, user_ids, channel_type=IMNotificationChannel.CHANNEL_TYPE)
-        except Exception as exc:
-            # 发送结果未知时，不重试整批，避免其他收件人重复收到。
-            itsm_logger.warning("ITSM 即时通知发送结果未知 channel_id=%s error=%s", channel_id, type(exc).__name__)
-            result = {"result": False}
-        results.append(result)
+    results = [send_im_channel(channel_id, title, content, user_ids) for channel_id, user_ids in batches.items()]
 
     succeeded = any(result.get("result") for result in results)
     partial = any(not result.get("result") or (result.get("data") or {}).get("partial_success") for result in results)
     return {"result": succeeded, "partial_success": succeeded and partial}
+
+
+def send_im_channel(channel_id: int, title: str, content: str, user_ids: list[int]) -> dict:
+    try:
+        return SystemMgmt().send_msg_with_channel(channel_id, title, content, user_ids, channel_type=IMNotificationChannel.CHANNEL_TYPE)
+    except Exception as exc:
+        itsm_logger.warning("ITSM 即时通知发送结果未知 channel_id=%s error=%s", channel_id, type(exc).__name__)
+        return {"result": False}
 
 
 def deliver_with_retry(

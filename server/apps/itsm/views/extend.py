@@ -45,6 +45,7 @@ from apps.itsm.services.ticket.actions import node_actions, node_required_opinio
 from apps.itsm.services.ticket.handover import ACTIVE_STATUSES, handover_user, prepare_handover, run_handover
 from apps.itsm.services.ticket.service import _find_node
 from apps.itsm.services.ticket.survey import SurveyValidationError, normalize_survey_template
+from apps.itsm.services.trigger_config import TriggerConfigError, normalize_trigger
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
 from apps.itsm.views.tickets import _service, _user
 
@@ -203,7 +204,7 @@ def _list_resources(request, kind, model, fields):
     page = paginator.get_page(int(request.GET.get("page") or 1))
     items = [_public(item, fields) for item in page]
     data = {"items": items, "count": paginator.count}
-    if kind in {"schedules", "surveys"}:
+    if kind in {"schedules", "triggers", "surveys"}:
         menu = RESOURCE_MENUS[kind]
         data.update(
             can_add=has_permission(request, f"{menu}-Add"),
@@ -226,13 +227,15 @@ def resources(request, kind):
     model, fields = spec
     if request.method == "GET":
         return _list_resources(request, kind, model, fields)
-    if kind == "surveys" and request.method != "POST":
+    if kind in {"surveys", "triggers"} and request.method != "POST":
         return WebUtils.response_error("不支持的请求方法", status_code=405)
     payload = _body(request)
     values = {field: payload.get(field) for field in fields if field in payload}
     values["domain"] = domain_of(request)
     if kind == "schedules":
         return _save_schedule(request, values)
+    if kind == "triggers":
+        return _save_trigger(request, values)
     if kind == "surveys":
         try:
             values = normalize_survey_template(values, creating=True)
@@ -250,17 +253,7 @@ def resources(request, kind):
     if kind == "views":
         values["username"] = _user(request)
     if kind == "duties" and payload.get("check_in"):
-        shift = resource_scope(request, kind, model).filter(name=payload.get("name")).first()
-        if shift is None:
-            return WebUtils.response_error("值班记录不存在")
-        members = list(shift.members or [])
-        username = _user(request)
-        if username not in members:
-            members.append(username)
-        shift.members = members
-        shift.updated_by = username
-        shift.save(update_fields=["members", "updated_by", "updated_at"])
-        return WebUtils.response_success(_public(shift, fields))
+        return _check_in_duty(request, model, fields, payload)
     if kind == "changes":
         from django.utils.dateparse import parse_datetime
 
@@ -322,6 +315,8 @@ def resource_item(request, kind, item_id):
     values["domain"] = domain_of(request)
     if kind == "schedules":
         return _save_schedule(request, values, item)
+    if kind == "triggers":
+        return _save_trigger(request, values, item)
     if kind == "surveys":
         try:
             values = normalize_survey_template(values)
@@ -332,6 +327,42 @@ def resource_item(request, kind, item_id):
     item.updated_by = _user(request)
     item.save()
     return WebUtils.response_success(_public(item, fields))
+
+
+@transaction.atomic
+def _save_trigger(request, values, item=None):
+    username = _user(request)
+    domain = values["domain"]
+    if item is not None:
+        item = Trigger.objects.select_for_update().get(pk=item.pk, domain=domain)
+    deactivating = item is not None and set(values) == {"is_enabled", "domain"} and values["is_enabled"] is False
+    if not deactivating:
+        try:
+            values = normalize_trigger(values, domain=domain, current=item, user=request.user)
+        except TriggerConfigError as exc:
+            return WebUtils.response_error(error_message=str(exc))
+    if item is None:
+        item = Trigger.objects.create(**values, created_by=username, updated_by=username)
+    else:
+        for field, value in values.items():
+            setattr(item, field, value)
+        item.updated_by = username
+        item.save(update_fields=[*values, "updated_by", "updated_at"])
+    return WebUtils.response_success(_public(item, KINDS["triggers"][1]))
+
+
+def _check_in_duty(request, model, fields, payload):
+    shift = resource_scope(request, "duties", model).filter(name=payload.get("name")).first()
+    if shift is None:
+        return WebUtils.response_error("值班记录不存在")
+    members = list(shift.members or [])
+    username = _user(request)
+    if username not in members:
+        members.append(username)
+    shift.members = members
+    shift.updated_by = username
+    shift.save(update_fields=["members", "updated_by", "updated_at"])
+    return WebUtils.response_success(_public(shift, fields))
 
 
 def _apply_handover(item: Handover) -> None:

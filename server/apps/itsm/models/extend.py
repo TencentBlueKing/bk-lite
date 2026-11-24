@@ -63,12 +63,25 @@ class Trigger(ItsmModel):
 
 
 class TriggerLog(ItsmModel):
-    trigger = models.ForeignKey(Trigger, on_delete=models.CASCADE, related_name="logs")
+    class Status(models.TextChoices):
+        LEGACY = "legacy", "历史记录"
+        PENDING = "pending", "处理中"
+        SUCCESS = "success", "成功"
+        FAILED = "failed", "失败"
+
+    trigger = models.ForeignKey(Trigger, on_delete=models.SET_NULL, related_name="logs", null=True, blank=True)
     ticket_id = models.IntegerField(null=True, blank=True)
+    run_id = models.PositiveBigIntegerField(null=True, blank=True)
+    trigger_name = models.CharField(max_length=128, default="", blank=True)
+    event = models.CharField(max_length=64, default="", blank=True)
+    action = models.CharField(max_length=32, default="", blank=True)
+    position = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.LEGACY)
     message = models.CharField(max_length=200, default="")
 
     class Meta:
         db_table = "itsm_trigger_log"
+        indexes = [models.Index(fields=("ticket_id", "domain", "id"), name="itsm_triglog_ticket_idx")]
 
 
 class ScheduledTask(ItsmModel):

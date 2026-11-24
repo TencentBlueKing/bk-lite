@@ -1,153 +1,112 @@
 'use client';
 
-import { ItsmListEntry } from '@/app/itsm/components/list-entry';
-
-import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
-
-import { Input, Select, Switch, message } from 'antd';
+import { Alert, App, Button, Switch } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
-import { ItsmDrawer as OperateModal } from '@/app/itsm/components/interaction-surfaces';
-import CustomTable from '@/app/itsm/components/itsm-list-table';
-import { useItsmApi } from '../../api/useItsmApi';
-import { FieldRow } from '../../components/field-row';
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+import ItsmListTable from '@/app/itsm/components/itsm-list-table';
 import { useTranslation } from '@/utils/i18n';
+import { useItsmApi } from '../../api/useItsmApi';
+import { TriggerEditor } from './trigger-editor';
+import { readTriggerActions, TRIGGER_ACTIONS, type TriggerItem } from './trigger-config';
 
-interface TriggerItem {
-  id: number;
-  name: string;
-  event: string;
-  action: string;
-  config: { when?: { field?: string; op?: string; value?: string }; response?: string };
-  is_enabled: boolean;
+interface TriggerList {
+  items: TriggerItem[];
+  can_add?: boolean;
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
-
-const EVENTS = [
-  'ticket_create',
-  'ticket_update',
-  'ticket_suspend',
-  'ticket_recovery',
-  'ticket_back',
-  'ticket_withdraw',
-  'ticket_end',
-  'ticket_finish',
-  'ticket_close',
-  'ticket_terminate',
-  'ticket_urging',
-  'activity_into',
-];
-
-const ACTIONS = [
-  { value: 'tag', labelKey: 'itsm.rule.tag' },
-  { value: 'notice', labelKey: 'itsm.rule.notice' },
-  { value: 'status', labelKey: 'itsm.rule.changeStatus' },
-];
 
 export default function Page() {
   const { t } = useTranslation();
-  const api = useItsmApi();
+  const { message } = App.useApp();
+  const { ready, listResources, getTriggerOptions, createResource, updateResource, deleteResource } = useItsmApi();
   const [keyword, setKeyword] = useState('');
-  const [items, setItems] = useState<TriggerItem[]>([]);
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<TriggerItem | null>(null);
-  const [name, setName] = useState('');
-  const [event, setEvent] = useState('ticket_create');
-  const [action, setAction] = useState('notice');
-  const [field, setField] = useState('');
-  const [op, setOp] = useState('eq');
-  const [value, setValue] = useState('');
-  const [response, setResponse] = useState('');
+  const [list, setList] = useState<TriggerList>({ items: [] });
+  const [editing, setEditing] = useState<TriggerItem | 'new' | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [changing, setChanging] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const data = await api.listResources('triggers') as { items?: TriggerItem[] };
-    setItems(data.items || []);
-  }, [api.listResources]);
+    setLoading(true);
+    setLoadError(false);
+    try {
+      setList(await listResources('triggers') as unknown as TriggerList);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [listResources]);
 
   useEffect(() => {
-    if (!api.ready) {
-      return;
-    }
-    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
-  }, [api.ready, load]);
+    if (ready) void load();
+  }, [ready, load]);
 
-  const start = (item?: TriggerItem) => {
-    setEditing(item || null);
-    setName(item?.name || '');
-    setEvent(item?.event || 'ticket_create');
-    setAction(item?.action || 'notice');
-    setField(item?.config?.when?.field || '');
-    setOp(item?.config?.when?.op || 'eq');
-    setValue(item?.config?.when?.value || '');
-    setResponse(item?.config?.response || '');
-    setOpen(true);
+  const toggle = async (id: number, isEnabled: boolean) => {
+    setChanging(id);
+    try {
+      await updateResource('triggers', id, { is_enabled: isEnabled });
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : t('itsm.rule.triggerSaveFailed'));
+    } finally {
+      setChanging(null);
+    }
   };
 
-  const save = async () => {
-    const body = { name, event, action, config: { when: { field, op, value }, response } };
-    if (editing) {
-      await api.updateResource('triggers', editing.id, body);
-    } else {
-      await api.createResource('triggers', body);
-    }
-    setOpen(false);
-    message.success(editing ? t('itsm.portal.saved') : t('itsm.portal.created'));
-    await load();
+  const actionLabel = (type: string) => {
+    const action = TRIGGER_ACTIONS.find(option => option.value === type);
+    return action ? t(`itsm.rule.${action.labelKey}`) : type;
   };
+  const query = keyword.trim().toLowerCase();
+  const canOperate = list.can_edit || list.can_delete;
 
-  const eventOptions = EVENTS.map((value) => ({ value, label: t(`itsm.rule.${value}`) }));
-  const actionOptions = ACTIONS.map((item) => ({ value: item.value, label: t(item.labelKey) }));
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
-        <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: '搜索名称或标识' }} actions={<ItsmCreateButton onClick={() => start()} />} />
-        <CustomTable queryKey={keyword}
-          rowKey="id"
-          dataSource={items.filter(item => `${item.name}`.toLowerCase().includes(keyword.trim().toLowerCase()))}
-          locale={{ emptyText: t('itsm.rule.emptyTrigger') }}
-          columns={[
-            { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: TriggerItem) => <ItsmListEntry onClick={() => start(item)}>{value}</ItsmListEntry> },
-            { title: t('itsm.rule.event'), dataIndex: 'event', key: 'event', render: (value: string) => eventOptions.find((item) => item.value === value)?.label || value },
-            { title: t('itsm.rule.response'), dataIndex: 'action', key: 'action', render: (value: string) => actionOptions.find((item) => item.value === value)?.label || value },
-            {
-              title: t('itsm.admin.enable'),
-              dataIndex: 'is_enabled',
-              key: 'is_enabled',
-              render: (value: boolean, item: TriggerItem) => (
-                <Switch checked={value} onChange={(checked) => { void api.updateResource('triggers', item.id, { is_enabled: checked }).then(load); }} />
-              ),
-            },
-            { fixed: 'right' as const, width: 120,
-              title: t('itsm.ticket.action'),
-              key: 'actions',
-              render: (_value: unknown, item: TriggerItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => start(item)},
-                {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.rule.deleteTrigger'), content: undefined }, onClick: () => { void api.deleteResource('triggers', item.id).then(load); }}]} />,
-            },
-          ]}
-        />
-      </div>
-      <OperateModal formValue={{name,event,action,field,op,value,response}} title={editing ? t('itsm.rule.editTrigger') : t('itsm.rule.newTrigger')} open={open} onCancel={() => setOpen(false)} onOk={save}>
-        <div className="flex flex-col gap-3 text-sm">
-          <FieldRow label={t('itsm.portal.name')}>
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
-          </FieldRow>
-          <FieldRow label={t('itsm.rule.event')}>
-            <Select className="w-full" value={event} options={eventOptions} onChange={setEvent} />
-          </FieldRow>
-          <FieldRow label={t('itsm.rule.when')}>
-            <div className="flex gap-2">
-              <Input placeholder={t('itsm.rule.field')} value={field} onChange={(event) => setField(event.target.value)} />
-              <Select className="w-28" value={op} options={[{ value: 'eq', label: t('itsm.rule.eq') }, { value: 'contains', label: t('itsm.rule.contains') }]} onChange={setOp} />
-              <Input placeholder={t('itsm.rule.value')} value={value} onChange={(event) => setValue(event.target.value)} />
-            </div>
-          </FieldRow>
-          <FieldRow label={t('itsm.rule.response')}>
-            <Select className="w-full" value={action} options={actionOptions} onChange={setAction} />
-          </FieldRow>
-          <FieldRow label={t('itsm.rule.value')}>
-            <Input placeholder={t('itsm.rule.responseHint')} value={response} onChange={(event) => setResponse(event.target.value)} />
-          </FieldRow>
-        </div>
-      </OperateModal>
+  return <div className="flex flex-col gap-4">
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+      <ItsmListToolbar search={{ value: keyword, onChange: setKeyword, placeholder: t('itsm.rule.triggerSearch') }}
+        actions={list.can_add && <ItsmCreateButton onClick={() => setEditing('new')} />} />
+      {loadError && <Alert className="mb-4" type="error" showIcon message={t('itsm.ticket.loadFailed')}
+        action={<Button size="small" onClick={() => void load()}>{t('common.retry')}</Button>} />}
+      <ItsmListTable<TriggerItem>
+        queryKey={keyword}
+        loading={loading}
+        rowKey="id"
+        dataSource={list.items.filter(item => item.name.toLowerCase().includes(query) || String(item.id).includes(query))}
+        locale={{ emptyText: t('itsm.rule.emptyTrigger') }}
+        columns={[
+          { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name',
+            render: (name, item) => <ItsmListEntry onClick={() => setEditing(item)}>{name}</ItsmListEntry> },
+          { title: t('itsm.rule.event'), dataIndex: 'event', key: 'event', render: event => t(`itsm.rule.${event}`, event) },
+          { title: t('itsm.rule.triggerScope'), key: 'scope',
+            render: (_, item) => t(`itsm.rule.triggerScope_${item.config?.scope?.mode ?? 'all'}`) },
+          { title: t('itsm.rule.response'), key: 'actions_summary',
+            render: (_, item) => readTriggerActions(item).map(action => actionLabel(action.type)).join(' → ') || '—' },
+          { title: t('itsm.admin.enable'), dataIndex: 'is_enabled', key: 'is_enabled',
+            render: (enabled, item) => <Switch aria-label={item.name} checked={enabled} loading={changing === item.id}
+              disabled={!list.can_edit || changing !== null} onChange={checked => void toggle(item.id, checked)} /> },
+          ...(canOperate ? [{
+            fixed: 'right' as const, width: 120, title: t('itsm.ticket.action'), key: 'operations',
+            render: (_: unknown, item: TriggerItem) => <ItsmRowActions items={[
+              { key: 'edit', label: t('itsm.common.edit'), kind: 'edit', hidden: !list.can_edit, onClick: () => setEditing(item) },
+              { key: 'delete', label: t('itsm.common.delete'), kind: 'delete', hidden: !list.can_delete, danger: true,
+                confirm: { title: t('itsm.rule.deleteTrigger') }, onClick: async () => {
+                  await deleteResource('triggers', item.id);
+                  await load();
+                } },
+            ]} />,
+          }] : []),
+        ]}
+      />
     </div>
-  );
+    {editing && <TriggerEditor item={editing === 'new' ? undefined : editing}
+      getOptions={getTriggerOptions} onCancel={() => setEditing(null)} onSave={(editing === 'new' ? list.can_add : list.can_edit) ? async payload => {
+        if (editing === 'new') await createResource('triggers', payload);
+        else await updateResource('triggers', editing.id, payload);
+        setEditing(null);
+        message.success(t(editing === 'new' ? 'itsm.portal.created' : 'itsm.portal.saved'));
+        await load();
+      } : undefined} />}
+  </div>;
 }

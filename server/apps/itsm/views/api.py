@@ -396,6 +396,7 @@ def publish_workflow(request, workflow_id):
         return WebUtils.response_error("Flowable 部署失败", status_code=502)
     if workflow.form_id and workflow.form.current_version_id:
         version.design = {**version.design, "form_schema": workflow.form.current_version.schema}
+    version.design = {**version.design, "form_model_id": workflow.form_id}
     version.bpmn_xml = xml
     version.flowable_deployment_id = str(deployed.get("id") or "")
     version.process_definition_key = workflow.key
