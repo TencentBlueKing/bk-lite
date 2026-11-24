@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
-from apps.opspilot.models import SkillPackage
+from apps.opspilot.models import LLMSkill, SkillPackage, SkillTools
 from apps.opspilot.serializers.llm_serializer import SkillPackageSerializer
 from apps.opspilot.services.skill_package.builtin_seed import seed_all_builtin_skill_packages, seed_builtin_skill_package
-from apps.opspilot.viewsets.llm_view import SkillPackageViewSet
+from apps.opspilot.services.skill_package.importer import SkillPackageImporter
+from apps.opspilot.viewsets.llm_view import SkillPackageViewSet, SkillToolsViewSet
 from apps.system_mgmt.models.user import Group
 
 pytestmark = pytest.mark.django_db
@@ -27,11 +31,11 @@ def _body(resp):
     return json.loads(resp.content.decode("utf-8"))
 
 
-def _user(*, username, locale="en", team_id=1):
+def _user(*, username, locale="en", team_id=1, domain="domain.com"):
     user = User.objects.create_user(
         username=username,
         password="x",
-        domain="domain.com",
+        domain=domain,
         locale=locale,
         group_list=[{"id": team_id, "name": f"T{team_id}"}],
         roles=["normal"],
@@ -246,6 +250,16 @@ class TestBuiltinSkillPackageVisibilityAndDelete:
             is_enabled=True,
         )
         SkillPackage.objects.create(
+            package_id="caller-team",
+            name="Caller Team",
+            version="0.1.0",
+            description="mine",
+            domain="domain.com",
+            team=[1],
+            is_build_in=False,
+            is_enabled=True,
+        )
+        SkillPackage.objects.create(
             package_id="team-only",
             name="Team Only",
             version="0.1.0",
@@ -266,7 +280,8 @@ class TestBuiltinSkillPackageVisibilityAndDelete:
         items = payload if isinstance(payload, list) else payload.get("items") or payload.get("results") or []
         package_ids = {item["package_id"] for item in items}
         assert "kubernetes-configuration" in package_ids
-        assert "team-only" not in package_ids
+        assert "caller-team" in package_ids
+        assert "team-only" in package_ids
 
     def test_destroy_builtin_rejected(self, allow_team_instances):
         pkg = SkillPackage.objects.create(
@@ -288,3 +303,196 @@ class TestBuiltinSkillPackageVisibilityAndDelete:
         assert resp.status_code == 400
         assert _body(resp).get("result") is False
         assert SkillPackage.objects.filter(id=pkg.id).exists()
+
+
+def _listed_packages(user, team_id):
+    factory = APIRequestFactory()
+    request = factory.get("/")
+    force_authenticate(request, user=user)
+    request.COOKIES["current_team"] = str(team_id)
+    resp = SkillPackageViewSet.as_view({"get": "list"})(request)
+    assert resp.status_code == 200
+    payload = _body(resp)
+    items = payload if isinstance(payload, list) else payload.get("items") or payload.get("results") or []
+    return items
+
+
+def _skill_zip(package_id, version, description):
+    body = "\n".join(
+        [
+            "---",
+            f"id: {package_id}",
+            "name: Shared Skill",
+            f"version: {version}",
+            f"description: {description}",
+            "---",
+            "",
+            "# Shared Skill",
+            "",
+            "## Runtime",
+            "",
+            "- command: echo ok",
+            "",
+        ]
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(f"{package_id}/SKILL.md", body)
+    buffer.seek(0)
+    return buffer
+
+
+class TestSharedSkillPackageCatalog:
+    def test_other_domain_package_stays_hidden(self, allow_team_instances):
+        SkillPackage.objects.create(
+            package_id="other-domain",
+            name="Other Domain",
+            version="0.1.0",
+            description="hidden",
+            domain="other.example",
+            team=[1],
+            is_enabled=True,
+        )
+        user = _user(username="pkg_domain")
+        package_ids = {item["package_id"] for item in _listed_packages(user, 1)}
+        assert "other-domain" not in package_ids
+
+    def test_other_group_can_edit_tags_without_adopting_team(self, allow_team_instances):
+        pkg = SkillPackage.objects.create(
+            package_id="shared-edit",
+            name="Shared Edit",
+            version="0.1.0",
+            description="editable",
+            domain="domain.com",
+            team=[1],
+            user_tags=[],
+            is_enabled=True,
+        )
+        user = _user(username="pkg_edit", team_id=2)
+        factory = APIRequestFactory()
+        request = factory.patch("/", {"user_tags": ["kept"], "team": [99]}, format="json")
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "2"
+        resp = SkillPackageViewSet.as_view({"patch": "partial_update"})(request, pk=pkg.id)
+        assert resp.status_code == 200
+        owner = _user(username="pkg_edit_owner", team_id=1)
+        items = _listed_packages(owner, 1)
+        matched = [item for item in items if item["package_id"] == "shared-edit"]
+        assert len(matched) == 1
+        assert matched[0]["user_tags"] == ["kept"]
+
+    def test_other_group_delete_removes_row_and_storage(self, allow_team_instances, tmp_path, mocker):
+        storage = tmp_path / "shared-delete" / "0.1.0"
+        storage.mkdir(parents=True)
+        (storage / "SKILL.md").write_text("# gone", encoding="utf-8")
+        mocker.patch("apps.opspilot.viewsets.llm_view.DEFAULT_SKILL_PACKAGE_ROOT", tmp_path)
+        pkg = SkillPackage.objects.create(
+            package_id="shared-delete",
+            name="Shared Delete",
+            version="0.1.0",
+            description="doomed",
+            domain="domain.com",
+            team=[1],
+            storage_path=str(storage),
+            is_build_in=False,
+            is_enabled=True,
+        )
+        user = _user(username="pkg_delete", team_id=2)
+        factory = APIRequestFactory()
+        request = factory.delete("/")
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "2"
+        resp = SkillPackageViewSet.as_view({"delete": "destroy"})(request, pk=pkg.id)
+        assert resp.status_code == 204
+        assert not SkillPackage.objects.filter(id=pkg.id).exists()
+        assert not storage.exists()
+        owner = _user(username="pkg_delete_owner", team_id=1)
+        package_ids = {item["package_id"] for item in _listed_packages(owner, 1)}
+        assert "shared-delete" not in package_ids
+
+    def test_reimport_same_version_updates_saved_row(self, allow_team_instances, tmp_path, mocker):
+        mocker.patch(
+            "apps.opspilot.viewsets.llm_view.SkillPackageImporter",
+            lambda: SkillPackageImporter(storage_root=tmp_path),
+        )
+        importer = _user(username="pkg_import", team_id=1)
+
+        def _import(description, version):
+            upload = SimpleUploadedFile("skill.zip", _skill_zip("shared-skill", version, description).getvalue(), content_type="application/zip")
+            factory = APIRequestFactory()
+            request = factory.post("/", {"file": upload}, format="multipart")
+            force_authenticate(request, user=importer)
+            request.COOKIES["current_team"] = "1"
+            resp = SkillPackageViewSet.as_view({"post": "import_zip"})(request)
+            assert resp.status_code == 200, _body(resp)
+            return _body(resp)["data"]["id"]
+
+        first_id = _import("first description", "1.0.0")
+        second_id = _import("second description", "1.0.0")
+        assert second_id == first_id
+        reader = _user(username="pkg_import_reader", team_id=2)
+        for viewer, team_id in ((importer, 1), (reader, 2)):
+            matched = [item for item in _listed_packages(viewer, team_id) if item["id"] == first_id]
+            assert len(matched) == 1
+            assert matched[0]["description"] == "second description"
+
+        other_id = _import("next description", "2.0.0")
+        assert other_id != first_id
+        still_old = [item for item in _listed_packages(reader, 2) if item["id"] == first_id]
+        assert len(still_old) == 1
+        assert still_old[0]["description"] == "second description"
+        created = [item for item in _listed_packages(reader, 2) if item["id"] == other_id]
+        assert len(created) == 1
+        assert created[0]["description"] == "next description"
+
+    def test_package_list_omits_agent_password(self, allow_team_instances):
+        SkillPackage.objects.create(
+            package_id="param-pack",
+            name="Param Pack",
+            version="0.1.0",
+            description="params",
+            domain="domain.com",
+            team=[1],
+            is_enabled=True,
+        )
+        LLMSkill.objects.create(
+            name="agent-with-secret",
+            domain="domain.com",
+            team=[1],
+            skill_package_params={"param-pack": [{"key": "pw", "type": "password", "value": "SENTINEL-PACKAGE-SECRET"}]},
+        )
+        user = _user(username="pkg_secret")
+        rendered = json.dumps(_listed_packages(user, 1), ensure_ascii=False)
+        assert "SENTINEL-PACKAGE-SECRET" not in rendered
+
+    def test_other_group_lists_builtin_tools_and_hides_mcp(self, mocker):
+        mocker.patch(
+            "apps.core.utils.viewset_utils.get_permission_rules",
+            return_value={"instance": [], "team": [2]},
+        )
+        SkillTools.objects.create(
+            name="group-one-mcp",
+            description="mcp",
+            team=[1],
+            is_build_in=False,
+            params={"url": "http://mcp.example", "auth_token": "SENTINEL-MCP-TOKEN"},
+        )
+        SkillTools.objects.create(
+            name="group-one-builtin",
+            description="builtin",
+            team=[1],
+            is_build_in=True,
+        )
+        user = _user(username="pkg_tools", team_id=2)
+        factory = APIRequestFactory()
+        request = factory.get("/")
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "2"
+        resp = SkillToolsViewSet.as_view({"get": "list"})(request)
+        assert resp.status_code == 200
+        payload = _body(resp)
+        items = payload if isinstance(payload, list) else payload.get("items") or payload.get("results") or []
+        rendered = json.dumps(items, ensure_ascii=False)
+        assert "group-one-mcp" not in rendered
+        assert "SENTINEL-MCP-TOKEN" not in rendered
+        assert "group-one-builtin" in rendered

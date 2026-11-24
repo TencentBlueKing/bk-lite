@@ -171,7 +171,23 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           if (!matchedDefaultTool) return tool;
           return { ...tool, kwargs: matchedDefaultTool.kwargs?.length ? matchedDefaultTool.kwargs : tool.kwargs };
         });
-      commitSelectedTools(initialSelectedTools);
+      const keptSavedIds = new Set(initialSelectedTools.flatMap((tool) => {
+        const matched = normalizedDefaultTools.find((saved) => saved.id === tool.id)
+          || (isRedisTool(tool) ? defaultRedisTool : undefined)
+          || (isMysqlTool(tool) ? defaultMysqlTool : undefined)
+          || (isOracleTool(tool) ? defaultOracleTool : undefined)
+          || (isMssqlTool(tool) ? defaultMssqlTool : undefined)
+          || (isPostgresTool(tool) ? defaultPostgresTool : undefined)
+          || (isEsTool(tool) ? defaultEsTool : undefined)
+          || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined)
+          || (isKubernetesTool(tool) && isSameToolVariant(tool, defaultKubernetesTool) ? defaultKubernetesTool : undefined)
+          || (isActiveDirectoryTool(tool) ? defaultAdTool : undefined);
+        return matched ? [matched.id] : [];
+      }));
+      const savedToolsMissingFromCatalog = normalizedDefaultTools.filter(
+        (tool) => !keptSavedIds.has(tool.id) && tool.isBuildIn === true,
+      );
+      commitSelectedTools([...initialSelectedTools, ...savedToolsMissingFromCatalog]);
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
     } finally {
