@@ -62,6 +62,20 @@ def test_filters_sort_history_and_projection(sample):
         assert tickets(request(payload={"ordering": ordering}, username="owner")).status_code == 400
 
 
+@pytest.mark.parametrize(
+    ("permissions", "can_apply"),
+    [
+        (["ticket-View"], False),
+        (["ticket-View", "portal-View"], False),
+        (["ticket-View", "ticket-Add"], False),
+        (["ticket-View", "portal-View", "ticket-Add"], True),
+    ],
+)
+def test_ticket_list_reports_quick_apply_availability(permissions, can_apply):
+    response = tickets(request(username="owner", permissions=permissions))
+    assert data(response)["can_apply"] is can_apply
+
+
 def test_projection_queries_do_not_load_tasks_or_sla(sample):
     from apps.itsm.models import TicketSLARecord
 

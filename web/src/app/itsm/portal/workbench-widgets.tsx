@@ -7,7 +7,18 @@ import { useState } from 'react';
 import type { PortalData, PortalService } from '../types';
 import type { PortalDashboard, PortalTicket } from './workbench-types';
 
-export function ServiceCards({ items, portal, onFavorite, pending, paginate = false }: { paginate?: boolean; items: PortalService[]; portal: PortalData; onFavorite: (id: number) => void; pending?: number }) {
+export function matchesServiceSearch(item: PortalService, search: string) {
+  return `${item.name} ${item.description || ''} ${item.workflow_name || ''}`.toLowerCase().includes(search.trim().toLowerCase());
+}
+
+interface ServiceActions {
+  portal: PortalData;
+  onFavorite: (id: number) => void;
+  pending?: number;
+  fromTicketCenter?: boolean;
+}
+
+export function ServiceCards({ items, portal, onFavorite, pending, fromTicketCenter, paginate = false }: ServiceActions & { paginate?: boolean; items: PortalService[] }) {
   const favorites = new Set(portal.favorites.map(item => item.id));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -17,7 +28,7 @@ export function ServiceCards({ items, portal, onFavorite, pending, paginate = fa
     {(paginate ? items.slice((current - 1) * pageSize, current * pageSize) : items).map((item, index) => <div key={item.id} className="group flex gap-3 rounded-xl border border-[var(--color-border)] p-4 transition-shadow hover:shadow-md">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${['bg-blue-50 text-blue-600', 'bg-indigo-50 text-indigo-600', 'bg-cyan-50 text-cyan-600'][index % 3]}`}><AppstoreOutlined /></span>
       <div className="min-w-0 flex-1">
-        {portal.can_apply ? <Link href={`/itsm/tickets/new?service_id=${item.id}`} className="font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]">{item.name}<ArrowRightOutlined className="ml-2 text-xs opacity-0 group-hover:opacity-100" /></Link> : <span className="font-medium">{item.name}</span>}
+        {portal.can_apply ? <Link href={`/itsm/tickets/new?service_id=${item.id}${fromTicketCenter ? '&from=tickets' : ''}`} className="font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]">{item.name}<ArrowRightOutlined aria-hidden className="ml-2 text-xs opacity-0 group-hover:opacity-100" /></Link> : <span className="font-medium">{item.name}</span>}
         <p className="mb-0 mt-2 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">{item.description || item.workflow_name || '按需申请，在线跟进处理进度'}</p>
       </div>
       <Button type="text" size="small" aria-label={`${favorites.has(item.id) ? '取消收藏' : '收藏'}${item.name}`} title={favorites.has(item.id) ? '取消收藏' : '收藏'} loading={pending === item.id} disabled={pending !== undefined} icon={favorites.has(item.id) ? <StarFilled className="text-amber-400" /> : <StarOutlined className="text-[var(--color-text-3)]" />} onClick={() => onFavorite(item.id)} />
@@ -25,7 +36,7 @@ export function ServiceCards({ items, portal, onFavorite, pending, paginate = fa
   </div>{paginate && items.length > 10 && <Pagination className="mt-4 flex justify-end" current={current} pageSize={pageSize} total={items.length} showSizeChanger pageSizeOptions={[10, 20, 50, 100]} onChange={(next, size) => { setPage(size === pageSize ? next : 1); setPageSize(size); }} />}</>;
 }
 
-export function ServiceBrowser({ portal, search, onFavorite, pending }: { portal: PortalData; search: string; onFavorite: (id: number) => void; pending?: number }) {
+export function ServiceBrowser({ portal, search, onFavorite, pending, fromTicketCenter }: ServiceActions & { search: string }) {
   const [catalog, setCatalog] = useState<number | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -36,7 +47,7 @@ export function ServiceBrowser({ portal, search, onFavorite, pending }: { portal
     portal.catalogs.forEach(item => { if (item.parent_id !== null && selected.has(item.parent_id) && !selected.has(item.id)) { selected.add(item.id); added = true; } });
     if (!added) break;
   }
-  const filtered = portal.services.filter(item => (catalog === undefined || (catalog === 0 ? !item.catalog_id : selected.has(item.catalog_id || 0))) && `${item.name} ${item.description || ''} ${item.workflow_name || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = portal.services.filter(item => (catalog === undefined || (catalog === 0 ? !item.catalog_id : selected.has(item.catalog_id || 0))) && matchesServiceSearch(item, search));
   const current = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
   const shown = filtered.slice((current - 1) * pageSize, current * pageSize);
   const groups = [...new Set(shown.map(item => item.catalog_id))];
@@ -47,7 +58,7 @@ export function ServiceBrowser({ portal, search, onFavorite, pending }: { portal
     </div>
     {!shown.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={search ? '未找到匹配的服务，试试其他关键词' : '暂无可申请的服务'} /> : groups.map(id => <section key={id || 0} className="mb-4 last:mb-0">
       <h3 className="mb-3 text-xs font-medium text-[var(--color-text-3)]">{portal.catalogs.find(item => item.id === id)?.name || '其他服务'}</h3>
-      <ServiceCards items={shown.filter(item => item.catalog_id === id)} portal={portal} onFavorite={onFavorite} pending={pending} />
+      <ServiceCards items={shown.filter(item => item.catalog_id === id)} portal={portal} onFavorite={onFavorite} pending={pending} fromTicketCenter={fromTicketCenter} />
     </section>)}
     {filtered.length > 10 && <Pagination className="mt-4 flex justify-end" current={current} pageSize={pageSize} total={filtered.length} showSizeChanger pageSizeOptions={[10, 20, 50, 100]} onChange={(next, size) => { setPage(size === pageSize ? next : 1); setPageSize(size); }} />}
   </div>;

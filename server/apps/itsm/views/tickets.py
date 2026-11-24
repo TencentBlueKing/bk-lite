@@ -73,6 +73,7 @@ def tickets(request):
                 "items": items,
                 "can_operate": has_permission(request, "ticket-Operate"),
                 "can_export": has_permission(request, "ticket-Export"),
+                "can_apply": has_permission(request, "portal-View") and has_permission(request, "ticket-Add"),
             }
         )
     payload = _body(request)

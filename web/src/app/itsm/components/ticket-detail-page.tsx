@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<string, { id: string; color: string }> = {
   cancelled: { id: 'itsm.ticket.statusCancelled', color: 'default' },
 };
 
-export default function TicketDetailPage({ serviceId }: { serviceId?: number }) {
+export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serviceId?: number; fromTicketCenter?: boolean }) {
   const params = useParams<{ id: string }>();
   const ticketId = Number(params.id);
   const { t } = useTranslation();
@@ -109,13 +109,14 @@ export default function TicketDetailPage({ serviceId }: { serviceId?: number }) 
   }
 
   const status = STATUS_LABEL[ticket.status];
+  const backToPortal = serviceId && !fromTicketCenter;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <header className="sticky top-0 z-20 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <ItsmBackButton href={serviceId ? "/itsm/portal" : "/itsm/tickets"} label={serviceId ? "返回服务门户" : "返回工单列表"} />
+            <ItsmBackButton href={backToPortal ? "/itsm/portal" : "/itsm/tickets"} label={backToPortal ? "返回服务门户" : "返回工单列表"} />
             <Tag color={status?.color || 'default'}>{serviceId ? '待提单' : status ? t(status.id) : ticket.status}</Tag>
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
             <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}

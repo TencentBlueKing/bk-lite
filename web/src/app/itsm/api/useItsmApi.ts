@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { readListPages } from './list-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { HandoverCandidate, HandoverDraft, HandoverRecord, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
+import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 // Next.js 代理使用无尾斜杠入口，代理转发 Django 时统一补斜杠。
@@ -127,7 +127,7 @@ export function useItsmApi() {
     (id: number, body: { score: number; comment?: string }) => post(`/itsm/api/tickets/${id}/survey/`, body),
     [post],
   );
-  const portal = useCallback(() => get('/itsm/api/services/portal/'), [get]);
+  const portal = useCallback(() => get<PortalData>('/itsm/api/services/portal/'), [get]);
   const portalLayout = useCallback(() => get('/itsm/api/services/layout/'), [get]);
   const savePortalLayout = useCallback((value: PortalLayout) => put('/itsm/api/services/layout/', value), [put]);
   const portalDashboard = useCallback(() => get('/itsm/api/services/dashboard/'), [get]);
@@ -142,7 +142,7 @@ export function useItsmApi() {
     [post],
   );
   const deleteService = useCallback((id: number) => del(`/itsm/api/services/?id=${id}`), [del]);
-  const toggleFavorite = useCallback((id: number) => post(`/itsm/api/services/${id}/favorite/`), [post]);
+  const toggleFavorite = useCallback((id: number) => post<{ favorite: boolean }>(`/itsm/api/services/${id}/favorite/`), [post]);
   const useService = useCallback((id: number) => post(`/itsm/api/services/${id}/use/`), [post]);
   const searchUsers = useCallback(
     (q: string, page = 1) => get('/itsm/api/users/search/', { params: { q, page, page_size: 10 } }),

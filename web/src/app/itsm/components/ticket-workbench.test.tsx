@@ -1,12 +1,12 @@
 import React from 'react';
-import { cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
-const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn(), portal: vi.fn(), toggleFavorite: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
+vi.mock('next/link', () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection?: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { const { rowSelection, dataSource } = props; if (!rowSelection) return <div>{dataSource.length} 条记录</div>; tableProps.current = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
 // 列配置加载后还会触发防抖查询，给并行运行时的真实异步渲染留出时间。
@@ -197,12 +197,75 @@ it('仅向具备导出权限的账号显示导出入口', async () => {
   await screen.findByRole('button', { name: '导出' });
 });
 
+it('快速提单按权限显示，打开后可筛选目录、搜索、收藏和重用服务', async () => {
+  const computer = { id: 21, name: '电脑申请', description: '办公电脑', catalog_id: 2, version_id: 15 };
+  const network = { id: 22, name: '网络申请', workflow_name: '网络接入审核', catalog_id: null, version_id: 17 };
+  api.portal.mockResolvedValue({
+    can_apply: true,
+    catalogs: [{ id: 1, name: '办公服务', parent_id: null }, { id: 2, name: '设备服务', parent_id: 1 }],
+    services: [computer, network],
+    favorites: [],
+    recents: [network],
+    hots: [],
+  });
+  api.toggleFavorite.mockResolvedValue({ favorite: true });
+
+  render(<TicketWorkbench />);
+  await screen.findByRole('button', { name: '测试工单' });
+  expect(screen.queryByRole('button', { name: '快速提单' })).toBeNull();
+  api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_apply: true });
+  fireEvent.click(screen.getByRole('button', { name: '刷新列表' }));
+  const quickSubmit = await screen.findByRole('button', { name: '快速提单' });
+  expect(api.portal).not.toHaveBeenCalled();
+  fireEvent.click(quickSubmit);
+
+  const drawer = within(await screen.findByRole('dialog'));
+  expect(drawer.getByText('快速提单')).toBeTruthy();
+  await drawer.findByRole('link', { name: '电脑申请' });
+  fireEvent.mouseDown(drawer.getByRole('combobox', { name: '服务目录筛选' }));
+  fireEvent.click(await screen.findByText('办公服务', { selector: '.ant-select-tree-title' }));
+  expect(drawer.getByRole('link', { name: '电脑申请' }).getAttribute('href')).toBe('/itsm/tickets/new?service_id=21&from=tickets');
+  expect(drawer.queryByRole('link', { name: '网络申请' })).toBeNull();
+
+  fireEvent.click(drawer.getByRole('button', { name: '收藏电脑申请' }));
+  await drawer.findByRole('button', { name: '取消收藏电脑申请' });
+  expect(api.toggleFavorite).toHaveBeenCalledWith(21);
+  fireEvent.click(drawer.getByRole('tab', { name: '我的收藏' }));
+  expect(drawer.getByRole('link', { name: '电脑申请' })).toBeTruthy();
+  api.toggleFavorite.mockResolvedValueOnce({ favorite: false });
+  fireEvent.click(drawer.getByRole('button', { name: '取消收藏电脑申请' }));
+  await drawer.findByText('暂无收藏的服务');
+  fireEvent.click(drawer.getByRole('tab', { name: '最近使用' }));
+  expect(drawer.queryByRole('link', { name: '电脑申请' })).toBeNull();
+  const search = drawer.getByRole('textbox', { name: '搜索服务' });
+  fireEvent.change(search, { target: { value: '不存在' } });
+  expect(drawer.queryByRole('link', { name: '网络申请' })).toBeNull();
+  fireEvent.change(search, { target: { value: '接入审核' } });
+  expect(drawer.getByRole('link', { name: '网络申请' }).getAttribute('href')).toBe('/itsm/tickets/new?service_id=22&from=tickets');
+});
+
+it('快速提单的服务加载失败后可以重试，并遵循当前提单权限', async () => {
+  api.listTickets.mockResolvedValue({ items: [], count: 0, can_apply: true });
+  api.portal.mockRejectedValueOnce(new Error('服务暂时不可用')).mockResolvedValue({
+    can_apply: false, services: [{ id: 21, name: '电脑申请' }], catalogs: [], favorites: [], recents: [], hots: [],
+  });
+  render(<TicketWorkbench />);
+  fireEvent.click(await screen.findByRole('button', { name: '快速提单' }));
+  const drawer = within(await screen.findByRole('dialog'));
+  await drawer.findByText('服务暂时不可用');
+  fireEvent.click(drawer.getByRole('button', { name: /重\s*试/ }));
+  await drawer.findByText('你没有提单权限');
+  expect(drawer.queryByRole('link', { name: '电脑申请' })).toBeNull();
+});
+
 it('提交后台导出后打开导出记录并保留当前分组范围', async () => {
   api.exportTickets.mockResolvedValue({ id: 7, status: 'pending' });
   api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_export: true });
   render(<TicketWorkbench initialTab="following" />);
   fireEvent.click(await screen.findByRole('button', { name: '导出' }));
-  fireEvent.click(await screen.findByRole('button', { name: '提交导出' }));
+  const submit = await screen.findByRole<HTMLButtonElement>('button', { name: '提交导出' });
+  await waitFor(() => expect(submit.disabled).toBe(false));
+  fireEvent.click(submit);
   await waitFor(() => expect(api.exportTickets).toHaveBeenCalledWith(expect.objectContaining({ tab: 'following' }), [], undefined, { columns: ['sn'] }));
   await screen.findByText('导出记录', { selector: '.ant-drawer-title span' });
   await waitFor(() => expect(api.listTicketExports).toHaveBeenCalledWith(1, 20));

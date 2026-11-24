@@ -16,6 +16,8 @@ import { TicketTagSelector } from './ticket-tag-selector';
 import { TicketFormFilters, completeFormConditions } from './ticket-form-filters';
 import { TicketExportDialog } from './ticket-export-dialog';
 import { TicketExportHistory } from './ticket-export-history';
+import { ItsmCreateButton } from './list-controls';
+import { QuickSubmitDrawer } from './quick-submit-drawer';
 import { useItsmApi } from '../api/useItsmApi';
 import type { TicketCenterFilters as Filters, TicketListItem } from '../types';
 
@@ -54,6 +56,8 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [canExport, setCanExport] = useState(false);
+  const [canApply, setCanApply] = useState(false);
+  const [quickSubmitOpen, setQuickSubmitOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportHistoryOpen, setExportHistoryOpen] = useState(false);
   const [items, setItems] = useState<TicketListItem[]>([]);
@@ -96,8 +100,10 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
     setLoading(true); setLoadError('');
     void api.listTickets({ ...query, fields: columns.join(','), page, page_size: pageSize }).then((value) => {
       if (!active) return;
-      const result = value as { items: TicketListItem[]; count: number; can_export: boolean };
+      const result = value as { items: TicketListItem[]; count: number; can_export: boolean; can_apply: boolean };
       setItems(result.items); setTotal(result.count); setCanExport(result.can_export === true);
+      setCanApply(result.can_apply === true);
+      if (!result.can_apply) setQuickSubmitOpen(false);
     }).catch((error: unknown) => { if (active) { setLoadError(errorText(error)); setItems([]); setTotal(0); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api.ready, api.listTickets, settingsReady, query, columns, page, pageSize, refresh]);
@@ -202,7 +208,8 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         <Button aria-label="导出记录" icon={<HistoryOutlined />} onClick={() => setExportHistoryOpen(true)}>导出记录</Button>
         <Button aria-label="导出" icon={<DownloadOutlined />} disabled={loading || total === 0} onClick={() => setExportOpen(true)}>导出</Button>
       </>}
-      <Button type="primary" disabled={loading || !batchActionAvailable} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
+      <Button type={canApply ? 'default' : 'primary'} disabled={loading || !batchActionAvailable} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
+      {canApply && <ItsmCreateButton onClick={() => setQuickSubmitOpen(true)}>快速提单</ItsmCreateButton>}
     </>} />
     {selected.length > 0 ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-primary)] bg-[var(--color-bg)] p-3"><span>已选 {selected.length} 项</span><Select aria-label="批量操作类型" className="w-36" value={action} loading={optionsLoading} disabled={optionsLoading} options={ACTIONS.filter(item => batchOptions.includes(item.value))} onChange={setAction} /><Button type="text" onClick={() => setSelected([])}>取消选择</Button><span className="text-xs text-[var(--color-text-3)]">仅选择当前页，每次最多 50 项</span></div> : null}
     {loadError ? <Alert className="mb-3" type="error" message={loadError} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>} /> : null}
@@ -239,6 +246,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         message.success('已提交导出任务');
       }} />}
     {exportHistoryOpen && <TicketExportHistory onClose={() => setExportHistoryOpen(false)} />}
+    {canApply && quickSubmitOpen && <QuickSubmitDrawer onClose={() => setQuickSubmitOpen(false)} />}
     {selected.length > 0 && availability?.reason ? <Alert className="mb-3" type="warning" message={availability.reason} /> : null}
     <Modal confirmLoading={batchBusy} formValue={results ? undefined : opinion} title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={!canConfirmBatch} onClick={() => void runBatch()}>确认执行</Button>}>
       {results ? <><Alert className="mb-3" type={results.every(item => item.ok) ? 'success' : 'warning'} message={`成功 ${results.filter(item => item.ok).length} 项，失败 ${results.filter(item => !item.ok).length} 项`} /><Table size="small" rowKey="id" pagination={false} dataSource={results} columns={[{ title: '工单', render: (_value, record: BatchResult) => batchNames[record.id] || record.id }, { title: '结果', render: (_value, record: BatchResult) => record.ok ? <Tag color="success">成功</Tag> : record.error }]} /></> : <><Alert type="info" className="mb-3" message={`将对选中的 ${selected.length} 张工单执行操作，逐单校验权限、节点和必填字段。`} /><div className="mb-3 max-h-36 overflow-auto text-sm">{selected.map(id => <div key={id} className="py-1">{batchNames[Number(id)]}</div>)}</div>{!['follow', 'unfollow'].includes(action) ? <div className="flex flex-col gap-2">
