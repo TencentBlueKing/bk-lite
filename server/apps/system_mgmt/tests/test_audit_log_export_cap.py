@@ -290,8 +290,10 @@ def test_login_log_export_at_limit_keeps_every_row(monkeypatch):
     response = _post_export(UserLoginLogViewSet, admin, team_id, {})
     sheet = _sheet(response)
     assert sheet.max_row == 3
-    values = {sheet.cell(row=2, column=5).value, sheet.cell(row=3, column=5).value}
-    assert values == {"kept-login-0", "kept-login-1"}
+    values = {sheet.cell(row=2, column=2).value, sheet.cell(row=3, column=2).value}
+    assert values == {"login-full"}
+    assert sheet.cell(row=1, column=3).value == "Login method"
+    assert sheet.cell(row=1, column=5).value == "Source IP"
 
 
 def test_login_log_selected_ids_over_limit_returns_400_and_within_limit_exports(monkeypatch):
@@ -325,4 +327,5 @@ def test_login_log_selected_ids_over_limit_returns_400_and_within_limit_exports(
     exported = _post_export(UserLoginLogViewSet, admin, team_id, {"selected_ids": [chosen.id]})
     sheet = _sheet(exported)
     assert sheet.max_row == 2
-    assert sheet.cell(row=2, column=5).value == "chosen-login"
+    assert sheet.cell(row=2, column=2).value == "login-pick"
+    assert sheet.cell(row=2, column=5).value == "10.0.0.8"

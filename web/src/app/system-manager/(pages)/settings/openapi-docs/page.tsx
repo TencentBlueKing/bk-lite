@@ -31,12 +31,7 @@ const renderMethodBadge = (method: string, kind: OpenAPIDocRow['kind']) => {
       </Tag>
     );
   }
-  return (
-    <HttpMethodBadge
-      method={method}
-      className="w-[52px] shrink-0 justify-center font-mono text-[11px] font-semibold tracking-wide select-none"
-    />
-  );
+  return <HttpMethodBadge method={method} />;
 };
 
 const formatSummary = (rawSummary: string, kind: OpenAPIDocRow['kind'], fallback: string) => {

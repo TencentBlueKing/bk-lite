@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from apps.system_mgmt.models import IMAccountAssociation, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
+from apps.system_mgmt.models import IMAccountAssociation, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, OperationLog, User
 
 
 def _instance(name, provider_key):
@@ -169,3 +169,29 @@ def test_mappings_omit_snapshot_and_match_context(api_client, authenticated_user
     body = listed.content.decode()
     assert "secret-sentinel-SNAPSHOT" not in body
     assert "secret-sentinel-CONTEXT" not in body
+
+
+@pytest.mark.django_db
+def test_create_writes_operation_log_as_system_manager(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    instance = _instance("audit-assoc-instance", "feishu")
+
+    created = api_client.post(
+        "/api/v1/system_mgmt/im_account_association/",
+        {
+            "name": "audit-assoc",
+            "integration_instance": instance.id,
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+        },
+        format="json",
+    )
+
+    assert created.status_code == 201, created.content
+    log = OperationLog.objects.get(target_name="audit-assoc")
+    assert log.app == "system-manager"
+    assert log.action_type == "create"
+    assert log.target_type == "im_account_association"

@@ -20,9 +20,7 @@ def _mw():
 
 
 def _request(path="/api/v1/system_mgmt/user/", method="GET", authenticated=True):
-    user = types.SimpleNamespace(
-        is_authenticated=authenticated, username="alice", domain="domain.com", locale="zh-Hans"
-    )
+    user = types.SimpleNamespace(is_authenticated=authenticated, username="alice", domain="domain.com", locale="zh-Hans")
     req = types.SimpleNamespace(path=path, method=method, user=user)
     req.get_full_path = lambda: path
     return req
@@ -36,9 +34,7 @@ def test_non_api_path_ignored():
 
 def test_api_exception_logs_and_returns_500():
     mw = _mw()
-    with patch(
-        "apps.system_mgmt.middleware.error_log_middleware.write_error_log_async"
-    ) as m_task:
+    with patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async") as m_task:
         resp = mw.process_exception(_request(), RuntimeError("kaboom"))
     assert resp.status_code == 500
     # 异步任务被下发，且 app/module 正确解析
@@ -75,9 +71,7 @@ def test_drf_api_exception_message():
 
 def test_non_whitelisted_app_skips_logging_but_still_responds():
     mw = _mw()
-    with patch(
-        "apps.system_mgmt.middleware.error_log_middleware.write_error_log_async"
-    ) as m_task:
+    with patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async") as m_task:
         resp = mw.process_exception(_request(path="/api/v1/unknownapp/foo/"), RuntimeError("x"))
     # 不在白名单 -> 不下发任务
     m_task.delay.assert_not_called()
@@ -87,9 +81,7 @@ def test_non_whitelisted_app_skips_logging_but_still_responds():
 def test_anonymous_user_logged_as_anonymous():
     mw = _mw()
     req = _request(authenticated=False)
-    with patch(
-        "apps.system_mgmt.middleware.error_log_middleware.write_error_log_async"
-    ) as m_task:
+    with patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async") as m_task:
         mw.process_exception(req, RuntimeError("x"))
     assert m_task.delay.call_args.kwargs["username"] == "anonymous"
 
@@ -113,3 +105,15 @@ def test_build_error_message_format():
     assert "[GET]" in msg
     assert "ValueError" in msg
     assert "bad value" in msg
+
+
+def test_build_error_message_strips_query_from_path():
+    mw = _mw()
+    req = _request(path="/api/v1/monitor/alert_rule/")
+    req.get_full_path = lambda: "/api/v1/monitor/alert_rule/?token=abc&x=1"
+    with patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async") as m_task:
+        mw.process_exception(req, ValueError("node_id 必填"))
+    stored = m_task.delay.call_args.kwargs["error_message"]
+    first_line = stored.split("\n", 1)[0]
+    assert first_line == "[GET] /api/v1/monitor/alert_rule/"
+    assert "?" not in first_line

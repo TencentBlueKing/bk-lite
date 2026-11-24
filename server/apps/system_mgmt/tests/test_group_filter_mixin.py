@@ -8,16 +8,15 @@ import types
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from apps.system_mgmt.models import Group, OperationLog, User
+from apps.system_mgmt.models import Group, OperationLog, User, UserLoginLog
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin, GroupPermissionMixin
+from apps.system_mgmt.viewset.user_login_log_viewset import UserLoginLogViewSet
 
 pytestmark = pytest.mark.django_db
 
 
 def _user(is_superuser=False, group_list=None):
-    return types.SimpleNamespace(
-        username="u", domain="domain.com", is_superuser=is_superuser, group_list=group_list or []
-    )
+    return types.SimpleNamespace(username="u", domain="domain.com", is_superuser=is_superuser, group_list=group_list or [])
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +192,12 @@ def test_get_queryset_filters_logs_by_team_users():
     # 当前组 team_id 内有用户 alice，日志按 username+domain 过滤
     team = Group.objects.create(name="Team", parent_id=0)
     User.objects.create(
-        username="alice", password="p", display_name="A", email="a@x.com",
-        domain="domain.com", group_list=[team.id],
+        username="alice",
+        password="p",
+        display_name="A",
+        email="a@x.com",
+        domain="domain.com",
+        group_list=[team.id],
     )
     OperationLog.objects.create(username="alice", domain="domain.com", source_ip="127.0.0.1", app="cmdb", action_type="create", summary="s1")
     OperationLog.objects.create(username="bob", domain="domain.com", source_ip="127.0.0.1", app="cmdb", action_type="create", summary="s2")
@@ -217,12 +220,62 @@ def test_get_queryset_include_children():
     parent = Group.objects.create(name="PT", parent_id=0)
     child = Group.objects.create(name="CT", parent_id=parent.id)
     User.objects.create(
-        username="kid", password="p", display_name="K", email="k@x.com",
-        domain="domain.com", group_list=[child.id],
+        username="kid",
+        password="p",
+        display_name="K",
+        email="k@x.com",
+        domain="domain.com",
+        group_list=[child.id],
     )
     OperationLog.objects.create(username="kid", domain="domain.com", source_ip="127.0.0.1", app="cmdb", action_type="create", summary="s")
-    viewset = _DummyOpLogViewSet(
-        _request(current_team=str(parent.id), include_children="1", is_superuser=True)
-    )
+    viewset = _DummyOpLogViewSet(_request(current_team=str(parent.id), include_children="1", is_superuser=True))
     qs = viewset.get_queryset()
     assert set(qs.values_list("username", flat=True)) == {"kid"}
+
+
+def _login_log(username, status, domain="domain.com"):
+    return UserLoginLog.objects.create(username=username, domain=domain, source_ip="127.0.0.1", status=status)
+
+
+def _login_view(current_team, is_superuser):
+    view = UserLoginLogViewSet()
+    view.request = _request(current_team=str(current_team), is_superuser=is_superuser, group_list=[{"id": current_team}])
+    view.format_kwarg = None
+    return view
+
+
+def test_default_root_superuser_includes_unmatched_failed_login_logs():
+    default, _created = Group.objects.get_or_create(name="Default", parent_id=0)
+    other = Group.objects.create(name="Other", parent_id=0)
+    User.objects.create(username="alice", password="p", display_name="A", email="a@x.com", domain="domain.com", group_list=[default.id])
+    User.objects.create(username="bob", password="p", display_name="B", email="b@x.com", domain="domain.com", group_list=[other.id])
+    _login_log("alice", UserLoginLog.STATUS_SUCCESS)
+    _login_log("alice", UserLoginLog.STATUS_FAILED)
+    _login_log("ghost", UserLoginLog.STATUS_FAILED)
+    _login_log("ghost", UserLoginLog.STATUS_SUCCESS)
+    _login_log("bob", UserLoginLog.STATUS_FAILED)
+
+    usernames = set(_login_view(default.id, True).get_queryset().values_list("username", "status"))
+
+    assert usernames == {
+        ("alice", UserLoginLog.STATUS_SUCCESS),
+        ("alice", UserLoginLog.STATUS_FAILED),
+        ("ghost", UserLoginLog.STATUS_FAILED),
+    }
+
+
+def test_unmatched_failed_login_logs_stay_out_of_other_teams_and_non_superusers():
+    default, _created = Group.objects.get_or_create(name="Default", parent_id=0)
+    other = Group.objects.create(name="Other", parent_id=0)
+    nested = Group.objects.create(name="Default", parent_id=other.id)
+    User.objects.create(username="alice", password="p", display_name="A", email="a@x.com", domain="domain.com", group_list=[default.id])
+    _login_log("alice", UserLoginLog.STATUS_FAILED)
+    _login_log("ghost", UserLoginLog.STATUS_FAILED)
+
+    other_names = set(_login_view(other.id, True).get_queryset().values_list("username", flat=True))
+    nested_names = set(_login_view(nested.id, True).get_queryset().values_list("username", flat=True))
+    member_names = set(_login_view(default.id, False).get_queryset().values_list("username", flat=True))
+
+    assert other_names == set()
+    assert nested_names == set()
+    assert member_names == {"alice"}

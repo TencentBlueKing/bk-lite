@@ -45,14 +45,32 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
-            log_operation(request, "create", "system-manager", f"新增用户同步源: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增用户同步源: {response.data.get('name', '')}",
+                target_type="user_sync_source",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("user_sync-Edit")
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         if response.status_code == 200:
-            log_operation(request, "update", "system-manager", f"编辑用户同步源: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑用户同步源: {response.data.get('name', '')}",
+                target_type="user_sync_source",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("user_sync-Delete")
@@ -61,8 +79,29 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         source_name = obj.name
         result = delete_user_sync_source(obj)
         if not result.get("result"):
+            if result.get("message") == "User sync is already running":
+                log_operation(
+                    request,
+                    "delete",
+                    "system-manager",
+                    f"删除用户同步源: {source_name}",
+                    target_type="user_sync_source",
+                    target_id=obj.id,
+                    target_name=source_name,
+                    outcome="failure",
+                    failure_reason=result.get("message") or "",
+                )
             return JsonResponse(result, status=400)
-        log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
+        log_operation(
+            request,
+            "delete",
+            "system-manager",
+            f"删除用户同步源: {source_name}",
+            target_type="user_sync_source",
+            target_id=obj.id,
+            target_name=source_name,
+            outcome="success",
+        )
         return JsonResponse(result)
 
     @action(methods=["GET"], detail=False, url_path="root_group_name_available")
@@ -168,9 +207,30 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     def sync_now(self, request, *args, **kwargs):
         source = self.get_object()
         if not source.enabled:
-            return JsonResponse({"result": False, "message": "User sync source is disabled"}, status=400)
+            message = "User sync source is disabled"
+            log_operation(
+                request,
+                "execute",
+                "system-manager",
+                f"执行用户同步: {source.name}",
+                target_type="user_sync_source",
+                target_id=source.id,
+                target_name=source.name,
+                outcome="failure",
+                failure_reason=message,
+            )
+            return JsonResponse({"result": False, "message": message}, status=400)
         sync_source_now(source.id)
-        log_operation(request, "execute", "system-manager", f"执行用户同步: {source.name}")
+        log_operation(
+            request,
+            "execute",
+            "system-manager",
+            f"执行用户同步: {source.name}",
+            target_type="user_sync_source",
+            target_id=source.id,
+            target_name=source.name,
+            outcome="accepted",
+        )
         return JsonResponse({"result": True, "message": "User sync task has been initiated"})
 
     @action(methods=["GET"], detail=True)
@@ -220,9 +280,7 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             if not source:
                 logger.warning(f"User sync preview source not found: source_id={source_id}, payload={request.data}")
                 return JsonResponse({"result": False, "message": "User sync source not found"}, status=404)
-            serializer = UserSyncSourceSerializer(
-                instance=source, data=request.data, partial=True, context={"request": request}
-            )
+            serializer = UserSyncSourceSerializer(instance=source, data=request.data, partial=True, context={"request": request})
         else:
             source = None
             serializer = UserSyncSourceSerializer(data=request.data, context={"request": request})

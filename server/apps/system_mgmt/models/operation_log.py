@@ -30,6 +30,18 @@ class OperationLog(TimeInfo):
         (ACTION_EXECUTE, "Execute"),
     ]
 
+    OUTCOME_SUCCESS = "success"
+    OUTCOME_FAILURE = "failure"
+    OUTCOME_ACCEPTED = "accepted"
+    OUTCOME_UNRECORDED = ""
+
+    OUTCOME_CHOICES = [
+        (OUTCOME_SUCCESS, "Success"),
+        (OUTCOME_FAILURE, "Failure"),
+        (OUTCOME_ACCEPTED, "Accepted"),
+        (OUTCOME_UNRECORDED, "Unrecorded"),
+    ]
+
     username = models.CharField("Username", max_length=100, db_index=True)
     source_ip = models.GenericIPAddressField("Source IP", db_index=True)
     app = models.CharField("Application", max_length=100, db_index=True)
@@ -38,6 +50,16 @@ class OperationLog(TimeInfo):
     domain = models.CharField("Domain", max_length=100, default="domain.com", db_index=True)
     target_type = models.CharField("Target Type", max_length=50, blank=True, default="", db_index=True)
     target_id = models.CharField("Target ID", max_length=100, blank=True, default="", db_index=True)
+    target_name = models.CharField("Target Name", max_length=255, blank=True, default="", db_index=True)
+    outcome = models.CharField(
+        "Outcome",
+        max_length=16,
+        choices=OUTCOME_CHOICES,
+        blank=True,
+        default=OUTCOME_UNRECORDED,
+        db_index=True,
+    )
+    failure_reason = models.TextField("Failure Reason", blank=True, default="")
     detail = JSONField("Detail", default=dict, blank=True)
     idempotency_key = models.CharField("Idempotency Key", max_length=128, null=True, blank=True, unique=True)
 
@@ -67,5 +89,8 @@ class OperationLog(TimeInfo):
             "created_at",
             "target_type",
             "target_id",
+            "target_name",
+            "outcome",
+            "failure_reason",
             "detail",
         ]

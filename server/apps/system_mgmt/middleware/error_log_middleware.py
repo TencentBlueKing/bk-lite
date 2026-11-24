@@ -15,6 +15,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import system_mgmt_logger
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.tasks import write_error_log_async
+from apps.system_mgmt.utils.error_log_presentation import request_path_without_query
 
 
 class ErrorLogMiddleware(MiddlewareMixin):
@@ -180,7 +181,7 @@ class ErrorLogMiddleware(MiddlewareMixin):
 
         # 获取请求方法和完整路径
         method = request.method
-        full_path = request.get_full_path()
+        full_path = request_path_without_query(request.get_full_path())
 
         # 获取堆栈跟踪（只保留最后5层）
         tb_lines = traceback.format_tb(exception.__traceback__)

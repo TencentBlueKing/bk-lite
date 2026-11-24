@@ -318,9 +318,23 @@ action_type:
   delete: Delete
   execute: Execute
   update: Update
+outcome:
+  success: Success
+  failure: Failure
+  accepted: Submitted
+  unrecorded: Not recorded
 status:
   success: Success
   failed: Failed
+login_method:
+  unrecorded: Not recorded
+  otp_suffix: (OTP)
+  bk_lite_builtin: Local password
+  ad: AD
+  feishu: Feishu
+  wecom: WeCom
+  wechat: WeChat
+  blueking: BlueKing
 export:
   too_many_rows: 'Export exceeds the limit of {limit} rows (current count is {count}). Narrow the filters, or export the selected rows with selected_ids.'
   login_log_sheet: User login logs
@@ -329,6 +343,19 @@ export:
   operation_log_filename: user_operation_logs
   openapi_call_log_sheet: API Call Log
   openapi_call_log_filename: API_Call_Log
+  error_log_sheet: Error logs
+  error_log_filename: error_logs
+  stack_unrecorded: Stack not recorded
+  column_time: Time
+  column_related_user: Related user
+  column_business_module: Business module
+  column_error_reason: Error reason
+  column_exception_type: Exception type
+  column_request_method: Request method
+  column_path: Path
+  column_tech_module: Technical module
+  column_recorded_error_text: Recorded error text
+  column_stack: Stack
   column_username: Username
   column_domain: Domain
   column_login_time: Login time
@@ -337,11 +364,20 @@ export:
   column_location: Location
   column_browser: Browser
   column_os: Operating system
+  column_client: Client
+  column_login_method: Login method
+  column_login_account: Account
+  column_login_source_ip: Source IP
   column_login_status: Login status
+  column_login_result: Login result
   column_failure_reason: Failure reason
   column_app: App
   column_action_type: Action type
   column_summary: Summary
+  column_target_type: Object type
+  column_target_name: Object name
+  column_target_id: Object ID
+  column_outcome: Result
 email:
   password_expiring_subject: Your password will expire soon
   password_expiring_body: '<p>Hello {name},</p><p>Your password will expire in <b>{days}</b> day(s). Please change it soon.</p>'

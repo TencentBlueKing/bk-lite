@@ -232,3 +232,6 @@ def test_unbind_otp_clears_secret_skips_unbound_and_logs():
     assert not unbound.otp_secret
     mock_log.assert_called_once()
     assert "unbind_otp" in mock_log.call_args.args[3]
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert mock_log.call_args.kwargs["target_type"] == "user"
+    assert mock_log.call_args.kwargs["target_name"] == bound.username
