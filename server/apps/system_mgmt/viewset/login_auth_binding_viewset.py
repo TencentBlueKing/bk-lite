@@ -29,14 +29,32 @@ class LoginAuthBindingViewSet(MaintainerViewSet):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
-            log_operation(request, "create", "system-manager", f"新增登录认证源: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增登录认证源: {response.data.get('name', '')}",
+                target_type="login_auth_binding",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("login_auth-Edit")
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         if response.status_code == 200:
-            log_operation(request, "update", "system-manager", f"编辑登录认证源: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑登录认证源: {response.data.get('name', '')}",
+                target_type="login_auth_binding",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("login_auth-Delete")
@@ -47,7 +65,16 @@ class LoginAuthBindingViewSet(MaintainerViewSet):
         binding_name = obj.name
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除登录认证源: {binding_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除登录认证源: {binding_name}",
+                target_type="login_auth_binding",
+                target_id=obj.id,
+                target_name=binding_name,
+                outcome="success",
+            )
         return response
 
     @action(methods=["POST"], detail=True)

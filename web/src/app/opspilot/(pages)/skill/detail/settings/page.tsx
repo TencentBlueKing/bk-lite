@@ -35,7 +35,7 @@ import { useSkill } from '@/app/opspilot/context/skillContext';
 import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
 import { filterModelOption, getModelOptionText, renderModelOptionLabel, withBoundUnavailableModels } from '@/app/opspilot/utils/modelOption';
 import {
-  buildSkillSaveTools,
+  skillToolUpdate,
   buildStudioRuntimeTools,
   normalizeMonitorToolConfigs,
 } from '@/app/opspilot/utils/monitorToolConfig';
@@ -58,15 +58,13 @@ const { TextArea } = Input;
 
 const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
 
-const SkillSettingsPage: React.FC = () => {
+const SkillSettingsForm = ({ id }: { id: string }) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail } = useSkillApi();
   const { fetchKnowledgeBases } = useWikiApi();
   const { fetchWorkflowMemorySpaces } = useMemoryApi();
   const { refreshSkillInfo } = useSkill();
-  const searchParams = useSearchParams();
-  const id = searchParams ? searchParams.get('id') : null;
   // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
   const manageGroup: number[] = Form.useWatch('group', form) || [];
   const selectedModelId = Form.useWatch('llmModel', form);
@@ -81,10 +79,13 @@ const SkillSettingsPage: React.FC = () => {
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [llmModels, setLlmModels] = useState<{ id: number, name: string, enabled: boolean, llm_model_type: string, vendor_name?: string }[]>([]);
   const [formDataLoading, setFormDataLoading] = useState(true);
+  const [detailFailed, setDetailFailed] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [quantity, setQuantity] = useState<number>(10);
   const [runModelCallLimit, setRunModelCallLimit] = useState<number>(10);
-  const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
+  const [savedTools, setSavedTools] = useState<SelectTool[]>([]);
+  const [editedTools, setEditedTools] = useState<SelectTool[] | null>(null);
+  const selectedTools = editedTools ?? savedTools;
   const [skillPermissions, setSkillPermissions] = useState<string[]>([]);
   const [guideValue, setGuideValue] = useState<string>('');
   const [hasInvalidParamKeys, setHasInvalidParamKeys] = useState(false);
@@ -138,6 +139,7 @@ const SkillSettingsPage: React.FC = () => {
     const fetchFormData = async () => {
       try {
         const data = await fetchSkillDetail(id);
+        if (!Array.isArray(data.tools)) throw new Error('Missing skill tool configuration');
         const stockGuideZh = '您好，请问有什么可以帮助您的吗？可以点击如下问题进行快速提问。\n[问题1]\n[问题2]';
         const stockGuideEn = 'Hello, how can I help? Click a question below.\n[Question 1]\n[Question 2]';
         const initialGuide = t('skill.form.guideDefault', stockGuideZh);
@@ -180,7 +182,8 @@ const SkillSettingsPage: React.FC = () => {
         setChatHistoryEnabled(data.enable_conversation_history ?? true);
         setQuantity(data.conversation_window_size ?? 10);
         setRunModelCallLimit(data.run_model_call_limit ?? 10);
-        setSelectedTools(normalizeMonitorToolConfigs((data.tools || []) as SelectTool[]));
+        setSavedTools(normalizeMonitorToolConfigs(data.tools));
+        setEditedTools(null);
         // 详情快照没有 variables。这里不要补成 []，否则目录未合并时会被当成「无声明」清空已存参数。
         const packages = (data.skill_packages || []) as SkillPackage[];
         setSelectedSkillAssetKeys(packages.map(getPackageKey));
@@ -188,6 +191,7 @@ const SkillSettingsPage: React.FC = () => {
         setSkillPackageParams(data.skill_package_params || {});
         setSkillPermissions(data.permissions || []);
       } catch (error) {
+        setDetailFailed(true);
         console.error(t('common.fetchFailed'), error);
       } finally {
         setFormDataLoading(false);
@@ -244,6 +248,7 @@ const SkillSettingsPage: React.FC = () => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const toolUpdate = skillToolUpdate(editedTools, savedTools);
       const payload = {
         name: values.name,
         team: values.group,
@@ -257,7 +262,7 @@ const SkillSettingsPage: React.FC = () => {
         temperature: 1,
         show_think: false,
         guide: values.guide,
-        tools: buildSkillSaveTools(selectedTools),
+        ...toolUpdate,
         enable_suggest: false,
         enable_query_rewrite: false,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
@@ -280,6 +285,10 @@ const SkillSettingsPage: React.FC = () => {
       };
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
+      if (toolUpdate.tools) {
+        setSavedTools(toolUpdate.tools);
+        setEditedTools(current => current === editedTools ? null : current);
+      }
       const missingOnSave = effectiveSkillCapabilityProfiles.flatMap((pkg) =>
         listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.display_name || pkg.name} / ${name}`)
       );
@@ -356,7 +365,7 @@ const SkillSettingsPage: React.FC = () => {
         ...(userMessageObj?.choiceId ? {
           choice_id: userMessageObj.choiceId,
           choice_option: userMessageObj.choiceOption || '',
-        } : {}),
+        } : { reply_to_choice_id: userMessageObj?.replyToChoiceId || '' }),
       };
 
       return {
@@ -747,6 +756,8 @@ const SkillSettingsPage: React.FC = () => {
 
       {formDataLoading ? (
         <OpsPilotStudioWorkbenchSkeleton />
+      ) : detailFailed ? (
+        <CompactEmptyState description={t('common.fetchFailed')} />
       ) : (
         <div className="flex h-full min-h-0 gap-3.5">
           {/* 左栏：配置面板 */}
@@ -1091,7 +1102,7 @@ const SkillSettingsPage: React.FC = () => {
                   {renderSkillPackageSelector()}
 
                   <div className="mt-4 border-t border-[var(--color-border-1)] pt-4">
-                    <ToolSelector defaultTools={selectedTools} onChange={setSelectedTools} />
+                    <ToolSelector defaultTools={selectedTools} onChange={setEditedTools} />
                   </div>
                 </section>
               </Form>
@@ -1179,4 +1190,7 @@ const SkillSettingsPage: React.FC = () => {
   );
 };
 
-export default SkillSettingsPage;
+export default function SkillSettingsPage() {
+  const id = useSearchParams()?.get('id');
+  return id ? <SkillSettingsForm key={id} id={id} /> : null;
+}

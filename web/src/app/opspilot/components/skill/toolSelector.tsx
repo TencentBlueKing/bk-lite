@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Alert, Button, Form, Input,  InputNumber, Switch } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 
@@ -64,10 +64,15 @@ export const toolHasConfigurableFields = (tool?: SelectTool | null) => {
   return (tool.kwargs || []).some((item) => Boolean(String(item?.key || '').trim()));
 };
 
-const isSameToolVariant = (tool?: SelectTool | null, defaultTool?: SelectTool | null) => {
-  if (!tool || !defaultTool) return false;
-  return (tool.rawName || tool.name) === (defaultTool.rawName || defaultTool.name);
-};
+type CatalogTool = SelectTool & { id: number; rawName: string };
+
+function matchCatalogTool(binding: SelectTool, catalog: CatalogTool[]) {
+  const name = binding.rawName || binding.name;
+  const sameId = catalog.find(tool => tool.id === binding.id);
+  if (sameId && (sameId.rawName === name || sameId.name === name)) return sameId;
+  // Built-in names are portable across installations. External MCP bindings require their original identity.
+  if (binding.isBuildIn !== false) return catalog.find(tool => tool.isBuildIn && tool.rawName === name);
+}
 
 // ── component ─────────────────────────────────────────────────────────────────
 interface ToolSelectorProps {
@@ -81,10 +86,15 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const [loading, setLoading] = useState<boolean>(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [pickerKind, setPickerKind] = useState<'tool' | 'mcp'>('tool');
-  const [tools, setTools] = useState<SelectTool[]>([]);
-  const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
+  const [tools, setTools] = useState<CatalogTool[]>([]);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingTool, setEditingTool] = useState<SelectTool | null>(null);
+  const [editingBinding, setEditingBinding] = useState<SelectTool | null>(null);
+  const selections = useMemo(() => defaultTools.map(binding => {
+    const catalog = matchCatalogTool(binding, tools);
+    const display = catalog ? { ...catalog, kwargs: binding.kwargs?.length ? binding.kwargs : catalog.kwargs } : binding;
+    return { binding, catalog, display };
+  }), [defaultTools, tools]);
+  const editingTool = selections.find(item => item.binding === editingBinding)?.display;
   const [form] = Form.useForm();
 
   // refs to each DB editor's imperative save handle
@@ -99,86 +109,30 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const adRef = useRef<ActiveDirectoryToolEditorHandle>(null);
   const mlopsRef = useRef<MlopsToolEditorHandle>(null);
 
-  const commitSelectedTools = (nextTools: SelectTool[]) => {
-    const normalizedTools = normalizeMonitorToolConfigs(nextTools);
-    setSelectedTools(normalizedTools);
-    onChange(normalizedTools);
-  };
-
   useEffect(() => {
-    fetchData();
+    let active = true;
+    setLoading(true);
+    fetchSkillTools().then(data => {
+      if (active) setTools(data.map(tool => ({
+        id: tool.id,
+        name: tool.display_name || tool.name,
+        rawName: tool.name,
+        icon: tool.icon || 'gongjuji',
+        description: tool.description_tr || tool.description || '',
+        isBuildIn: tool.is_build_in !== false,
+        systemTags: tool.system_tags || [],
+        userTags: tool.user_tags || [],
+        kwargs: (tool.params?.kwargs || []).filter(kwarg => kwarg.key),
+      })));
+    }).catch(error => {
+      console.error(t('common.fetchFailed'), error);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchSkillTools();
-      const normalizedDefaultTools = normalizeMonitorToolConfigs(defaultTools);
-      const defaultToolMap = new Map(normalizedDefaultTools.map((tool) => [tool.id, tool]));
-      const defaultRedisTool = normalizedDefaultTools.find((tool) => isRedisTool(tool));
-      const defaultMysqlTool = normalizedDefaultTools.find((tool) => isMysqlTool(tool));
-      const defaultOracleTool = normalizedDefaultTools.find((tool) => isOracleTool(tool));
-      const defaultMssqlTool = normalizedDefaultTools.find((tool) => isMssqlTool(tool));
-      const defaultPostgresTool = normalizedDefaultTools.find((tool) => isPostgresTool(tool));
-      const defaultEsTool = normalizedDefaultTools.find((tool) => isEsTool(tool));
-      const defaultJenkinsTool = normalizedDefaultTools.find((tool) => isJenkinsTool(tool));
-      const defaultKubernetesTool = normalizedDefaultTools.find((tool) => isKubernetesTool(tool));
-      const defaultAdTool = normalizedDefaultTools.find((tool) => isActiveDirectoryTool(tool));
-      const fetchedTools = data.map((tool) => {
-        const defaultTool = defaultToolMap.get(tool.id);
-        const kwargs = (tool.params.kwargs || [])
-          .filter((kwarg) => kwarg.key)
-          .map((kwarg) => ({
-            ...kwarg,
-            value: (defaultTool?.kwargs ?? []).find((dk) => dk.key === kwarg.key)?.value ?? kwarg.value,
-          }));
-        return normalizeMonitorToolConfig({
-          id: tool.id,
-          name: tool.display_name || tool.name,
-          rawName: tool.name,
-          icon: tool.icon || 'gongjuji',
-          description: tool.description_tr || tool.description || '',
-          isBuildIn: tool.is_build_in !== false,
-          systemTags: tool.system_tags || [],
-          userTags: tool.user_tags || [],
-          kwargs,
-        });
-      });
-      setTools(fetchedTools);
-
-      const initialSelectedTools = fetchedTools
-        .filter((tool) => defaultToolMap.has(tool.id)
-          || (isRedisTool(tool) && !!defaultRedisTool)
-          || (isMysqlTool(tool) && !!defaultMysqlTool)
-          || (isOracleTool(tool) && !!defaultOracleTool)
-          || (isMssqlTool(tool) && !!defaultMssqlTool)
-          || (isPostgresTool(tool) && !!defaultPostgresTool)
-          || (isEsTool(tool) && !!defaultEsTool)
-          || (isJenkinsTool(tool) && !!defaultJenkinsTool)
-          || (isKubernetesTool(tool) && !!defaultKubernetesTool && isSameToolVariant(tool, defaultKubernetesTool))
-          || (isActiveDirectoryTool(tool) && !!defaultAdTool))
-        .map((tool) => {
-          const matchedDefaultTool = defaultToolMap.get(tool.id)
-            || (isRedisTool(tool) ? defaultRedisTool : undefined)
-            || (isMysqlTool(tool) ? defaultMysqlTool : undefined)
-            || (isOracleTool(tool) ? defaultOracleTool : undefined)
-            || (isMssqlTool(tool) ? defaultMssqlTool : undefined)
-            || (isPostgresTool(tool) ? defaultPostgresTool : undefined)
-            || (isEsTool(tool) ? defaultEsTool : undefined)
-            || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined)
-            || (isKubernetesTool(tool) && isSameToolVariant(tool, defaultKubernetesTool) ? defaultKubernetesTool : undefined)
-            || (isActiveDirectoryTool(tool) ? defaultAdTool : undefined);
-          if (!matchedDefaultTool) return tool;
-          return { ...tool, kwargs: matchedDefaultTool.kwargs?.length ? matchedDefaultTool.kwargs : tool.kwargs };
-        });
-      commitSelectedTools(initialSelectedTools);
-    } catch (error) {
-      console.error(t('common.fetchFailed'), error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const commitSelectedTools = (next: SelectTool[]) => onChange(normalizeMonitorToolConfigs(next));
   const isMcpTool = (tool?: SelectTool | null) => tool?.isBuildIn === false;
 
   const openModal = (kind: 'tool' | 'mcp') => {
@@ -188,24 +142,22 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
   const handleModalConfirm = (selectedIds: number[]) => {
     const pickingMcp = pickerKind === 'mcp';
-    const kept = selectedTools.filter((tool) => isMcpTool(tool) !== pickingMcp);
-    const picked = tools
-      .filter((tool) => selectedIds.includes(tool.id) && isMcpTool(tool) === pickingMcp)
-      .map((tool) => selectedTools.find((selected) => selected.id === tool.id) ?? tool);
-    commitSelectedTools([...kept, ...picked]);
+    const kept = selections.filter(({ catalog }) =>
+      !catalog || isMcpTool(catalog) !== pickingMcp || selectedIds.includes(catalog.id)
+    );
+    const alreadySelected = new Set(kept.map(({ catalog, binding }) => catalog?.id ?? binding.id));
+    const added = tools.filter(tool => isMcpTool(tool) === pickingMcp && selectedIds.includes(tool.id) && !alreadySelected.has(tool.id));
+    if (kept.length !== selections.length || added.length) {
+      commitSelectedTools([...kept.map(item => item.binding), ...added]);
+    }
     setModalVisible(false);
   };
 
   const handleModalCancel = () => setModalVisible(false);
 
-  const removeSelectedTool = (toolId: number) => {
-    const updatedSelectedTools = selectedTools.filter((tool) => tool.id !== toolId);
-    commitSelectedTools(updatedSelectedTools);
-  };
-
-  const openEditModal = (tool: SelectTool) => {
-    const normalizedTool = normalizeMonitorToolConfig(tool);
-    setEditingTool(normalizedTool);
+  const openEditModal = (binding: SelectTool, display: SelectTool) => {
+    const normalizedTool = normalizeMonitorToolConfig(display);
+    setEditingBinding(binding);
     if (isMonitorToolConfig(normalizedTool)) {
       form.setFieldsValue({ kwargs: [] });
     } else if (!isDbTool(normalizedTool)) {
@@ -216,27 +168,17 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     setEditModalVisible(true);
   };
 
-  /** Called by each DB editor via onSave callback — updates selectedTools and closes modal */
-  const handleDbToolSaved = (kwargs: ToolVariable[]) => {
+  const saveToolConfig = (kwargs: ToolVariable[]) => {
     if (editingTool) {
-      const updatedTool = { ...editingTool, kwargs };
-      const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-      commitSelectedTools(updatedSelectedTools);
+      commitSelectedTools(defaultTools.map(tool => tool === editingBinding ? { ...editingTool, kwargs } : tool));
     }
     setEditModalVisible(false);
-    setEditingTool(null);
+    setEditingBinding(null);
   };
 
   const handleEditModalOk = () => {
     if (isMonitorToolConfig(editingTool)) {
-      if (editingTool) {
-        const updatedSelectedTools = selectedTools.map((tool) => (
-          tool.id === editingTool.id ? normalizeMonitorToolConfig(editingTool) : tool
-        ));
-        commitSelectedTools(updatedSelectedTools);
-      }
-      setEditModalVisible(false);
-      setEditingTool(null);
+      saveToolConfig([]);
       return;
     }
 
@@ -254,24 +196,18 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
     // Generic form-based tool
     form.validateFields().then((values) => {
-      if (editingTool) {
-        const updatedTool = { ...editingTool, kwargs: values.kwargs };
-        const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        commitSelectedTools(updatedSelectedTools);
-      }
-      setEditModalVisible(false);
-      setEditingTool(null);
+      saveToolConfig(values.kwargs);
     });
   };
 
   const handleEditModalCancel = () => {
     setEditModalVisible(false);
-    setEditingTool(null);
+    setEditingBinding(null);
   };
 
   const renderToolGroup = (kind: 'tool' | 'mcp') => {
     const mcp = kind === 'mcp';
-    const groupTools = selectedTools.filter((tool) => isMcpTool(tool) === mcp);
+    const groupTools = selections.filter(({ display }) => isMcpTool(display) === mcp);
     return (
       <div className={mcp ? 'mt-4 border-t border-[var(--color-border-1)] pt-4' : undefined}>
         <div className="mb-1 flex items-center justify-between gap-2">
@@ -298,9 +234,9 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2 pt-1">
-            {groupTools.map((tool) => (
+            {groupTools.map(({ binding, catalog, display: tool }) => (
               <div
-                key={tool.id}
+                key={JSON.stringify([binding.id, binding.rawName || binding.name])}
                 className="flex flex-col rounded-lg p-2.5 transition-all bg-[var(--color-fill-1)]/70 hover:bg-[var(--color-fill-2)]"
               >
                 <div className="flex w-full items-center justify-between">
@@ -311,6 +247,11 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={tool.name}>
                       {tool.name}
                     </span>
+                    {!loading && !catalog && (
+                      <span className="text-xs text-[var(--color-text-3)]">
+                        {t('skill.toolOutsideCatalog', '当前目录不可见')}
+                      </span>
+                    )}
                   </div>
                   <div className="ml-2 flex shrink-0 items-center gap-1">
                     {toolHasConfigurableFields(tool) && (
@@ -318,7 +259,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                         type="link"
                         size="small"
                         className="h-6 px-1 text-[11px]"
-                        onClick={() => openEditModal(tool)}
+                        onClick={() => openEditModal(binding, tool)}
                       >
                         <EditOutlined className="text-xs" />
                         <span className="ml-0.5">{t('skill.configureTool')}</span>
@@ -326,7 +267,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     )}
                     <DeleteOutlined
                       className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
-                      onClick={() => removeSelectedTool(tool.id)}
+                      aria-label={t('common.delete', '删除') + ' ' + tool.name}
+                      onClick={() => commitSelectedTools(defaultTools.filter(item => item !== binding))}
                     />
                   </div>
                 </div>
@@ -339,7 +281,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   };
 
   const pickerMcp = pickerKind === 'mcp';
-  const pickerTools = tools.filter((tool) => isMcpTool(tool) === pickerMcp);
+  const unavailableIds = new Set(selections.filter(item => !item.catalog).map(item => item.binding.id));
+  const pickerTools = tools.filter(tool => isMcpTool(tool) === pickerMcp && !unavailableIds.has(tool.id));
 
   return (
     <div>
@@ -355,7 +298,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         options={pickerTools}
         isNeedGuide={false}
         showToolDetail={true}
-        selectedOptions={selectedTools.filter((tool) => isMcpTool(tool) === pickerMcp).map((tool) => tool.id)}
+        selectedOptions={selections.flatMap(({ catalog }) => catalog && isMcpTool(catalog) === pickerMcp ? [catalog.id] : [])}
         onOk={handleModalConfirm}
         onCancel={handleModalCancel}
       />
@@ -378,25 +321,25 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
               description={t('tool.monitor.callerIdentityDescription')}
             />
           ) : isRedisTool(editingTool) ? (
-            <RedisToolEditor ref={redisRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <RedisToolEditor ref={redisRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isMysqlTool(editingTool) ? (
-            <MysqlToolEditor ref={mysqlRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <MysqlToolEditor ref={mysqlRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isOracleTool(editingTool) ? (
-            <OracleToolEditor ref={oracleRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <OracleToolEditor ref={oracleRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isMssqlTool(editingTool) ? (
-            <MssqlToolEditor ref={mssqlRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <MssqlToolEditor ref={mssqlRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isPostgresTool(editingTool) ? (
-            <PostgresToolEditor ref={postgresRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <PostgresToolEditor ref={postgresRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isEsTool(editingTool) ? (
-            <ElasticsearchToolEditor ref={esRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <ElasticsearchToolEditor ref={esRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isJenkinsTool(editingTool) ? (
-            <JenkinsToolEditor ref={jenkinsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <JenkinsToolEditor ref={jenkinsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isKubernetesTool(editingTool) ? (
-            <KubernetesToolEditor ref={kubernetesRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <KubernetesToolEditor ref={kubernetesRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isActiveDirectoryTool(editingTool) ? (
-            <ActiveDirectoryToolEditor ref={adRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <ActiveDirectoryToolEditor ref={adRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : isMlopsTool(editingTool) ? (
-            <MlopsToolEditor ref={mlopsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+            <MlopsToolEditor ref={mlopsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={saveToolConfig} />
           ) : (
             <Form.List name="kwargs">
               {(fields) => (

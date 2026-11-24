@@ -685,6 +685,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     # 已下沉到生成器内（F044）。
     show_think = params.get("show_think", False)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
+    params["choice_reply_text"] = user_message
     params.pop("group", 0)
     # thread_id belongs to the conversation; a stop signal must target only this run.
     # Preserve caller-owned execution IDs (e.g. workflow runs), otherwise allocate a fresh one.

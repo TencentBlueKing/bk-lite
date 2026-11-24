@@ -340,7 +340,7 @@ def test_duplicate_uses_requested_organization_and_description(superuser):
 
 
 @pytest.mark.django_db
-def test_draft_can_change_organization_and_published_workflow_cannot(superuser):
+def test_draft_and_published_workflows_can_change_organization(superuser, mocker, django_capture_on_commit_callbacks):
     draft = Workflow.objects.create(name="草稿", team=[7], description="原说明", definition={})
     published = Workflow.objects.create(
         name="已发布",
@@ -357,27 +357,45 @@ def test_draft_can_change_organization_and_published_workflow_cannot(superuser):
         _request(APIRequestFactory(), "patch", f"/workflows/{draft.id}/", superuser, {"name": "草稿", "description": "新说明", "team": [8]}),
         pk=draft.id,
     )
-    locked = update(
-        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"team": [8]}),
-        pk=published.id,
-    )
-    renamed = update(
-        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"name": "已发布改名", "description": "只改说明", "team": [7]}),
-        pk=published.id,
-    )
+    trigger = WorkflowTrigger.objects.create(workflow=published, team=[7], name="NATS", trigger_type=WorkflowTrigger.Type.NATS)
+    execution = WorkflowExecution.objects.create(workflow=published, workflow_version=1, team=[7])
+    sync = mocker.patch("apps.workflow.views.sync_workflow_nats_channels")
+    with django_capture_on_commit_callbacks(execute=True):
+        renamed = update(
+            _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"name": "已发布改名", "description": "新说明", "team": [8]}),
+            pk=published.id,
+        )
 
-    assert moved.status_code == 200
+    assert moved.status_code == renamed.status_code == 200
     draft.refresh_from_db()
-    assert draft.team == [8]
-    assert draft.description == "新说明"
-    assert locked.status_code == 409
-    assert locked.data["detail"] == "已发布流程不可修改组织"
-    assert renamed.status_code == 200
     published.refresh_from_db()
+    trigger.refresh_from_db()
+    assert draft.team == published.team == trigger.team == [8]
     assert published.name == "已发布改名"
-    assert published.description == "只改说明"
-    assert published.team == [7]
-    assert published.has_draft is False
+    assert draft.description == published.description == "新说明"
+    assert published.has_draft is False and published.current_version == 1
+    execution.refresh_from_db()
+    assert execution.team == [7]
+    sync.assert_called_once_with(published.pk)
+    get = WorkflowViewSet.as_view({"get": "retrieve"})
+    request = _request(APIRequestFactory(), "get", "/workflows/", superuser)
+    assert get(request, pk=published.pk).status_code == 404
+    request.COOKIES["current_team"] = "8"
+    assert get(request, pk=published.pk).status_code == 200
+
+
+@pytest.mark.django_db
+def test_team_only_update_checks_name_in_new_organizations(superuser):
+    workflow = Workflow.objects.create(name="每日巡检", team=[7], definition={}, current_version=1)
+    Workflow.objects.create(name=workflow.name, team=[8, 9], definition={})
+    update = WorkflowViewSet.as_view({"patch": "partial_update"})
+
+    response = update(_request(APIRequestFactory(), "patch", f"/workflows/{workflow.id}/", superuser, {"team": [8]}), pk=workflow.id)
+
+    assert response.status_code == 400
+    assert response.data["name"] == ["同一组织下已存在同名流程"]
+    workflow.refresh_from_db()
+    assert workflow.team == [7]
 
 
 @pytest.mark.django_db

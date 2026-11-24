@@ -251,9 +251,9 @@ export const useSkillApi = () => {
     };
   };
 
-  const fetchAdminSkillSessionMessages = async (sessionId: string) => {
+  const fetchAdminSkillSessionMessages = async (sessionId: string, messageId?: number) => {
     const res = await get('/opspilot/model_provider_mgmt/skill_channel/admin_conversation_messages/', {
-      params: { session_id: sessionId },
+      params: { session_id: sessionId, message_id: messageId },
     });
     const payload = res?.data ?? res;
     if (Array.isArray(payload)) {

@@ -27,7 +27,20 @@ def save_error_log(username, app, module, error_message, domain="domain.com"):
 
 
 @nats_client.register
-def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com", target_type="", target_id="", detail=None):
+def save_operation_log(
+    username,
+    source_ip,
+    app,
+    action_type,
+    summary="",
+    domain="domain.com",
+    target_type="",
+    target_id="",
+    detail=None,
+    outcome="",
+    failure_reason="",
+    target_name="",
+):
     """
     保存操作日志
     :param username: 用户名
@@ -39,9 +52,13 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
     :param target_type: 操作目标类型（可选）
     :param target_id: 操作目标ID（可选）
     :param detail: 操作详情 JSON（可选，默认空字典）
+    :param outcome: 执行结果（可选，空表示未记录）
+    :param failure_reason: 失败原因（可选）
+    :param target_name: 操作发生时的对象名称（可选）
     """
+    from apps.system_mgmt.utils.operation_log_utils import OPERATION_LOG_WRITE_FAILED, persist_operation_log
+
     try:
-        # 验证 action_type 是否合法
         valid_actions = [
             OperationLog.ACTION_CREATE,
             OperationLog.ACTION_UPDATE,
@@ -54,24 +71,29 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
                 "message": f"Invalid action_type. Must be one of: {', '.join(valid_actions)}",
             }
 
-        OperationLog.objects.create(
+        persist_operation_log(
             username=username,
             source_ip=source_ip,
             app=app,
             action_type=action_type,
             summary=summary,
             domain=domain,
-            target_type=target_type or "",
-            target_id=str(target_id or ""),
-            detail=detail or {},
+            target_type=target_type,
+            target_id=target_id,
+            target_name=target_name,
+            detail=detail,
+            outcome=outcome,
+            failure_reason=failure_reason,
         )
         return {"result": True, "message": "Operation log saved successfully"}
-    except Exception as e:
-        logger.exception(f"Failed to save operation log: {e}")
-        return {"result": False, "message": str(e)}
+    except Exception as exc:
+        logger.error(OPERATION_LOG_WRITE_FAILED, type(exc).__name__, exc_info=True)
+        return {"result": False, "message": str(exc)}
 
 
 def _operation_log_from_payload(item: dict):
+    from apps.system_mgmt.utils.operation_log_utils import normalize_failure_reason, normalize_outcome, sanitize_operation_detail
+
     valid_actions = [
         OperationLog.ACTION_CREATE,
         OperationLog.ACTION_UPDATE,
@@ -82,6 +104,7 @@ def _operation_log_from_payload(item: dict):
     idempotency_key = str(item.get("idempotency_key") or "").strip()
     if action_type not in valid_actions or not idempotency_key:
         return None
+    outcome = normalize_outcome(item.get("outcome") or "")
     return OperationLog(
         username=item.get("username") or "",
         source_ip=item.get("source_ip") or "127.0.0.1",
@@ -91,7 +114,10 @@ def _operation_log_from_payload(item: dict):
         domain=item.get("domain") or "domain.com",
         target_type=item.get("target_type") or "",
         target_id=str(item.get("target_id") or ""),
-        detail=item.get("detail") or {},
+        target_name=item.get("target_name") or "",
+        detail=sanitize_operation_detail(item.get("detail") or {}),
+        outcome=outcome,
+        failure_reason=normalize_failure_reason(outcome, item.get("failure_reason") or ""),
         idempotency_key=idempotency_key,
     )
 

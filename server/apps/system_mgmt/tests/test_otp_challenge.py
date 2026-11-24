@@ -19,6 +19,7 @@ from apps.system_mgmt.otp_challenge import (
     invalidate_challenge,
     record_failed_attempt,
     reset_rate_limit,
+    set_challenge_login_method,
     verify_challenge,
 )
 
@@ -75,6 +76,12 @@ class TestChallengeCreation:
 
         assert data is not None
         assert data["pending_otp_secret"] == "JBSWY3DPEHPK3PXP"
+
+    def test_set_challenge_login_method(self, clear_cache):
+        challenge_id = create_challenge(user_id=3, username="carol")
+        assert set_challenge_login_method(challenge_id, "feishu") is True
+        data = verify_challenge(challenge_id)
+        assert data["login_method"] == "feishu"
 
     def test_create_multiple_challenges_unique(self, clear_cache):
         """Each challenge should have a unique ID."""

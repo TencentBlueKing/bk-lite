@@ -62,7 +62,13 @@ from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, 
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.auto_mode import normalize_auto_request, set_unattended_flag
-from apps.opspilot.utils.pending_question import allows_user_questions, consume_pending_question, resolve_conversation_key
+from apps.opspilot.utils.pending_question import (
+    allows_user_questions,
+    consume_pending_question,
+    job_confirmation_owner,
+    peek_pending_question,
+    resolve_conversation_key,
+)
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 from apps.opspilot.utils.run_locale import get_run_locale, reset_run_locale, set_run_locale
 
@@ -904,17 +910,41 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     distribute_file_ids = kwargs.get("distribute_file_ids")
     if distribute_file_ids:
         runtime_extra_config["distribute_file_ids"] = distribute_file_ids
-    if not allows_user_questions(runtime_extra_config):
+    # 卡片、作业提案和授权决定只来自本会话服务器状态；客户端只能提交选择。
+    for key in ("pending_question", "job_confirmation_reply", "stale_choice", "choice_id", "choice_option", "choice_reply_text"):
+        runtime_extra_config.pop(key, None)
+    if not allows_user_questions(runtime_extra_config) or not conversation_key:
         return
-    pending_question = kwargs.get("pending_question")
-    if isinstance(pending_question, dict):
-        runtime_extra_config["pending_question"] = pending_question
+    choice_id = kwargs.get("choice_id")
+    reply_to_choice_id = kwargs.get("reply_to_choice_id")
+    current = peek_pending_question(conversation_key)
+    marker = (current or {}).get("job_confirmation")
+    expected_id = marker.get("choice_id") if marker else (current or {}).get("choice_id")
+    if reply_to_choice_id and reply_to_choice_id != expected_id:
+        runtime_extra_config["stale_choice"] = True
         return
-    if not conversation_key:
+    if marker:
+        owner = job_confirmation_owner(runtime_extra_config.get(CALLER_IDENTITY_CONFIG_KEY))
+        if not owner or owner != marker.get("owner") or (choice_id and marker.get("choice_id") != choice_id):
+            runtime_extra_config["stale_choice"] = True
+            return
+        if choice_id:
+            runtime_extra_config["choice_id"] = choice_id
+            runtime_extra_config["choice_option"] = kwargs.get("choice_option") or ""
+    if not current:
+        if choice_id:
+            runtime_extra_config["stale_choice"] = True
         return
-    consumed = consume_pending_question(conversation_key)
-    if consumed:
-        runtime_extra_config["pending_question"] = consumed
+    consumed = consume_pending_question(conversation_key, expected=current)
+    if not consumed:
+        runtime_extra_config["stale_choice"] = True
+        return
+    runtime_extra_config["pending_question"] = consumed
+    if marker:
+        raw = kwargs.get("choice_reply_text", kwargs.get("user_message", ""))
+        # Web 明确表示本页没有显示卡片时，先给本页展示原提案。IM 纯文本没有这个字段。
+        saw_no_card = not choice_id and "reply_to_choice_id" in kwargs and not reply_to_choice_id
+        runtime_extra_config["choice_reply_text"] = raw if isinstance(raw, str) and not saw_no_card else ""
 
 
 def _attach_wiki_material_write(chat_kwargs: dict, kwargs: dict) -> None:
@@ -935,7 +965,9 @@ _ATTACHMENT_GUIDANCE = (
     "询问已有或上传文件的内容时直接文字回复，不要生成文件。"
     "格式支持 txt、md、pdf、docx、pptx、xlsx、csv。用户要 txt 时用 file_type=txt，不要改成 md。"
     "用户要 PPT 时 file_type 必须是 pptx，文件名用 .pptx，禁止降级成 docx 或 pdf。"
-    "docx 和 pdf 的 content 用 Markdown，生成时会渲染成标题、段落和表格，不要指望原文符号留在文件里。"
+    "docx、pdf 和 pptx 的 content 用 Markdown，生成时会渲染成标题、段落、表格和幻灯片，不要指望 #、**、| 留在文件里。"
+    "pptx 的一级标题是封面，后面的短段落是副标题；二级标题分页。要突出几个数字时，列表每一条用数字开头。"
+    "要并排对比时用三级标题。行动项用有序列表，标题加粗，冒号后写说明。"
     "xlsx 和 csv 的 content 必须是带表头的逗号分隔数据，不要用 Markdown 表格。"
     "调用成功后只给简短摘要，不要在回复或正文里粘贴下载 URL、file://、/api/proxy 或加密 token。"
 )
