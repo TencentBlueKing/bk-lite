@@ -1,5 +1,7 @@
 import json
 
+from django.db.models import Case, Value, When
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -103,7 +105,10 @@ def integration_detail(request, item_id):
         {
             **serialize(item),
             "runs": list(item.runs.order_by("-id").values("id", "status", "code", "duration_ms", "created_by", "created_at")[:20]),
-            "deliveries": list(item.deliveries.order_by("-id").values("id", "status", "code", "attempts", "created_at", "task_id")[:30]),
+            "deliveries": list(
+                item.deliveries.order_by(Case(When(status="unknown", then=Value(0)), default=Value(1)), "-id")
+                .values("id", "status", "code", "attempts", "created_at", "task_id", "event_key")[:30]
+            ),
         }
     )
 
@@ -138,3 +143,21 @@ def retry_delivery(request, item_id, delivery_id):
     deliver(row.id)
     row.refresh_from_db()
     return WebUtils.response_success({"status": row.status, "code": row.code})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@api_errors
+def reconcile_delivery(request, item_id, delivery_id):
+    require(request, "data-Edit")
+    item = get_object_or_404(Integration, pk=item_id, domain=domain_of(request), kind="todo", is_enabled=True)
+    data = payload(request)
+    if type(data.get("received")) is not bool or type(data.get("attempts")) is not int:
+        raise ValueError("请确认接收方是否已收到该次投递")
+    status = "done" if data["received"] else "pending"
+    changed = item.deliveries.filter(pk=delivery_id, status="unknown", attempts=data["attempts"]).update(
+        status=status, code="", updated_by=request.user.username, updated_by_domain=domain_of(request), updated_at=timezone.now()
+    )
+    if not changed:
+        raise ValueError("投递状态已变更，请刷新后核对")
+    return WebUtils.response_success({"status": status})

@@ -1,5 +1,4 @@
 import json
-from html import unescape
 from uuid import uuid4
 
 from django.conf import settings
@@ -7,7 +6,6 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from django.utils.html import strip_tags
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -101,8 +99,7 @@ def _apply_article_values(article, payload, *, creating):
         return "请先保存草稿，再发布文章"
     changed_content = (content, content_format) != (article.content, article.content_format)
     if status in PUBLISHED_STATUSES and (article.status not in PUBLISHED_STATUSES or changed_content):
-        publish_content = unescape(strip_tags(content)) if content_format == KnowledgeArticle.ContentFormat.RICH_TEXT else content
-        if not publish_content.strip():
+        if not article.has_publishable_content(content, content_format):
             return "发布前请填写正文"
     article.title, article.content, article.status = title.strip(), content, status
     article.content_format, article.category = content_format, category.strip()

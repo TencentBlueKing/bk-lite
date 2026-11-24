@@ -11,7 +11,7 @@ from apps.itsm.tests.test_review_regressions import request
 from apps.itsm.views.m2 import followers, relations, ticket_tags
 from apps.itsm.views.tickets import tickets
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def test_child_relation_cannot_be_removed(sample):
 def test_follower_notification_after_commit_and_unfollow(sample, django_capture_on_commit_callbacks):
     ticket, _ = sample
     TicketFollower.objects.create(ticket=ticket, username="owner")
-    with patch("apps.itsm.signals.deliver_with_retry") as notify:
+    with patch("apps.itsm.services.trigger_delivery.dispatch_notification", return_value={"site": {"result": True}, "im": {"skipped": True}}) as notify:
         with django_capture_on_commit_callbacks(execute=True):
             TicketLog.objects.create(ticket=ticket, action="approve", operator="handler")
             assert not notify.called
@@ -127,7 +127,7 @@ def test_comment_notice_excludes_actor_and_rollback(sample, django_capture_on_co
     ticket, _ = sample
     TicketFollower.objects.create(ticket=ticket, username="owner")
     TicketFollower.objects.create(ticket=ticket, username="handler")
-    with patch("apps.itsm.signals.deliver_with_retry") as notify:
+    with patch("apps.itsm.services.trigger_delivery.dispatch_notification", return_value={"site": {"result": True}, "im": {"skipped": True}}) as notify:
         with django_capture_on_commit_callbacks(execute=True):
             TicketComment.objects.create(ticket=ticket, content="内容", created_by="handler")
         assert notify.call_args.args[2] == ["owner"]

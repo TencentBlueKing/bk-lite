@@ -16,8 +16,9 @@ from apps.itsm.services.notify.service import (
     send_site_notification,
     ticket_notice_variables,
 )
+from apps.itsm.services.notify.recipients import active_users
 from apps.itsm.services.trigger_fields import person_field_catalog, person_form_fields
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, User
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannelStatusChoices
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 from apps.system_mgmt.services.im_channel_access import filter_accessible_im_channels
@@ -102,7 +103,7 @@ def _ready_channels(domain, *, user=None, ids=None):
 
 
 def _active_users(domain, names):
-    return User.objects.filter(domain=domain, disabled=False, username__in=names).order_by("username")
+    return active_users(domain).filter(username__in=names).order_by("username")
 
 
 def _notice_templates(domain, routes):
@@ -181,6 +182,8 @@ def resolve_notice(ticket, notice, *, current_tasks=None):
 
 
 def deliver_configured_notice(notice, variables, receivers, *, domain, event_key, is_test, im_sender):
+    current = set(_active_users(domain, [name for _, name in receivers]).values_list("id", "username"))
+    receivers = [(user_id, name) for user_id, name in receivers if (user_id, name) in current]
     channel_ids = [route.channel_id for route in notice.channels if isinstance(route, IMRoute)]
     channels = _ready_channels(domain, ids=channel_ids)
     templates = _notice_templates(domain, notice.channels)

@@ -334,7 +334,7 @@ def test_external_node_business_effects(sample, kind):
     ticket, _ = sample
     if kind == "notice":
         with patch("apps.itsm.services.notify.service.dispatch_notification", return_value={"site": {"result": True}}) as notify:
-            assert execute_node(ticket, {"id": "notice", "type": kind, "auto": {"receivers": ["owner"]}})["notified"]
+            assert execute_node(ticket, {"id": "notice", "type": kind, "auto": {"receivers": ["owner"]}}, job_id="visit")["notified"]
             notify.assert_called_once()
     elif kind == "decision":
         table = DecisionTable.objects.create(name="金额路由", rules=[{"when": {"field": "amount", "op": ">", "value": 50}, "then": {"route": "high"}}])

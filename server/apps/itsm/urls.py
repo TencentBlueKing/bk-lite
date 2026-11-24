@@ -34,7 +34,7 @@ from apps.itsm.views.extend import (
 )
 from apps.itsm.views.field_fetch import field_catalog, field_fetch, field_gateway
 from apps.itsm.views.health import health
-from apps.itsm.views.integrations import integration_catalog, integration_detail, integration_test, integrations, retry_delivery
+from apps.itsm.views.integrations import integration_catalog, integration_detail, integration_test, integrations, reconcile_delivery, retry_delivery
 from apps.itsm.views.knowledge import delete_knowledge_attachment, download_knowledge_attachment, upload_knowledge_attachment
 from apps.itsm.views.m2 import (
     attachment_item,
@@ -88,6 +88,7 @@ urlpatterns = [
     path("api/integrations/<int:item_id>/", integration_detail),
     path("api/integrations/<int:item_id>/test/", integration_test),
     path("api/integrations/<int:item_id>/deliveries/<int:delivery_id>/retry/", retry_delivery),
+    path("api/integrations/<int:item_id>/deliveries/<int:delivery_id>/reconcile/", reconcile_delivery),
     path("api/schedules/runs/", schedule_runs, name="itsm-schedule-runs"),
     path("api/triggers/options/", trigger_options, name="itsm-trigger-options"),
     path("api/services/layout/", portal_layout, name="itsm-portal-layout"),

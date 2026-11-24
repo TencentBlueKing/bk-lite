@@ -157,6 +157,15 @@ class KnowledgeArticle(ItsmModel):
     status = models.CharField(max_length=16, default="draft")
     tickets = models.ManyToManyField(Ticket, blank=True, related_name="knowledge_articles")
 
+    @classmethod
+    def has_publishable_content(cls, content, content_format):
+        from html import unescape
+
+        from django.utils.html import strip_tags
+
+        text = unescape(strip_tags(content)) if content_format == cls.ContentFormat.RICH_TEXT else content
+        return bool(text.strip())
+
     class Meta:
         db_table = "itsm_knowledge_article"
 

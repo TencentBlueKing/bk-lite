@@ -36,7 +36,7 @@ def test_delivery_failure_retry_and_no_duplicate_success(sample):
     Integration.objects.create(name="目标", kind="todo", config={"url": "https://example.com/hook"})
     sync_todos(ticket.id)
     row = TodoDelivery.objects.get()
-    with patch("apps.itsm.services.todo_sync.safe_request", side_effect=RuntimeError("down")):
+    with patch("apps.itsm.services.todo_sync.safe_request", return_value=Mock(status_code=422)):
         deliver(row.id)
     row.refresh_from_db()
     assert row.status == "failed"

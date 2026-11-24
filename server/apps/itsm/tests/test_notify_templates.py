@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import call, patch
+from unittest.mock import ANY, call, patch
 
 import pytest
 
@@ -14,7 +14,7 @@ from apps.system_mgmt.models import User
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationUserMapping
 from apps.system_mgmt.models.integration_instance import IntegrationInstance
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 
 
 def create_template(domain, channel_type, title, event="test.notice"):
@@ -136,12 +136,12 @@ def test_new_task_renders_ticket_fields_in_im_without_changing_the_site_link(dja
     )
     with patch("apps.itsm.services.notify.service._send_im_if_configured") as send_im, django_capture_on_commit_callbacks(execute=True):
         TicketService(client).sync_ticket(ticket)
-    send_im.assert_called_once_with("工单待办 REQ-NOTICE-1", f"更换设备 · 服务申请流程 · 部门审批 · /itsm/tickets/{ticket.id}", ["handler"], domain=ticket.domain)
+    send_im.assert_called_once_with("工单待办 REQ-NOTICE-1", f"更换设备 · 服务申请流程 · 部门审批 · /itsm/tickets/{ticket.id}", ["handler"], domain=ticket.domain, im_sender=ANY)
     assert Notification.objects.get().target_url == f"/itsm/tickets/{ticket.id}"
 
 
 def test_ticket_event_uses_sender_domain():
-    with patch("apps.itsm.signals.deliver_with_retry") as deliver:
+    with patch("apps.itsm.signals.queue_ticket_notice") as deliver:
         send_itsm_notification(SimpleNamespace(domain="test.example", is_test=True), "task.created", ["tester"], {"title": "服务申请"})
     assert deliver.call_args.kwargs["domain"] == "test.example"
     assert deliver.call_args.kwargs["site_only"] is True

@@ -8,12 +8,15 @@ from apps.itsm.models import FormModel, Service, StatusTransition, TicketStatus,
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.services.triggers import fire_triggers
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 DOMAIN = "trigger.example"
 
 
 @pytest.fixture
 def workflow():
+    from apps.system_mgmt.models import User
+
+    User.objects.create(username="owner", domain=DOMAIN)
     for key in ["new", "processing", "finished", "terminated", "cancelled", "suspended"]:
         TicketStatus.objects.create(key=key, name=key, domain=DOMAIN)
     form = FormModel.objects.create(name="验收表单", key="trigger_form", domain=DOMAIN)

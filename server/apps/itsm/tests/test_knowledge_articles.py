@@ -13,7 +13,7 @@ from apps.itsm.models.extend import KnowledgeArticle
 from apps.itsm.tests.test_review_regressions import request
 from apps.itsm.views.extend import resource_item, resources
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 READER = ["knowledge-View"]
 EDITOR = [*READER, "knowledge-Add", "knowledge-Edit", "knowledge-Delete"]
 

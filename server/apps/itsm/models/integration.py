@@ -34,3 +34,37 @@ class TodoDelivery(ItsmModel):
 
     class Meta:
         db_table = "itsm_todo_delivery"
+
+
+class TicketNoticeDelivery(models.Model):
+    domain = models.CharField(max_length=100)
+    event_key = models.CharField(max_length=200)
+    event = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default="pending")
+    message = models.CharField(max_length=200, default="")
+    delivery_payload = models.JSONField(null=True)
+    delivery_claimed_at = models.DateTimeField(null=True)
+    delivery_attempts = models.PositiveSmallIntegerField(default=0)
+    delivery_receipts = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "itsm_ticket_notice_delivery"
+        unique_together = (("domain", "event_key"),)
+        indexes = [models.Index(fields=["status", "id"], name="itsm_notice_due_idx")]
+
+
+class EmailReceipt(models.Model):
+    domain = models.CharField(max_length=100)
+    mailbox = models.CharField(max_length=200)
+    message_key = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default="pending")
+    claimed_at = models.DateTimeField(null=True)
+    service = models.ForeignKey("itsm.Service", on_delete=models.PROTECT)
+    title = models.CharField(max_length=200)
+    version = models.ForeignKey("itsm.WorkflowVersion", on_delete=models.PROTECT)
+    ticket = models.ForeignKey("itsm.Ticket", on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "itsm_email_receipt"
+        unique_together = (("domain", "mailbox", "message_key"),)

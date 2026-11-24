@@ -1,10 +1,10 @@
-import email
 import os
-from email.policy import default as email_policy
 from pathlib import Path
 
 from celery import shared_task
 
+from apps.core.logger import itsm_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.itsm.models import EmailRule
 from apps.itsm.services.notify.service import deliver_with_retry
 
@@ -25,22 +25,6 @@ def sla_tick():
     return scan()
 
 
-def _ingest_eml(path: Path) -> bool:
-    from apps.itsm.models import Service
-    from apps.itsm.views.tickets import _service
-
-    rule = EmailRule.objects.filter(is_enabled=True).exclude(service_id=None).first()
-    if rule is None:
-        return False
-    service = Service.objects.select_related("workflow__current_version").filter(id=rule.service_id).first()
-    if service is None or service.workflow.current_version_id is None:
-        return False
-    message = email.message_from_bytes(path.read_bytes(), policy=email_policy)
-    subject = str(message.get("subject") or "邮件工单")
-    _service().create(service.workflow.current_version, {"title": subject[:200]}, "mail", is_test=True)
-    return True
-
-
 @shared_task
 def email_poll():
     """读取 ITSM_MAIL_DIR 里的 eml。没有目录时不创建工单。"""
@@ -50,12 +34,22 @@ def email_poll():
     root = Path(mail_dir)
     if not root.is_dir():
         return {"checked": 0, "created": 0}
-    created = 0
+    from apps.itsm.services.inbound_mail import ingest_email
+    from apps.itsm.views.tickets import _service
+
+    checked = created = 0
     for path in root.glob("*.eml"):
-        if _ingest_eml(path):
-            created += 1
-            path.rename(path.with_suffix(".eml.done"))
-    return {"checked": created, "created": created}
+        checked += 1
+        try:
+            result = ingest_email(path, _service)
+            created += result == "created"
+            if result in {"created", "duplicate"}:
+                path.rename(path.with_suffix(".eml.done"))
+        except FileNotFoundError:
+            continue
+        except Exception as error:
+            logger.error("ITSM 邮件处理失败 error_type=%s", type(error).__name__, exc_info=safe_exception_info(error))
+    return {"checked": checked, "created": created}
 
 
 @shared_task
@@ -110,10 +104,13 @@ def auto_tick():
 
 
 @shared_task(ignore_result=True)
-def trigger_notice_tick():
-    from apps.itsm.services.trigger_delivery import drain_trigger_notices
+def trigger_notice_tick(log_id=None, ordinary=False):
+    from apps.itsm.services.trigger_delivery import deliver_trigger_notice, drain_trigger_notices
 
-    drain_trigger_notices()
+    if log_id is None:
+        drain_trigger_notices()
+    else:
+        deliver_trigger_notice(log_id, ordinary=ordinary)
 
 
 @shared_task(ignore_result=True, soft_time_limit=180, time_limit=210)
@@ -124,7 +121,7 @@ def generate_ticket_export(task_id):
 
 
 @shared_task(ignore_result=True)
-def knowledge_attachment_cleanup():
+def knowledge_attachment_cleanup(object_names=None):
     from apps.itsm.services.knowledge_attachments import drain_attachment_cleanup
 
-    drain_attachment_cleanup()
+    drain_attachment_cleanup(object_names=object_names)

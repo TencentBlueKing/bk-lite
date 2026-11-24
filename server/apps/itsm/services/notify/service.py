@@ -8,6 +8,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from apps.console_mgmt.services.notifications import create_targeted_notification
 from apps.core.logger import itsm_logger
 from apps.itsm.models import NotifyTemplate, Ticket
+from apps.itsm.services.notify.recipients import active_users
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationChannelStatusChoices, IMNotificationUserMapping
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
@@ -90,9 +91,7 @@ def dispatch_notification(
 def _send_im_if_configured(title: str, content: str, receivers: list[str], *, domain: str, im_sender=None) -> dict:
     candidates = (
         IMNotificationUserMapping.objects.filter(
-            user__domain=domain,
-            user__username__in=receivers,
-            user__disabled=False,
+            user__in=active_users(domain).filter(username__in=receivers),
             channel__enabled=True,
             channel__status=IMNotificationChannelStatusChoices.READY,
         )

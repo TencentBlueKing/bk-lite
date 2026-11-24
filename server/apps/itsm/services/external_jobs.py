@@ -65,7 +65,7 @@ def request_retry(ticket, execution_id, operator):
     return True
 
 
-def execute_node(ticket, node):
+def execute_node(ticket, node, *, job_id=None):
     kind = node.get("type")
     config = node.get("auto") or {}
     if kind in {"cc", "notice"}:
@@ -74,6 +74,8 @@ def execute_node(ticket, node):
         receivers = config.get("receivers") or (node.get("assignee") or {}).get("value") or []
         if not receivers:
             raise ActionFailure("通知节点缺少接收人", retryable=True)
+        if not job_id:
+            raise ActionFailure("通知作业缺少标识")
         result = dispatch_notification(
             "node.notice",
             {
@@ -83,7 +85,7 @@ def execute_node(ticket, node):
                 "node": node.get("name") or node["id"],
             },
             receivers,
-            event_key=f'itsm-notice-{ticket.id}-{node["id"]}-{ticket.process_instance_id}',
+            event_key=f"itsm-notice-{ticket.id}-{job_id}",
             site_only=ticket.is_test,
             domain=ticket.domain,
         )
@@ -113,14 +115,18 @@ def execute_node(ticket, node):
         ticket.save(update_fields=["form_data", "updated_at"])
         return {"matched_keys": list(matched)}
     if kind == "knowledge":
+        content = str(ticket.form_data.get(config.get("content_field") or "content") or config.get("content") or "")
+        if not KnowledgeArticle.has_publishable_content(content, KnowledgeArticle.ContentFormat.TEXT):
+            raise ActionFailure("发布前请填写正文", retryable=True)
         article = KnowledgeArticle.objects.create(
             domain=ticket.domain,
             title=ticket.title,
-            content=str(ticket.form_data.get(config.get("content_field") or "content") or config.get("content") or ""),
+            content=content,
             status="published",
             created_by=ticket.creator,
             updated_by=ticket.creator,
         )
+        article.tickets.add(ticket)
         return {"article_id": article.id}
     if kind == "auto_dispatch":
         variables = TicketService()._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data)
@@ -161,7 +167,7 @@ def _execute(ticket, execution, node, detail):
                 execution.status = "queued"
                 execution.save(update_fields=["status", "updated_at"])
                 return
-            result = execute_node(ticket, node)
+            result = execute_node(ticket, node, job_id=detail["job_id"])
             execution.status = "executed"
             execution.detail = {**detail, "result": result}
             execution.save(update_fields=["status", "detail", "updated_at"])

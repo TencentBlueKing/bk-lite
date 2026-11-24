@@ -213,25 +213,17 @@ class TicketService:
                         ticket, task, "return", {"return_mode": "submit", "opinion": "自动退回"}, "system", privileged=True, automatic_return=True
                     )
             if created and task.assignee:
-
-                def notify_created(current_ticket=ticket, current_task=task):
-                    itsm_event.send(
-                        sender=current_ticket,
-                        event="task.created",
-                        receivers=[current_task.assignee],
-                        variables={
-                            **ticket_notice_variables(current_ticket, link_to_ticket=True),
-                            "title": current_ticket.title,
-                            "node": current_task.node_name,
-                        },
-                        event_key=f"itsm-task-{current_task.flowable_task_id}",
-                    )
-                    if not current_ticket.is_test:
-                        from apps.itsm.services.todo_sync import push_todo
-
-                        push_todo(current_ticket, current_task)
-
-                transaction.on_commit(notify_created, robust=True)
+                itsm_event.send(
+                    sender=ticket,
+                    event="task.created",
+                    receivers=[task.assignee],
+                    variables={
+                        **ticket_notice_variables(ticket, link_to_ticket=True),
+                        "title": ticket.title,
+                        "node": task.node_name,
+                    },
+                    event_key=f"itsm-task-{task.flowable_task_id}",
+                )
         ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).exclude(flowable_task_id__in=seen).update(
             status=TicketTask.TaskStatus.DONE
         )

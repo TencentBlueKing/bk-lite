@@ -13,7 +13,7 @@ from apps.itsm.views.extend import resources
 from apps.itsm.views.users import UserSearchView
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance, User
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 DOMAIN = "notice.example"
 OTHER_DOMAIN = "foreign.example"
 

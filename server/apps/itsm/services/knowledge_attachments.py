@@ -17,12 +17,15 @@ def reserve_upload(object_name):
 
 
 def queue_attachment_cleanup(object_names):
+    from apps.itsm.tasks import knowledge_attachment_cleanup
+
     now = timezone.now()
     records = KnowledgeAttachmentCleanup.objects.bulk_create(
         [KnowledgeAttachmentCleanup(object_name=name, next_attempt_at=now) for name in object_names]
     )
     names = [item.object_name for item in records[:20]]
-    transaction.on_commit(partial(drain_attachment_cleanup, object_names=names), robust=True)
+    if names:
+        transaction.on_commit(partial(knowledge_attachment_cleanup.apply_async, args=(names,), retry=False), robust=True)
 
 
 def cleanup_attachment(object_name, *, force=False):

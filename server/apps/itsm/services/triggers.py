@@ -5,6 +5,7 @@ from apps.core.logger import itsm_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.itsm.models import TicketTag, Trigger, TriggerLog
 from apps.itsm.services.form.rules import match_when
+from apps.itsm.services.notify.recipients import active_users
 from apps.itsm.services.notify.service import ticket_notice_variables
 from apps.itsm.services.trigger_config import EVENT_ALIASES, actions_for, normalize_condition, scope_matches, status_target
 from apps.itsm.services.trigger_delivery import schedule_delivery
@@ -80,6 +81,7 @@ def _notice_payload(ticket, trigger_name, action, current_tasks):
     notice = action.get("notice")
     if notice is None:
         recipients = [ticket.created_by or ticket.creator]
+        recipient_ids = list(active_users(ticket.domain).filter(username__in=recipients).values_list("pk", flat=True))
         variables = ticket_notice_variables(ticket, link_to_ticket=True)
         base = (getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
         variables["ticket_link"] = f"{base}{variables['ticket_path']}"
@@ -89,6 +91,7 @@ def _notice_payload(ticket, trigger_name, action, current_tasks):
         content = action["value"] or f"{ticket.title}（{ticket.sn}）"
     variables.update(title=trigger_name, content=content)
     return {
+        **({"recipient_ids": recipient_ids} if notice is None else {}),
         "notice": notice.model_dump(mode="json") if notice is not None else None,
         "variables": variables,
         "recipients": recipients,

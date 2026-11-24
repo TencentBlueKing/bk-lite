@@ -6,17 +6,13 @@ from apps.console_mgmt.services.notifications import create_targeted_notificatio
 from apps.core.logger import itsm_logger as logger
 from apps.itsm.models import Ticket, TicketSLARecord, TicketTask
 from apps.itsm.models.sla import SLANotice
-from apps.system_mgmt.models import User
+from apps.itsm.services.notify.recipients import active_users
 
 INACTIVE = {"suspended", "finished", "terminated", "cancelled"}
 
 
 def active_recipients(domain, names, now):
-    valid = set(
-        User.objects.filter(domain=domain, username__in=names, disabled=False)
-        .filter(Q(account_expires_at__isnull=True) | Q(account_expires_at__gt=now))
-        .values_list("username", flat=True)
-    )
+    valid = set(active_users(domain, now=now).filter(username__in=names).values_list("username", flat=True))
     return list(dict.fromkeys(name for name in names if name in valid))
 
 
