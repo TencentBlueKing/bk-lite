@@ -158,7 +158,9 @@ class InstallerConstants:
     BULK_ATTEMPT_DUPLICATE = "duplicate"
     BULK_ATTEMPT_FAILED = "failed"
     BULK_ATTEMPT_TIMEOUT = "timeout"
-    BULK_DEFAULT_EXPIRE_HOURS = 24 * 3
+    # 批量安装占位超时（秒）。只用于批量受理的超时释放，不改变远程安装任务总超时。
+    BULK_INSTALL_TIMEOUT_SECONDS = int(os.getenv("BULK_INSTALL_TIMEOUT_SECONDS", "900"))
+    BULK_DEFAULT_EXPIRE_HOURS = 24
     BULK_MAX_EXPIRE_HOURS = 24 * 7
     BULK_MIN_SUCCESS_COUNT = 1
     BULK_MAX_SUCCESS_COUNT = 100000

@@ -2,7 +2,7 @@ export const BULK_INSTALL_METHOD = 'bulkInstall';
 export const BULK_SUCCESS_COUNT_OPTIONS = [10, 50, 100, 500, 1000] as const;
 export const BULK_DEFAULT_SUCCESS_COUNT = 100;
 export const BULK_EXPIRE_DAY_OPTIONS = [1, 3, 5, 7] as const;
-export const BULK_DEFAULT_EXPIRE_DAYS = 3;
+export const BULK_DEFAULT_EXPIRE_DAYS = 1;
 
 export function bulkExpireHours(days: number): number {
   return days * 24;
@@ -41,6 +41,35 @@ export function installWaysForOs<T extends { value: string }>(
 
 export function bulkAttemptStatusLabelKey(status: string): string {
   return ATTEMPT_LABEL_KEYS[status] || ATTEMPT_LABEL_KEYS.failed;
+}
+
+const ATTEMPT_STATUS_COLOR: Record<string, string> = {
+  installing: 'processing',
+  duplicate: 'warning',
+  failed: 'error',
+  timeout: 'default'
+};
+
+export function bulkAttemptDisplay(item: { status: string; online?: boolean }): {
+  labelKey: string;
+  color: string;
+} {
+  if (item.online) {
+    return {
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptOnline',
+      color: 'success'
+    };
+  }
+  if (item.status === 'installed') {
+    return {
+      labelKey: 'node-manager.cloudregion.node.bulkAttemptAwaitingOnline',
+      color: 'processing'
+    };
+  }
+  return {
+    labelKey: bulkAttemptStatusLabelKey(item.status),
+    color: ATTEMPT_STATUS_COLOR[item.status] || 'default'
+  };
 }
 
 export function bulkBatchStatusLabelKey(status: string): string {

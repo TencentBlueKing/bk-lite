@@ -12,7 +12,7 @@ from django.db.models import Q
 from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import build_request_push_actor_scope
 from apps.node_mgmt.constants.installer import InstallerConstants
-from apps.node_mgmt.models.installer import ControllerTaskNode
+from apps.node_mgmt.models.installer import ControllerBulkAttempt, ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope, PushTargetStatus, ingest_auth_kwargs
 from apps.rpc.cmdb import CMDB
@@ -159,7 +159,22 @@ class ModulePushService:
         for key in keys:
             cache.delete(key)
         task_payload = cls._consume_install_task_intent(cloud_region_id, ip, node_id)
-        return payload or task_payload
+        bulk_payload = cls._bulk_attempt_intent(node_id)
+        return payload or task_payload or bulk_payload
+
+    @classmethod
+    def _bulk_attempt_intent(cls, node_id: str) -> dict[str, Any] | None:
+        """最新一条批量受理上的推送意图。没有目标则视为无意图。"""
+        if not node_id:
+            return None
+        attempt = ControllerBulkAttempt.objects.select_related("batch").filter(node_id=node_id).order_by("-id").first()
+        if attempt is None:
+            return None
+        targets = normalize_push_targets(attempt.batch.push_targets)
+        if not targets:
+            return None
+        scope = attempt.batch.actor_scope if isinstance(attempt.batch.actor_scope, dict) else {}
+        return {"targets": targets, **ingest_auth_kwargs(scope)}
 
     @classmethod
     def _consume_install_task_intent(cls, cloud_region_id, ip: str, node_id: str) -> dict[str, Any] | None:

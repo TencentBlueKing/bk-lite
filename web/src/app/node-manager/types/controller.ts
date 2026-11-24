@@ -244,6 +244,8 @@ export interface BulkInstallAttempt {
   cpu_architecture: string;
   status: string;
   message: string;
+  online: boolean;
+  attempt_count: number;
 }
 
 export interface BulkInstallBatch {
