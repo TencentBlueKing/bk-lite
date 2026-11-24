@@ -1,7 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 /** Elasticsearch 监控高对比鲜活科技色板 */
-const ES_PALETTE = {
+export const ES_PALETTE = {
   emerald: '#10B981',   // 集群健康正常、HTTP 新建连接
   blue: '#2563EB',      // 活跃主分片、堆内存、写入队列
   cyan: '#06B6D4',      // 可用磁盘空间
@@ -42,14 +42,6 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'elasticsearch_cluster_health_unassigned_shards{__$labels__}',
       color: ES_PALETTE.rose
-    },
-    {
-      name: 'elasticsearch_shard_assignment_ratio',
-      display_name: '主分片分配率',
-      description: '活跃主分片占主分片总数的比例。',
-      unit: 'percent',
-      query: '100 * elasticsearch_cluster_health_active_primary_shards{__$labels__} / clamp_min(elasticsearch_cluster_health_active_primary_shards{__$labels__} + elasticsearch_cluster_health_unassigned_shards{__$labels__}, 1)',
-      color: ES_PALETTE.blue
     },
     {
       name: 'elasticsearch_jvm_mem_heap_used_percent',
@@ -186,16 +178,6 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       guide: [{ label: '未分配分片', detail: '未能分配到节点的分片数(个);非零会降低冗余 / 可用性。排查节点掉线、磁盘水位或分配规则。' }],
       footer: [{ label: '健康状态', metric: 'elasticsearch_cluster_health_status_code', unit: 'counts' }]
-    },
-    {
-      title: '主分片分配率',
-      metric: 'elasticsearch_shard_assignment_ratio',
-      color: ES_PALETTE.blue,
-      icon: 'database',
-      compare: true,
-      compareFavorableDirection: 'up',
-      guide: [{ label: '分配率', detail: '活跃主分片占主分片总数的比例，低于 100% 时说明仍有分片未恢复。' }],
-      footer: [{ label: '未分配分片', metric: 'elasticsearch_cluster_health_unassigned_shards', unit: 'counts' }]
     },
     {
       title: 'HTTP 当前连接',

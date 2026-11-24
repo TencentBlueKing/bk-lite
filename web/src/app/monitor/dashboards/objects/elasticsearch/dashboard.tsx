@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
@@ -14,25 +14,67 @@ import {
 import { HorizontalBarPanel, TitleWithGuide, TrendChartPanel } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency } from '../../shared/utils';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import { ClusterHealthCard } from './cluster-health-card';
 import { ELASTICSEARCH_DASHBOARD_CONFIG } from './config';
 import { ES_TOP_NODE_QUERIES } from './queries';
 import { topNodeBars } from './parse';
+import ElasticsearchCategoryLayout, { EsIdentityChip } from './layered/category-layout';
+import { useElasticsearchProData } from './layered/use-pro-data';
 import styles from './index.module.scss';
 
 const HEALTH_CARD_TITLE = '集群健康状态';
-const SUMMARY_TITLES = ['未分配分片', '主分片分配率', '节点可用磁盘', 'JVM 堆使用率'];
+const SUMMARY_TITLES = ['未分配分片', '节点可用磁盘', 'JVM 堆使用率'];
+const ES_CATEGORY_METRICS: readonly string[] = [];
+
+const isElasticsearchMode = (mode: string): mode is ObjectDashboardMode => (
+  mode === 'dashboard' || mode === 'metrics' || mode === 'category'
+);
 const PRIMARY_CHART_TITLES = ['线程池队列', '熔断器触发', 'HTTP 新建连接'];
 const SECONDARY_CHART_TITLES = ['资源使用率', 'GC 耗时速率趋势'];
 const TOP_NODE_CONCURRENCY = 3;
 
 export default function ElasticsearchDashboardPage() {
-  const dashboard = useSimpleDashboardData(ELASTICSEARCH_DASHBOARD_CONFIG);
+  const router = useRouter();
+  const layoutParams = useSearchParams();
+  const layout = resolveObjectDashboardMode('elasticsearch', new URLSearchParams(layoutParams.toString()));
+  const dashboard = useSimpleDashboardData(
+    ELASTICSEARCH_DASHBOARD_CONFIG,
+    layout === 'category' ? { metricNames: ES_CATEGORY_METRICS, reuseLoadedSeries: true } : undefined
+  );
+  const [alertState, setAlertState] = useState<{ count: number | null; pending: boolean }>({ count: null, pending: true });
+  const onAlertChange = useCallback((next: { count: number | null; pending: boolean }) => {
+    setAlertState((prev) => (
+      prev.count === next.count && prev.pending === next.pending ? prev : next
+    ));
+  }, []);
+  const proView = useElasticsearchProData({
+    enabled: layout === 'category',
+    instanceReady: !dashboard.instanceLoading,
+    instanceId: dashboard.instanceId,
+    monitorObjectId: dashboard.monitorObjectId,
+    idValues: dashboard.idValues,
+    instanceIdKeys: (layoutParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
+    timeValues: dashboard.timeValues,
+    intervalSeconds: dashboard.currentInstanceInterval,
+    loadTick: dashboard.loadTick,
+    alertCount: alertState.count,
+    alertPending: alertState.pending
+  });
+  const onLayoutChange = (mode: string) => {
+    if (!isElasticsearchMode(mode) || mode === layout) return;
+    const params = writeObjectDashboardMode(new URLSearchParams(layoutParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
   const { getInstanceQuery } = useViewApi();
-  const searchParams = useSearchParams();
   const instanceIdKeys = useMemo(
-    () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
-    [searchParams]
+    () => (layoutParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
+    [layoutParams]
   );
 
   const healthCard = useMemo(
@@ -73,7 +115,7 @@ export default function ElasticsearchDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode || !idValues.length) {
+    if (layout !== 'dashboard' || !isDashboardMode || !idValues.length) {
       setTopNode({});
       return;
     }
@@ -96,12 +138,31 @@ export default function ElasticsearchDashboardPage() {
       active = false;
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
-  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, layout, loadTick]);
 
   return (
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      preserveLayouts
+      unifiedChrome
+      identityExtra={layout === 'category' ? <EsIdentityChip view={proView} /> : undefined}
+      viewSwitcher={{
+        mode: layout,
+        onChange: onLayoutChange,
+        control: 'pill',
+        options: dashboardModeOptions('elasticsearch')
+      }}
+      categoryContent={(
+        <ElasticsearchCategoryLayout
+          instanceId={dashboard.instanceId}
+          monitorObjectId={dashboard.monitorObjectId}
+          timeValues={dashboard.timeValues}
+          queryTimeRange={dashboard.queryTimeRange}
+          view={proView}
+          onAlertChange={onAlertChange}
+        />
+      )}
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
