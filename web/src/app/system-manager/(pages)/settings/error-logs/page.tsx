@@ -3,18 +3,19 @@
 import React, { useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, Drawer, Descriptions, Input, message, Select, Typography } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import CustomTable from '@/components/custom-table';
+import FilterToolbar from '@/components/filter-toolbar';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
+import HttpMethodBadge from '@/components/http-method-badge';
 import TimeSelector from '@/components/time-selector';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
-
-const { Search } = Input;
 
 const EMPTY_FILTERS = {
   keyword: '',
@@ -221,18 +222,20 @@ const ErrorLogsPage: React.FC = () => {
           return (
             <button
               type="button"
-              className="w-full text-left"
+              className="group w-full text-left rounded p-1 hover:bg-[var(--color-fill-1)]/50 transition-colors"
               onClick={() => handleOpenDetail(record)}
             >
-              <div className="truncate">{formatRecorded(record.reason)}</div>
-              <div className="truncate text-[var(--color-text-3)]">{meta}</div>
+              <div className="truncate font-medium text-[var(--color-text-1)] group-hover:text-[var(--color-primary)]">
+                {formatRecorded(record.reason)}
+              </div>
+              <div className="truncate text-xs font-mono text-[var(--color-text-3)]">{meta}</div>
             </button>
           );
         }
         return (
           <button
             type="button"
-            className="w-full truncate text-left"
+            className="w-full truncate text-left rounded p-1 hover:bg-[var(--color-fill-1)]/50 transition-colors hover:text-[var(--color-primary)]"
             onClick={() => handleOpenDetail(record)}
           >
             {record.recorded_text}
@@ -260,80 +263,82 @@ const ErrorLogsPage: React.FC = () => {
   ];
 
   return (
-    <div className="w-full h-full bg-[var(--color-bg)] p-4">
-      <div className="mb-4 p-4 rounded">
-        <div className="flex items-center justify-end gap-3 flex-wrap">
-          <Search
-            placeholder={t('system.security.errorKeywordPlaceholder')}
-            value={filters.keyword}
-            onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
-            onSearch={handleSearch}
-            allowClear
-            className="w-48"
-          />
-          <Search
-            placeholder={t('system.security.relatedUserPlaceholder')}
-            value={filters.username}
-            onChange={(e) => setFilters({ ...filters, username: e.target.value })}
-            onSearch={handleSearch}
-            allowClear
-            className="w-48"
-          />
-          <Select
-            mode="multiple"
-            placeholder={t('system.security.operationModulePlaceholder')}
-            value={filters.app}
-            onChange={(value) => setFilters({ ...filters, app: value })}
-            allowClear
-            className="w-48"
-            maxTagCount="responsive"
-            options={clientData.map((item) => ({
-              label: resolveAppDisplayName(item, t),
-              value: item.name,
-            }))}
-          />
-          <TimeSelector
-            key={timeSelectorKey}
-            showTime
-            clearable
-            onlyTimeSelect
-            onChange={handleTimeChange}
-            defaultValue={{
-              selectValue: 7 * 24 * 60,
-              rangePickerVaule: null,
-            }}
-          />
-          <Button type="primary" onClick={handleSearch}>
+    <div className="flex flex-col h-full w-full bg-[var(--color-bg)] p-4 overflow-hidden">
+      <FilterToolbar className="w-full" contentClassName="w-full">
+        <Input
+          placeholder={t('system.security.errorKeywordPlaceholder')}
+          value={filters.keyword}
+          onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
+          allowClear
+          className="w-48"
+        />
+        <Input
+          placeholder={t('system.security.relatedUserPlaceholder')}
+          value={filters.username}
+          onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+          allowClear
+          className="w-48"
+        />
+        <Select
+          mode="multiple"
+          placeholder={t('system.security.operationModulePlaceholder')}
+          value={filters.app}
+          onChange={(value) => setFilters({ ...filters, app: value })}
+          allowClear
+          className="w-48"
+          maxTagCount="responsive"
+          options={clientData.map((item) => ({
+            label: resolveAppDisplayName(item, t),
+            value: item.name,
+          }))}
+        />
+        <TimeSelector
+          key={timeSelectorKey}
+          showTime
+          clearable
+          onlyTimeSelect
+          onChange={handleTimeChange}
+          defaultValue={{
+            selectValue: 7 * 24 * 60,
+            rangePickerVaule: null,
+          }}
+        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
             {t('common.search')}
           </Button>
-          <Button onClick={handleReset}>{t('common.reset')}</Button>
+          <Button icon={<ReloadOutlined />} onClick={handleReset}>
+            {t('common.reset')}
+          </Button>
           <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
             {t('common.export')}
           </Button>
         </div>
-      </div>
+      </FilterToolbar>
 
-      <CustomTable
-        columns={columns}
-        dataSource={dataSource}
-        loading={loading}
-        rowKey="id"
-        rowSelection={rowSelection}
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
-          onChange: (page: number, pageSize?: number) => {
-            const nextPageSize = pageSize || pagination.pageSize;
-            setPagination((prev) => ({ ...prev, current: page, pageSize: nextPageSize }));
-            fetchErrorLogs(page, nextPageSize);
-          },
-        }}
-        scroll={{ x: 1200, y: 'calc(100vh - 400px)' }}
-      />
+      <SystemManagerFillTable>
+        <CustomTable
+          columns={columns}
+          dataSource={dataSource}
+          loading={loading}
+          rowKey="id"
+          rowSelection={rowSelection}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
+            onChange: (page: number, pageSize?: number) => {
+              const nextPageSize = pageSize || pagination.pageSize;
+              setPagination((prev) => ({ ...prev, current: page, pageSize: nextPageSize }));
+              fetchErrorLogs(page, nextPageSize);
+            },
+          }}
+          scroll={{ x: 1200 }}
+        />
+      </SystemManagerFillTable>
 
       <Drawer
         title={t('common.detail')}
@@ -344,8 +349,11 @@ const ErrorLogsPage: React.FC = () => {
       >
         {detailRecord && (
           <div className="flex flex-col gap-4">
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.basicInfo')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.basicInfo')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.operationTime')}>
                   {detailRecord.created_at
@@ -361,14 +369,25 @@ const ErrorLogsPage: React.FC = () => {
               </Descriptions>
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.requestInfo')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.requestInfo')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.requestMethod')}>
-                  {formatRecorded(detailRecord.method)}
+                  {detailRecord.method ? (
+                    <HttpMethodBadge method={detailRecord.method} />
+                  ) : (
+                    formatRecorded(detailRecord.method)
+                  )}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('system.security.requestPath')}>
-                  {formatRecorded(detailRecord.path)}
+                  {detailRecord.path ? (
+                    <Typography.Text copyable>{detailRecord.path}</Typography.Text>
+                  ) : (
+                    formatRecorded(detailRecord.path)
+                  )}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('system.security.errorModule')}>
                   {formatRecorded(detailRecord.module)}
@@ -376,8 +395,11 @@ const ErrorLogsPage: React.FC = () => {
               </Descriptions>
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.errorInfo')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.errorInfo')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.exceptionType')}>
                   {formatRecorded(detailRecord.exception_type)}
@@ -393,17 +415,24 @@ const ErrorLogsPage: React.FC = () => {
               </Descriptions>
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.stackInfo')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.stackInfo')}
+              </div>
               {detailRecord.stack_text ? (
-                <Typography.Paragraph
-                  copyable={{ text: detailRecord.stack_text }}
-                  className="whitespace-pre-wrap"
-                >
-                  {detailRecord.stack_text}
-                </Typography.Paragraph>
+                <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-fill-1)]/40 p-3 max-h-[380px] overflow-auto">
+                  <Typography.Paragraph
+                    copyable={{ text: detailRecord.stack_text }}
+                    className="!mb-0 font-mono text-xs leading-relaxed whitespace-pre text-[var(--color-text-2)]"
+                  >
+                    {detailRecord.stack_text}
+                  </Typography.Paragraph>
+                </div>
               ) : (
-                stackUnrecorded
+                <div className="rounded-md border border-dashed border-[var(--color-border-2)] p-4 text-center text-xs text-[var(--color-text-3)]">
+                  {stackUnrecorded}
+                </div>
               )}
             </div>
           </div>

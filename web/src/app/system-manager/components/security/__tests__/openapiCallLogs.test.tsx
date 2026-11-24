@@ -146,7 +146,7 @@ describe('OpenApiCallLogs', () => {
     fireEvent.change(screen.getByPlaceholderText('system.security.callAccount'), {
       target: { value: 'alice' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'common.reset' }));
+    fireEvent.click(screen.getByRole('button', { name: /common\.reset/ }));
 
     await waitFor(() => {
       expect(getOpenApiCallLogs.mock.calls.length).toBeGreaterThan(1);

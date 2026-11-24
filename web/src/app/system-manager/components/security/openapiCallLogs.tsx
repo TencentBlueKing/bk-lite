@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Descriptions, Drawer, Input, Select, Space, Tag, Typography, message } from 'antd';
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, Descriptions, Drawer, Input, Select, Tag, Typography, message } from 'antd';
+import { DownloadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import CustomTable from '@/components/custom-table';
+import FilterToolbar from '@/components/filter-toolbar';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import HttpMethodBadge from '@/components/http-method-badge';
 import TimeSelector from '@/components/time-selector';
 import { useSecurityApi } from '@/app/system-manager/api/security';
@@ -259,13 +261,21 @@ const OpenApiCallLogs: React.FC = () => {
       dataIndex: 'http_status',
       key: 'http_status',
       width: 120,
-      render: (status?: number) => (status == null ? '--' : status),
+      render: (status?: number) =>
+        status == null ? (
+          '--'
+        ) : (
+          <span className="font-mono text-xs">{status}</span>
+        ),
     },
     {
       title: t('system.security.errorCode'),
       key: 'error_code',
       width: 160,
-      render: (_: unknown, record: OpenApiCallLogRow) => openApiCallErrorCode(record),
+      render: (_: unknown, record: OpenApiCallLogRow) => {
+        const code = openApiCallErrorCode(record);
+        return code ? <span className="font-mono text-xs">{code}</span> : '';
+      },
     },
     {
       title: t('common.actions'),
@@ -285,102 +295,100 @@ const OpenApiCallLogs: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <div className="flex-none flex justify-end mb-3">
-        <Space wrap>
-          <Input
-            placeholder={t('system.security.callAccount')}
-            className="w-[160px]"
-            allowClear
-            value={filters.username}
-            onChange={(e) => setFilters({ ...filters, username: e.target.value })}
-          />
-          <Input
-            placeholder={t('system.security.apiCallRequest')}
-            className="w-[200px]"
-            allowClear
-            value={filters.path}
-            onChange={(e) => setFilters({ ...filters, path: e.target.value })}
-          />
-          <Input
-            placeholder={t('system.security.secretName')}
-            className="w-[160px]"
-            allowClear
-            value={filters.token_name}
-            onChange={(e) => setFilters({ ...filters, token_name: e.target.value })}
-          />
-          <Input
-            placeholder={t('system.security.sourceIp')}
-            className="w-[160px]"
-            allowClear
-            value={filters.source_ip}
-            onChange={(e) => setFilters({ ...filters, source_ip: e.target.value })}
-          />
-          <Input
-            placeholder={t('system.security.httpStatus')}
-            className="w-[140px]"
-            allowClear
-            value={filters.http_status}
-            onChange={(e) => setFilters({ ...filters, http_status: e.target.value })}
-          />
-          <Select
-            placeholder={t('system.security.tokenKind')}
-            className="w-[140px]"
-            allowClear
-            value={filters.credential_type}
-            onChange={(value) => setFilters({ ...filters, credential_type: value })}
-            options={TOKEN_KIND_OPTIONS.map((item) => ({
-              value: item.value,
-              label: t(item.labelKey),
-            }))}
-          />
-          <Select
-            placeholder={t('system.security.apiKind')}
-            className="w-[140px]"
-            allowClear
-            value={filters.api_kind}
-            onChange={(value) => setFilters({ ...filters, api_kind: value })}
-            options={API_KIND_OPTIONS.map((item) => ({
-              value: item.value,
-              label: t(item.labelKey),
-            }))}
-          />
-          <Select
-            placeholder={t('system.security.apiCallResult')}
-            className="w-[120px]"
-            allowClear
-            value={filters.outcome}
-            onChange={(value) => setFilters({ ...filters, outcome: value })}
-            options={OUTCOME_OPTIONS.map((item) => ({
-              value: item.value,
-              label: t(item.labelKey),
-            }))}
-          />
-          <TimeSelector
-            key={timeSelectorKey}
-            ref={timeSelectorRef}
-            showTime
-            clearable
-            onlyTimeSelect
-            onChange={setTimeRange}
-            defaultValue={{
-              selectValue: DEFAULT_RANGE_MINUTES,
-              rangePickerVaule: null,
-            }}
-          />
-          <Space>
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              {t('common.search')}
-            </Button>
-            <Button onClick={handleReset}>
-              {t('common.reset')}
-            </Button>
-            <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
-              {t('common.export')}
-            </Button>
-          </Space>
-        </Space>
-      </div>
-      <div className="flex-1 min-h-0 relative">
+      <FilterToolbar className="w-full" contentClassName="w-full">
+        <Input
+          placeholder={t('system.security.callAccount')}
+          className="w-40"
+          allowClear
+          value={filters.username}
+          onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+        />
+        <Input
+          placeholder={t('system.security.apiCallRequest')}
+          className="w-48"
+          allowClear
+          value={filters.path}
+          onChange={(e) => setFilters({ ...filters, path: e.target.value })}
+        />
+        <Input
+          placeholder={t('system.security.secretName')}
+          className="w-40"
+          allowClear
+          value={filters.token_name}
+          onChange={(e) => setFilters({ ...filters, token_name: e.target.value })}
+        />
+        <Input
+          placeholder={t('system.security.sourceIp')}
+          className="w-40"
+          allowClear
+          value={filters.source_ip}
+          onChange={(e) => setFilters({ ...filters, source_ip: e.target.value })}
+        />
+        <Input
+          placeholder={t('system.security.httpStatus')}
+          className="w-32"
+          allowClear
+          value={filters.http_status}
+          onChange={(e) => setFilters({ ...filters, http_status: e.target.value })}
+        />
+        <Select
+          placeholder={t('system.security.tokenKind')}
+          className="w-36"
+          allowClear
+          value={filters.credential_type}
+          onChange={(value) => setFilters({ ...filters, credential_type: value })}
+          options={TOKEN_KIND_OPTIONS.map((item) => ({
+            value: item.value,
+            label: t(item.labelKey),
+          }))}
+        />
+        <Select
+          placeholder={t('system.security.apiKind')}
+          className="w-36"
+          allowClear
+          value={filters.api_kind}
+          onChange={(value) => setFilters({ ...filters, api_kind: value })}
+          options={API_KIND_OPTIONS.map((item) => ({
+            value: item.value,
+            label: t(item.labelKey),
+          }))}
+        />
+        <Select
+          placeholder={t('system.security.apiCallResult')}
+          className="w-32"
+          allowClear
+          value={filters.outcome}
+          onChange={(value) => setFilters({ ...filters, outcome: value })}
+          options={OUTCOME_OPTIONS.map((item) => ({
+            value: item.value,
+            label: t(item.labelKey),
+          }))}
+        />
+        <TimeSelector
+          key={timeSelectorKey}
+          ref={timeSelectorRef}
+          showTime
+          clearable
+          onlyTimeSelect
+          onChange={setTimeRange}
+          defaultValue={{
+            selectValue: DEFAULT_RANGE_MINUTES,
+            rangePickerVaule: null,
+          }}
+        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+            {t('common.search')}
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={handleReset}>
+            {t('common.reset')}
+          </Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+            {t('common.export')}
+          </Button>
+        </div>
+      </FilterToolbar>
+      <SystemManagerFillTable>
         <CustomTable
           columns={columns}
           dataSource={logs}
@@ -394,14 +402,15 @@ const OpenApiCallLogs: React.FC = () => {
             total: pagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
+            showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
             onChange: fetchLogs,
             onShowSizeChange: fetchLogs,
           }}
         />
-      </div>
+      </SystemManagerFillTable>
       <Drawer
         title={t('common.detail')}
-        width={520}
+        width={600}
         open={detailVisible}
         onClose={() => {
           setDetailVisible(false);
@@ -411,82 +420,100 @@ const OpenApiCallLogs: React.FC = () => {
       >
         {detailRecord && (
           <div className="flex flex-col gap-4">
-            <Descriptions
-              title={t('system.security.apiCallDetailInfo')}
-              column={1}
-              bordered
-              size="small"
-            >
-              <Descriptions.Item label={t('system.security.operationTime')}>
-                {detailRecord.created_at ? convertToLocalizedTime(detailRecord.created_at) : '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.apiCallMethod')}>
-                {detailRecord.method ? (
-                  <HttpMethodBadge method={detailRecord.method} />
-                ) : (
-                  '--'
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.apiCallRequest')}>
-                {detailRecord.path ? (
-                  <Typography.Text copyable>{detailRecord.path}</Typography.Text>
-                ) : (
-                  '--'
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.apiKind')}>
-                {apiKindLabel(detailRecord.api_kind)}
-              </Descriptions.Item>
-            </Descriptions>
-            <Descriptions
-              title={t('system.security.apiCallDetailIdentity')}
-              column={1}
-              bordered
-              size="small"
-            >
-              <Descriptions.Item label={t('system.security.callAccount')}>
-                {detailRecord.username || ''}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.secretName')}>
-                {detailRecord.token_name || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.tokenKind')}>
-                {formatOpenApiCallTokenKind(detailRecord, tokenKindLabels)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.systemIdPrefix')}>
-                {formatOpenApiCallTokenSystemId(detailRecord) || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.teamName')}>
-                {detailRecord.team_name || '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.sourceIp')}>
-                {detailRecord.source_ip || '--'}
-              </Descriptions.Item>
-            </Descriptions>
-            <Descriptions
-              title={t('system.security.apiCallDetailResult')}
-              column={1}
-              bordered
-              size="small"
-            >
-              <Descriptions.Item label={t('system.security.apiCallResult')}>
-                {formatOpenApiCallResult(detailRecord, resultLabels)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.httpStatus')}>
-                {detailRecord.http_status == null ? '--' : detailRecord.http_status}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.errorCode')}>
-                {openApiCallErrorCode(detailRecord) ? (
-                  <Typography.Text copyable>{openApiCallErrorCode(detailRecord)}</Typography.Text>
-                ) : (
-                  ''
-                )}
-              </Descriptions.Item>
-            </Descriptions>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.apiCallDetailInfo')}
+              </div>
+              <Descriptions
+                column={1}
+                bordered
+                size="small"
+              >
+                <Descriptions.Item label={t('system.security.operationTime')}>
+                  {detailRecord.created_at ? convertToLocalizedTime(detailRecord.created_at) : '--'}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.apiCallMethod')}>
+                  {detailRecord.method ? (
+                    <HttpMethodBadge method={detailRecord.method} />
+                  ) : (
+                    '--'
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.apiCallRequest')}>
+                  {detailRecord.path ? (
+                    <Typography.Text copyable>{detailRecord.path}</Typography.Text>
+                  ) : (
+                    '--'
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.apiKind')}>
+                  {apiKindLabel(detailRecord.api_kind)}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.apiCallDetailIdentity')}
+              </div>
+              <Descriptions
+                column={1}
+                bordered
+                size="small"
+              >
+                <Descriptions.Item label={t('system.security.callAccount')}>
+                  {detailRecord.username || ''}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.secretName')}>
+                  {detailRecord.token_name || '--'}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.tokenKind')}>
+                  {formatOpenApiCallTokenKind(detailRecord, tokenKindLabels)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.systemIdPrefix')}>
+                  {formatOpenApiCallTokenSystemId(detailRecord) || '--'}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.teamName')}>
+                  {detailRecord.team_name || '--'}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.sourceIp')}>
+                  {detailRecord.source_ip || '--'}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.apiCallDetailResult')}
+              </div>
+              <Descriptions
+                column={1}
+                bordered
+                size="small"
+              >
+                <Descriptions.Item label={t('system.security.apiCallResult')}>
+                  {formatOpenApiCallResult(detailRecord, resultLabels)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.httpStatus')}>
+                  {detailRecord.http_status == null ? '--' : detailRecord.http_status}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.errorCode')}>
+                  {openApiCallErrorCode(detailRecord) ? (
+                    <Typography.Text copyable>{openApiCallErrorCode(detailRecord)}</Typography.Text>
+                  ) : (
+                    ''
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
             {detailRecord.call_result === 'auth_passed' ? (
-              <p className="m-0 text-[var(--color-text-3)]">
+              <div className="rounded border border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20 px-3.5 py-2 text-xs text-blue-600 dark:text-blue-400">
                 {t('system.security.apiCallResultAuthPassedHint')}
-              </p>
+              </div>
             ) : null}
           </div>
         )}

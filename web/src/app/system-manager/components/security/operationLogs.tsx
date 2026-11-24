@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Select, Button, message, Drawer, Descriptions } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { Input, Select, Button, message, Drawer, Descriptions, Tag } from 'antd';
+import { DownloadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import dayjs from 'dayjs';
 import type { TableRowSelection } from 'antd/es/table/interface';
@@ -19,10 +19,10 @@ import {
   type OperationOutcome,
 } from '@/app/system-manager/utils/operationLogDetail';
 import CustomTable from '@/components/custom-table';
+import FilterToolbar from '@/components/filter-toolbar';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import TimeSelector from '@/components/time-selector';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
-
-const { Search } = Input;
 
 const EMPTY_FILTERS = {
   username: '',
@@ -190,41 +190,55 @@ const OperationLogs: React.FC = () => {
   const renderChangeSection = (view: OperationLogDetailView) => {
     const { changes } = view;
     if (changes.kind === 'unrecorded') {
-      return t('system.security.noChangeRecorded');
+      return (
+        <div className="rounded-md border border-dashed border-[var(--color-border-2)] p-4 text-center text-xs text-[var(--color-text-3)]">
+          {t('system.security.noChangeRecorded')}
+        </div>
+      );
     }
     if (changes.kind === 'hidden' || changes.kind === 'none') {
-      return t('system.security.noChangeContent');
-    }
-    if (changes.kind === 'create') {
       return (
+        <div className="rounded-md border border-dashed border-[var(--color-border-2)] p-4 text-center text-xs text-[var(--color-text-3)]">
+          {t('system.security.noChangeContent')}
+        </div>
+      );
+    }
+    let diffContent: React.ReactNode = null;
+    if (changes.kind === 'create') {
+      diffContent = (
         <ReactDiffViewer
           oldValue=""
           newValue={JSON.stringify(changes.after, null, 2)}
           splitView
         />
       );
-    }
-    if (changes.kind === 'delete') {
-      return (
+    } else if (changes.kind === 'delete') {
+      diffContent = (
         <ReactDiffViewer
           oldValue={JSON.stringify(changes.before, null, 2)}
           newValue=""
           splitView
         />
       );
+    } else {
+      const beforeObj: Record<string, unknown> = {};
+      const afterObj: Record<string, unknown> = {};
+      changes.fields.forEach((field) => {
+        beforeObj[field.key] = field.before;
+        afterObj[field.key] = field.after;
+      });
+      diffContent = (
+        <ReactDiffViewer
+          oldValue={JSON.stringify(beforeObj, null, 2)}
+          newValue={JSON.stringify(afterObj, null, 2)}
+          splitView
+        />
+      );
     }
-    const beforeObj: Record<string, unknown> = {};
-    const afterObj: Record<string, unknown> = {};
-    changes.fields.forEach((field) => {
-      beforeObj[field.key] = field.before;
-      afterObj[field.key] = field.after;
-    });
     return (
-      <ReactDiffViewer
-        oldValue={JSON.stringify(beforeObj, null, 2)}
-        newValue={JSON.stringify(afterObj, null, 2)}
-        splitView
-      />
+      <div className="overflow-hidden rounded-md border border-[var(--color-border-2)] max-h-[460px] overflow-y-auto">
+        {diffContent}
+      </div>
     );
   };
 
@@ -233,40 +247,60 @@ const OperationLogs: React.FC = () => {
       title: t('system.security.operationTime'),
       dataIndex: 'operation_time',
       key: 'operation_time',
+      width: 170,
       render: (time: string) => convertToLocalizedTime(time),
     },
     {
       title: t('system.security.operator'),
       dataIndex: 'username',
       key: 'username',
+      width: 130,
     },
     {
       title: t('system.security.sourceIp'),
       dataIndex: 'source_ip',
       key: 'source_ip',
+      width: 130,
     },
     {
       title: t('system.security.appName'),
       dataIndex: 'app_name',
       key: 'app_name',
+      width: 140,
       render: (_: string, record: OperationLog) => formatRecorded(formatAppName(record)),
     },
     {
       title: t('system.security.operationType'),
       dataIndex: 'action_type_display',
       key: 'action_type_display',
+      width: 120,
     },
     {
       title: t('system.security.operationObject'),
       key: 'target',
+      width: 150,
+      ellipsis: true,
       render: (_: unknown, record: OperationLog) =>
         formatRecorded(buildOperationLogDetailView(record).targetName),
     },
     {
       title: t('system.security.executionResult'),
       key: 'outcome',
-      render: (_: unknown, record: OperationLog) =>
-        formatOutcome(buildOperationLogDetailView(record).outcome),
+      width: 110,
+      render: (_: unknown, record: OperationLog) => {
+        const outcome = buildOperationLogDetailView(record).outcome;
+        const colorMap: Record<OperationOutcome, string> = {
+          success: 'success',
+          failure: 'error',
+          accepted: 'processing',
+          unrecorded: 'default',
+        };
+        return (
+          <Tag color={colorMap[outcome] || 'default'} className="m-0">
+            {formatOutcome(outcome)}
+          </Tag>
+        );
+      },
     },
     {
       title: t('system.security.operationDetail'),
@@ -277,7 +311,7 @@ const OperationLogs: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'detail',
-      width: 100,
+      width: 80,
       fixed: 'right' as const,
       render: (_: unknown, record: OperationLog) => (
         <Button type="link" size="small" onClick={() => handleOpenDetail(record)}>
@@ -291,83 +325,83 @@ const OperationLogs: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <div className="flex-none mb-3">
-        <div className="flex items-center justify-end gap-3 flex-wrap">
-          <Search
-            placeholder={t('system.security.operatorPlaceholder')}
-            value={filters.username}
-            onChange={(e) => setFilters({ ...filters, username: e.target.value })}
-            onSearch={handleSearch}
-            allowClear
-            className="w-48"
-          />
-          <Search
-            placeholder={t('system.security.targetPlaceholder')}
-            value={filters.target}
-            onChange={(e) => setFilters({ ...filters, target: e.target.value })}
-            onSearch={handleSearch}
-            allowClear
-            className="w-48"
-          />
-          <Select
-            placeholder={t('system.security.operationModulePlaceholder')}
-            value={filters.app || undefined}
-            onChange={(value) => setFilters({ ...filters, app: value })}
-            allowClear
-            className="w-48"
-            options={clientData.map((item) => ({
-              label: resolveAppDisplayName(item, t),
-              value: item.name,
-            }))}
-          />
-          <Select
-            placeholder={t('system.security.operationTypePlaceholder')}
-            value={filters.actionType || undefined}
-            onChange={(value) => setFilters({ ...filters, actionType: value })}
-            allowClear
-            className="w-48"
-            options={[
-              { label: t('common.create'), value: 'create' },
-              { label: t('common.update'), value: 'update' },
-              { label: t('common.delete'), value: 'delete' },
-              { label: t('common.execute'), value: 'execute' },
-            ]}
-          />
-          <Select
-            placeholder={t('system.security.outcomePlaceholder')}
-            value={filters.outcome || undefined}
-            onChange={(value) => setFilters({ ...filters, outcome: value })}
-            allowClear
-            className="w-48"
-            options={[
-              { label: t('system.security.outcomeSuccess'), value: 'success' },
-              { label: t('system.security.outcomeFailure'), value: 'failure' },
-              { label: t('system.security.outcomeAccepted'), value: 'accepted' },
-              { label: t('system.security.outcomeUnrecorded'), value: 'unrecorded' },
-            ]}
-          />
-          <TimeSelector
-            ref={timeSelectorRef}
-            showTime
-            clearable
-            onlyTimeSelect
-            onChange={handleTimeChange}
-            defaultValue={{
-              selectValue: 7 * 24 * 60,
-              rangePickerVaule: null
-            }}
-          />
-          <Button type="primary" onClick={handleSearch}>
+      <FilterToolbar className="w-full" contentClassName="w-full">
+        <Input
+          placeholder={t('system.security.operatorPlaceholder')}
+          value={filters.username}
+          onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+          allowClear
+          className="w-48"
+        />
+        <Input
+          placeholder={t('system.security.targetPlaceholder')}
+          value={filters.target}
+          onChange={(e) => setFilters({ ...filters, target: e.target.value })}
+          allowClear
+          className="w-48"
+        />
+        <Select
+          placeholder={t('system.security.operationModulePlaceholder')}
+          value={filters.app || undefined}
+          onChange={(value) => setFilters({ ...filters, app: value })}
+          allowClear
+          className="w-40"
+          options={clientData.map((item) => ({
+            label: resolveAppDisplayName(item, t),
+            value: item.name,
+          }))}
+        />
+        <Select
+          placeholder={t('system.security.operationTypePlaceholder')}
+          value={filters.actionType || undefined}
+          onChange={(value) => setFilters({ ...filters, actionType: value })}
+          allowClear
+          className="w-36"
+          options={[
+            { label: t('common.create'), value: 'create' },
+            { label: t('common.update'), value: 'update' },
+            { label: t('common.delete'), value: 'delete' },
+            { label: t('common.execute'), value: 'execute' },
+          ]}
+        />
+        <Select
+          placeholder={t('system.security.outcomePlaceholder')}
+          value={filters.outcome || undefined}
+          onChange={(value) => setFilters({ ...filters, outcome: value })}
+          allowClear
+          className="w-36"
+          options={[
+            { label: t('system.security.outcomeSuccess'), value: 'success' },
+            { label: t('system.security.outcomeFailure'), value: 'failure' },
+            { label: t('system.security.outcomeAccepted'), value: 'accepted' },
+            { label: t('system.security.outcomeUnrecorded'), value: 'unrecorded' },
+          ]}
+        />
+        <TimeSelector
+          ref={timeSelectorRef}
+          showTime
+          clearable
+          onlyTimeSelect
+          onChange={handleTimeChange}
+          defaultValue={{
+            selectValue: 7 * 24 * 60,
+            rangePickerVaule: null
+          }}
+        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
             {t('common.search')}
           </Button>
-          <Button onClick={handleReset}>{t('common.reset')}</Button>
+          <Button icon={<ReloadOutlined />} onClick={handleReset}>
+            {t('common.reset')}
+          </Button>
           <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
             {t('common.export')}
           </Button>
         </div>
-      </div>
+      </FilterToolbar>
 
-      <div className="flex-1 min-h-0 relative">
+      <SystemManagerFillTable>
         <CustomTable
           columns={columns}
           dataSource={dataSource}
@@ -387,9 +421,9 @@ const OperationLogs: React.FC = () => {
               fetchOperationLogs(page, nextPageSize);
             },
           }}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1300 }}
         />
-      </div>
+      </SystemManagerFillTable>
 
       <Drawer
         title={t('common.detail')}
@@ -400,8 +434,11 @@ const OperationLogs: React.FC = () => {
       >
         {detailRecord && detailView && (
           <div className="flex flex-col gap-4">
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.basicInfo')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.basicInfo')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.operator')}>
                   {formatRecorded(detailView.operator)}
@@ -420,8 +457,11 @@ const OperationLogs: React.FC = () => {
               </Descriptions>
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.operationObject')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.operationObject')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.targetType')}>
                   {formatRecorded(detailView.targetType)}
@@ -435,8 +475,11 @@ const OperationLogs: React.FC = () => {
               </Descriptions>
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">{t('system.security.executionResult')}</div>
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.executionResult')}
+              </div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label={t('system.security.executionResult')}>
                   {formatOutcome(detailView.outcome)}
@@ -448,14 +491,15 @@ const OperationLogs: React.FC = () => {
                 </Descriptions.Item>
               </Descriptions>
               {detailView.showAcceptedHint && (
-                <div className="mt-2 text-[var(--color-text-3)]">
+                <div className="mt-2.5 rounded border border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20 px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400">
                   {t('system.security.outcomeAcceptedHint')}
                 </div>
               )}
             </div>
 
-            <div>
-              <div className="mb-2 font-medium">
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
                 {t('system.security.beforeAfter')}
               </div>
               {renderChangeSection(detailView)}

@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { message, Select, Space, Button, Tag, Input, Drawer, Descriptions } from 'antd';
-import { SearchOutlined, DownloadOutlined } from '@ant-design/icons';
+import { message, Select, Button, Tag, Input, Drawer, Descriptions } from 'antd';
+import { SearchOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useUserInfoContext } from '@/context/userInfo';
 import CustomTable from '@/components/custom-table';
+import FilterToolbar from '@/components/filter-toolbar';
+import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
 import TimeSelector from '@/components/time-selector';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import type { ColumnsType } from 'antd/es/table';
@@ -182,23 +184,28 @@ const UserLoginLogs: React.FC = () => {
       title: t('system.security.loginTime'),
       dataIndex: 'login_time',
       key: 'login_time',
+      width: 170,
       render: (text: string) => convertToLocalizedTime(text)
     },
     {
       title: t('system.security.loginAccount'),
       dataIndex: 'username',
-      key: 'username'
+      key: 'username',
+      width: 140,
     },
     {
       title: t('system.security.loginMethod'),
       dataIndex: 'login_method_display',
       key: 'login_method',
+      width: 130,
       render: (text: string) => formatRecorded(text)
     },
     {
       title: t('system.security.client'),
       dataIndex: 'client_display',
       key: 'client',
+      width: 220,
+      ellipsis: true,
       render: (text: string, record) =>
         formatRecorded(
           text || [record.os_info, record.browser_info].filter(Boolean).join(' ')
@@ -207,15 +214,17 @@ const UserLoginLogs: React.FC = () => {
     {
       title: t('system.security.loginHost'),
       dataIndex: 'source_ip',
-      key: 'source_ip'
+      key: 'source_ip',
+      width: 140,
     },
     {
       title: t('system.security.loginStatus'),
       dataIndex: 'status',
       key: 'status',
+      width: 110,
       render: (status: string, record) => {
         return (
-          <Tag color={status === 'success' ? 'green' : 'red'}>
+          <Tag color={status === 'success' ? 'green' : 'red'} className="m-0">
             {record.status_display}
           </Tag>
         );
@@ -225,6 +234,7 @@ const UserLoginLogs: React.FC = () => {
       title: t('common.detail'),
       key: 'detail',
       width: 80,
+      fixed: 'right' as const,
       render: (_: unknown, record) => (
         <Button type="link" size="small" onClick={() => openDetail(record)}>
           {t('common.detail')}
@@ -235,79 +245,80 @@ const UserLoginLogs: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <div className="flex-none flex justify-end mb-3">
-        <Space wrap>
-          <Select
-              placeholder={t('system.security.loginStatus')}
-              className="w-[120px]"
-              allowClear
-              value={filters.status}
-              onChange={(value) => setFilters({ ...filters, status: value })}
-              options={[
-                { label: t('system.security.loginStatusSuccess'), value: 'success' },
-                { label: t('system.security.loginStatusFailed'), value: 'failed' }
-              ]}
-            />
-            <Input
-              placeholder={t('system.security.loginAccountPlaceholder')}
-              className="w-[200px]"
-              allowClear
-              value={filters.username}
-              onChange={(e) => setFilters({ ...filters, username: e.target.value })}
-            />
-            <Input
-              placeholder={t('system.security.sourceIpPlaceholder')}
-              className="w-[200px]"
-              allowClear
-              value={filters.source_ip}
-              onChange={(e) => setFilters({ ...filters, source_ip: e.target.value })}
-            />
-            <TimeSelector
-              ref={timeSelectorRef}
-              showTime
-              clearable
-              onlyTimeSelect
-              onChange={handleTimeChange}
-              defaultValue={{
-                selectValue: 7 * 24 * 60,
-                rangePickerVaule: null
-              }}
-            />
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              {t('common.search')}
-            </Button>
-            <Button onClick={handleReset}>
-              {t('common.reset')}
-            </Button>
-            <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
-              {t('common.export')}
-            </Button>
-          </Space>
-      </div>
+      <FilterToolbar className="w-full" contentClassName="w-full">
+        <Select
+          placeholder={t('system.security.loginStatus')}
+          className="w-36"
+          allowClear
+          value={filters.status}
+          onChange={(value) => setFilters({ ...filters, status: value })}
+          options={[
+            { label: t('system.security.loginStatusSuccess'), value: 'success' },
+            { label: t('system.security.loginStatusFailed'), value: 'failed' }
+          ]}
+        />
+        <Input
+          placeholder={t('system.security.loginAccountPlaceholder')}
+          className="w-48"
+          allowClear
+          value={filters.username}
+          onChange={(e) => setFilters({ ...filters, username: e.target.value })}
+        />
+        <Input
+          placeholder={t('system.security.sourceIpPlaceholder')}
+          className="w-48"
+          allowClear
+          value={filters.source_ip}
+          onChange={(e) => setFilters({ ...filters, source_ip: e.target.value })}
+        />
+        <TimeSelector
+          ref={timeSelectorRef}
+          showTime
+          clearable
+          onlyTimeSelect
+          onChange={handleTimeChange}
+          defaultValue={{
+            selectValue: 7 * 24 * 60,
+            rangePickerVaule: null
+          }}
+        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+            {t('common.search')}
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={handleReset}>
+            {t('common.reset')}
+          </Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+            {t('common.export')}
+          </Button>
+        </div>
+      </FilterToolbar>
       
-      <div className="flex-1 min-h-0 relative">
+      <SystemManagerFillTable>
         <CustomTable
           columns={columns}
           dataSource={logs}
           loading={loading}
           rowKey="id"
           rowSelection={rowSelection}
-          scroll={{ x: '100%' }}
+          scroll={{ x: 1000 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
+            showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
             onChange: handleTableChange,
             onShowSizeChange: handleTableChange
           }}
         />
-      </div>
+      </SystemManagerFillTable>
 
       <Drawer
         title={t('common.detail')}
-        width={520}
+        width={560}
         open={detailVisible}
         onClose={() => {
           setDetailVisible(false);
@@ -316,36 +327,57 @@ const UserLoginLogs: React.FC = () => {
         destroyOnHidden
       >
         {detailRecord && (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label={t('system.security.loginTime')}>
-              {detailRecord.login_time
-                ? convertToLocalizedTime(detailRecord.login_time)
-                : unrecorded}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('system.security.loginAccount')}>
-              {formatRecorded(detailRecord.username)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('system.security.loginMethod')}>
-              {formatRecorded(detailRecord.login_method_display)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('system.security.loginStatus')}>
-              {formatRecorded(detailRecord.status_display)}
-            </Descriptions.Item>
-            {detailRecord.status === 'failed' && (
-              <Descriptions.Item label={t('system.security.failureReason')}>
-                {formatRecorded(detailRecord.failure_reason)}
-              </Descriptions.Item>
-            )}
-            <Descriptions.Item label={t('system.security.loginHost')}>
-              {formatRecorded(detailRecord.source_ip)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('system.security.client')}>
-              {formatRecorded(
-                detailRecord.client_display
-                || [detailRecord.os_info, detailRecord.browser_info].filter(Boolean).join(' ')
-              )}
-            </Descriptions.Item>
-          </Descriptions>
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.loginStatus')}
+              </div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.loginStatus')}>
+                  <Tag color={detailRecord.status === 'success' ? 'green' : 'red'} className="m-0">
+                    {formatRecorded(detailRecord.status_display)}
+                  </Tag>
+                </Descriptions.Item>
+                {detailRecord.status === 'failed' && (
+                  <Descriptions.Item label={t('system.security.failureReason')}>
+                    <span className="text-red-500 font-medium">
+                      {formatRecorded(detailRecord.failure_reason)}
+                    </span>
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-bg)] p-3.5">
+              <div className="flex items-center gap-2 mb-2.5 font-medium text-[var(--color-text-1)] text-sm">
+                <span className="w-1 h-3.5 bg-[var(--color-primary)] rounded-full inline-block" />
+                {t('system.security.basicInfo')}
+              </div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.loginTime')}>
+                  {detailRecord.login_time
+                    ? convertToLocalizedTime(detailRecord.login_time)
+                    : unrecorded}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.loginAccount')}>
+                  {formatRecorded(detailRecord.username)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.loginMethod')}>
+                  {formatRecorded(detailRecord.login_method_display)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.loginHost')}>
+                  {formatRecorded(detailRecord.source_ip)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.client')}>
+                  {formatRecorded(
+                    detailRecord.client_display
+                    || [detailRecord.os_info, detailRecord.browser_info].filter(Boolean).join(' ')
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+          </div>
         )}
       </Drawer>
 
