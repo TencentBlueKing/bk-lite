@@ -335,3 +335,18 @@ def test_trigger_catalog_fetches_bounded_pages_and_preserves_saved_choices():
     assert not last["has_more"]
     assert [row["id"] for row in last["workflows"]] == [workflows[3].pk]
     assert get(path, permissions=["rule-View"], query={"page_size": "-1"}).status_code == 400
+
+
+@pytest.mark.django_db
+def test_person_field_lookup_reads_selected_published_workflow():
+    from apps.itsm.models import Workflow, WorkflowVersion
+    from apps.itsm.services.trigger_fields import scoped_person_field_keys
+
+    flows = []
+    for key in ("selected", "other"):
+        flow = Workflow.objects.create(key=key, name=key)
+        version = WorkflowVersion.objects.create(workflow=flow, version_no=1, is_published=True, design={"form_schema": {"fields": [{"type": "user", "key": key}]}})
+        flow.current_version = version
+        flow.save()
+        flows.append(flow)
+    assert scoped_person_field_keys(flows[0].domain, {"mode": "include", "workflow_ids": [flows[0].id]}, {"selected", "other"}) == {"selected"}

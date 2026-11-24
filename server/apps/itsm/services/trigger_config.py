@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from apps.core.models.maintainer_info import DEFAULT_MAINTAINER_DOMAIN
 from apps.itsm.models import FormModel, Service, TicketStatus, Workflow
+from apps.itsm.services.trigger_fields import scoped_person_field_keys
 from apps.itsm.services.trigger_notice import NoticeConfigError, TriggerNotice, validate_notice_references
 
 EVENT_ALIASES = {
@@ -200,12 +201,14 @@ def normalize_trigger(values, *, domain, user, current=None):
             raise TriggerConfigError("生效范围内存在无效或其他组织的项目")
     when = normalize_condition(config.get("when"))
     actions = _normalize_actions(fields["action"], config, name.strip())
+    requested = {key for action in actions if "notice" in action for key in action["notice"].recipients.field_keys}
+    field_keys = scoped_person_field_keys(domain, scope, requested)
     for action in actions:
         if action["type"] == "status":
             status_target(domain, action["value"])
         if "notice" in action:
             try:
-                validate_notice_references(action["notice"], domain, user, scope)
+                validate_notice_references(action["notice"], domain, user, field_keys)
             except NoticeConfigError as exc:
                 raise TriggerConfigError(str(exc)) from exc
             action["notice"] = action["notice"].model_dump(exclude_none=True)

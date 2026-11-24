@@ -4,7 +4,7 @@ from collections import defaultdict
 from itertools import islice
 from operator import attrgetter
 
-from django.db.models import Case, F, JSONField, When
+from django.db.models import Case, F, JSONField, Q, When
 
 from apps.itsm.models import FormModel, Service, Workflow
 from apps.itsm.services.form.options import resolve_options
@@ -39,18 +39,6 @@ def trigger_condition_values(ticket):
     data = ticket.form_data or {}
     system = {key: get_value(ticket) for key, (_, _, get_value) in SYSTEM_FIELDS.items()}
     return {**data, "status": system["status"], "$ticket": system, "$form": data}
-
-
-def _forms(domain):
-    return list(FormModel.objects.filter(domain=domain).order_by("name", "id").values("id", "name"))
-
-
-def _services(domain):
-    services, service_ids = [], defaultdict(list)
-    for row in Service.objects.filter(domain=domain).order_by("name", "id").values("id", "name", "workflow_id"):
-        services.append({"id": row["id"], "name": row["name"]})
-        service_ids[row["workflow_id"]].append(row["id"])
-    return services, service_ids
 
 
 def _form_schema_groups(domain, forms, service_ids, *, workflow_ids=None):
@@ -106,9 +94,45 @@ def _catalog_fields(schemas, reader):
     return [{**group, "fields": fields} for group, schema in schemas if (fields := reader(schema))]
 
 
-def person_field_catalog(domain):
-    _, service_ids = _services(domain)
-    return _catalog_fields(_form_schema_groups(domain, _forms(domain), service_ids), person_form_fields)
+def scoped_person_field_keys(domain, scope, requested):
+    if not requested:
+        return set()
+    forms = FormModel.objects.filter(domain=domain, current_version__domain=domain, current_version__is_published=True, current_version__form_id=F("pk"))
+    workflows = Workflow.objects.filter(domain=domain, current_version__domain=domain, current_version__is_published=True, current_version__workflow_id=F("pk"))
+    match = Q()
+    if "workflow_ids" in scope:
+        match &= Q(pk__in=scope["workflow_ids"])
+    if "form_ids" in scope:
+        match &= Q(current_version__design__form_model_id__in=scope["form_ids"]) | (
+            ~Q(current_version__design__has_key="form_model_id") & Q(form_id__in=scope["form_ids"])
+        )
+    if scope["mode"] == "include":
+        if "service_ids" in scope:
+            match &= Q(pk__in=Service.objects.filter(domain=domain, pk__in=scope["service_ids"]).values("workflow_id"))
+        workflows = workflows.filter(match)
+        if "workflow_ids" in scope or "service_ids" in scope:
+            forms = forms.none()
+        elif "form_ids" in scope:
+            forms = forms.filter(pk__in=scope["form_ids"])
+    elif scope["mode"] == "exclude" and "service_ids" not in scope:
+        workflows = workflows.exclude(match)
+        if "form_ids" in scope and "workflow_ids" not in scope:
+            forms = forms.exclude(pk__in=scope["form_ids"])
+    fallback = Case(
+        When(form__domain=domain, form__current_version__domain=domain, form__current_version__form_id=F("form_id"),
+             form__current_version__is_published=True, then=F("form__current_version__schema")), output_field=JSONField(),
+    )
+    found = set()
+    for snapshot, published_form in workflows.values_list("current_version__design__form_schema", fallback).iterator(chunk_size=50):
+        schema = snapshot if isinstance(snapshot, dict) else published_form
+        found.update(key for key, kind, _, _ in _schema_fields(schema) if kind in PERSON_FIELDS and key in requested)
+        if found == requested:
+            return found
+    for schema in forms.values_list("current_version__schema", flat=True).iterator(chunk_size=50):
+        found.update(key for key, kind, _, _ in _schema_fields(schema) if kind in PERSON_FIELDS and key in requested)
+        if found == requested:
+            break
+    return found
 
 
 def _schema_fields(schema):

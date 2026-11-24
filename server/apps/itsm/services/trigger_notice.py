@@ -17,7 +17,7 @@ from apps.itsm.services.notify.service import (
     ticket_notice_variables,
 )
 from apps.itsm.services.notify.recipients import active_users
-from apps.itsm.services.trigger_fields import person_field_catalog, person_form_fields
+from apps.itsm.services.trigger_fields import person_form_fields
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannelStatusChoices
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
@@ -110,17 +110,7 @@ def _notice_templates(domain, routes):
     return NotifyTemplate.objects.filter(domain=domain).in_bulk([route.template_id for route in routes if route.template_id is not None])
 
 
-def _matches_form_scope(group, scope):
-    if scope["mode"] != "include":
-        return True
-    return (
-        ("workflow_ids" not in scope or group.get("workflow_id") in scope["workflow_ids"])
-        and ("form_ids" not in scope or group.get("form_id") in scope["form_ids"])
-        and ("service_ids" not in scope or set(group.get("service_ids", [])).intersection(scope["service_ids"]))
-    )
-
-
-def validate_notice_references(notice: TriggerNotice, domain, user, scope):
+def validate_notice_references(notice: TriggerNotice, domain, user, field_keys):
     recipients = notice.recipients
     names, groups = set(recipients.users), set(recipients.group_ids)
     channel_ids = {route.channel_id for route in notice.channels if isinstance(route, IMRoute)}
@@ -130,10 +120,8 @@ def validate_notice_references(notice: TriggerNotice, domain, user, scope):
         raise NoticeConfigError("请选择本组织有效的用户组")
     if channel_ids and _ready_channels(domain, user=user, ids=channel_ids).keys() != channel_ids:
         raise NoticeConfigError("请选择当前有权限且可用的通知渠道")
-    if recipients.field_keys:
-        fields = {field["key"] for group in person_field_catalog(domain) if _matches_form_scope(group, scope) for field in group["fields"]}
-        if not fields.issuperset(recipients.field_keys):
-            raise NoticeConfigError("请选择生效范围内的表单人员字段")
+    if not field_keys.issuperset(recipients.field_keys):
+        raise NoticeConfigError("请选择生效范围内的表单人员字段")
     templates = _notice_templates(domain, notice.channels)
     for route in notice.channels:
         if route.template_id is None:
