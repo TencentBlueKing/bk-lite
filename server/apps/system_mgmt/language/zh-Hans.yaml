@@ -312,6 +312,19 @@ export:
   operation_log_filename: 用户操作日志
   openapi_call_log_sheet: API调用日志
   openapi_call_log_filename: API调用日志
+  error_log_sheet: 错误日志
+  error_log_filename: 错误日志
+  stack_unrecorded: 未记录堆栈
+  column_time: 时间
+  column_related_user: 关联用户
+  column_business_module: 业务模块
+  column_error_reason: 错误原因
+  column_exception_type: 异常类型
+  column_request_method: 请求方法
+  column_path: 路径
+  column_tech_module: 技术模块
+  column_recorded_error_text: 已记录错误文本
+  column_stack: 堆栈
   column_username: 用户名
   column_domain: 域名
   column_login_time: 登录时间

@@ -1,23 +1,47 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Input, message, Select, Tooltip } from 'antd';
+import { Button, Drawer, Descriptions, Input, message, Select, Typography } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
+import type { TableRowSelection } from 'antd/es/table/interface';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import { useClientData } from '@/context/client';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 
 const { Search } = Input;
+
+const EMPTY_FILTERS = {
+  keyword: '',
+  username: '',
+  app: [] as string[],
+};
+
+const lastSevenDays = (): number[] => {
+  const end = Date.now();
+  return [end - 7 * 24 * 60 * 60 * 1000, end];
+};
 
 interface ErrorLog {
   id: number;
   username: string;
   app: string;
+  app_name?: string;
   module: string;
   error_message: string;
+  recorded_text: string;
+  parsed: boolean;
+  method: string;
+  path: string;
+  exception_type: string;
+  reason: string;
+  stack_text: string;
+  stack_trace?: string;
   domain: string;
   created_at: string;
 }
@@ -26,45 +50,53 @@ const ErrorLogsPage: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { clientData } = useClientData();
-  const timeSelectorRef = useRef<any>(null);
+  const { selectedGroup } = useUserInfoContext();
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [dataSource, setDataSource] = useState<ErrorLog[]>([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
     total: 0,
   });
-  const [filters, setFilters] = useState({
-    username: '',
-    app: [] as string[],
-  });
-  const [timeRange, setTimeRange] = useState<number[]>(() => {
-    const end = Date.now();
-    const start = end - 7 * 24 * 60 * 60 * 1000;
-    return [start, end];
-  });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [timeRange, setTimeRange] = useState<number[]>(lastSevenDays);
+  const [timeSelectorKey, setTimeSelectorKey] = useState(0);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<ErrorLog | null>(null);
 
-  const { getErrorLogs } = useSecurityApi();
+  const { getErrorLogs, exportErrorLogs } = useSecurityApi();
+  const unrecorded = t('system.security.outcomeUnrecorded');
+  const stackUnrecorded = t('system.security.stackUnrecorded');
 
-  const fetchErrorLogs = async (page = 1, pageSize = pagination.pageSize) => {
+  const formatRecorded = (value?: string) => (value ? value : unrecorded);
+
+  const fetchErrorLogs = async (
+    page = 1,
+    pageSize = pagination.pageSize,
+    nextFilters = filters,
+    nextTimeRange = timeRange,
+  ) => {
     setLoading(true);
     try {
-      const params: any = {
+      const params: Record<string, string | number> = {
         page,
         page_size: pageSize,
       };
 
-      if (filters.username) {
-        params.username = filters.username;
+      if (nextFilters.keyword) {
+        params.keyword = nextFilters.keyword;
       }
-
-      if (filters.app && filters.app.length > 0) {
-        params.app = filters.app.join(',');
+      if (nextFilters.username) {
+        params.username = nextFilters.username;
       }
-
-      if (timeRange && timeRange.length === 2) {
-        params.time_start = dayjs(timeRange[0]).toISOString();
-        params.time_end = dayjs(timeRange[1]).toISOString();
+      if (nextFilters.app && nextFilters.app.length > 0) {
+        params.app = nextFilters.app.join(',');
+      }
+      if (nextTimeRange && nextTimeRange.length === 2) {
+        params.time_start = dayjs(nextTimeRange[0]).toISOString();
+        params.time_end = dayjs(nextTimeRange[1]).toISOString();
       }
 
       const response = await getErrorLogs(params);
@@ -84,31 +116,83 @@ const ErrorLogsPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!selectedGroup?.id) {
+      return;
+    }
     fetchErrorLogs(1);
-  }, []);
+  }, [selectedGroup?.id]);
 
   const handleSearch = () => {
     fetchErrorLogs(1, pagination.pageSize);
   };
 
   const handleReset = () => {
-    setFilters({
-      username: '',
-      app: [],
-    });
-    const end = Date.now();
-    const start = end - 7 * 24 * 60 * 60 * 1000;
-    setTimeRange([start, end]);
-    if (timeSelectorRef.current?.reset) {
-      timeSelectorRef.current.reset();
-    }
-    setTimeout(() => {
-      fetchErrorLogs(1, pagination.pageSize);
-    }, 0);
+    const nextFilters = { ...EMPTY_FILTERS, app: [] as string[] };
+    const nextTimeRange = lastSevenDays();
+    setFilters(nextFilters);
+    setTimeRange(nextTimeRange);
+    setTimeSelectorKey((key) => key + 1);
+    fetchErrorLogs(1, pagination.pageSize, nextFilters, nextTimeRange);
   };
 
   const handleTimeChange = (range: number[]) => {
     setTimeRange(range);
+  };
+
+  const buildExportFilters = () => {
+    const params: Record<string, string> = {};
+    if (filters.keyword) {
+      params.keyword = filters.keyword;
+    }
+    if (filters.username) {
+      params.username = filters.username;
+    }
+    if (filters.app && filters.app.length > 0) {
+      params.app = filters.app.join(',');
+    }
+    if (timeRange && timeRange.length === 2) {
+      params.time_start = dayjs(timeRange[0]).toISOString();
+      params.time_end = dayjs(timeRange[1]).toISOString();
+    }
+    return params;
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const payload =
+        selectedRowKeys.length > 0
+          ? { selected_ids: selectedRowKeys }
+          : buildExportFilters();
+      const blob = await exportErrorLogs(payload);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `error_logs_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success(t('common.exportSuccess'));
+    } catch (error) {
+      console.error('Export failed:', error);
+      message.error(t('system.security.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleOpenDetail = (record: ErrorLog) => {
+    setDetailRecord(record);
+    setDetailVisible(true);
+  };
+
+  const handleCloseDetail = () => {
+    setDetailVisible(false);
+    setDetailRecord(null);
+  };
+
+  const rowSelection: TableRowSelection<ErrorLog> = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
   };
 
   const columns = [
@@ -116,34 +200,61 @@ const ErrorLogsPage: React.FC = () => {
       title: t('system.security.operationTime'),
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 180,
       render: (time: string) => convertToLocalizedTime(time),
     },
     {
-      title: t('system.security.operator'),
+      title: t('system.security.businessModule'),
+      dataIndex: 'app_name',
+      key: 'app_name',
+      width: 160,
+      render: (_: string, record: ErrorLog) => record.app_name || record.app,
+    },
+    {
+      title: t('system.security.errorInfo'),
+      key: 'error_info',
+      render: (_: unknown, record: ErrorLog) => {
+        if (record.parsed) {
+          const meta = [record.exception_type, record.method, record.path]
+            .filter(Boolean)
+            .join(' · ');
+          return (
+            <button
+              type="button"
+              className="w-full text-left"
+              onClick={() => handleOpenDetail(record)}
+            >
+              <div className="truncate">{formatRecorded(record.reason)}</div>
+              <div className="truncate text-[var(--color-text-3)]">{meta}</div>
+            </button>
+          );
+        }
+        return (
+          <button
+            type="button"
+            className="w-full truncate text-left"
+            onClick={() => handleOpenDetail(record)}
+          >
+            {record.recorded_text}
+          </button>
+        );
+      },
+    },
+    {
+      title: t('system.security.relatedUser'),
       dataIndex: 'username',
       key: 'username',
+      width: 140,
     },
     {
-      title: t('system.security.operationModule'),
-      dataIndex: 'app',
-      key: 'app',
-    },
-    {
-      title: t('system.security.errorModule'),
-      dataIndex: 'module',
-      key: 'module',
-    },
-    {
-      title: t('system.security.errorSummary'),
-      dataIndex: 'error_message',
-      key: 'error_message',
-      ellipsis: {
-        showTitle: false,
-      },
-      render: (text: string) => (
-        <Tooltip placement="topLeft" title={text}>
-          {text}
-        </Tooltip>
+      title: t('common.actions'),
+      key: 'detail',
+      width: 100,
+      fixed: 'right' as const,
+      render: (_: unknown, record: ErrorLog) => (
+        <Button type="link" size="small" onClick={() => handleOpenDetail(record)}>
+          {t('common.detail')}
+        </Button>
       ),
     },
   ];
@@ -151,9 +262,17 @@ const ErrorLogsPage: React.FC = () => {
   return (
     <div className="w-full h-full bg-[var(--color-bg)] p-4">
       <div className="mb-4 p-4 rounded">
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 flex-wrap">
           <Search
-            placeholder={t('system.security.operatorPlaceholder')}
+            placeholder={t('system.security.errorKeywordPlaceholder')}
+            value={filters.keyword}
+            onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
+            onSearch={handleSearch}
+            allowClear
+            className="w-48"
+          />
+          <Search
+            placeholder={t('system.security.relatedUserPlaceholder')}
             value={filters.username}
             onChange={(e) => setFilters({ ...filters, username: e.target.value })}
             onSearch={handleSearch}
@@ -169,12 +288,12 @@ const ErrorLogsPage: React.FC = () => {
             className="w-48"
             maxTagCount="responsive"
             options={clientData.map((item) => ({
-              label: item.display_name,
+              label: resolveAppDisplayName(item, t),
               value: item.name,
             }))}
           />
           <TimeSelector
-            ref={timeSelectorRef}
+            key={timeSelectorKey}
             showTime
             clearable
             onlyTimeSelect
@@ -188,6 +307,9 @@ const ErrorLogsPage: React.FC = () => {
             {t('common.search')}
           </Button>
           <Button onClick={handleReset}>{t('common.reset')}</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
+            {t('common.export')}
+          </Button>
         </div>
       </div>
 
@@ -196,6 +318,7 @@ const ErrorLogsPage: React.FC = () => {
         dataSource={dataSource}
         loading={loading}
         rowKey="id"
+        rowSelection={rowSelection}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,
@@ -211,6 +334,81 @@ const ErrorLogsPage: React.FC = () => {
         }}
         scroll={{ x: 1200, y: 'calc(100vh - 400px)' }}
       />
+
+      <Drawer
+        title={t('common.detail')}
+        width={720}
+        open={detailVisible}
+        onClose={handleCloseDetail}
+        destroyOnHidden
+      >
+        {detailRecord && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.basicInfo')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.operationTime')}>
+                  {detailRecord.created_at
+                    ? convertToLocalizedTime(detailRecord.created_at)
+                    : unrecorded}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.relatedUser')}>
+                  {formatRecorded(detailRecord.username)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.businessModule')}>
+                  {formatRecorded(detailRecord.app_name || detailRecord.app)}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.requestInfo')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.requestMethod')}>
+                  {formatRecorded(detailRecord.method)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.requestPath')}>
+                  {formatRecorded(detailRecord.path)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.errorModule')}>
+                  {formatRecorded(detailRecord.module)}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.errorInfo')}</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label={t('system.security.exceptionType')}>
+                  {formatRecorded(detailRecord.exception_type)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.errorReason')}>
+                  {formatRecorded(detailRecord.reason)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('system.security.recordedErrorText')}>
+                  <Typography.Text copyable={{ text: detailRecord.recorded_text }}>
+                    {detailRecord.recorded_text}
+                  </Typography.Text>
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+
+            <div>
+              <div className="mb-2 font-medium">{t('system.security.stackInfo')}</div>
+              {detailRecord.stack_text ? (
+                <Typography.Paragraph
+                  copyable={{ text: detailRecord.stack_text }}
+                  className="whitespace-pre-wrap"
+                >
+                  {detailRecord.stack_text}
+                </Typography.Paragraph>
+              ) : (
+                stackUnrecorded
+              )}
+            </div>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };
