@@ -31,7 +31,7 @@ export interface FormFieldSchema {
   span?: number;
   rowBreak?: boolean;
   group?: string;
-  visibleWhen?: ConditionGroup | null;
+  visibleWhen?: ConditionGroup | ConditionItem | null;
   state?: 'default' | 'disabled' | 'readonly' | 'hidden';
   hideValueClearMode?: 'keep' | 'clear';
   hideLogic?: 'visible' | 'always';
@@ -45,6 +45,8 @@ export interface FormFieldSchema {
 export interface FormSchema {
   version: number;
   fields: FormFieldSchema[];
+  layout?: Record<string, unknown>[];
+  rules?: { type: 'required' | 'visible' | 'compute'; field: string; when?: ConditionGroup | ConditionItem | null; expr?: string }[];
 }
 
 export interface ConditionItem {

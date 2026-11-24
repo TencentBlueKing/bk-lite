@@ -2,9 +2,10 @@
 
 import { ItsmDrawer as Drawer, usePageLeave } from '@/app/itsm/components/interaction-surfaces';
 import { Button, Empty, Tag, message } from 'antd';
+import { DesignerLoadStatus, useDesignerLoad } from '../../../components/designer-load';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useItsmApi } from '../../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
 import { FormDesigner } from '../../../components/form-designer';
@@ -18,9 +19,12 @@ interface FormDetail {
 }
 
 export default function FormDesignerPage() {
-  const { t } = useTranslation();
   const params = useParams<{ id: string }>();
-  const formId = Number(params.id);
+  return <FormEditor key={params.id} formId={Number(params.id)} />;
+}
+
+function FormEditor({ formId }: { formId: number }) {
+  const { t } = useTranslation();
   const api = useItsmApi();
   const [detail, setDetail] = useState<FormDetail | null>(null);
   const [fields, setFields] = useState<FormFieldSchema[]>([]);
@@ -29,20 +33,14 @@ export default function FormDesignerPage() {
   const [busy, setBusy] = useState(false);
   usePageLeave(!!detail && JSON.stringify(fields)!==JSON.stringify(detail.schema?.fields || []));
 
-  const load = useCallback(async () => {
-    const data = await api.getForm(formId) as FormDetail;
+  const read = useCallback(() => api.getForm(formId) as Promise<FormDetail>, [api.getForm, formId]);
+  const apply = useCallback((data: FormDetail) => {
     setDetail(data);
     setFields(data.schema?.fields || []);
-  }, [api.getForm, formId]);
+  }, []);
+  const { ready, error, load } = useDesignerLoad(api.ready && Boolean(formId), read, apply);
 
-  useEffect(() => {
-    if (!api.ready || !formId) {
-      return;
-    }
-    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
-  }, [api.ready, formId, load]);
-
-  const schema: FormSchema = { version: 1, fields };
+  const schema: FormSchema = { ...detail?.schema, version: detail?.schema?.version ?? 1, fields };
 
   const save = async () => {
     setBusy(true);
@@ -70,6 +68,8 @@ export default function FormDesignerPage() {
       setBusy(false);
     }
   };
+
+  if (!ready) return <DesignerLoadStatus error={error} retry={load} href="/itsm/form" label="返回表单列表" />;
 
   return (
     <div className="flex flex-col gap-4">

@@ -11,6 +11,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { UserSelector } from './user-selector';
 import { TableField, SignatureField } from './structured-fields';
 import { FieldFetchControl, type FetchContext } from './field-fetch-control';
+import { matches } from './form-conditions';
 import { SubProcessField } from './subprocess-field';
 
 function RichTextField({
@@ -34,7 +35,7 @@ function RichTextField({
   );
 }
 
-function AttachmentField({ disabled, value, onChange }: { disabled: boolean; value?: string[]; onChange?: (value: string[]) => void }) {
+function AttachmentField({ disabled, value, onChange, field, context }: { field: string; context?: FetchContext; disabled: boolean; value?: string[]; onChange?: (value: string[]) => void }) {
   const api = useItsmApi();
   return (
     <Upload
@@ -42,7 +43,7 @@ function AttachmentField({ disabled, value, onChange }: { disabled: boolean; val
       customRequest={async (options) => {
         const file = options.file as File;
         try {
-          const signed = await api.presignAttachment(file.name) as { url: string; object_name: string };
+          const signed = await api.presignAttachment(file.name, context?.ticket_id, context?.ticket_id ? { field, task_id: context.task_id } : undefined) as { url: string; object_name: string };
           const response = await fetch(signed.url, { method: 'PUT', body: file });
           if (!response.ok) {
             throw new Error('上传失败');
@@ -70,31 +71,6 @@ interface FormRendererProps {
   readOnly?: boolean;
   onSubmit: (values: Record<string, unknown>) => void;
 }
-
-const matches = (rule: FormFieldSchema['visibleWhen'], values: Record<string, unknown>) => {
-  if (!rule) {
-    return true;
-  }
-  return rule.items.every((item) => {
-    if (!('op' in item)) {
-      return true;
-    }
-    const current = values[item.field];
-    if (item.op === '=') {
-      return String(current ?? '') === String(item.value ?? '');
-    }
-    if (item.op === '!=') {
-      return String(current ?? '') !== String(item.value ?? '');
-    }
-    if (item.op === 'is_empty') {
-      return current == null || current === '';
-    }
-    if (item.op === 'not_empty') {
-      return current != null && current !== '';
-    }
-    return true;
-  });
-};
 
 const DATE_TYPES = new Set(['date', 'time', 'datetime', 'dateRange']);
 
@@ -143,7 +119,7 @@ const dateItemProps = (field: FormFieldSchema) => (
     : {}
 );
 
-const control = (field: FormFieldSchema, disabled: boolean) => {
+const control = (field: FormFieldSchema, disabled: boolean, context?: FetchContext) => {
   if (field.type === 'number' || field.type === 'calculate') {
     return <InputNumber className="w-full" disabled={disabled || field.type === 'calculate'} placeholder={field.placeholder || String(field.props?.expr || '')} />;
   }
@@ -189,7 +165,7 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
     return <Divider />;
   }
   if (field.type === 'attachment') {
-    return <AttachmentField disabled={disabled} />;
+    return <AttachmentField field={field.key} context={context} disabled={disabled} />;
   }
   if (field.type === 'richtext') {
     return <RichTextField disabled={disabled} placeholder={field.placeholder} />;
@@ -215,14 +191,18 @@ const control = (field: FormFieldSchema, disabled: boolean) => {
 
 const SPANS: Record<number, string> = { 3: 'col-span-3', 4: 'col-span-4', 6: 'col-span-6', 8: 'col-span-8', 9: 'col-span-9', 12: 'col-span-12', 24: 'col-span-12' };
 
-function FieldItems({ fields, fieldPerm, readOnly, fetchContext }: { fetchContext?: FetchContext; fields: FormFieldSchema[]; fieldPerm: NonNullable<FormRendererProps['fieldPerm']>; readOnly: boolean }) {
+function FieldItems({ fields, fieldPerm, readOnly, fetchContext, rules = [] }: { rules?: FormSchema['rules']; fetchContext?: FetchContext; fields: FormFieldSchema[]; fieldPerm: NonNullable<FormRendererProps['fieldPerm']>; readOnly: boolean }) {
   return <>{fields.map((field) => <Form.Item key={field.key} noStyle shouldUpdate>
     {({ getFieldsValue }) => {
       const perm = fieldPerm[field.key] || fieldPerm['*'] || 'edit';
-      if (field.state === 'hidden' || perm === 'hidden' || !matches(field.visibleWhen, getFieldsValue())) return null;
+      const values = getFieldsValue(true);
+      const visibilityRules = rules.filter(rule => rule.field === field.key && rule.type === 'visible');
+      const visibleWhen = visibilityRules.length ? visibilityRules[visibilityRules.length - 1].when : field.visibleWhen;
+      const required = field.required || perm === 'required' || rules.some(rule => rule.field === field.key && rule.type === 'required' && matches(rule.when, values));
+      if (field.state === 'hidden' || perm === 'hidden' || !matches(visibleWhen, values)) return null;
       const locked = readOnly || ['read', 'readonly'].includes(perm) || field.state === 'readonly' || field.state === 'disabled';
       if (field.type === 'tab' || field.type === 'section') {
-        const children = <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={field.children || []} fieldPerm={fieldPerm} readOnly={locked} fetchContext={fetchContext} /></div>;
+        const children = <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems rules={rules} fields={field.children || []} fieldPerm={fieldPerm} readOnly={locked} fetchContext={fetchContext} /></div>;
         return <div className="col-span-12 rounded-lg border border-[var(--color-border)] p-3">
           {field.type === 'tab' ? <Tabs items={[{ key: field.key, label: field.label || '标签', children }]} /> : <><div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{field.label}</div>{children}</>}
         </div>;
@@ -230,9 +210,9 @@ function FieldItems({ fields, fieldPerm, readOnly, fetchContext }: { fetchContex
       return <Form.Item
         className={`${SPANS[FULL_ROW_TYPES.has(field.type) ? 12 : (field.span || 6)] || 'col-span-6'} ${field.rowBreak ? 'col-start-1' : ''}`}
         name={field.key} label={field.type === 'divider' ? undefined : field.label} extra={field.hint}
-        rules={(field.required || String(perm) === 'required') && !locked ? [{ required: true }] : []}
+        rules={required && !locked ? [{ required: true }] : []}
         {...dateItemProps(field)}
-      >{field.fetch && fetchContext && !locked ? <FieldFetchControl field={field} context={fetchContext}>{control(field, locked)!}</FieldFetchControl> : control(field, locked)}</Form.Item>;
+      >{field.fetch && fetchContext && !locked ? <FieldFetchControl field={field} context={fetchContext}>{control(field, locked, fetchContext)!}</FieldFetchControl> : control(field, locked, fetchContext)}</Form.Item>;
     }}
   </Form.Item>)}</>;
 }
@@ -240,7 +220,7 @@ function FieldItems({ fields, fieldPerm, readOnly, fetchContext }: { fetchContex
 export function FormRenderer({ fetchContext, form, hideSubmit = false, schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
   return <Form form={form} layout="vertical" initialValues={initialValues} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
     <Form.Item name="_field_receipts" hidden><Input /></Form.Item>
-    {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} fetchContext={fetchContext} /></div>
+    {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems rules={schema.rules} fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} fetchContext={fetchContext} /></div>
     : <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] py-8"><Empty description="当前表单暂无可展示的字段内容" /></div>}
     {readOnly || hideSubmit || !schema.fields?.length ? null : <div className="mt-2 flex justify-end border-t border-[var(--color-border)] pt-4"><Button type="primary" htmlType="submit">提交</Button></div>}
   </Form>;

@@ -16,9 +16,9 @@ const emptyItem = (field: string): ConditionItem => ({ field, op: '=', value: ''
 
 export function ConditionBuilder({ fields, fieldTypes = {}, value, onChange }: ConditionBuilderProps) {
   const group: ConditionGroup = value && 'logic' in value ? value : { logic: 'and', items: value ? [value] : [emptyItem(fields[0] || '')] };
-  const items = group.items.filter((item): item is ConditionItem => 'op' in item);
+  const items = group.items;
 
-  const update = (nextItems: ConditionItem[], logic = group.logic) => {
+  const update = (nextItems: ConditionGroup['items'], logic = group.logic) => {
     onChange({ logic, items: nextItems });
   };
 
@@ -33,7 +33,10 @@ export function ConditionBuilder({ fields, fieldTypes = {}, value, onChange }: C
           onChange={(logic) => update(items, logic)}
         />
       </div>
-      {items.map((item, index) => (
+      {items.map((item, index) => 'logic' in item ? (
+        <ConditionBuilder key={index} fields={fields} fieldTypes={fieldTypes} value={item}
+          onChange={next => update(items.map((row, i) => i === index ? next : row))} />
+      ) : (
         <div key={`${item.field}-${index}`} className="grid grid-cols-[1fr_88px_1fr] gap-1.5">
           <Select
             size="small"

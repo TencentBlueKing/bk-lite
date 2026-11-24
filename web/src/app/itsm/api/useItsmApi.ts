@@ -268,7 +268,7 @@ export function useItsmApi() {
     (body: { product_name: string; tab_title: string; attachment_types: string; show_process_log: boolean; user_display: string }) => post('/itsm/api/settings/basic/', body),
     [post],
   );
-  const presignAttachment = useCallback((filename: string, ticket_id?: number) => post('/itsm/api/attachments/presign/', { filename, ticket_id }), [post]);
+  const presignAttachment = useCallback((filename: string, ticket_id?: number, fieldContext?: { field: string; task_id?: number }) => post('/itsm/api/attachments/presign/', { filename, ticket_id, ...fieldContext }), [post]);
 
   return {
     ready: !isLoading,

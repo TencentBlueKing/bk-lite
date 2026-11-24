@@ -7,9 +7,9 @@ const api = vi.hoisted(() => ({ ready: true, fetchField: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-function Sample() {
+function Sample({ manual = false }: { manual?: boolean }) {
   return <Form initialValues={{ dept: '研发' }}><Form.Item name="dept"><Input aria-label="部门" /></Form.Item>
-    <Form.Item name="result"><FieldFetchControl field={{ key: 'result', label: '结果', type: 'input', fetch: { source: 'integration', mode: 'value', integration_id: 1, inputs: { dept: '${form.dept}' }, dependencies: ['dept'] } }} context={{ service_id: 1 }}><Input aria-label="结果" /></FieldFetchControl></Form.Item>
+    <Form.Item name="result"><FieldFetchControl field={{ key: 'result', label: '结果', type: 'input', fetch: { source: 'integration', mode: 'value', trigger: manual ? 'manual' : 'change', integration_id: 1, inputs: { dept: '${form.dept}' }, dependencies: ['dept'] } }} context={{ service_id: 1 }}><Input aria-label="结果" /></FieldFetchControl></Form.Item>
     <Form.Item name="_field_receipts" hidden><Input /></Form.Item></Form>;
 }
 it('依赖变化重新取数，保留手动修改值', async () => {
@@ -43,4 +43,17 @@ it('级联取数保留父子层级并可选择子节点', async () => {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '级联' }));
   fireEvent.click(await screen.findByText('子项'));
   expect(changed).toHaveBeenLastCalledWith({ tree: 'c' }, expect.objectContaining({ tree: 'c' }));
+});
+
+it('手动取数每次点击只执行一次当前依赖快照', async () => {
+  api.fetchField.mockResolvedValue({ value: '示例', receipt: 'proof', options: [], fills: {} });
+  render(<Sample manual />);
+  fireEvent.click(screen.getByRole('button', { name: '刷新取数' }));
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(1));
+  fireEvent.change(screen.getByLabelText('部门'), { target: { value: '运维' } });
+  await new Promise(resolve => setTimeout(resolve, 450));
+  expect(api.fetchField).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: '刷新取数' }));
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(2));
+  expect(api.fetchField.mock.lastCall[0].values.dept).toBe('运维');
 });

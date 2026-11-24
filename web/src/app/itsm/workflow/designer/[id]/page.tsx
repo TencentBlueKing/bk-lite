@@ -1,9 +1,10 @@
 'use client';
 
 import { Alert, Button, Select, Tabs, message } from 'antd';
+import { DesignerLoadStatus, useDesignerLoad } from '../../../components/designer-load';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useItsmApi } from '../../../api/useItsmApi';
 import { useTranslation } from '@/utils/i18n';
 import { ItsmModal as OperateModal, usePageLeave } from '@/app/itsm/components/interaction-surfaces';
@@ -18,6 +19,7 @@ import type { FormFieldSchema, FormSchema } from '../../../types';
 
 interface DesignPayload extends FlowDesign {
   locked?: boolean;
+  form_schema?: FormSchema;
   form_id?: number | null;
   workflow_name?: string;
   version_no?: number;
@@ -30,9 +32,12 @@ const missing = (design: FlowDesign) => {
 };
 
 export default function WorkflowDesignerPage() {
-  const { t } = useTranslation();
   const params = useParams<{ id: string }>();
-  const workflowId = Number(params.id);
+  return <WorkflowEditor key={params.id} workflowId={Number(params.id)} />;
+}
+
+function WorkflowEditor({ workflowId }: { workflowId: number }) {
+  const { t } = useTranslation();
   const api = useItsmApi();
   const [name, setName] = useState('');
   const [versionNo, setVersionNo] = useState(0);
@@ -67,31 +72,25 @@ export default function WorkflowDesignerPage() {
     finally { if (request === templateRequest.current) setTemplateLoading(false); }
   };
 
-  const load = useCallback(async () => {
+  const read = useCallback(async () => {
     const data = await api.getDesign(workflowId) as DesignPayload;
-    setName(data.workflow_name || t('itsm.design.flowFallback'));
+    if (data.form_schema && (data.locked || !data.form_id)) return { data, schema: data.form_schema };
+    const form = data.form_id ? await api.getForm(data.form_id) as { schema?: FormSchema } : null;
+    return { data, schema: form?.schema };
+  }, [api.getDesign, api.getForm, workflowId]);
+  const apply = useCallback(({ data, schema }: Awaited<ReturnType<typeof read>>) => {
+    setName(data.workflow_name || '');
     setVersionNo(data.version_no || 0);
     setLocked(Boolean(data.locked));
     setFormId(data.form_id ?? null);
-    if (data.nodes?.length) {
-      setDesign({ nodes: data.nodes, edges: data.edges || [], settings: data.settings });
-    }
-    let loadedFields: FormFieldSchema[] = [];
-    if (data.form_id) {
-      const form = await api.getForm(data.form_id) as { schema?: FormSchema };
-      loadedFields=form.schema?.fields || [];
-      setFields(loadedFields);
-      setFormBase(form.schema || {});
-    }
-    setBaseline(JSON.stringify({design:data.nodes?.length?{nodes:data.nodes,edges:data.edges || [],settings:data.settings}:DEMO_FLOW,fields:loadedFields}));
-  }, [api.getDesign, api.getForm, workflowId]);
-
-  useEffect(() => {
-    if (!api.ready || !workflowId) {
-      return;
-    }
-    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
-  }, [api.ready, load, workflowId]);
+    const nextDesign = data.nodes?.length ? { nodes: data.nodes, edges: data.edges || [], settings: data.settings } : DEMO_FLOW;
+    const nextFields = schema?.fields || [];
+    setDesign(nextDesign);
+    setFormBase(schema || {});
+    setFields(nextFields);
+    setBaseline(JSON.stringify({ design: nextDesign, fields: nextFields }));
+  }, []);
+  const { ready, error, load } = useDesignerLoad(api.ready && Boolean(workflowId), read, apply);
 
   const updateDesign = useCallback((next: FlowDesign) => setDesign((current) => ({ ...current, ...next })), []);
 
@@ -160,6 +159,8 @@ export default function WorkflowDesignerPage() {
     }
   };
 
+  if (!ready) return <DesignerLoadStatus error={error} retry={load} href="/itsm/workflow" label="返回流程列表" />;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <div className="sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -167,7 +168,7 @@ export default function WorkflowDesignerPage() {
           <ItsmBackButton href="/itsm/workflow" label="返回流程列表" />
           <div className="h-4 w-px bg-[var(--color-border)]" />
           <div className="flex items-center gap-2.5">
-            <span className="text-sm font-medium text-[var(--color-text-1)]">{name}</span>
+            <span className="text-sm font-medium text-[var(--color-text-1)]">{name || t('itsm.design.flowFallback')}</span>
             <span className="rounded bg-[var(--color-fill-1)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-2)]">
               V{versionNo || 1}
             </span>
