@@ -66,6 +66,8 @@ def test_submit_orsign_handle_finishes(_todo, _notify):
     version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=DESIGN, created_by="tester", updated_by="tester")
     xml = build_bpmn(DESIGN, workflow.key)
     deployed = client.deploy_bpmn(workflow.key, xml)
+    version.flowable_deployment_id = deployed["id"]
+    version.save(update_fields=["flowable_deployment_id"])
     version.process_definition_key = workflow.key
     version.is_published = True
     version.bpmn_xml = xml
@@ -116,6 +118,8 @@ def test_auto_chain_then_human_finishes(_todo, _notify):
     workflow = Workflow.objects.create(name="自动闭环", key="review_auto_" + suffix)
     version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=workflow.key, is_published=True)
     deployed = client.deploy_bpmn(workflow.key, build_bpmn(design, workflow.key))
+    version.flowable_deployment_id = deployed["id"]
+    version.save(update_fields=["flowable_deployment_id"])
     try:
         service = TicketService(client)
         ticket = service.create(version, {"title": "自动节点验收"}, "creator", is_test=True)
@@ -159,6 +163,8 @@ def test_real_suspend_transfer_return_withdraw_and_reopen(_todo, _notify):
     workflow = Workflow.objects.create(name="生命周期回归", key=key)
     version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=DESIGN, process_definition_key=key, is_published=True)
     deployment = client.deploy_bpmn(key, build_bpmn(DESIGN, key))
+    version.flowable_deployment_id = deployment["id"]
+    version.save(update_fields=["flowable_deployment_id"])
     try:
         service = TicketService(client)
         ticket = service.create(version, {"title": "生命周期验收"}, "creator", is_test=True)
@@ -238,6 +244,8 @@ def test_real_decision_parallel_join_and_notice_chain(_todo, _notify):
     workflow = Workflow.objects.create(name="十节点验收", key=key)
     version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=key, is_published=True)
     deployment = client.deploy_bpmn(key, build_bpmn(design, key))
+    version.flowable_deployment_id = deployment["id"]
+    version.save(update_fields=["flowable_deployment_id"])
     try:
         service = TicketService(client)
         ticket = service.create(version, {"title": "决策并行通知验收", "amount": 200}, "creator", is_test=True)
@@ -268,5 +276,116 @@ def test_real_decision_parallel_join_and_notice_chain(_todo, _notify):
             notify.assert_called_once()
             assert notify.call_args.kwargs["site_only"] is True
         assert not ticket.tasks.filter(status__in=["pending", "claimed"]).exists()
+    finally:
+        client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment['id']}", params={"cascade": "true"})
+
+
+def test_old_release_and_unknown_start_recover_at_ticket_endpoint():
+    import json
+    from apps.itsm.flowable.client import FlowableError
+    from apps.itsm.models import Ticket
+    from apps.itsm.tests.test_review_regressions import request
+    from apps.itsm.views.tickets import tickets
+
+    client = _client()
+    key = "review_version_" + uuid4().hex[:12]
+    workflow = Workflow.objects.create(name="旧版本恢复", key=key)
+    deployments = []
+    try:
+        for number in (1, 2):
+            deployment_id = client.deploy_bpmn(key, build_bpmn(DESIGN, key))["id"]
+            deployments.append(deployment_id)
+            version = WorkflowVersion.objects.create(workflow=workflow, version_no=number, design=DESIGN,
+                process_definition_key=key, flowable_deployment_id=deployment_id, is_published=True)
+        older = workflow.versions.get(version_no=1)
+        workflow.current_version = older
+        workflow.save()
+        payload = {"workflow_version_id": older.id, "is_test": True, "form_data": {"title": "结果核对"}, "creation_key": uuid4().hex}
+        service = TicketService(client)
+        start = client.start_process
+
+        def lose_response(*args):
+            start(*args)
+            raise FlowableError(0, "响应丢失")
+
+        with patch("apps.itsm.views.tickets._service", return_value=service), patch.object(client, "start_process", side_effect=lose_response) as remote:
+            def submit():
+                return tickets(request("post", payload, username="owner", permissions=["ticket-View", "ticket-Add"]))
+            assert submit().status_code == 502
+            assert Ticket.objects.get().creation_state == "starting"
+            confirmed = json.loads(submit().content)
+            assert confirmed["result"], confirmed
+            assert json.loads(submit().content)["data"]["id"] == confirmed["data"]["id"]
+            assert remote.call_count == 1
+        ticket = Ticket.objects.get()
+        older.refresh_from_db()
+        assert ticket.process_instance_id and ticket.tasks.filter(status="pending").count() == 1
+        assert client.get_process_instance(ticket.process_instance_id)["processDefinitionId"] == older.process_definition_id
+        assert older.process_definition_id != client.definition_for_deployment(deployments[-1], key)
+    finally:
+        for deployment_id in deployments:
+            client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment_id}", params={"cascade": "true"})
+
+
+def test_real_multi_instance_sync_reads_all_task_pages():
+    import copy
+    from django.core.management import call_command
+
+    call_command("init_itsm")
+    client = _client()
+    design = copy.deepcopy(DESIGN)
+    approval = next(row for row in design["nodes"] if row["type"] == "approval")
+    people = [f"user-{n}" for n in range(105)]
+    approval["assignee"]["value"] = people
+    approval["multi"]["mode"] = "all"
+    key = "review_pages_" + uuid4().hex[:12]
+    workflow = Workflow.objects.create(name="会签分页", key=key)
+    deployment = client.deploy_bpmn(key, build_bpmn(design, key))
+    try:
+        version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=key,
+            flowable_deployment_id=deployment["id"], is_published=True)
+        engine = TicketService(client)
+        ticket = engine.create(version, {"title": "105 人会签"}, "creator", is_test=True)
+        with patch.object(client, "_request", wraps=client._request) as wire:
+            engine.operate(ticket, ticket.tasks.get(status="pending"), "submit", {}, "creator")
+            engine.sync_ticket(ticket)
+        pages = [c.kwargs["params"]["start"] for c in wire.call_args_list if c.args[1].endswith("/runtime/tasks")]
+        assert 100 in pages
+        assert set(ticket.tasks.filter(status="pending").values_list("assignee", flat=True)) == set(people)
+    finally:
+        client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment['id']}", params={"cascade": "true"})
+
+
+def test_real_once_schedule_resumes_claim_and_creates_one_instance():
+    import json
+    from django.core.management import call_command
+    from django.utils import timezone
+    from apps.itsm.models.extend import ScheduledTask
+    from apps.itsm.services import schedules
+
+    call_command("init_itsm")
+    client = _client()
+    key = "review_scheduler_" + uuid4().hex[:12]
+    workflow = Workflow.objects.create(name="恢复定时建单", key=key)
+    design = {**DESIGN, "settings": {"is_test": True}}
+    deployment = client.deploy_bpmn(key, build_bpmn(design, key))
+    try:
+        version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=design, process_definition_key=key,
+            flowable_deployment_id=deployment["id"], is_published=True)
+        workflow.current_version = version
+        workflow.save()
+        due = timezone.now()
+        item = ScheduledTask.objects.create(name="一次建单", created_by="owner", next_run_at=due, action=json.dumps(
+            {"mode": "once", "task": "create_ticket", "workflow_id": workflow.pk, "once_at": due.isoformat()}))
+        schedules._claim(item.pk, due)
+        def service_for(*_):
+            return TicketService(client)
+        with patch.object(client, "start_process", wraps=client.start_process) as start:
+            assert schedules.run_due(service_for, now=due) == 1
+            assert schedules.run_due(service_for, now=due) == 0
+            start.assert_called_once()
+        run = item.runs.get()
+        assert run.status == "succeeded" and run.ticket.creation_key == f"schedule-{run.pk}"
+        assert set(run.ticket.tasks.filter(status="pending", node_id="approve").values_list("assignee", flat=True)) == {"alice", "bob"}
     finally:
         client._request("DELETE", f"/flowable-rest/service/repository/deployments/{deployment['id']}", params={"cascade": "true"})

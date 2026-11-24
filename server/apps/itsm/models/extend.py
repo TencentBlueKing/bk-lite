@@ -105,6 +105,7 @@ class ScheduledTask(ItsmModel):
 class ScheduledRun(ItsmModel):
     schedule = models.ForeignKey(ScheduledTask, on_delete=models.SET_NULL, null=True, related_name="runs")
     schedule_name = models.CharField(max_length=128)
+    configuration = models.JSONField(default=dict)
     due_at = models.DateTimeField()
     status = models.CharField(max_length=16, default="running")
     message = models.CharField(max_length=255, blank=True)

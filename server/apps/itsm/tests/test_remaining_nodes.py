@@ -40,6 +40,7 @@ def test_publish_requires_local_published_child(kind, state):
         child.current_version = cv
         child.save()
     with patch("apps.itsm.views.api.FlowableClient") as client:
+        client.return_value.definition_for_deployment.return_value = "tested:1:stable"
         client.return_value.deploy_bpmn.return_value = {"id": "parent-deployment"}
         body = json.loads(publish_workflow(request("post", permissions=["workflow-Publish"]), parent.id).content)
         assert body["result"] is (state == "published")

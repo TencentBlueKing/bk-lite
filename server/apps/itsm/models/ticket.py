@@ -41,6 +41,8 @@ class Ticket(ItsmModel):
     creator = models.CharField(max_length=64)
     current_assignees = models.JSONField(default=list)
     form_data = models.JSONField(default=dict)
+    creation_key = models.CharField(max_length=128, blank=True, null=True)
+    creation_state = models.CharField(max_length=16, default="complete")
     process_instance_id = models.CharField(max_length=64, blank=True, default="")
     finished_at = models.DateTimeField(null=True, blank=True, db_index=True)
     is_test = models.BooleanField(default=False)
@@ -48,6 +50,7 @@ class Ticket(ItsmModel):
 
     class Meta:
         db_table = "itsm_ticket"
+        constraints = [models.UniqueConstraint(fields=["domain", "creator", "creation_key"], name="itsm_unique_creation_key")]
 
 
 class TicketTask(ItsmModel):

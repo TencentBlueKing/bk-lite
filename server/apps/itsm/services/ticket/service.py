@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -37,53 +39,86 @@ class TicketService:
         self.client = client
         self.identity = identity
 
-    @transaction.atomic
     def create(
-        self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False, *, service: Service | None = None
+        self, workflow_version: WorkflowVersion, form_data: dict, creator: str, is_test: bool = False,
+        *, service: Service | None = None, creation_key: str | None = None,
     ) -> Ticket:
+        if creation_key is not None and (not isinstance(creation_key, str) or not creation_key.strip() or len(creation_key) > 128):
+            raise ValueError("申请标识无效")
+        key = {"domain": workflow_version.domain, "creator": creator, "creation_key": creation_key or uuid4().hex}
+        ticket = Ticket.objects.filter(**key).first()
         schema = workflow_schema(workflow_version)
-        submit_node = _find_node(workflow_version.design, node_type="submit")
-        if schema.get("fields"):
-            form_data = validate_submission(
-                schema,
-                form_data,
-                self.identity,
-                f"version:{workflow_version.id}",
-                field_perm=_normalize_perm(submit_node.get("field_perm")),
-            )
-        status = TicketStatus.objects.filter(key="new").first()
-        ticket = Ticket.objects.create(
-            sn=f"REQ{timezone.now().strftime('%Y%m%d%H%M%S%f')}",
-            title=str(form_data.get("title") or workflow_version.workflow.name),
-            workflow=workflow_version.workflow,
-            workflow_version=workflow_version,
-            service=service,
-            status=status,
-            creator=creator,
-            form_data=form_data,
-            is_test=is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
-            created_by=creator,
-            updated_by=creator,
-            domain=workflow_version.domain,
-        )
-        open_records(ticket)
-        TicketLog.objects.create(ticket=ticket, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator)
-        if self.client and workflow_version.process_definition_key:
-            variables = {
-                "initiator": creator,
-                **self._assignee_variables(workflow_version, creator, form_data),
-                **_form_variables(form_data),
-            }
-            started = self.client.start_process(workflow_version.process_definition_key, ticket.sn, variables)
-            ticket.process_instance_id = str(started.get("id") or "")
-            ticket.save(update_fields=["process_instance_id", "updated_at"])
+        if ticket is None:
+            submit_node = _find_node(workflow_version.design, node_type="submit")
+            if schema.get("fields"):
+                form_data = validate_submission(
+                    schema, form_data, self.identity, f"version:{workflow_version.id}", field_perm=_normalize_perm(submit_node.get("field_perm")),
+                )
+            with transaction.atomic():
+                ticket, created = Ticket.objects.get_or_create(
+                    **key,
+                    defaults={
+                        "sn": f"REQ{timezone.now().strftime('%Y%m%d%H%M%S%f')}", "title": str(form_data.get("title") or workflow_version.workflow.name),
+                        "workflow": workflow_version.workflow, "workflow_version": workflow_version, "service": service,
+                        "status": TicketStatus.objects.filter(key="new").first(), "form_data": form_data,
+                        "is_test": is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
+                        "created_by": creator, "updated_by": creator, "creation_state": "prepared",
+                    },
+                )
+                if created:
+                    open_records(ticket)
+                    TicketLog.objects.create(ticket=ticket, domain=ticket.domain, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator)
+        if ticket.workflow_version_id != workflow_version.pk or ticket.service_id != (service.pk if service else None):
+            raise ValueError("申请标识已用于其他服务或版本")
+        if ticket.creation_state == "complete":
+            return ticket
+        engine_required = workflow_version.process_definition_key or workflow_version.process_definition_id or workflow_version.flowable_deployment_id
+        if engine_required or ticket.creation_state in {"starting", "bound"}:
+            if not self.client:
+                raise FlowableError(503, "流程引擎未配置，请恢复连接后重试")
+            self._start_or_recover(ticket, workflow_version)
+        if ticket.process_instance_id:
             self.sync_ticket(ticket)
-            ticket.refresh_from_db(fields=["status", "finished_at"])
         from apps.itsm.services.ticket.subforms import materialize_subforms
+
+        materialize_subforms(self, ticket, schema, ticket.creator, initial=True)
+        return self._finish_creation(ticket.pk, ticket.form_data)
+
+    def _definition_id(self, version: WorkflowVersion) -> str:
+        if not version.process_definition_id:
+            resolved = self.client.definition_for_deployment(version.flowable_deployment_id, version.process_definition_key)
+            WorkflowVersion.objects.filter(pk=version.pk, process_definition_id="").update(process_definition_id=resolved)
+            version.process_definition_id = resolved
+        return version.process_definition_id
+
+    def _start_or_recover(self, ticket, version):
+        if ticket.process_instance_id:
+            return
+        definition_id = self._definition_id(version)
+        variables = {"initiator": ticket.creator, **self._assignee_variables(version, ticket.creator, ticket.form_data), **_form_variables(ticket.form_data)}
+        # 先持久化领取标记。网络结果未知时只核对业务键，即使引擎暂时查不到，也不能重放启动。
+        if Ticket.objects.filter(pk=ticket.pk, creation_state="prepared").update(creation_state="starting"):
+            started = self.client.start_process(definition_id, ticket.sn, variables)
+            instance_id = str(started.get("id") or "")
+        else:
+            ticket.refresh_from_db()
+            instance_id = ticket.process_instance_id or self.client.instance_for_business_key(ticket.sn, definition_id)
+        if not instance_id:
+            raise FlowableError(502, "引擎未返回流程实例标识")
+        Ticket.objects.filter(pk=ticket.pk, creation_state="starting").update(process_instance_id=instance_id, creation_state="bound")
+        ticket.refresh_from_db()
+
+    @transaction.atomic
+    def _finish_creation(self, ticket_id, form_data):
+        ticket = Ticket.objects.select_for_update().get(pk=ticket_id)
+        if ticket.creation_state == "complete":
+            return ticket
         from apps.itsm.services.triggers import fire_triggers
 
-        materialize_subforms(self, ticket, schema, creator)
-        fire_triggers(ticket, "create", creator)
+        ticket.form_data = form_data
+        ticket.creation_state = "complete"
+        ticket.save(update_fields=["form_data", "creation_state", "updated_at"])
+        fire_triggers(ticket, "create", ticket.creator)
         schedule_sync(ticket)
         return ticket
 
@@ -476,7 +511,7 @@ class TicketService:
                 **self._assignee_variables(version, ticket.creator, ticket.form_data or {}),
                 **_form_variables(ticket.form_data or {}),
             }
-            started = self.client.start_process(version.process_definition_key, ticket.sn, variables)
+            started = self.client.start_process(self._definition_id(version), ticket.sn, variables)
             ticket.process_instance_id = str(started.get("id") or "")
             ticket.save(update_fields=["process_instance_id", "updated_at"])
             ticket.tasks.filter(status__in=open_status).update(status=TicketTask.TaskStatus.DONE)

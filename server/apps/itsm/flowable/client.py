@@ -40,28 +40,72 @@ class FlowableClient:
         )
         return response.json()
 
-    def start_process(self, process_definition_key: str, business_key: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
+    def start_process(self, process_definition_id: str, business_key: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._request(
             "POST",
             "/flowable-rest/service/runtime/process-instances",
-            json={"processDefinitionKey": process_definition_key, "businessKey": business_key, "variables": _variables(variables or {})},
+            json={"processDefinitionId": process_definition_id, "businessKey": business_key, "variables": _variables(variables or {})},
         )
+
+    def definition_for_deployment(self, deployment_id: str, key: str) -> str:
+        if not deployment_id:
+            raise FlowableError(409, "该版本缺少部署记录")
+        page = self._request("GET", "/flowable-rest/service/repository/process-definitions", params={"deploymentId": deployment_id, "key": key})
+        definitions = page.get("data") or []
+        if len(definitions) != 1 or page.get("total") != 1:
+            raise FlowableError(409, "无法唯一确定该部署的流程版本")
+        definition = definitions[0]
+        if definition.get("key") != key or definition.get("deploymentId") != deployment_id or not definition.get("id"):
+            raise FlowableError(409, "部署的流程版本不匹配")
+        return str(definition["id"])
+
+    def instance_for_business_key(self, business_key: str, definition_id: str) -> str:
+        page = self._request(
+            "GET", "/flowable-rest/service/history/historic-process-instances",
+            params={"businessKey": business_key, "processDefinitionId": definition_id},
+        )
+        rows = page.get("data") or []
+        if (len(rows) != 1 or page.get("total") != 1 or rows[0].get("businessKey") != business_key
+                or rows[0].get("processDefinitionId") != definition_id or not rows[0].get("id")):
+            raise FlowableError(409, "流程启动结果待核对")
+        return str(rows[0]["id"])
+
+    def _all_runtime(self, resource, params):
+        rows, seen = [], set()
+        expected = None
+        while True:
+            page = self._request("GET", f"/flowable-rest/service/runtime/{resource}", params={**params, "start": len(rows), "size": 100})
+            batch, total = page.get("data"), page.get("total")
+            if not isinstance(batch, list) or type(total) is not int or page.get("start", len(rows)) != len(rows):
+                raise FlowableError(502, "流程引擎分页响应不完整")
+            if expected is not None and expected != total:
+                raise FlowableError(409, "读取期间任务列表发生变化")
+            expected = total
+            ids = {row.get("id") for row in batch}
+            if None in ids or len(ids) != len(batch) or ids & seen or len(rows) + len(batch) > total:
+                raise FlowableError(409, "流程引擎分页结果不一致")
+            rows.extend(batch)
+            seen.update(ids)
+            if len(rows) == total:
+                return rows
+            if not batch:
+                raise FlowableError(502, "流程引擎分页提前结束")
 
     def list_tasks(self, process_instance_id: str) -> dict[str, Any]:
-        return self._request("GET", "/flowable-rest/service/runtime/tasks", params={"processInstanceId": process_instance_id})
+        rows = self._all_runtime("tasks", {"processInstanceId": process_instance_id})
+        return {"data": rows, "total": len(rows)}
 
     def list_tasks_including_children(self, process_instance_id: str) -> list[dict[str, Any]]:
-        items = [{**item, "processInstanceId": process_instance_id} for item in self.list_tasks(process_instance_id).get("data") or []]
-        children = self._request(
-            "GET",
-            "/flowable-rest/service/runtime/process-instances",
-            params={"superProcessInstanceId": process_instance_id},
-        )
-        for child in children.get("data") or []:
-            child_id = str(child.get("id") or "")
-            if child_id:
-                items.extend({**item, "processInstanceId": child_id} for item in self.list_tasks(child_id).get("data") or [])
-        return items
+        pending, visited, tasks = [process_instance_id], set(), []
+        while pending:
+            instance_id = pending.pop()
+            if instance_id in visited:
+                continue
+            visited.add(instance_id)
+            tasks.extend({**row, "processInstanceId": instance_id} for row in self.list_tasks(instance_id)["data"])
+            children = self._all_runtime("process-instances", {"superProcessInstanceId": instance_id})
+            pending.extend(str(child["id"]) for child in children)
+        return tasks
 
     def complete_task(self, task_id: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._request(

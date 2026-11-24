@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from croniter import CroniterBadDateError, croniter
 from django.db import transaction
@@ -8,7 +8,7 @@ from django.utils.dateparse import parse_datetime
 
 from apps.core.logger import itsm_logger as logger
 from apps.itsm.flowable.client import FlowableError
-from apps.itsm.models import Workflow
+from apps.itsm.models import Ticket, Workflow
 from apps.itsm.models.extend import ScheduledRun, ScheduledTask
 from apps.itsm.services.ticket.service import _find_node
 
@@ -87,27 +87,25 @@ def _claim(schedule_id, now):
     if item is None:
         return None
     config = schedule_config(item)
-    run, created = ScheduledRun.objects.get_or_create(
+    ScheduledRun.objects.get_or_create(
         schedule=item,
         due_at=item.next_run_at,
-        defaults={"schedule_name": item.name, "domain": item.domain, "created_by": item.updated_by or item.created_by},
+        defaults={"schedule_name": item.name, "domain": item.domain, "created_by": item.updated_by or item.created_by, "status": "pending", "configuration": config},
     )
     # 调度恢复后每个任务补一次，跳过后续积压时点，防止停机后集中建单。
     item.next_run_at = _next_cron(item, now) if config["mode"] == "cron" else None
     item.save(update_fields=["next_run_at", "updated_at"])
-    return (item, run, config) if created else None
 
 
 def _create_ticket(service, item, run, config):
     version = target_workflow(item, config).current_version
     if service.client is None:
         raise ValueError("流程引擎未配置")
-    data = {"title": item.name, **config.get("form_data", {})}
+    data = {"title": run.schedule_name, **config.get("form_data", {})}
     # 先提交建单与关联记录，再推进提单节点；推进失败时原工单仍可追踪。
-    with transaction.atomic():
-        ticket = service.create(version, data, run.created_by)
-        run.ticket = ticket
-        run.save(update_fields=["ticket", "updated_at"])
+    ticket = service.create(version, data, run.created_by, creation_key=f"schedule-{run.pk}")
+    run.ticket = ticket
+    run.save(update_fields=["ticket", "updated_at"])
     submit_node = _find_node(version.design, node_type="submit")
     if submit_node:
         task = ticket.tasks.filter(node_id=submit_node["id"], status__in=["pending", "claimed"]).get()
@@ -127,7 +125,7 @@ def _run(service_for, item, run, config):
             phase = "通知"
             result = dispatch_notification(
                 "schedule",
-                {"title": item.name, "content": item.name},
+                {"title": run.schedule_name, "content": run.schedule_name},
                 [run.created_by],
                 event_key=f"itsm-schedule-run-{run.id}",
                 site_only=bool(run.ticket and run.ticket.is_test),
@@ -146,19 +144,39 @@ def _run(service_for, item, run, config):
         else:
             message = "建单失败，请检查流程是否可用及提单必填参数"
         logger.warning("定时任务失败 run_id=%s failed_stage=%s error_type=%s", run.id, phase, type(exc).__name__)
-    run.status = status
-    run.message = message
-    run.finished_at = timezone.now()
-    run.save(update_fields=["status", "message", "finished_at", "updated_at"])
+    ticket_id = run.ticket_id or _created_ticket_id(run)
+    ScheduledRun.objects.filter(pk=run.pk, status__in=["running", "unconfirmed"]).update(status=status, ticket_id=ticket_id, message=message, finished_at=timezone.now(), updated_at=timezone.now())
+
+
+def _created_ticket_id(run):
+    return Ticket.objects.filter(domain=run.domain, creator=run.created_by, creation_key=f"schedule-{run.pk}").values_list("pk", flat=True).first()
+
+
+def _reconcile_interrupted(now, limit):
+    # 已经进入外部动作阶段的旧执行不能重放。保留可追踪的原工单，明确标记需要核对的结果。
+    cutoff = now - timedelta(minutes=30)
+    runs = ScheduledRun.objects.filter(status="running", updated_at__lt=cutoff).order_by("updated_at", "id")[:limit]
+    for run in runs:
+        ticket_id = run.ticket_id or _created_ticket_id(run)
+        ScheduledRun.objects.filter(pk=run.pk, status="running", updated_at__lt=cutoff).update(
+            status="unconfirmed", ticket_id=ticket_id, message="执行中断，请核对已关联的工单或通知记录", finished_at=now, updated_at=now,
+        )
 
 
 def run_due(service_for, *, now=None, limit=10):
     now = now or timezone.now()
     ids = list(ScheduledTask.objects.filter(is_enabled=True, next_run_at__lte=now).order_by("next_run_at", "id").values_list("id", flat=True)[:limit])
-    count = 0
     for schedule_id in ids:
-        claim = _claim(schedule_id, now)
-        if claim is not None:
-            _run(service_for, *claim)
-            count += 1
+        _claim(schedule_id, now)
+    _reconcile_interrupted(now, limit)
+    count = 0
+    pending = ScheduledRun.objects.select_related("schedule").filter(status="pending").order_by("due_at", "id")[:limit]
+    for run in pending:
+        if not ScheduledRun.objects.filter(pk=run.pk, status="pending").update(status="running", updated_at=now):
+            continue
+        if not run.schedule:
+            ScheduledRun.objects.filter(pk=run.pk).update(status="failed", message="计划已删除", finished_at=now, updated_at=now)
+            continue
+        _run(service_for, run.schedule, run, run.configuration)
+        count += 1
     return count

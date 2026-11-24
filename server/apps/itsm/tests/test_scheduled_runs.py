@@ -43,7 +43,7 @@ def test_schedule_has_one_ticket_per_slot(workflow, mode):
     )
     schedules.register_schedule(item, now=now)
     service = Mock()
-    service.create.side_effect = lambda version, data, creator: Ticket.objects.create(
+    service.create.side_effect = lambda version, data, creator, creation_key: Ticket.objects.create(
         sn=f"RUN-{Ticket.objects.count()}",
         title=data["title"],
         creator=creator,

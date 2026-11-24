@@ -1,4 +1,6 @@
 import json
+from hashlib import sha256
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.paginator import Paginator
@@ -29,6 +31,14 @@ def _body(request):
     if not request.body:
         return {}
     return json.loads(request.body.decode("utf-8"))
+
+
+def _http_creation_key(value):
+    if value is None:
+        return f"http:{uuid4().hex}"
+    if not isinstance(value, str) or not value.strip() or len(value) > 128:
+        raise ValueError({"creation_key": ["申请标识应为 1 至 128 个字符"]})
+    return f"http:{sha256(value.encode('utf-8')).hexdigest()}"
 
 
 def _service(request=None):
@@ -89,7 +99,10 @@ def tickets(request):
     from apps.itsm.services.service_access import check_service_request
 
     service = check_service_request(request, version, service_id)
-    ticket = _service(request).create(version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")), service=service)
+    ticket = _service(request).create(
+        version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")), service=service,
+        creation_key=_http_creation_key(payload.get("creation_key")),
+    )
     return WebUtils.response_success({"id": ticket.id, "sn": ticket.sn, "status": ticket.status.key if ticket.status_id else ""})
 
 

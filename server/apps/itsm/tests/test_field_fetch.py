@@ -396,3 +396,25 @@ def test_sample_inspection_requires_edit_permission_and_never_relaxes_publish(se
     assert len(data["sample"]) == 3 and "receipt" not in data
     with pytest.raises(ValueError):
         freeze_schema(schema, "domain.com")
+
+
+def test_manual_child_validates_receipt_as_requester_and_inherits_test_flag(setup):
+    import json
+    from apps.itsm.models import Ticket, Workflow, WorkflowVersion
+    from apps.itsm.services.integrations import request_identity
+    from apps.itsm.tests.test_review_regressions import request
+    from apps.itsm.views.ticket_operations import create_child
+
+    _, schema, _ = setup
+    workflow = Workflow.objects.create(name="子单", key="dynamic-child")
+    version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design={"form_schema": schema})
+    parent = Ticket.objects.create(workflow=workflow, workflow_version=version, sn="PARENT", title="测试父单", creator="reader", is_test=True)
+    actor = {"username": "reader", "permissions": ["ticket-Add"]}
+    identity = request_identity(request(**actor))
+    with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "done", "output": [{"id": "a1", "name": "资产一"}]}):
+        result = fetch_field(schema, "asset", {"department": "研发"}, identity, context=f"version:{version.pk}")
+    data = {"department": "研发", "asset": "a1", "_field_receipts": {"asset": [result["receipt"]]}}
+    response = json.loads(create_child(request("post", {"form_data": data}, **actor), parent.id).content)
+    assert response["result"], response
+    child = Ticket.objects.get(pk=response["data"]["id"])
+    assert child.is_test and child.creator == "reader" and child.form_data["asset"] == "a1"

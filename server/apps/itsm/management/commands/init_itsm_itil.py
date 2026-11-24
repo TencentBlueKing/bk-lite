@@ -61,9 +61,10 @@ class Command(BaseCommand):
             if version is None:
                 version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, design=DESIGN, **actor)
             xml = build_bpmn(version.design or DESIGN, process_key)
-            if client:
+            if client and not version.is_published:
                 try:
                     deployed = client.deploy_bpmn(process_key, xml)
+                    version.process_definition_id = client.definition_for_deployment(str(deployed.get("id") or ""), process_key)
                 except FlowableError as exc:
                     raise RuntimeError(f"{name} 部署失败") from exc
                 version.bpmn_xml = xml

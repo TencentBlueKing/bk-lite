@@ -87,15 +87,17 @@ def batch_operate(request):
 
 
 @csrf_exempt
+@require_POST
 @api_errors
 @HasPermission("ticket-Add")
 def create_child(request, ticket_id):
     parent = ticket_scope(request).select_related("workflow_version").get(id=ticket_id)
     payload = json_object(request)
-    child = _service().create(parent.workflow_version, payload.get("form_data") or {"title": parent.title}, _user(request))
+    child = _service(request).create(parent.workflow_version, payload.get("form_data") or {"title": parent.title}, _user(request), is_test=parent.is_test)
     TicketRelation.objects.create(
         ticket=parent,
         related=child,
+        domain=parent.domain,
         relation_type="child",
         created_by=_user(request),
         updated_by=_user(request),

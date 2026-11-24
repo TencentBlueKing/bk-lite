@@ -219,6 +219,7 @@ def test_publish_checks_transfer_configuration_before_deploy(mode):
     )
     expected = mode in {"valid_user", "valid_group", "off"}
     with patch("apps.itsm.views.api.FlowableClient") as client:
+        client.return_value.definition_for_deployment.return_value = "tested:1:stable"
         client.return_value.deploy_bpmn.return_value = {"id": "deployment"}
         response = publish_workflow(request("post", permissions=["workflow-Publish"]), workflow.id)
         assert json.loads(response.content)["result"] is expected

@@ -5,7 +5,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -359,13 +359,17 @@ def workflow_design(request, workflow_id):
 
 
 @csrf_exempt
+@require_POST
 @api_errors
 @HasPermission("workflow-Publish")
+@transaction.atomic
 def publish_workflow(request, workflow_id):
-    workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
+    workflow = Workflow.objects.select_for_update().filter(domain=domain_of(request)).get(id=workflow_id)
     version = workflow.versions.order_by("-version_no").first()
     if version is None:
         return WebUtils.response_error("没有设计稿")
+    if version.is_published:
+        return WebUtils.response_success({"deployment_id": version.flowable_deployment_id})
     if workflow.form_id and workflow.form.current_version_id:
         schema = workflow.form.current_version.schema
 
@@ -394,14 +398,17 @@ def publish_workflow(request, workflow_id):
         version.design = {**version.design, "form_schema": freeze_schema(version.design["form_schema"], domain_of(request))}
     client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD)
     try:
-        deployed = client.deploy_bpmn(workflow.key, xml)
+        if not version.flowable_deployment_id or version.bpmn_xml != xml:
+            deployed = client.deploy_bpmn(workflow.key, xml)
+            version.bpmn_xml = xml
+            version.flowable_deployment_id = str(deployed.get("id") or "")
+            version.save(update_fields=["bpmn_xml", "flowable_deployment_id", "updated_at"])
+        version.process_definition_id = client.definition_for_deployment(version.flowable_deployment_id, workflow.key)
     except FlowableError:
         return WebUtils.response_error("Flowable 部署失败", status_code=502)
     if workflow.form_id and workflow.form.current_version_id:
         version.design = {**version.design, "form_schema": workflow.form.current_version.schema}
     version.design = {**version.design, "form_model_id": workflow.form_id}
-    version.bpmn_xml = xml
-    version.flowable_deployment_id = str(deployed.get("id") or "")
     version.process_definition_key = workflow.key
     version.is_published = True
     version.save()

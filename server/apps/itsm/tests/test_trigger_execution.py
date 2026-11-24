@@ -113,6 +113,7 @@ def test_scope_and_nested_conditions_use_service_at_create_and_first_node(workfl
     client = Mock()
     client.start_process.return_value = {"id": "flowable-process"}
     client.list_tasks_including_children.return_value = [{"id": "runtime-task", "taskDefinitionKey": "submit", "assignee": "owner"}]
+    workflow.process_definition_id = "test:1:stable"
     workflow.process_definition_key = workflow.workflow.key
     engine = TicketService(client)
 
