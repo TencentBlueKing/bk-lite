@@ -3,7 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, connection
 from django.urls import resolve
+from django.utils import timezone
 from urllib3.exceptions import HTTPError
 
 from apps.itsm.models import ItsmSetting, Ticket, Workflow
@@ -128,6 +130,7 @@ def test_attachment_routes_apply_article_permissions_and_return_short_lived_down
     minio.presigned_get_object.return_value = "https://storage.example.test/private-download"
     monkeypatch.setattr("apps.itsm.views.knowledge.storage_client", lambda: minio)
     monkeypatch.setattr("apps.itsm.services.attachment.storage_client", lambda: minio)
+    monkeypatch.setattr("apps.itsm.services.knowledge_attachments.storage_client", lambda: minio)
     article = KnowledgeArticle.objects.create(title="维修知识", content="处理步骤", created_by="alice")
     base_url = f"/api/v1/itsm/api/knowledge/{article.id}/attachments"
     ItsmSetting.objects.create(domain=article.domain, key="basic", value={"attachment_types": "md"})
@@ -179,7 +182,71 @@ def test_attachment_storage_failure_rolls_back_metadata(monkeypatch, settings):
     minio = Mock()
     minio.put_object.side_effect = HTTPError("unavailable")
     monkeypatch.setattr("apps.itsm.views.knowledge.storage_client", lambda: minio)
+    monkeypatch.setattr("apps.itsm.services.knowledge_attachments.storage_client", lambda: minio)
     uploaded = request("post", permissions=EDITOR)
     uploaded.FILES["file"] = SimpleUploadedFile("维修步骤.md", b"# replacement")
     assert upload_knowledge_attachment(uploaded, article.id).status_code == 502
     assert not article.attachments.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_attachment_upload_compensates_when_metadata_commit_fails(monkeypatch, settings):
+    from apps.itsm.models.extend import KnowledgeAttachmentCleanup
+    from apps.itsm.views.knowledge import upload_knowledge_attachment
+
+    settings.MINIO_ACCESS_KEY = "test"
+    settings.MINIO_SECRET_KEY = "test"
+    article = KnowledgeArticle.objects.create(title="维修知识")
+    minio = Mock()
+    monkeypatch.setattr("apps.itsm.views.knowledge.storage_client", lambda: minio)
+    monkeypatch.setattr("apps.itsm.services.knowledge_attachments.storage_client", lambda: minio)
+    commit = connection.commit
+    failed = False
+
+    def fail_after_put():
+        nonlocal failed
+        if minio.put_object.called and not failed:
+            failed = True
+            raise IntegrityError("附件元数据提交失败")
+        commit()
+
+    monkeypatch.setattr(connection, "commit", fail_after_put)
+    uploaded = request("post", permissions=EDITOR)
+    uploaded.FILES["file"] = SimpleUploadedFile("维修步骤.md", b"# replacement")
+
+    with pytest.raises(IntegrityError):
+        upload_knowledge_attachment(uploaded, article.id)
+    minio.put_object.assert_called_once()
+    minio.remove_object.assert_called_once_with(*minio.put_object.call_args.args[:2])
+    assert not article.attachments.exists()
+    assert not KnowledgeAttachmentCleanup.objects.exists()
+
+
+def test_article_deletion_retries_failed_object_cleanup(monkeypatch, django_capture_on_commit_callbacks):
+    from apps.core.logger import SafeLogException
+    from apps.itsm.models.extend import KnowledgeAttachmentCleanup
+    from apps.itsm.services.knowledge_attachments import drain_attachment_cleanup
+
+    article = KnowledgeArticle.objects.create(title="维修知识")
+    item = article.attachments.create(name="说明.md", object_name="knowledge/retry", size=5)
+    error = HTTPError("attachment-private-data-sentinel")
+    storage = Mock()
+    storage.remove_object.side_effect = [error, None]
+    log = Mock()
+    monkeypatch.setattr("apps.itsm.services.knowledge_attachments.storage_client", lambda: storage)
+    monkeypatch.setattr("apps.itsm.services.knowledge_attachments.logger.warning", log)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        assert resource_item(request("delete", permissions=EDITOR), "knowledge", article.pk).status_code == 200
+    assert not KnowledgeArticle.objects.filter(pk=article.pk).exists()
+    cleanup = KnowledgeAttachmentCleanup.objects.get(object_name=item.object_name)
+    args, kwargs = log.call_args
+    assert args[1:] == (cleanup.pk, "remove_object", "HTTPError")
+    assert "attachment-private-data-sentinel" not in (args[0] % args[1:])
+    exception_type, safe_error, traceback = kwargs["exc_info"]
+    assert (exception_type, str(safe_error), traceback) == (SafeLogException, "HTTPError", error.__traceback__)
+    assert drain_attachment_cleanup() == {"removed": 0}
+    KnowledgeAttachmentCleanup.objects.filter(pk=cleanup.pk).update(next_attempt_at=timezone.now())
+    assert drain_attachment_cleanup() == {"removed": 1}
+    assert drain_attachment_cleanup() == {"removed": 0}
+    assert storage.remove_object.call_count == 2

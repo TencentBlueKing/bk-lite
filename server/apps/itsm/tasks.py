@@ -121,3 +121,10 @@ def generate_ticket_export(task_id):
     from apps.itsm.services.ticket.export_jobs import generate
 
     generate(task_id)
+
+
+@shared_task(ignore_result=True)
+def knowledge_attachment_cleanup():
+    from apps.itsm.services.knowledge_attachments import drain_attachment_cleanup
+
+    drain_attachment_cleanup()

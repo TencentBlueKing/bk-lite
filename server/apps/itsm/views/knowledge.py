@@ -1,5 +1,4 @@
 import json
-from functools import partial
 from html import unescape
 from uuid import uuid4
 
@@ -13,10 +12,13 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import itsm_logger as logger
+from apps.core.logger import safe_exception_info
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models.extend import KnowledgeArticle
+from apps.itsm.models.extend import KnowledgeArticle, KnowledgeAttachmentCleanup
 from apps.itsm.services.attachment import BUCKET, download_url, storage_client
 from apps.itsm.services.basic_settings import attachment_type_allowed
+from apps.itsm.services.knowledge_attachments import cleanup_attachment, queue_attachment_cleanup, reserve_upload
 from apps.itsm.views.access import api_errors, domain_of, has_permission, ticket_scope
 
 PUBLISHED_STATUSES = ("published", "synced")
@@ -152,8 +154,7 @@ def _write_article(request, queryset, domain, username, *, item_id):
     else:
         article = get_object_or_404(queryset.select_for_update(), id=item_id)
     if request.method == "DELETE":
-        for object_name in article.attachments.values_list("object_name", flat=True):
-            transaction.on_commit(partial(_remove_attachment, object_name), robust=True)
+        queue_attachment_cleanup(article.attachments.values_list("object_name", flat=True))
         article.delete()
         return WebUtils.response_success({"id": item_id})
     payload = json.loads(request.body or b"{}")
@@ -182,14 +183,11 @@ def _write_article(request, queryset, domain, username, *, item_id):
     return WebUtils.response_success(_detail(request, article))
 
 
-def _remove_attachment(object_name):
-    storage_client().remove_object(BUCKET, object_name)
-
-
-def _require_attachment_editor(request, article_id):
+def _require_attachment_editor(request, article_id, *, lock=True):
     if not (has_permission(request, "knowledge-Edit") or has_permission(request, "knowledge-Add")):
         raise PermissionError()
-    article = get_object_or_404(_article_scope(request).select_for_update(), pk=article_id)
+    articles = _article_scope(request)
+    article = get_object_or_404(articles.select_for_update() if lock else articles, pk=article_id)
     if not _can_manage_attachments(request, article):
         raise PermissionError()
     return article
@@ -199,9 +197,8 @@ def _require_attachment_editor(request, article_id):
 @require_POST
 @api_errors
 @HasPermission("knowledge-View")
-@transaction.atomic
 def upload_knowledge_attachment(request, article_id):
-    article = _require_attachment_editor(request, article_id)
+    article = _require_attachment_editor(request, article_id, lock=False)
     upload = request.FILES.get("file")
     if upload is None:
         return WebUtils.response_error(error_message="请选择附件")
@@ -211,8 +208,27 @@ def upload_knowledge_attachment(request, article_id):
         return WebUtils.response_error(error_message="附件不得超过 20 MB")
     if not settings.MINIO_ACCESS_KEY or not settings.MINIO_SECRET_KEY:
         return WebUtils.response_error(error_message="对象存储未配置", status_code=502)
-    item = article.attachments.create(name=upload.name, size=upload.size, object_name=f"knowledge/{article.id}/{uuid4().hex}")
-    storage_client().put_object(BUCKET, item.object_name, upload, upload.size, content_type="application/octet-stream")
+    reservation = reserve_upload(f"knowledge/{article.id}/{uuid4().hex}")
+    try:
+        with transaction.atomic():
+            # 清理任务与上传共用这把锁，避免回收仍在传输的对象。
+            intent = KnowledgeAttachmentCleanup.objects.select_for_update().get(pk=reservation.pk)
+            storage_client().put_object(BUCKET, intent.object_name, upload, upload.size, content_type="application/octet-stream")
+            article = _require_attachment_editor(request, article_id)
+            item = article.attachments.create(name=upload.name, size=upload.size, object_name=intent.object_name)
+            intent.delete()
+    except Exception:
+        try:
+            cleanup_attachment(reservation.object_name, force=True)
+        except Exception as error:
+            logger.warning(
+                "event=itsm_knowledge_attachment_cleanup_failed cleanup_id=%s failed_stage=%s error_type=%s",
+                reservation.pk,
+                "compensate_upload",
+                type(error).__name__,
+                exc_info=safe_exception_info(error),
+            )
+        raise
     return WebUtils.response_success(_attachment_data(item, can_delete=True))
 
 
@@ -224,7 +240,7 @@ def upload_knowledge_attachment(request, article_id):
 def delete_knowledge_attachment(request, article_id, attachment_id):
     article = _require_attachment_editor(request, article_id)
     item = get_object_or_404(article.attachments, pk=attachment_id)
-    transaction.on_commit(partial(_remove_attachment, item.object_name), robust=True)
+    queue_attachment_cleanup([item.object_name])
     item.delete()
     return WebUtils.response_success({"deleted": True})
 

@@ -170,6 +170,14 @@ class KnowledgeAttachment(models.Model):
         db_table = "itsm_knowledge_attachment"
 
 
+class KnowledgeAttachmentCleanup(models.Model):
+    object_name = models.CharField(max_length=100, unique=True)
+    next_attempt_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "itsm_knowledge_attachment_cleanup"
+
+
 class DutyShift(ItsmModel):
     name = models.CharField(max_length=128)
     members = models.JSONField(default=list)
