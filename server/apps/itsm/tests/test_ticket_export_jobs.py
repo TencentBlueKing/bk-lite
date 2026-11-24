@@ -263,3 +263,20 @@ def test_all_system_columns_and_foreign_workflow_only_gets_system_values(export_
     assert records[ticket.sn]["申请金额"] == 200 and records[ticket.sn]["满意度"] == 5
     assert records[ticket.sn]["流程版本"] == ticket.workflow_version.version_no
     assert records[ticket.sn]["首次提交时间"] is not None
+
+
+def test_global_retention_releases_legacy_and_async_files_in_batches():
+    from apps.itsm.services.ticket.export_jobs import purge_expired_files
+
+    past = timezone.now() - timedelta(days=8)
+    for i in range(4):
+        item = TicketExportTask.objects.create(
+            username=str(i), domain=str(i), is_async=bool(i % 2), content_base64="file", filename="audit.xlsx",
+            result_manifest={"rows": {"1": 1}}, finished_at=past if i % 2 else None,
+        )
+        TicketExportTask.objects.filter(pk=item.pk).update(created_at=past)
+    fresh = TicketExportTask.objects.create(username="reader", content_base64="fresh")
+    assert [purge_expired_files(batch_size=3) for _ in range(3)] == [3, 1, 0]
+    assert TicketExportTask.objects.filter(filename="audit.xlsx", content_base64="", result_manifest={}).count() == 4
+    fresh.refresh_from_db()
+    assert fresh.content_base64 == "fresh"

@@ -1,5 +1,6 @@
 # 调度在对应任务落地后再写入。M1-02 只保留空表，避免 beat 指向尚未实现的任务。
 CELERY_BEAT_SCHEDULE = {
+    "itsm-export-file-cleanup": {"task": "apps.itsm.tasks.export_file_cleanup", "schedule": 300},
     "itsm-knowledge-attachment-cleanup": {
         "task": "apps.itsm.tasks.knowledge_attachment_cleanup",
         "schedule": 60,

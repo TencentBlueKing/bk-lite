@@ -70,6 +70,7 @@ TASK_ROUTES = {
     "apps.core.tasks.aggregate_origin.probe_aggregate_metric_origins": "background",
     "apps.core.tasks.auditlog_flush_task.clear_audit_logs": "background",
     "apps.itsm.tasks.generate_ticket_export": "background",
+    "apps.itsm.tasks.export_file_cleanup": "background",
     "apps.itsm.tasks.knowledge_attachment_cleanup": "background",
     "apps.itsm.tasks.trigger_notice_tick": "notification",
     "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task": "background",

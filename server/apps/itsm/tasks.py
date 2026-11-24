@@ -125,3 +125,10 @@ def knowledge_attachment_cleanup(object_names=None):
     from apps.itsm.services.knowledge_attachments import drain_attachment_cleanup
 
     drain_attachment_cleanup(object_names=object_names)
+
+
+@shared_task(ignore_result=True)
+def export_file_cleanup():
+    from apps.itsm.services.ticket.export_jobs import purge_expired_files
+
+    purge_expired_files()

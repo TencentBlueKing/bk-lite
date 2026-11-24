@@ -6,6 +6,7 @@ from io import BytesIO
 from types import SimpleNamespace
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from kombu.exceptions import OperationalError
 from openpyxl import Workbook
@@ -113,6 +114,16 @@ def expire_exports(queryset):
     for status, timeout in (("pending", timedelta(minutes=30)), ("running", timedelta(minutes=10))):
         queryset.filter(status=status, updated_at__lt=now - timeout).update(status="failed", error="导出等待超时，请重试", updated_at=now, finished_at=now)
     queryset.filter(status="done", finished_at__lte=now - FILE_TTL).exclude(content_base64="").update(content_base64="", result_manifest={})
+
+
+def purge_expired_files(batch_size=500):
+    cutoff = timezone.now() - FILE_TTL
+    expired = TicketExportTask.objects.filter(
+        Q(finished_at__lte=cutoff) | Q(is_async=False, finished_at__isnull=True, created_at__lte=cutoff),
+        status="done",
+    ).exclude(content_base64="")
+    ids = list(expired.order_by("pk").values_list("pk", flat=True)[:batch_size])
+    return expired.filter(pk__in=ids).update(content_base64="", result_manifest={})
 
 
 def _fail(task_id, message, status):
