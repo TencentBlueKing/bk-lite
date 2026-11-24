@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useMemo
 } from 'react';
-import { Alert, Button, Checkbox, Form, InputNumber, Select, Segmented } from 'antd';
+import { Alert, Button, Checkbox, Form, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
@@ -58,12 +58,13 @@ import {
 } from '@/app/node-manager/utils/winrm';
 import { countAccessAssets } from './installNodeCount';
 import {
-  BULK_DEFAULT_EXPIRE_HOURS,
+  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_SUCCESS_COUNT,
+  BULK_EXPIRE_DAY_OPTIONS,
   BULK_INSTALL_METHOD,
-  BULK_MAX_EXPIRE_HOURS,
-  BULK_MAX_SUCCESS_COUNT,
-  BULK_MIN_SUCCESS_COUNT,
+  BULK_SUCCESS_COUNT_OPTIONS,
   bulkCommandIncludesNodeIp,
+  bulkExpireHours,
   dedupeControllerPackages,
   installWaysForOs
 } from './bulkInstall';
@@ -711,8 +712,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       const payload = await createBulkInstall({
         cloud_region_id: cloudId,
         package_id: Number(values.sidecar_package),
-        max_success_count: values.max_success_count,
-        expires_in_hours: values.expires_in_hours ?? BULK_DEFAULT_EXPIRE_HOURS,
+        max_success_count: values.max_success_count ?? BULK_DEFAULT_SUCCESS_COUNT,
+        expires_in_hours: bulkExpireHours(values.expires_in_days ?? BULK_DEFAULT_EXPIRE_DAYS),
         push_targets: values.push_targets || []
       });
       setBulkBatch(payload);
@@ -841,7 +842,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         onValuesChange={(changed) => {
           if (
             'max_success_count' in changed ||
-            'expires_in_hours' in changed ||
+            'expires_in_days' in changed ||
             'sidecar_package' in changed ||
             'push_targets' in changed
           ) {
@@ -1014,43 +1015,30 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               name="max_success_count"
               label={t('node-manager.cloudregion.node.bulkMaxSuccessCount')}
               extra={t('node-manager.cloudregion.node.bulkMaxSuccessCountHint')}
-              rules={[
-                { required: true, message: t('common.required') },
-                {
-                  type: 'number',
-                  min: BULK_MIN_SUCCESS_COUNT,
-                  max: BULK_MAX_SUCCESS_COUNT,
-                  message: t('node-manager.cloudregion.node.bulkMaxSuccessCountHint')
-                }
-              ]}
+              initialValue={BULK_DEFAULT_SUCCESS_COUNT}
+              rules={[{ required: true, message: t('common.required') }]}
             >
-              <InputNumber
+              <Select
                 style={{ width: 300 }}
-                min={BULK_MIN_SUCCESS_COUNT}
-                max={BULK_MAX_SUCCESS_COUNT}
-                precision={0}
+                options={BULK_SUCCESS_COUNT_OPTIONS.map((count) => ({
+                  value: count,
+                  label: t('node-manager.cloudregion.node.bulkSuccessCountOption', '', { count })
+                }))}
               />
             </Form.Item>
             <Form.Item
-              name="expires_in_hours"
-              label={t('node-manager.cloudregion.node.bulkExpireHours')}
-              extra={t('node-manager.cloudregion.node.bulkExpireHoursHint')}
-              initialValue={BULK_DEFAULT_EXPIRE_HOURS}
-              rules={[
-                { required: true, message: t('common.required') },
-                {
-                  type: 'number',
-                  min: 1,
-                  max: BULK_MAX_EXPIRE_HOURS,
-                  message: t('node-manager.cloudregion.node.bulkExpireHoursHint')
-                }
-              ]}
+              name="expires_in_days"
+              label={t('node-manager.cloudregion.node.bulkExpireDays')}
+              extra={t('node-manager.cloudregion.node.bulkExpireDaysHint')}
+              initialValue={BULK_DEFAULT_EXPIRE_DAYS}
+              rules={[{ required: true, message: t('common.required') }]}
             >
-              <InputNumber
+              <Select
                 style={{ width: 300 }}
-                min={1}
-                max={BULK_MAX_EXPIRE_HOURS}
-                precision={0}
+                options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
+                  value: count,
+                  label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
+                }))}
               />
             </Form.Item>
             {bulkBatch && (

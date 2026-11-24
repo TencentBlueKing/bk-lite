@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_SUCCESS_COUNT,
+  BULK_EXPIRE_DAY_OPTIONS,
   BULK_INSTALL_METHOD,
+  BULK_SUCCESS_COUNT_OPTIONS,
   bulkAttemptStatusLabelKey,
   bulkCommandIncludesNodeIp,
+  bulkExpireHours,
   dedupeControllerPackages,
   installWaysForOs
 } from '../bulkInstall';
@@ -49,6 +54,17 @@ describe('bulkCommandIncludesNodeIp', () => {
     expect(bulkCommandIncludesNodeIp('curl -fsSLk https://node.example/bootstrap | sudo bash')).toBe(
       false
     );
+  });
+});
+
+describe('bulk install presets', () => {
+  it('offers fixed host counts and day choices, with the defaults included', () => {
+    expect(BULK_SUCCESS_COUNT_OPTIONS).toContain(BULK_DEFAULT_SUCCESS_COUNT);
+    expect(BULK_EXPIRE_DAY_OPTIONS).toContain(BULK_DEFAULT_EXPIRE_DAYS);
+    expect(BULK_EXPIRE_DAY_OPTIONS).toEqual([1, 3, 5, 7]);
+    expect(bulkExpireHours(BULK_DEFAULT_EXPIRE_DAYS)).toBe(72);
+    expect(bulkExpireHours(5)).toBe(120);
+    expect(bulkExpireHours(7)).toBe(168);
   });
 });
 

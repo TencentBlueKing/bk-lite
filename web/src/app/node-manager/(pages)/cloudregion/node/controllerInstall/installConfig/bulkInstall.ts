@@ -1,8 +1,12 @@
 export const BULK_INSTALL_METHOD = 'bulkInstall';
-export const BULK_DEFAULT_EXPIRE_HOURS = 24;
-export const BULK_MAX_EXPIRE_HOURS = 168;
-export const BULK_MIN_SUCCESS_COUNT = 1;
-export const BULK_MAX_SUCCESS_COUNT = 100000;
+export const BULK_SUCCESS_COUNT_OPTIONS = [10, 50, 100, 500, 1000] as const;
+export const BULK_DEFAULT_SUCCESS_COUNT = 100;
+export const BULK_EXPIRE_DAY_OPTIONS = [1, 3, 5, 7] as const;
+export const BULK_DEFAULT_EXPIRE_DAYS = 3;
+
+export function bulkExpireHours(days: number): number {
+  return days * 24;
+}
 
 const ATTEMPT_LABEL_KEYS: Record<string, string> = {
   installing: 'node-manager.cloudregion.node.bulkAttemptInstalling',

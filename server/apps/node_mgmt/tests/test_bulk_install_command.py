@@ -452,6 +452,41 @@ def test_bootstrap_script_rejects_an_address_that_is_not_local(tmp_path):
     assert not curl_log.exists()
 
 
+def test_bootstrap_script_accepts_an_ifconfig_address_when_ip_is_absent(tmp_path):
+    script = render_bulk_bootstrap_script(
+        enroll_url="https://node.example/enroll",
+        result_url="https://node.example/result",
+        linux_bootstrap_url_prefix="https://node.example/bootstrap?token=",
+        batch_token="batch-token",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    curl_log = tmp_path / "curl.log"
+    (bin_dir / "ifconfig").write_text(
+        "#!/bin/sh\nprintf '%s\\n' 'en0: flags=8863' '\\tinet 10.0.0.8 netmask 0xffffff00'\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "curl").write_text(
+        '#!/bin/sh\nprintf called >> "$CURL_LOG"\nexit 1\n',
+        encoding="utf-8",
+    )
+    (bin_dir / "ifconfig").chmod(0o755)
+    (bin_dir / "curl").chmod(0o755)
+    script_path = tmp_path / "bootstrap.sh"
+    script_path.write_text(script, encoding="utf-8")
+
+    result = subprocess.run(
+        ["/bin/sh", str(script_path), "--node_ip", "10.0.0.8"],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "CURL_LOG": str(curl_log)},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert "本机网卡上没有这个地址" not in result.stderr
+    assert curl_log.read_text(encoding="utf-8") == "called"
+
+
 def test_bootstrap_script_reports_failure_when_the_installer_download_fails(tmp_path):
     script = render_bulk_bootstrap_script(
         enroll_url="https://node.example/enroll",

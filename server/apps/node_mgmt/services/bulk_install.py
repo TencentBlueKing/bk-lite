@@ -442,6 +442,13 @@ if command -v ip >/dev/null 2>&1; then
     fi
   done
 fi
+if [ "$found" -ne 1 ] && command -v ifconfig >/dev/null 2>&1; then
+  for addr in $(ifconfig | awk '/inet / {{ gsub(/addr:/, "", $2); print $2 }}'); do
+    if [ "$addr" = "$NODE_IP" ]; then
+      found=1
+    fi
+  done
+fi
 if [ "$found" -ne 1 ]; then
   echo "本机网卡上没有这个地址" >&2
   exit 1
