@@ -1,6 +1,8 @@
 import useApiClient from '@/utils/request';
 import {
+  BulkInstallBatch,
   ControllerManualInstallStatusItem,
+  CreateBulkInstallParams,
   InstallerManifest,
   InstallerArtifactMetadata,
   ManualInstallController,
@@ -67,6 +69,32 @@ const useControllerApi = () => {
     return await post('/node_mgmt/api/installer/get_install_command/', params);
   };
 
+  const createBulkInstall = async (
+    params: CreateBulkInstallParams
+  ): Promise<BulkInstallBatch> => {
+    return await post(
+      '/node_mgmt/api/installer/controller/bulk_install/',
+      params
+    );
+  };
+
+  const getBulkInstallProgress = async (
+    batchId: number | string
+  ): Promise<BulkInstallBatch> => {
+    return await get(
+      `/node_mgmt/api/installer/controller/bulk_install/${batchId}/`
+    );
+  };
+
+  const revokeBulkInstall = async (
+    batchId: number | string
+  ): Promise<BulkInstallBatch> => {
+    return await post(
+      `/node_mgmt/api/installer/controller/bulk_install/${batchId}/revoke/`,
+      {}
+    );
+  };
+
   const getInstallerManifest = async (): Promise<InstallerManifest> => {
     return await get('/node_mgmt/api/installer/manifest/');
   };
@@ -86,6 +114,9 @@ const useControllerApi = () => {
     manualInstallController,
     getManualInstallStatus,
     getInstallCommand,
+    createBulkInstall,
+    getBulkInstallProgress,
+    revokeBulkInstall,
     getInstallerManifest,
     getInstallerMetadata
   };
