@@ -46,6 +46,15 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
         )
 
+    def _reject_empty_menus(self, request, menus):
+        """A custom menu with no items cannot be stored or turned on."""
+        if isinstance(menus, list) and len(menus) == 0:
+            return JsonResponse(
+                {"result": False, "message": self._loader(request).get("error.empty_custom_menu_not_allowed")},
+                status=400,
+            )
+        return None
+
     def get_serializer_class(self):
         """根据不同操作返回不同的序列化器"""
         if self.action == "list":
@@ -73,6 +82,11 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         if instance.is_build_in:
             return JsonResponse({"result": False, "message": self.loader.get("error.cannot_modify_builtin_menu_group")}, status=403)
 
+        if "menus" in request.data:
+            rejected = self._reject_empty_menus(request, request.data.get("menus"))
+            if rejected is not None:
+                return rejected
+
         response = super().update(request, *args, **kwargs)
 
         # 记录操作日志
@@ -90,6 +104,11 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 检查是否为内置菜单组
         if instance.is_build_in:
             return JsonResponse({"result": False, "message": self.loader.get("error.cannot_modify_builtin_menu_group")}, status=403)
+
+        if "menus" in request.data:
+            rejected = self._reject_empty_menus(request, request.data.get("menus"))
+            if rejected is not None:
+                return rejected
 
         return super().partial_update(request, *args, **kwargs)
 
@@ -137,6 +156,10 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
 
         # 如果要启用
         if is_enabled:
+            if not instance.is_build_in:
+                rejected = self._reject_empty_menus(request, instance.menus if isinstance(instance.menus, list) else [])
+                if rejected is not None:
+                    return rejected
             # 禁用同一 app 下其他已启用的菜单组
             CustomMenuGroup.objects.filter(app=instance.app, is_enabled=True).exclude(id=instance.id).update(is_enabled=False)
 
@@ -147,9 +170,17 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             # 记录操作日志
             log_operation(request, "execute", "system-manager", f"启用菜单: {instance.display_name}")
         else:
-            # 禁用当前菜单组
+            # 禁用当前菜单组。同一个应用始终保留一套在用的菜单，没有其它启用组时回到内置组。
             instance.is_enabled = False
             instance.save()
+            if not CustomMenuGroup.objects.filter(app=instance.app, is_enabled=True).exists():
+                builtin = CustomMenuGroup.objects.filter(app=instance.app, is_build_in=True).order_by("id").first()
+                if builtin is not None and builtin.id != instance.id:
+                    builtin.is_enabled = True
+                    builtin.save()
+                elif builtin is not None:
+                    instance.is_enabled = True
+                    instance.save()
             message = self.loader.get("success.menu_group_disabled")
 
         return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(instance).data, "message": message})
@@ -166,7 +197,14 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
 
         # 获取新的 display_name
         new_display_name = request.data.get("display_name")
-        menus = request.data.get("menus", [])
+        if "menus" in request.data and isinstance(request.data.get("menus"), list):
+            menus = request.data.get("menus")
+        else:
+            menus = list(instance.menus) if isinstance(instance.menus, list) else []
+
+        rejected = self._reject_empty_menus(request, menus)
+        if rejected is not None:
+            return rejected
 
         if not new_display_name:
             # 生成带 _copy 后缀的名称
@@ -181,13 +219,9 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         else:
             # 检查传入的名称是否已存在
             if CustomMenuGroup.objects.filter(app=instance.app, display_name=new_display_name).exists():
-                message = self._loader(request).get("error.custom_menu_group_name_exists").format(
-                    app=instance.app, display_name=new_display_name
-                )
+                message = self._loader(request).get("error.custom_menu_group_name_exists").format(app=instance.app, display_name=new_display_name)
                 return JsonResponse({"result": False, "message": message}, status=400)
 
-        if not menus:
-            menus = instance.menus.copy()
         # 复制菜单组
         new_instance = CustomMenuGroup.objects.create(
             display_name=new_display_name,

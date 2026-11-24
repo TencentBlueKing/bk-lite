@@ -79,4 +79,35 @@ describe('访问 /system-manager/settings 时跳转到权限过滤后的第一�
 
     expect(replace).toHaveBeenCalledWith('/system-manager/settings/error-logs?');
   });
+
+  it('自定义菜单拆掉父节点后进入当前菜单的第一个页面', () => {
+    pathname = '/system-manager/user';
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [
+        child('集成实例', 'integration_instance', '/system-manager/integration-center'),
+        child('组织架构', 'user_group', '/system-manager/user/structure'),
+      ],
+      loading: false,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    renderHook(() => useRedirectFirstChild());
+
+    expect(replace).toHaveBeenCalledWith('/system-manager/integration-center?');
+  });
+
+  it('菜单还没加载时停在当前地址', () => {
+    pathname = '/system-manager/user';
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [],
+      loading: true,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    renderHook(() => useRedirectFirstChild());
+
+    expect(replace).not.toHaveBeenCalled();
+  });
 });

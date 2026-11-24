@@ -209,6 +209,28 @@ def test_list_models(superuser, monkeypatch):
     assert _body(response)["data"][0]["model_id"] == "host"
 
 
+@pytest.mark.django_db
+def test_list_models_allows_search_view_without_model_management(authenticated_user, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model",
+        lambda language=None, permissions_map=None, **kwargs: [{"model_id": "host", "group": [1]}],
+    )
+    authenticated_user.is_superuser = False
+    authenticated_user.group_list = [{"id": 1}]
+    authenticated_user.locale = "zh-Hans"
+    authenticated_user.permission = {"cmdb": {"search-View"}}
+    response = ModelViewSet.as_view({"get": "list"})(_req("get", authenticated_user))
+    assert response.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_list_models_rejects_user_without_model_or_asset_view(authenticated_user):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"cmdb": set()}
+    response = ModelViewSet.as_view({"get": "list"})(_req("get", authenticated_user))
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 # --------------------------------------------------------------------------
 # destroy
 # --------------------------------------------------------------------------

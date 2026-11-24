@@ -75,6 +75,7 @@
       "dropHint": "将左侧功能拖拽到此处添加",
       "addGroup": "新增目录",
       "menuNameRequired": "菜单名称不能为空",
+      "menuItemsRequired": "请至少添加一个菜单项",
       "selectPages": "请先在左侧勾选要添加的页面",
       "menuStructure": "菜单结构",
       "addSelected": "添加已选",

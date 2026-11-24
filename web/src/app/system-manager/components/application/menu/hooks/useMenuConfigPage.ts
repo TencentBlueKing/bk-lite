@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import { useRoleApi } from '@/app/system-manager/api/application';
+import { invalidateAppMenus } from '@/context/permissions';
 import type { FunctionMenuItem, SourceMenuNode } from '@/app/system-manager/types/menu';
 import type { MixedItem, MenuGroup } from './useMenuConfig';
 
@@ -92,13 +93,18 @@ export function useMenuDetailLoader(
                 type: 'page' as const,
                 originName: menu.title || menu.name,
                 isDetailMode: true,
-                hiddenChildren: menu.children.map((child) => ({
-                  name: child.name,
-                  display_name: child.title || child.name,
-                  url: child.url,
-                  icon: child.icon,
-                  type: 'page' as const,
-                })),
+                sourceHasDetail: sourceMenu?.sourceHasDetail,
+                hiddenChildren: menu.children.map((child) => {
+                  const sourceChild = sourceMenu?.hiddenChildren?.find((item) => item.name === child.name);
+                  return {
+                    name: child.name,
+                    display_name: child.title || child.name,
+                    url: child.url,
+                    icon: child.icon,
+                    type: 'page' as const,
+                    ...(sourceChild?.isNotMenuItem ? { isNotMenuItem: true } : {}),
+                  };
+                }),
               },
             };
           }
@@ -124,13 +130,18 @@ export function useMenuDetailLoader(
                       type: 'page' as const,
                       originName: findOriginName(child.name),
                       isDetailMode: true,
-                      hiddenChildren: child.children.map((hidden) => ({
-                        name: hidden.name,
-                        display_name: hidden.title || hidden.name,
-                        url: hidden.url,
-                        icon: hidden.icon,
-                        type: 'page' as const,
-                      })),
+                      sourceHasDetail: childSourceMenu?.sourceHasDetail,
+                      hiddenChildren: child.children.map((hidden) => {
+                        const sourceChild = childSourceMenu?.hiddenChildren?.find((item) => item.name === hidden.name);
+                        return {
+                          name: hidden.name,
+                          display_name: hidden.title || hidden.name,
+                          url: hidden.url,
+                          icon: hidden.icon,
+                          type: 'page' as const,
+                          ...(sourceChild?.isNotMenuItem ? { isNotMenuItem: true } : {}),
+                        };
+                      }),
                     };
                   }
 
@@ -201,6 +212,31 @@ export function useMenuDetailLoader(
   };
 }
 
+const serializeMenuPage = (page: FunctionMenuItem) => {
+  const base = {
+    title: page.display_name,
+    name: page.name,
+    url: page.url,
+    icon: page.icon,
+    ...(page.tour && { tour: page.tour }),
+  };
+  if (!page.isDetailMode || !page.hiddenChildren?.length) {
+    return base;
+  }
+  return {
+    ...base,
+    ...(page.sourceHasDetail ? { hasDetail: true } : {}),
+    children: page.hiddenChildren.map((hidden) => ({
+      title: hidden.display_name,
+      name: hidden.name,
+      url: hidden.url,
+      icon: hidden.icon,
+      ...(hidden.tour && { tour: hidden.tour }),
+      ...(hidden.isNotMenuItem ? { isNotMenuItem: true } : {}),
+    })),
+  };
+};
+
 interface UseMenuSaveReturn {
   saveLoading: boolean;
   handleSaveMenu: () => Promise<void>;
@@ -227,6 +263,11 @@ export function useMenuSave(
       return;
     }
 
+    if (mixedItems.length === 0) {
+      message.error(t('system.menu.menuItemsRequired'));
+      return;
+    }
+
     const menus = mixedItems.map((item) => {
       if (item.type === 'group') {
         const group = item.data as MenuGroup;
@@ -234,60 +275,10 @@ export function useMenuSave(
           title: group.name,
           name: group.name,
           icon: group.icon,
-          children: group.children.map((child) => {
-            if (child.isDetailMode && child.hiddenChildren) {
-              return {
-                title: child.display_name,
-                name: child.name,
-                url: child.url,
-                icon: child.icon,
-                ...(child.tour && { tour: child.tour }),
-                hasDetail: true,
-                children: child.hiddenChildren.map((hidden) => ({
-                  title: hidden.display_name,
-                  name: hidden.name,
-                  url: hidden.url,
-                  icon: hidden.icon,
-                  ...(hidden.tour && { tour: hidden.tour }),
-                })),
-              };
-            }
-            return {
-              title: child.display_name,
-              name: child.name,
-              url: child.url,
-              icon: child.icon,
-              ...(child.tour && { tour: child.tour }),
-            };
-          }),
+          children: group.children.map((child) => serializeMenuPage(child)),
         };
       } else {
-        const page = item.data as FunctionMenuItem;
-
-        if (page.isDetailMode && page.hiddenChildren) {
-          return {
-            title: page.display_name,
-            name: page.name,
-            url: page.url,
-            icon: page.icon,
-            ...(page.tour && { tour: page.tour }),
-            hasDetail: true,
-            children: page.hiddenChildren.map((child) => ({
-              title: child.display_name,
-              name: child.name,
-              url: child.url,
-              icon: child.icon,
-              ...(child.tour && { tour: child.tour }),
-            })),
-          };
-        }
-        return {
-          title: page.display_name,
-          name: page.name,
-          url: page.url,
-          icon: page.icon,
-          ...(page.tour && { tour: page.tour }),
-        };
+        return serializeMenuPage(item.data as FunctionMenuItem);
       }
     });
 
@@ -299,6 +290,7 @@ export function useMenuSave(
         display_name: menuName,
         menus: menus,
       });
+      invalidateAppMenus();
 
       message.success(t('common.operationSuccess'));
     } catch (error) {

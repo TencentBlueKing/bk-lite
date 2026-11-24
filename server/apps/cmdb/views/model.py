@@ -107,7 +107,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         result = ModelManage.create_model(request.data, username=request.user.username)
         return WebUtils.response_success(result)
 
-    @HasPermission("model_management-View")
+    @HasPermission("model_management-View,search-View,asset_info-View")
     def list(self, request):
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id="", permission_type=PERMISSION_MODEL)
         current_team = get_current_team_from_request(request)
@@ -920,9 +920,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not BusinessModelVisibility.is_visible(model_info):
             return False, missing_message, "not_found"
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
         organizations = self.organizations(request, model_info)
         if not organizations:
             return False, denied_message, "permission_denied"

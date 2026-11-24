@@ -4,7 +4,41 @@ import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import { useMenus } from '@/context/menus';
+import { invalidateAppMenus } from '@/context/permissions';
 import type { CustomMenu, CustomMenuListParams } from '@/app/system-manager/types/menu';
+import type { MenuItem } from '@/types/index';
+
+export interface CopiedMenuNode {
+  name: string;
+  title?: string;
+  url?: string;
+  icon?: string;
+  children?: CopiedMenuNode[];
+}
+
+/** Builtin copy keeps every visible top-level page, including ones with no children. */
+export function builtinMenusForCopy(configMenus: MenuItem[], clientId: string): CopiedMenuNode[] {
+  return configMenus
+    .filter((menu) => {
+      if (!menu.url || !clientId || menu.isNotMenuItem) return false;
+      return menu.url.split('/').filter(Boolean)[0] === clientId;
+    })
+    .map((menu) => {
+      const children = (menu.children ?? []).map((child) => ({
+        name: child.name,
+        title: child.title,
+        url: child.url,
+        icon: child.icon,
+      }));
+      return {
+        name: menu.name,
+        title: menu.title,
+        url: menu.url,
+        icon: menu.icon,
+        ...(children.length > 0 ? { children } : {}),
+      };
+    });
+}
 
 interface UseCustomMenuListReturn {
   dataList: CustomMenu[];
@@ -102,6 +136,7 @@ export function useCustomMenuActions(
           id: record.id,
           is_enabled: !record.is_enabled,
         });
+        invalidateAppMenus();
         message.success('Success');
         onSuccess();
       } catch (error) {
@@ -126,13 +161,7 @@ export function useCustomMenuActions(
           app: string;
           display_name: string;
           description?: string;
-          menus?: Array<{
-            name: string;
-            title: string;
-            url?: string;
-            icon?: string;
-            children: Array<{ name: string; title: string; url?: string; icon?: string }>;
-          }>;
+          menus?: CopiedMenuNode[];
         } = {
           id: record.id,
           app: clientId,
@@ -141,30 +170,7 @@ export function useCustomMenuActions(
         };
 
         if (record.is_build_in) {
-          const appMenus = configMenus.filter((menu) => {
-            if (!menu.url || !clientId) return false;
-            const urlParts = menu.url.split('/').filter(Boolean);
-            const appName = urlParts[0];
-            return appName === clientId;
-          });
-
-          const menus = appMenus
-            .filter((menu) => menu.url && menu.children && menu.children.length > 0)
-            .map((menu) => ({
-              name: menu.name,
-              title: menu.title,
-              url: menu.url,
-              icon: menu.icon,
-              children:
-                menu.children?.map((child) => ({
-                  name: child.name,
-                  title: child.title,
-                  url: child.url,
-                  icon: child.icon,
-                })) || [],
-            }));
-
-          copyData.menus = menus;
+          copyData.menus = builtinMenusForCopy(configMenus, clientId);
         }
 
         await copyCustomMenu(copyData);

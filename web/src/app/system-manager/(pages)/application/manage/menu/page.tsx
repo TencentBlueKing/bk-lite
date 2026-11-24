@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Button, Tag, Form } from 'antd';
+import { Button, Form, Tag, message } from 'antd';
 import SearchActionBar from '@/components/search-action-bar';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -116,7 +116,13 @@ const CustomMenuPage = () => {
             {
               key: 'toggle',
               label: record.is_enabled ? t('system.menu.disable') : t('system.menu.enable'),
-              onClick: () => handleToggleStatus(record),
+              onClick: () => {
+                if (!record.is_enabled && !record.is_build_in && record.menu_count === 0) {
+                  message.error(t('system.menu.menuItemsRequired'));
+                  return;
+                }
+                handleToggleStatus(record);
+              },
               permission: 'Edit',
             },
             {

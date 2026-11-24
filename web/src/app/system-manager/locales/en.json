@@ -75,6 +75,7 @@
       "dropHint": "Drag functions from left to add here",
       "addGroup": "Add Group",
       "menuNameRequired": "Menu name cannot be empty",
+      "menuItemsRequired": "Add at least one menu item",
       "selectPages": "Please select pages from the left tree first",
       "menuStructure": "Menu Structure",
       "addSelected": "Add Selected",

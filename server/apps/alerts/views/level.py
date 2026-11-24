@@ -26,7 +26,7 @@ class LevelModelViewSet(ModelViewSet):
     ordering = ["level_id"]
     pagination_class = CustomPageNumberPagination
 
-    @HasPermission("global_config-View")
+    @HasPermission("global_config-View,Incidents-View,Alarms-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 

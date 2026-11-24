@@ -4,6 +4,13 @@ import { useEffect, useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { usePermissions } from '@/context/permissions';
 import { MenuItem } from '@/types/index';
+import { getClientIdFromRoute } from '@/utils/route';
+
+const menuBelongsToClient = (menuUrl: string, clientId: string) => {
+  const normalized = menuUrl.replace(/\/+$/, '') || '/';
+  const root = `/${clientId}`;
+  return normalized === root || normalized.startsWith(`${root}/`);
+};
 
 export const useRedirectFirstChild = () => {
   const router = useRouter();
@@ -54,11 +61,28 @@ export const useRedirectFirstChild = () => {
   }, [pathname, menus]);
 
   useEffect(() => {
+    const params = new URLSearchParams(searchParams || undefined);
+    const withQuery = (path: string) => `${path}?${params.toString()}`;
+
     if (currentMenu?.children?.length) {
       const firstChildPath = currentMenu.children[0].url;
-      const params = new URLSearchParams(searchParams || undefined);
-      const targetUrl = `${firstChildPath}?${params.toString()}`;
-      router.replace(targetUrl);
+      if (firstChildPath) {
+        router.replace(withQuery(firstChildPath));
+      }
+      return;
     }
-  }, [router, searchParams, currentMenu]);
+
+    // The stub page is not a parent in the current menu. Enter the first real page.
+    if (!pathname || !menus?.length) return;
+    const clientId = getClientIdFromRoute(pathname);
+    const nextUrl = menus.find((item) => {
+      if (!item.url || item.isNotMenuItem) return false;
+      const normalized = item.url.replace(/\/+$/, '') || '/';
+      if (normalized === pathname) return false;
+      return menuBelongsToClient(item.url, clientId);
+    })?.url;
+    if (nextUrl) {
+      router.replace(withQuery(nextUrl));
+    }
+  }, [router, searchParams, currentMenu, menus, pathname]);
 };

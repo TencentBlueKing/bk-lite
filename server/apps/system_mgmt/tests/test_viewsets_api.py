@@ -8,13 +8,7 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from apps.system_mgmt.models import (
-    CustomMenuGroup,
-    ErrorLog,
-    GroupDataRule,
-    LoginModule,
-    OperationLog,
-)
+from apps.system_mgmt.models import CustomMenuGroup, ErrorLog, GroupDataRule, LoginModule, OperationLog
 
 pytestmark = pytest.mark.django_db
 
@@ -138,18 +132,60 @@ def test_custom_menu_group_destroy_builtin_forbidden(super_client):
 
 
 def test_custom_menu_group_change_enable(super_client):
-    other = CustomMenuGroup.objects.create(display_name="老的", app="cmdb", is_enabled=True, is_build_in=False, menus=[])
-    grp = CustomMenuGroup.objects.create(display_name="新的", app="cmdb", is_enabled=False, is_build_in=False, menus=[])
+    other = CustomMenuGroup.objects.create(display_name="老的", app="cmdb", is_enabled=True, is_build_in=False, menus=[{"name": "search"}])
+    grp = CustomMenuGroup.objects.create(display_name="新的", app="cmdb", is_enabled=False, is_build_in=False, menus=[{"name": "search"}])
     with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
-        resp = super_client.post(
-            f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json"
-        )
+        resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
     assert resp.status_code == 200
     grp.refresh_from_db()
     other.refresh_from_db()
     # 启用新的会禁用同 app 其它
     assert grp.is_enabled is True
     assert other.is_enabled is False
+
+
+def test_custom_menu_group_disable_last_returns_to_builtin(super_client):
+    builtin = CustomMenuGroup.objects.create(display_name="内置", app="cmdb", is_enabled=False, is_build_in=True, menus=[])
+    custom = CustomMenuGroup.objects.create(display_name="自定义", app="cmdb", is_enabled=True, is_build_in=False, menus=[])
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        resp = super_client.post(f"{V}/custom_menu_group/{custom.id}/change_enable/", {"is_enabled": False}, format="json")
+    assert resp.status_code == 200
+    builtin.refresh_from_db()
+    custom.refresh_from_db()
+    assert custom.is_enabled is False
+    assert builtin.is_enabled is True
+
+
+def test_custom_menu_group_copy_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=[{"name": "search"}])
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        resp = super_client.post(
+            f"{V}/custom_menu_group/{grp.id}/copy/",
+            {"menus": []},
+            format="json",
+        )
+    assert resp.status_code == 400
+    assert not CustomMenuGroup.objects.filter(app="cmdb", display_name="有菜单_copy").exists()
+
+
+def test_custom_menu_group_update_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=[{"name": "search"}])
+    resp = super_client.put(
+        f"{V}/custom_menu_group/{grp.id}/",
+        {"display_name": "有菜单", "app": "cmdb", "menus": []},
+        format="json",
+    )
+    assert resp.status_code == 400
+    grp.refresh_from_db()
+    assert grp.menus == [{"name": "search"}]
+
+
+def test_custom_menu_group_enable_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="空的", app="cmdb", is_enabled=False, is_build_in=False, menus=[])
+    resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
+    assert resp.status_code == 400
+    grp.refresh_from_db()
+    assert grp.is_enabled is False
 
 
 def test_custom_menu_group_change_enable_missing_param(super_client):
@@ -159,9 +195,7 @@ def test_custom_menu_group_change_enable_missing_param(super_client):
 
 
 def test_custom_menu_group_copy(super_client):
-    grp = CustomMenuGroup.objects.create(
-        display_name="原始", app="cmdb", is_build_in=False, menus=[{"id": 1}]
-    )
+    grp = CustomMenuGroup.objects.create(display_name="原始", app="cmdb", is_build_in=False, menus=[{"id": 1}])
     with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
         resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/copy/", {}, format="json")
     assert resp.status_code == 200
@@ -169,9 +203,7 @@ def test_custom_menu_group_copy(super_client):
 
 
 def test_custom_menu_group_get_menus(super_client):
-    CustomMenuGroup.objects.create(
-        display_name="启用的", app="cmdb", is_enabled=True, is_build_in=False, menus=[{"id": 1}]
-    )
+    CustomMenuGroup.objects.create(display_name="启用的", app="cmdb", is_enabled=True, is_build_in=False, menus=[{"id": 1}])
     resp = super_client.get(f"{V}/custom_menu_group/get_menus/?app=cmdb")
     assert resp.status_code == 200
     assert resp.json()["data"]["menus"] == [{"id": 1}]
@@ -220,12 +252,10 @@ def test_login_module_sync_data():
     vs = LoginModuleViewSet()
     vs.loader = None
     vs.get_object = lambda: lm
-    request = types.SimpleNamespace(
-        user=types.SimpleNamespace(username="a", domain="domain.com", is_superuser=True), META={}, data={}
-    )
-    with patch(
-        "apps.system_mgmt.viewset.login_module_viewset.sync_user_and_group_by_login_module"
-    ) as m_task, patch("apps.system_mgmt.viewset.login_module_viewset.log_operation"):
+    request = types.SimpleNamespace(user=types.SimpleNamespace(username="a", domain="domain.com", is_superuser=True), META={}, data={})
+    with patch("apps.system_mgmt.viewset.login_module_viewset.sync_user_and_group_by_login_module") as m_task, patch(
+        "apps.system_mgmt.viewset.login_module_viewset.log_operation"
+    ):
         resp = vs.sync_data(request)
     import json
 
@@ -242,9 +272,7 @@ def test_operation_log_list(super_client):
 
 
 def test_operation_log_retrieve_disabled(super_client):
-    log = OperationLog.objects.create(
-        username="x", domain="domain.com", source_ip="127.0.0.1", app="cmdb", action_type="create", summary="s"
-    )
+    log = OperationLog.objects.create(username="x", domain="domain.com", source_ip="127.0.0.1", app="cmdb", action_type="create", summary="s")
     resp = super_client.get(f"{V}/operation_log/{log.id}/")
     assert resp.status_code == 405
 

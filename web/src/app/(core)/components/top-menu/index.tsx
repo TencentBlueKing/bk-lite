@@ -10,7 +10,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useMenus } from '@/context/menus';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
 import { findMatchedMenuPath, resolveMenuIcon } from '@/utils/menuHelpers';
-import { APP_TOP_SIDE_RAIL_WIDTH_PX, isScreenModeEnabled, useConsoleLayout, withScreenQuery } from '@/console-layout';
+import { APP_TOP_SIDE_RAIL_WIDTH_PX, isScreenModeEnabled, resolveAppLandingHref, useConsoleLayout, withScreenQuery } from '@/console-layout';
 import styles from './index.module.scss';
 import type { TourProps } from 'antd';
 import { TourItem, MenuItem, ClientData } from '@/types/index';
@@ -174,7 +174,10 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
         <div
           key={app.name}
           className={`group flex flex-col items-center p-4 rounded-sm cursor-pointer ${styles.navApp}`}
-          onClick={() => window.open(app.url, '_blank')}
+          onClick={() => {
+            const target = resolveAppLandingHref(app, window.location.origin, menuItems);
+            window.open(target.href, '_blank');
+          }}
         >
           <Icon
             type={app.icon || app.name}

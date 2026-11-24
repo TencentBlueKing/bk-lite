@@ -52,6 +52,8 @@ export interface SourceMenuNode {
     order: number;
   };
   isDetailMode?: boolean; // 是否为详情页模式
+  sourceHasDetail?: boolean; // 源菜单本身带 hasDetail，保存时才写回
+  isNotMenuItem?: boolean;
   hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
   children?: SourceMenuNode[];
 }
@@ -74,5 +76,6 @@ export interface FunctionMenuItem {
   isExisting?: boolean;
   originName?: string;
   isDetailMode?: boolean; // 是否为详情页模式
+  sourceHasDetail?: boolean;
   hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
 }

@@ -201,6 +201,22 @@ const menuBelongsToPrefix = (url: string | undefined, prefix: string): boolean =
   return path === prefix || path.startsWith(`${prefix}/`);
 };
 
+const menuUrlIsPresent = (items: MenuItem[], path: string): boolean =>
+  items.some((item) => {
+    if (!item.isNotMenuItem && item.url && menuPathname(item.url) === path) {
+      return true;
+    }
+    return Boolean(item.children?.length && menuUrlIsPresent(item.children, path));
+  });
+
+const menuTreeTouchesPrefix = (items: MenuItem[], prefix: string): boolean =>
+  items.some((item) => {
+    if (menuBelongsToPrefix(item.url, prefix)) {
+      return true;
+    }
+    return Boolean(item.children?.length && menuTreeTouchesPrefix(item.children, prefix));
+  });
+
 const findFirstMenuHrefUnderPrefix = (menus: MenuItem[], prefix: string): string | null => {
   const walk = (items: MenuItem[]): string | null => {
     for (const item of items) {
@@ -226,8 +242,9 @@ const findFirstMenuHrefUnderPrefix = (menus: MenuItem[], prefix: string): string
 };
 
 /**
- * Same-origin app chips skip `/cmdb`-style redirect stubs and land on the
- * first real menu page, so the console does not briefly remount a blank page.
+ * Open the registered page when this app's menu already contains it.
+ * A click from another app opens the root; that app then picks the registered
+ * page, or the first page still in its menu, so a removed default does not 403.
  */
 export const resolveAppLandingHref = (
   app: { url: string; is_build_in?: boolean },
@@ -249,10 +266,18 @@ export const resolveAppLandingHref = (
     landingPath = target.href.split(/[?#]/, 1)[0] || target.href;
   }
   landingPath = landingPath.length > 1 ? landingPath.replace(/\/+$/, '') : landingPath || '/';
-  if (landingPath !== prefix) {
+  const firstLeaf = findFirstMenuHrefUnderPrefix(menus, prefix);
+  if (landingPath === prefix) {
+    return firstLeaf ? { mode: 'same-tab', href: firstLeaf } : target;
+  }
+  // The menu in hand belongs to another app, so it cannot say whether this
+  // registered page is allowed. Open the root and choose after that menu loads.
+  if (!menuTreeTouchesPrefix(menus, prefix)) {
+    return { mode: 'same-tab', href: prefix };
+  }
+  if (menuUrlIsPresent(menus, landingPath)) {
     return target;
   }
-  const firstLeaf = findFirstMenuHrefUnderPrefix(menus, prefix);
   return firstLeaf ? { mode: 'same-tab', href: firstLeaf } : target;
 };
 
