@@ -1,3 +1,4 @@
+import contextvars
 import copy
 import hashlib
 import io
@@ -5,6 +6,7 @@ import json
 import re
 import uuid
 import zipfile
+from contextlib import contextmanager
 from pathlib import PurePosixPath
 
 from django.db import transaction
@@ -19,6 +21,8 @@ from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, AlertLifecycleNotifier
 from apps.monitor.services.policy_bulk import normalize_default_calculation_unit, normalize_stored_metric_unit, normalize_template_algorithms
 from apps.monitor.tasks.utils.policy_multi import query_metric_items
+
+_runtime_metric_cache = contextvars.ContextVar("monitor_runtime_metric_cache", default=None)
 
 ARCHIVE_FORMAT = "bk-lite-monitor-policy-templates"
 ARCHIVE_SCHEMA_VERSION = 1
@@ -49,6 +53,33 @@ POLICY_RECIPE_SYNC_FIELDS = (
     "forecast_lookback",
     "recovery_threshold",
 )
+
+
+class _RuntimeMetricIndex:
+    """按监控对象预取的指标。命中条数规则与逐条查询只取前两条一致。"""
+
+    def __init__(self, monitor_object_id, metrics):
+        self.monitor_object_id = monitor_object_id
+        self.metrics = metrics
+
+    def matches(self, monitor_object, metric_name, plugin, plugin_name):
+        if getattr(monitor_object, "pk", None) != self.monitor_object_id:
+            return None
+        found = []
+        for metric in self.metrics:
+            if metric.name != metric_name:
+                continue
+            if plugin is not None:
+                if metric.monitor_plugin_id != plugin.pk:
+                    continue
+            elif plugin_name:
+                metric_plugin = metric.monitor_plugin
+                if metric_plugin is None or metric_plugin.name != plugin_name:
+                    continue
+            found.append(metric)
+            if len(found) == 2:
+                break
+        return found
 
 
 class PolicyService:
@@ -154,9 +185,7 @@ class PolicyService:
         for root_object_name, plugin_name, document_templates in prepared:
             pair_keys = set()
             for raw_template, name in document_templates:
-                object_name = PolicyService._effective_builtin_object_name(
-                    raw_template, root_object_name, plugin_name, unique_metric_objects
-                )
+                object_name = PolicyService._effective_builtin_object_name(raw_template, root_object_name, plugin_name, unique_metric_objects)
                 key = PolicyService.build_builtin_key(object_name, plugin_name, raw_template)
                 if key in pair_keys or key in seen_keys:
                     raise BaseAppException(f"内置策略模板 key 重复: {key}")
@@ -464,16 +493,30 @@ class PolicyService:
         return None
 
     @staticmethod
+    @contextmanager
+    def cached_runtime_metrics(monitor_object):
+        """一次取出这个监控对象的指标，供同一次批量生成重复查找。"""
+        metrics = list(Metric.objects.filter(monitor_object=monitor_object).select_related("monitor_plugin"))
+        token = _runtime_metric_cache.set(_RuntimeMetricIndex(monitor_object.pk, metrics))
+        try:
+            yield
+        finally:
+            _runtime_metric_cache.reset(token)
+
+    @staticmethod
     def _resolve_runtime_metric(monitor_object, metric_name, *, plugin=None, plugin_name=None):
         plugin_name = str(plugin_name or "").strip() or None
         if plugin is not None and plugin_name and plugin_name != plugin.name:
             raise BaseAppException(f"指标插件不匹配: {metric_name}")
-        metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
-        if plugin is not None:
-            metrics = metrics.filter(monitor_plugin=plugin)
-        elif plugin_name:
-            metrics = metrics.filter(monitor_plugin__name=plugin_name)
-        matches = list(metrics[:2])
+        cache = _runtime_metric_cache.get()
+        matches = None if cache is None else cache.matches(monitor_object, metric_name, plugin, plugin_name)
+        if matches is None:
+            metrics = Metric.objects.filter(monitor_object=monitor_object, name=metric_name)
+            if plugin is not None:
+                metrics = metrics.filter(monitor_plugin=plugin)
+            elif plugin_name:
+                metrics = metrics.filter(monitor_plugin__name=plugin_name)
+            matches = list(metrics[:2])
         if not matches:
             raise BaseAppException(f"指标不存在: {metric_name}")
         if len(matches) > 1:

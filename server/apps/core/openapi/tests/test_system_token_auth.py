@@ -133,6 +133,37 @@ def test_acting_user_not_found_401(client):
     assert "acting user not found or disabled" in resp.json()["message"]
 
 
+def test_system_admin_without_runtime_user_is_not_an_acting_subject(client):
+    from django.contrib.auth.hashers import make_password
+
+    from apps.core.management.commands.batch_init import Command
+
+    group, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    SystemUser.objects.create(
+        username="admin",
+        domain="domain.com",
+        display_name="admin",
+        email="admin@bklite.net",
+        password=make_password("password"),
+        group_list=[group.id],
+    )
+    token = _create_system_token()
+    headers = {
+        **bearer(token),
+        "HTTP_X_BKLITE_ACTING_USER": "admin@domain.com",
+        "HTTP_X_BKLITE_ACTING_TEAM": str(group.id),
+    }
+    denied = client.get(ME_URL, **headers)
+    assert denied.status_code == 401
+    assert "acting user not found or disabled" in denied.json()["message"]
+
+    Command._create_admin_runtime_user()
+
+    allowed = client.get(ME_URL, **headers)
+    assert allowed.status_code == 200
+    assert allowed.json()["data"]["user"] == "admin"
+
+
 def test_acting_user_disabled_401(client):
     token = _create_system_token()
     user = _create_acting_user(4, disabled=True)

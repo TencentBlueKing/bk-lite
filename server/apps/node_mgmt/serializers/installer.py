@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.node_identity import (
@@ -247,6 +248,27 @@ class InstallCommandRequestSerializer(serializers.Serializer):
         except ValidationAppException as exc:
             raise serializers.ValidationError({"ip": exc.message}) from exc
         return attrs
+
+
+class ControllerBulkInstallRequestSerializer(serializers.Serializer):
+    cloud_region_id = serializers.IntegerField()
+    package_id = serializers.IntegerField()
+    max_success_count = serializers.IntegerField(
+        min_value=InstallerConstants.BULK_MIN_SUCCESS_COUNT,
+        max_value=InstallerConstants.BULK_MAX_SUCCESS_COUNT,
+    )
+    expires_in_hours = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=InstallerConstants.BULK_MAX_EXPIRE_HOURS,
+        default=InstallerConstants.BULK_DEFAULT_EXPIRE_HOURS,
+    )
+    push_targets = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
 
 
 class InstallerArtifactQuerySerializer(serializers.Serializer):
