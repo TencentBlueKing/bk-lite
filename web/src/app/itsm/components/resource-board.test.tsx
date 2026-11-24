@@ -15,11 +15,11 @@ beforeEach(() => {
 it('公共新建打开独立表单，取消不写入，保存使用原业务接口', async () => {
   render(<ResourceBoard title="业务对象" kind="biz_objects" fields={['name','key']} />);
   await screen.findByText('已有业务对象');
-  fireEvent.click(screen.getByRole('button',{name:'新建',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'新建'}));
   fireEvent.change(screen.getByRole('textbox',{name:'名称'}),{target:{value:'测试对象'}});
   fireEvent.click(screen.getByRole('button',{name:/Cancel|取\s*消/}));
   expect(api.createResource).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button',{name:'新建',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'新建'}));
   fireEvent.change(screen.getByRole('textbox',{name:'名称'}),{target:{value:'[Review] 新对象'}});
   fireEvent.change(screen.getByRole('textbox',{name:'标识'}),{target:{value:'new'}});
   fireEvent.click(screen.getByRole('button',{name:/保\s*存/}));

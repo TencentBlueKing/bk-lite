@@ -1,7 +1,8 @@
 'use client';
 
-import { Input, message, type TableColumnsType } from 'antd';
+import { Alert, Button, Input, message, type TableColumnsType } from 'antd';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import { useItsmApi } from '../api/useItsmApi';
 import { FieldRow } from './field-row';
 import { ItsmModal } from './interaction-surfaces';
@@ -37,6 +38,11 @@ interface WorkScheduleBoardProps<Row extends ScheduleRow, Draft extends { name: 
   };
 }
 
+type ScheduleState<Row> =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; list: ScheduleList<Row> };
+
 interface ScheduleList<Row> {
   items: Row[];
   can_add?: boolean;
@@ -48,22 +54,23 @@ export function WorkScheduleBoard<Row extends ScheduleRow, Draft extends { name:
   kind, title, columns, toDraft, toPayload, renderFields, searchValues, view,
 }: WorkScheduleBoardProps<Row, Draft>) {
   const api = useItsmApi();
-  const [list, setList] = useState<ScheduleList<Row>>({ items: [] });
+  const { t } = useTranslation();
+  const loadFailed = t('itsm.ticket.loadFailed');
+  const [state, setState] = useState<ScheduleState<Row>>({ status: 'loading' });
+  const list = state.status === 'ready' ? state.list : { items: [] } satisfies ScheduleList<Row>;
   const [keyword, setKeyword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<Draft>();
   const [editingId, setEditingId] = useState<number>();
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setState({ status: 'loading' });
     try {
-      setList(await api.listResources(kind) as ScheduleList<Row>);
+      const list = await api.listResources(kind) as ScheduleList<Row>;
+      setState({ status: 'ready', list });
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '加载失败');
-    } finally {
-      setLoading(false);
+      setState({ status: 'error', message: error instanceof Error ? error.message : loadFailed });
     }
-  }, [api.listResources, kind]);
+  }, [api.listResources, kind, loadFailed]);
 
   useEffect(() => {
     if (api.ready) void load();
@@ -120,10 +127,18 @@ export function WorkScheduleBoard<Row extends ScheduleRow, Draft extends { name:
   const filtered = list.items.filter(row => (!view?.includes || view.includes(row))
     && (!query || [row.name, ...searchValues(row)].some(value => value.toLowerCase().includes(query))));
   const create = list.can_add ? () => open() : undefined;
-  const content = view?.render
-    ? view.render({ rows: filtered, loading, create, edit: list.can_edit ? open : undefined })
-    : <ItsmListTable<Row> rowKey="id" queryKey={view ? `${view.key}:${keyword}` : keyword} loading={loading}
-        dataSource={filtered} columns={tableColumns} locale={{ emptyText: `暂无${title}` }} />;
+  const loading = state.status === 'loading';
+  const content = state.status === 'error'
+    ? <Alert type="error" showIcon message={state.message} action={<Button onClick={() => void load()}>{t('itsm.common.retry')}</Button>} />
+    : view?.render
+      ? view.render({ rows: filtered, loading, create, edit: list.can_edit ? open : undefined })
+      : <ItsmListTable<Row> rowKey="id" queryKey={view ? `${view.key}:${keyword}` : keyword}
+          dataSource={filtered} columns={tableColumns} locale={{ emptyText: loading
+            ? <div role="status" aria-label={t('itsm.common.loading')} className="space-y-3 py-2">
+              {Array.from({ length: 3 }, (_, row) => <div key={row} className="flex gap-4" aria-hidden="true">
+                {tableColumns.map((_, column) => <div key={column} className="h-4 flex-1 animate-neutral-pulse rounded bg-[var(--color-fill-2)]" />)}
+              </div>)}
+            </div> : `暂无${title}` }} />;
 
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
     <ItsmListToolbar leading={view?.leading} filters={view?.filters}

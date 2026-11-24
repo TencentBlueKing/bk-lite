@@ -1,6 +1,11 @@
 {
   "itsm": {
     "common": {
+      "retry": "重试",
+      "cancel": "取消",
+      "action": "操作",
+      "tryAgain": "请重试",
+      "dutyLoading": "正在加载排班",
       "save": "保存",
       "search": "查询",
       "create": "新建",

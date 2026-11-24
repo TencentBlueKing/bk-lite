@@ -1,6 +1,6 @@
+import { renderItsm as render } from '../../test-utils';
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { IntlProvider } from 'react-intl';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ChangePage from './page';
 import DutyPage from '../duty/page';
@@ -25,7 +25,7 @@ const save = () => fireEvent.click(screen.getByRole('button', { name: /保\s*存
 
 it('变更窗口保存带时区的时间范围，逆序输入留在弹窗', async () => {
   api.listResources.mockResolvedValue({ items: [], ...mutable });
-  render(<IntlProvider locale="zh-CN"><ChangePage /></IntlProvider>);
+  render(<ChangePage />);
   fireEvent.click(await screen.findByRole('button', { name: '新建变更窗口' }));
   fireEvent.change(screen.getByLabelText('名称'), { target: { value: '  例行维护  ' } });
   fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-12-01T10:00' } });
@@ -43,7 +43,7 @@ it('变更窗口保存带时区的时间范围，逆序输入留在弹窗', asyn
 
 it('值班管理可以编辑日期和人员，列表按值班日期搜索', async () => {
   api.listResources.mockResolvedValue({ items: [{ id: 1, name: '白班', day: '2026-12-01', members: ['alice'] }], ...mutable });
-  render(<IntlProvider locale="zh-CN"><DutyPage /></IntlProvider>);
+  render(<DutyPage />);
   await screen.findByText('alice');
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: '2026-12-02' } });
   expect(screen.queryByText('alice')).toBeNull();
@@ -57,10 +57,20 @@ it('值班管理可以编辑日期和人员，列表按值班日期搜索', asyn
 
 it('只读值班角色只能查看排班和人员', async () => {
   api.listResources.mockResolvedValue({ items: [{ id: 1, name: '只读排班', day: '2026-12-01', members: ['alice'] }], can_add: false, can_edit: false, can_delete: false });
-  render(<IntlProvider locale="zh-CN"><DutyPage /></IntlProvider>);
+  render(<DutyPage />);
   await screen.findByText('只读排班');
   expect(screen.getByText('alice')).toBeTruthy();
   expect(screen.queryByRole('button', { name: /^新建/ })).toBeNull();
   expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
   expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+});
+
+it('变更列表失败时展示错误和重试，重试后展示真实空状态', async () => {
+  api.listResources.mockRejectedValueOnce(new Error('窗口暂时不可用')).mockResolvedValueOnce({ items: [], ...mutable });
+  render(<ChangePage />);
+  expect((await screen.findByRole('alert')).textContent).toContain('窗口暂时不可用');
+  expect(screen.queryByText('暂无变更窗口')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
+  await screen.findByText('暂无变更窗口');
+  expect(screen.queryByRole('alert')).toBeNull();
 });

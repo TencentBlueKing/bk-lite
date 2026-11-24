@@ -1,6 +1,11 @@
 {
   "itsm": {
     "common": {
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "action": "Actions",
+      "tryAgain": "Try again",
+      "dutyLoading": "Loading shifts",
       "save": "Save",
       "search": "Search",
       "create": "New",

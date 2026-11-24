@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { renderItsm as render } from '../../test-utils';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import dayjs from 'dayjs';
-import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import DutyPage from './page';
 
@@ -35,7 +35,7 @@ const shifts = [
 
 function openPage(canEdit = true) {
   api.listResources.mockResolvedValue({ items: shifts, can_add: canEdit, can_edit: canEdit, can_delete: canEdit });
-  render(<IntlProvider locale="zh-CN"><DutyPage /></IntlProvider>);
+  render(<DutyPage />);
 }
 
 it('我的值班使用登录人过滤，月历与列表同步', async () => {
@@ -67,4 +67,12 @@ it('管理员从月历选中日期后新建排班，保存当天日期', async (
   fireEvent.change(screen.getByLabelText('值班人员'), { target: { value: 'alice,bob' } });
   fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
   await waitFor(() => expect(api.createResource).toHaveBeenCalledWith('duties', { name: '值守', day: date, members: ['alice', 'bob'] }));
+});
+
+it('值班月历加载排班时不会同时显示空状态', async () => {
+  api.listResources.mockReturnValue(new Promise(() => undefined));
+  render(<DutyPage />);
+  fireEvent.click(screen.getByText('月历', { exact: true }));
+  expect(screen.getByRole('status', { name: '正在加载排班' })).toBeTruthy();
+  expect(screen.queryByText('当日暂无排班')).toBeNull();
 });
