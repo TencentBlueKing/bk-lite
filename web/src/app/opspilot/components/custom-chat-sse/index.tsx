@@ -1,12 +1,11 @@
 import { findRegenerationMessage } from '@bk-lite/chat-content/regeneration';
-import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Image, Input, message as antMessage, Modal, Popconfirm, Tooltip, Upload} from 'antd';
 import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import { ChatContentProvider, renderChatMarkdown, sanitizeChatHtml as sanitizeHtml } from '@bk-lite/chat-content/ui';
 import '@bk-lite/chat-content/style.css';
 import useApiClient from '@/utils/request';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
@@ -19,14 +18,14 @@ import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import WikiMaterialWriteCard from './WikiMaterialWriteCard';
 import UserChoiceCard from './UserChoiceCard';
-import { applyAnsweredUserChoices, stripChoicePromptFromContent } from './userChoiceOptions';
+import { applyAnsweredUserChoices, pendingUserChoice, stripChoicePromptFromContent } from './userChoiceOptions';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
 import { hydrateGeneratedFileLinks, isRenderableReportDownload, rewriteAttachmentDownloadMentions } from './downloadUrl';
-import {CustomChatMessage} from '@/app/opspilot/types/global';
+import {CustomChatMessage, type UserChoiceRequest} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
@@ -125,6 +124,7 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
   initialMessages = [],
+  startAtTop = false,
   mode = 'chat',
   guide,
   useAGUIProtocol = false,
@@ -221,10 +221,10 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [scrollToBottom]);
 
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && !startAtTop) {
       scheduleScrollToBottom();
     }
-  }, [messages, scheduleScrollToBottom]);
+  }, [messages, scheduleScrollToBottom, startAtTop]);
 
   useEffect(() => {
     return () => {
@@ -304,16 +304,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     t
   });
 
-  const pendingChoice = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const requests = messages[i].userChoiceRequests;
-      if (requests?.length) {
-        const pending = requests.find(request => request.status === 'pending');
-        if (pending) return pending;
-      }
-    }
-    return null;
-  }, [messages]);
+  const lastMessage = messages[messages.length - 1];
+  const pendingChoice = lastMessage?.role === 'bot' ? pendingUserChoice(lastMessage.userChoiceRequests) : undefined;
 
   const displayMessages = useMemo(() => applyAnsweredUserChoices(messages), [messages]);
 
@@ -579,21 +571,25 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const readyDrafts = drafts.filter((item) => item.status === 'ready' && item.id);
 
   const handleSend = useCallback(
-    async (msg: string, attachments?: ChatAttachmentMeta[], choice?: { choiceId?: string; optionKey?: string }) => {
+    async (msg: string, attachments?: ChatAttachmentMeta[], choice?: { choiceId?: string; optionKey?: string; selectedKeys?: string[] }) => {
+      if (mode === 'display' || (choice?.choiceId && choice.choiceId !== pendingChoice?.choice_id)) return;
       const ready = (attachments || []).filter((item) => item.status === 'ready' && item.id);
       if ((msg.trim() || ready.length > 0) && !loading && token && !hasPendingDraft) {
         currentBotMessageRef.current = null;
-        await sendMessage(msg, messages, ready.map((item) => ({
+        const files = ready.map((item) => ({
           id: item.id,
           name: item.name,
           mime: item.mime,
           size: item.size,
           status: item.status,
           previewUrl: item.previewUrl,
-        })), choice);
+        }));
+        const reply = choice || (pendingChoice ? { replyToChoiceId: pendingChoice.choice_id } : undefined);
+        if (reply) await sendMessage(msg, messages, files, reply);
+        else await sendMessage(msg, messages, files);
       }
     },
-    [hasPendingDraft, loading, token, sendMessage, messages]
+    [hasPendingDraft, loading, token, sendMessage, messages, mode, pendingChoice]
   );
 
   useEffect(() => {
@@ -767,20 +763,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }));
   }, [updateMessages]);
 
-  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
-    updateMessages(prev => prev.map(msg => {
-      if (!msg.userChoiceRequests) return msg;
-      const updated = msg.userChoiceRequests.map(req =>
-        req.choice_id === choiceId
-          ? { ...req, status, selected: status === 'pending' ? undefined : selected }
-          : req
-      );
-      return { ...msg, userChoiceRequests: updated };
-    }));
-  }, [updateMessages]);
-
   const renderContent = (msg: CustomChatMessage) => {
     const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools, wikiMaterialWrites } = msg;
+    const renderChoice = (request: UserChoiceRequest) => (
+      <UserChoiceCard
+        key={request.choice_id}
+        request={request}
+        token={token || ''}
+        onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
+        readOnly={mode === 'display' || loading || !token || hasPendingDraft ||
+          msg.id !== lastMessage?.id || request.choice_id !== pendingChoice?.choice_id}
+      />
+    );
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
@@ -870,16 +864,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             )}
             {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
               <div className="mt-2">
-                {userChoiceRequests.map(req => (
-                  <UserChoiceCard
-                    key={req.choice_id}
-                    request={req}
-                    token={token || ''}
-                    onSubmit={handleUserChoiceSubmit}
-                    onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
-                    readOnly={mode === 'display'}
-                  />
-                ))}
+                {userChoiceRequests.map(renderChoice)}
               </div>
             )}
           </>
@@ -933,16 +918,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             const req = userChoiceRequests?.find(r => r.choice_id === marker.id);
             if (req) {
               renderedChoiceIds.add(marker.id);
-              elements.push(
-                <UserChoiceCard
-                  key={`choice-${marker.id}`}
-                  request={req}
-                  token={token || ''}
-                  onSubmit={handleUserChoiceSubmit}
-                  onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
-                  readOnly={mode === 'display'}
-                />
-              );
+              elements.push(renderChoice(req));
             }
           }
         }
@@ -1024,16 +1000,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       if (remainingChoices.length > 0) {
         elements.push(
           <div key="remaining-choices" className="mt-2">
-            {remainingChoices.map(req => (
-              <UserChoiceCard
-                key={req.choice_id}
-                request={req}
-                token={token || ''}
-                onSubmit={handleUserChoiceSubmit}
-                onSendMessage={(text, choice) => { void handleSend(text, undefined, choice); }}
-                readOnly={mode === 'display'}
-              />
-            ))}
+            {remainingChoices.map(renderChoice)}
           </div>
         );
       }
@@ -1243,7 +1210,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               {t('chat.enterHint', 'Enter 发送 · Shift+Enter 换行')}
             </span>
 
-            {loading && !pendingChoice && !ignoreLoading ? (
+            {loading && !ignoreLoading ? (
               <Tooltip title={t('chat.clickCancel', '点击以取消')}>
                 <button
                   type="button"

@@ -167,6 +167,36 @@ class TestLLMViewSet:
         assert skill.name == "renamed"
         assert skill.skill_prompt == "新提示"
 
+    @pytest.mark.parametrize(("method", "action"), [("patch", "partial_update"), ("put", "update")])
+    def test_adding_management_and_usage_teams_keeps_kubernetes_bindings(self, mocker, method, action):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        bindings = [
+            {"name": name, "id": tool_id, "kwargs": [{"key": "kubernetes_instances", "value": [{"id": "first-cluster"}]}]}
+            for name, tool_id in [("kubernetes", 7), ("kubernetes_data_collection", 8)]
+        ]
+        skill = LLMSkill.objects.create(name="巡检助手", team=[1], usage_team=[1], tools=bindings)
+        data = {"name": skill.name, "team": [1, 2], "usage_team": [1, 2, 3]}
+        assert _body(_dispatch(LLMViewSet, action, method, data=data, pk=skill.id))["result"]
+        skill.refresh_from_db()
+        assert skill.team == [1, 2]
+        assert skill.usage_team == [1, 2, 3]
+        assert skill.tools == bindings
+
+    def test_unrelated_save_preserves_concurrently_bound_tools_and_explicit_empty_removes_them(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        skill = LLMSkill.objects.create(name="assistant", team=[1])
+        # Another editor commits tools after this request has read the instance.
+        tools = [{"name": "alerts", "kwargs": []}]
+        LLMSkill.objects.filter(pk=skill.pk).update(tools=tools)
+        mocker.patch.object(LLMViewSet, "get_object", return_value=skill)
+        data = {"name": skill.name, "team": [1], "skill_prompt": "changed"}
+        assert _body(_dispatch(LLMViewSet, "update", "put", data=data, pk=skill.id))["result"]
+        skill.refresh_from_db()
+        assert skill.tools == tools
+        assert _body(_dispatch(LLMViewSet, "update", "put", data={**data, "tools": []}, pk=skill.id))["result"]
+        skill.refresh_from_db()
+        assert skill.tools == []
+
     def test_update_重名返回false(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")
         LLMSkill.objects.create(name="taken", team=[1])

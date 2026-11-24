@@ -152,8 +152,8 @@ def test_display_lookup_and_skill_session_key_survive_the_async_stream():
     )
     target = _target()
     args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="作业管理目标", target_ids=[target.id])
-    run_custom_script(_config("选定节点", session="skill:sess-skill-key"), **args)
-    accepted = run_custom_script(_config("确认执行", session="skill:sess-skill-key"), **args)
+    proposed = run_custom_script(_config("选定节点", session="skill:sess-skill-key"), **args)
+    accepted = run_custom_script(_reply("确认执行", proposed, "confirm", "skill:sess-skill-key"), **args)
     task_id = json.loads(accepted)["task_id"]
     assert conversation.messages.filter(role=SkillConversationMessage.ROLE_ASSISTANT, content__contains=f'"task_id": {task_id}').exists()
 
@@ -277,7 +277,7 @@ def test_generated_custom_script_requires_user_confirmation(settings):
     assert proposed["ask"] is True
     assert "ps -ef" in proposed["question"]
     assert JobExecution.objects.count() == 0
-    accepted = run_custom_script(_config("确认执行", session="generated-confirm"), **args)
+    accepted = run_custom_script(_reply("确认执行", proposed, "confirm", "generated-confirm"), **args)
     assert json.loads(accepted)["status"] == "仍在执行"
     assert JobExecution.objects.get().script_content == "ps -ef"
 
@@ -285,18 +285,166 @@ def test_generated_custom_script_requires_user_confirmation(settings):
 def test_custom_script_confirmation_cannot_authorize_changed_script_or_target():
     target = _target()
     args = dict(script_type="shell", script_content="ps -ef", target_source="manual", target_ids=[target.id])
-    run_custom_script(_config("查看进程", session="changed-script"), **args)
-    changed = run_custom_script(_config("确认执行", session="changed-script"), **{**args, "script_content": "id"})
+    proposed = run_custom_script(_config("查看进程", session="changed-script"), **args)
+    changed = run_custom_script(_reply("确认执行", proposed, "confirm", "changed-script"), **{**args, "script_content": "id"})
     assert changed["ask"] is True
     assert JobExecution.objects.count() == 0
     assert changed["options"][0] == "确认执行新脚本"
-    accepted = run_custom_script(_config("确认执行新脚本", session="changed-script"), **{**args, "script_content": "id"})
+    accepted = run_custom_script(_reply("确认执行新脚本", changed, "confirm", "changed-script"), **{**args, "script_content": "id"})
     assert json.loads(accepted)["status"] == "仍在执行"
     JobExecution.objects.all().delete()
-    run_custom_script(_config("查看进程", session="changed-target"), **args)
-    changed = run_custom_script(_config("确认执行", session="changed-target"), **{**args, "target_ids": [target.id + 1]})
+    proposed = run_custom_script(_config("查看进程", session="changed-target"), **args)
+    changed = run_custom_script(_reply("确认执行", proposed, "confirm", "changed-target"), **{**args, "target_ids": [target.id + 1]})
     assert changed["ask"] is True
     assert JobExecution.objects.count() == 0
+
+
+def test_unbound_option_from_a_previous_card_cannot_submit_a_changed_script():
+    target = _target()
+    args = dict(script_type="shell", script_content="echo original", target_source="manual", target_ids=[target.id])
+    session = "unbound-changed-script"
+    original = run_custom_script(_config("生成脚本", session=session), **args)
+    args["script_content"] = "echo changed"
+    changed = run_custom_script(_config(original["options"][0], session=session), **args)
+    refreshed = run_custom_script(_config(changed["options"][0], session=session), **args)
+    assert refreshed["ask"] and "echo changed" in refreshed["question"] and not JobExecution.objects.exists()
+    assert refreshed["job_confirmation_id"] != changed["job_confirmation_id"]
+    run_custom_script(_reply("确认执行", refreshed, "confirm", session), **args)
+    assert JobExecution.objects.get().script_content == "echo changed"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1", "confirm"),
+        ("一", "confirm"),
+        ("选第一项", "confirm"),
+        ("确认执行", "confirm"),
+        ("好的，执行吧", "confirm"),
+        ("好，那就按原计划执行吧", "confirm"),
+        ("2", "cancel"),
+        ("二", "cancel"),
+        ("第二个", "cancel"),
+        ("不执行", "cancel"),
+        ("取消", "cancel"),
+        ("不管了", "cancel"),
+        ("不用了，谢谢", "cancel"),
+        ("先别跑了", "cancel"),
+        ("确认执行？", "unclear"),
+        ("确认，但换台主机", "unclear"),
+        ("如果没问题就执行", "unclear"),
+        ("执行还是取消", "unclear"),
+        ("2 然后 1", "unclear"),
+        ("", "unclear"),
+    ],
+)
+def test_job_confirmation_reply_is_interpreted_against_the_current_options(text, expected):
+    from apps.opspilot.services.job_tool_service import job_confirmation_decision
+
+    assert job_confirmation_decision(text, [{"key": x, "label": x} for x in ("确认执行", "取消")]) == expected
+
+
+def _reply(text, prompt, decision, session):
+    config = _config(text, session=session)
+    config["configurable"]["job_confirmation_reply"] = {"id": prompt["job_confirmation_id"], "decision": decision}
+    return config
+
+
+@pytest.mark.parametrize("unbound_text", ["1", "确认执行"])
+def test_job_card_answers_bind_the_latest_proposal_and_handle_retry_and_cancellation(unbound_text):
+    target = _target()
+    args = dict(script_type="shell", script_content="echo ok", target_source="manual", target_ids=[target.id])
+    session = "card-resume"
+    first = run_custom_script(_config("检查主机", session=session), **args)
+    # 普通选择题中的编号和标签都不能动用此前的 Job 确认。
+    unbound = run_custom_script(_config(unbound_text, session=session), **args)
+    assert unbound["ask"] and not JobExecution.objects.exists()
+    stale = run_custom_script(_reply("确认执行", first, "confirm", session), **args)
+    assert not stale.get("ask") and not stale.get("result") and not JobExecution.objects.exists()
+    second = run_custom_script(_reply("可以吗", unbound, "unclear", session), **args)
+    assert second["ask"] and second["job_confirmation_id"] != unbound["job_confirmation_id"]
+    changed = run_custom_script(_reply("1", second, "confirm", session), **{**args, "script_content": "echo new"})
+    assert changed["ask"] and not JobExecution.objects.exists()
+    args["script_content"] = "echo new"
+    cancelled = run_custom_script(_reply("不管了", changed, "cancel", session), **args)
+    assert cancelled["status"] == "cancelled" and not JobExecution.objects.exists()
+    run_custom_script(_reply("1", changed, "confirm", session), **args)
+    assert not JobExecution.objects.exists()
+
+
+def test_job_card_repeated_numeric_answer_only_submits_reviewed_target_and_timeout():
+    target = _target()
+    other = _target()
+    args = dict(script_type="shell", script_content="echo ok", target_source="manual", target_ids=[target.id], timeout=77, name="本次检查")
+    session = "card-new-target"
+    original = run_custom_script(_config("本次检查，超时 77 秒", session=session), **args)
+    args["target_ids"] = [other.id]
+    changed = run_custom_script(_reply("1", original, "confirm", session), **args)
+    assert changed["ask"] and not JobExecution.objects.exists()
+    accepted = run_custom_script(_reply("1", changed, "confirm", session), **args)
+    execution = JobExecution.objects.get()
+    assert json.loads(accepted)["task_id"] == execution.pk
+    assert execution.timeout == 77 and execution.name == "本次检查"
+    assert str(other.pk) in str(execution.target_list)
+    run_custom_script(_reply("1", changed, "confirm", session), **args)
+    assert JobExecution.objects.count() == 1
+
+
+def test_custom_script_tool_keeps_confirmation_binding_in_the_private_artifact():
+    from apps.opspilot.metis.llm.tools.job_mgmt.tools import job_mgmt_run_custom
+
+    args = {"script_type": "shell", "script_content": "echo ok", "target_source": "作业管理目标", "target_ids": "7"}
+    output = job_mgmt_run_custom.invoke(
+        {"name": job_mgmt_run_custom.name, "id": "job-call", "type": "tool_call", "args": args}, config=_config("提议", session="artifact")
+    )
+    shown = json.loads(output.content)
+    marker = output.artifact["job_confirmation"]
+    assert marker["id"] and marker["id"] not in output.content
+    assert marker["question"] == shown["question"] and marker["options"] == ["确认执行", "取消"]
+
+
+def test_job_card_cannot_cross_identity_or_session_and_cannot_replay_while_submitting(monkeypatch):
+    from apps.opspilot.services import job_tool_service
+
+    args = dict(script_type="shell", script_content="echo ok", target_source="manual", target_ids=[1])
+    session = "locked-script"
+    prompt = run_custom_script(_config("提议", session=session), **args)
+    config = _reply("1", prompt, "confirm", session)
+    foreign = _reply("1", prompt, "confirm", session)
+    foreign["configurable"]["caller_identity"]["team_id"] = 9
+    for cfg in (foreign, _reply("1", prompt, "confirm", "another-session")):
+        assert run_custom_script(cfg, **args)["result"] is False
+
+    def submit(*_args):
+        assert run_custom_script(config, **args)["result"] is False
+        return '{"status":"成功"}'
+
+    monkeypatch.setattr(job_tool_service, "_submit_script", submit)
+    assert json.loads(run_custom_script(config, **args))["status"] == "成功"
+    assert run_custom_script(config, **args)["result"] is False
+
+
+def test_job_danger_card_has_its_own_confirmation_and_requires_its_own_answer(monkeypatch):
+    from apps.opspilot.services import job_tool_service
+
+    calls = []
+
+    def submit(_user_info, _session_key, body, _user_text, _confirmed_rerun):
+        calls.append(body["danger_confirmed"])
+        return '{"status":"成功"}' if body["danger_confirmed"] else {"result": False, "code": "confirm", "rules": ["规则A"]}
+
+    monkeypatch.setattr(job_tool_service, "_submit_script", submit)
+    args = dict(script_type="shell", script_content="echo ok", target_source="manual", target_ids=[1])
+    session = "staged-confirm"
+    initial = run_custom_script(_config("提议", session), **args)
+    warning = run_custom_script(_reply("1", initial, "confirm", session), **args)
+    assert warning["job_confirmation_id"] != initial["job_confirmation_id"]
+    assert warning["options"] == ["确认高危执行", "取消"] and "规则A" in warning["question"]
+    assert run_custom_script(_reply("1", initial, "confirm", session), **args)["result"] is False
+    refreshed = run_custom_script(_reply("执行？", warning, "unclear", session), **args)
+    assert refreshed["question"] == warning["question"] and calls == [False]
+    assert json.loads(run_custom_script(_reply("确认高危执行", refreshed, "confirm", session), **args))["status"] == "成功"
+    assert calls == [False, True]
 
 
 def test_custom_script_danger_confirmation_is_separate(monkeypatch):
@@ -310,11 +458,11 @@ def test_custom_script_danger_confirmation_is_separate(monkeypatch):
 
     monkeypatch.setattr(job_tool_service, "_submit_script", submit)
     args = dict(script_type="shell", script_content="dangerous command", target_source="manual", target_ids=[1], danger_confirmed=True)
-    run_custom_script(_config("执行命令", session="danger-confirm"), **args)
-    warning = run_custom_script(_config("确认执行", session="danger-confirm"), **args)
+    proposed = run_custom_script(_config("执行命令", session="danger-confirm"), **args)
+    warning = run_custom_script(_reply("确认执行", proposed, "confirm", "danger-confirm"), **args)
     assert warning["code"] == "confirm"
     assert calls[0]["danger_confirmed"] is False
-    result = run_custom_script(_config("确认高危执行", session="danger-confirm"), **args)
+    result = run_custom_script(_reply("确认高危执行", warning, "confirm", "danger-confirm"), **args)
     assert json.loads(result)["status"] == "成功"
     assert calls[1]["danger_confirmed"] is True
 
@@ -410,8 +558,11 @@ def test_script_output_reaches_the_chat_without_a_saved_conversation(monkeypatch
 
     target = _target()
     args = dict(script_type="python", script_content="print('opspilot-ok')", target_source="manual", target_ids=str(target.id))
-    job_mgmt_run_custom.invoke(args, config=_config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"))
-    raw = job_mgmt_run_custom.invoke(args, config=_config("确认执行", session="thread:debug-job"))
+    tool_call = {"name": job_mgmt_run_custom.name, "id": "debug-job", "type": "tool_call", "args": args}
+    preview = job_mgmt_run_custom.invoke(tool_call, config=_config("用 python 执行 print('opspilot-ok')", session="thread:debug-job"))
+    config = _config("确认执行", session="thread:debug-job")
+    config["configurable"]["job_confirmation_reply"] = {"id": preview.artifact["job_confirmation"]["id"], "decision": "confirm"}
+    raw = job_mgmt_run_custom.invoke(args, config=config)
     payload = json.loads(raw)
     assert payload["output_shown"] is True
     assert "result_url" not in payload

@@ -321,6 +321,7 @@ class AgentNode(BaseNodeExecutor):
             "temperature": DEFAULT_CHAT_TEMPERATURE,
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
+            "choice_reply_text": self.variable_manager.get_variable("original_user_message") or final_message,
             "conversation_window_size": skill.conversation_window_size,
             "run_model_call_limit": int(getattr(skill, "run_model_call_limit", 0) or 0),
             "show_think": False,
@@ -357,8 +358,11 @@ class AgentNode(BaseNodeExecutor):
             # 仅透传入口已经校验的快照，工具在目标模块按该身份鉴权。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
         params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_chat_flow_input(flow_input)
-        if isinstance(flow_input.get("pending_question"), dict):
-            params["pending_question"] = flow_input["pending_question"]
+        if "reply_to_choice_id" in flow_input:
+            params["reply_to_choice_id"] = flow_input["reply_to_choice_id"]
+        if flow_input.get("choice_id"):
+            params["choice_id"] = flow_input["choice_id"]
+            params["choice_option"] = flow_input.get("choice_option") or ""
         return params
 
     @staticmethod
