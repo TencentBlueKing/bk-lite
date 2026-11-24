@@ -23,7 +23,7 @@ from apps.node_mgmt.models import CloudRegion, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import ControllerBulkAttempt, ControllerBulkBatch
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.services.install_token import InstallTokenService
-from apps.node_mgmt.services.module_push import ModulePushService, normalize_push_targets
+from apps.node_mgmt.services.module_push import normalize_push_targets
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
@@ -264,15 +264,6 @@ class BulkInstallService:
                 node_name=normalized_name,
                 cpu_architecture=normalized_arch,
                 install_mode="manual",
-            )
-            targets = normalize_push_targets(locked.push_targets)
-            actor_scope = locked.actor_scope if isinstance(locked.actor_scope, dict) else {}
-        if targets:
-            ModulePushService.remember_deferred_push(
-                cloud_region_id=batch.cloud_region_id,
-                nodes=[{"ip": normalized_ip, "node_id": node_id}],
-                targets=targets,
-                actor_scope=actor_scope,
             )
         logger.debug("bulk install enroll batch_id=%s outcome=installing", batch.id)
         return EnrollOutcome(True, install_token=install_token, node_id=node_id)
@@ -547,6 +538,7 @@ report_outcome() {{
   _outcome="$1"
   for _try in 1 2 3 4; do
     if curl -sSLk -o /dev/null -X POST "$RESULT_URL" \
+      --connect-timeout 5 --max-time 15 \
       --data-urlencode "token=$BATCH_TOKEN" \
       --data-urlencode "node_id=$NODE_ID" \
       --data-urlencode "outcome=$_outcome" \

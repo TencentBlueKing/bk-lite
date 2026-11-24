@@ -22,6 +22,7 @@ from apps.node_mgmt.models import CloudRegion, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import ControllerBulkAttempt
 from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.services.bulk_install import render_bulk_bootstrap_script
+from apps.node_mgmt.services.module_push_contract import ingest_auth_kwargs
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.views import installer as installer_view
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
@@ -399,6 +400,36 @@ def test_push_waits_for_the_first_sidecar_report_and_keeps_the_node(region, pack
     Sidecar.update_node_client(_sidecar_heartbeat(region, plain_node.id, "10.3.0.2"), plain_node.id)
     assert calls == []
     assert Node.objects.filter(id=plain_node.id).exists()
+
+
+def test_push_uses_the_batch_after_the_cache_is_cleared(region, package, monkeypatch):
+    calls = []
+
+    def _push(*args, **kwargs):
+        calls.append(kwargs)
+        return {}
+
+    monkeypatch.setattr("apps.node_mgmt.services.module_push.ModulePushService.push_node", _push)
+    batch = _create_batch(region, package, push_targets=["cmdb", "monitor"])
+    accepted = _enroll(_token(batch), ip="10.3.1.8", hostname="batch-push")
+
+    assert accepted.status_code == 200, accepted.content
+    node = Node.objects.get(ip="10.3.1.8")
+    prefix = InstallerConstants.MODULE_PUSH_INTENT_CACHE_PREFIX
+    assert cache.get(f"{prefix}:node:{node.id}") is None
+    assert cache.get(f"{prefix}:ip:{node.cloud_region_id}:{node.ip}") is None
+
+    cache.clear()
+    Sidecar.update_node_client(_sidecar_heartbeat(region, node.id, node.ip), node.id)
+
+    attempt = ControllerBulkAttempt.objects.select_related("batch").get(node_id=node.id)
+    assert len(calls) == 1
+    assert calls[0]["targets"] == ["cmdb", "monitor"]
+    assert calls[0]["actor_scope"] == ingest_auth_kwargs(attempt.batch.actor_scope)
+    assert calls[0]["actor_scope"]["operator"] == "alice"
+
+    Sidecar.update_node_client(_sidecar_heartbeat(region, node.id, node.ip), node.id)
+    assert len(calls) == 1
 
 
 def test_batch_lifecycle_logs_keep_template_and_omit_secrets(region, package, caplog):
@@ -836,6 +867,20 @@ def _result_lines(logged):
     return [line for line in logged.splitlines() if "/result" in line]
 
 
+def _assert_report_curl_timeouts(logged):
+    result_lines = _result_lines(logged)
+    assert result_lines
+    for line in result_lines:
+        fields = line.split()
+        assert fields[fields.index("--connect-timeout") + 1] == "5"
+        assert fields[fields.index("--max-time") + 1] == "15"
+    for line in logged.splitlines():
+        if "/result" in line:
+            continue
+        assert "--connect-timeout" not in line.split()
+        assert "--max-time" not in line.split()
+
+
 def _prepare_bootstrap(root, extra_env=None, *, sleep_override=False):
     root.mkdir(parents=True, exist_ok=True)
     script = render_bulk_bootstrap_script(
@@ -886,12 +931,14 @@ def test_bootstrap_script_retries_result_report_without_changing_exit_code(tmp_p
     assert "stage=install" in once_fields
     assert "exit_code=0" in once_fields
     assert "outcome=failed" not in once_log
+    _assert_report_curl_timeouts(once_log)
 
     retried, retried_log = _run_bootstrap(tmp_path / "retry", {"RESULT_FAILS": "1"}, sleep_override=True)
     retried_lines = _result_lines(retried_log)
     assert retried.returncode == 0, retried.stderr
     assert len(retried_lines) == 2
     assert all("outcome=success" in line for line in retried_lines)
+    _assert_report_curl_timeouts(retried_log)
 
     failed, failed_log = _run_bootstrap(
         tmp_path / "giveup",
@@ -904,6 +951,7 @@ def test_bootstrap_script_retries_result_report_without_changing_exit_code(tmp_p
     assert all("outcome=failed" in line.split() for line in failed_lines)
     assert all("stage=install" in line.split() for line in failed_lines)
     assert all("exit_code=3" in line.split() for line in failed_lines)
+    _assert_report_curl_timeouts(failed_log)
 
 
 @pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
