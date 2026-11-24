@@ -55,6 +55,7 @@ def calls(monkeypatch):
 def _stub_critical_schema_gate(monkeypatch):
     monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: None)
     monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: False)
+    monkeypatch.setattr(bi.Command, "_create_admin_runtime_user", staticmethod(lambda: None))
     monkeypatch.setattr(bi.transaction, "atomic", nullcontext)
     monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "Managed-Secret-1!")
     monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
@@ -214,6 +215,52 @@ class TestHandleDispatch:
 
         assert not [call for call in calls if call[0] == "create_user"]
 
+    def test_existing_admin_without_migration_still_ensures_runtime_user(self, calls, monkeypatch, tmp_path):
+        monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: True)
+        ensured = []
+        monkeypatch.setattr(bi.Command, "_create_admin_runtime_user", staticmethod(lambda: ensured.append(True)))
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(tmp_path / "missing-secret"))
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
+
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        assert not [call for call in calls if call[0] == "create_user"]
+        assert ensured == [True]
+
+    def test_fresh_system_mgmt_ensures_runtime_user_after_create_user(self, calls, monkeypatch):
+        ensured = []
+        monkeypatch.setattr(bi.Command, "_create_admin_runtime_user", staticmethod(lambda: ensured.append(True)))
+
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        assert [call for call in calls if call[0] == "create_user"]
+        assert ensured == [True]
+
+    def test_runtime_user_ensure_runs_outside_admin_bootstrap_transaction(self, monkeypatch):
+        inside = {"atomic": False, "create_inside_atomic": None}
+
+        class FakeAtomic:
+            def __enter__(self):
+                inside["atomic"] = True
+                return self
+
+            def __exit__(self, *args):
+                inside["atomic"] = False
+                return False
+
+        monkeypatch.setattr(bi.transaction, "atomic", lambda: FakeAtomic())
+        monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda self: True)
+        monkeypatch.setattr(
+            bi.Command,
+            "_create_admin_runtime_user",
+            staticmethod(lambda: inside.__setitem__("create_inside_atomic", inside["atomic"])),
+        )
+
+        _make_command()._bootstrap_admin()
+
+        assert inside["create_inside_atomic"] is False
+
     def test_any_domain_admin_preserves_legacy_noop_without_secret(self, calls, monkeypatch, tmp_path):
         monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: True)
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
@@ -287,6 +334,57 @@ class TestErrorHandlingPolicy:
         rendered = record.getMessage()
         formatted = logging.Formatter().format(record)
         assert rendered == "event=notification_tag_init_failed failed_stage=init_notification_tags error_type=RuntimeError"
+        assert formatted.count("Traceback (most recent call last)") == 1
+        assert secret not in rendered
+        assert secret not in formatted
+        assert secret not in caplog.text
+
+    def test_admin_runtime_user_failure_warns_and_does_not_block_startup(self, monkeypatch, caplog):
+        import logging
+
+        calls = []
+        secret = "runtime-user-init-secret"
+        raised = {}
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+
+        def boom():
+            error = RuntimeError(f"runtime user failed {secret}")
+            raised["error"] = error
+            raise error
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        monkeypatch.setattr(bi.Command, "_create_admin_runtime_user", staticmethod(boom))
+        monkeypatch.setattr(bi.Command, "_init_cmdb", lambda self: calls.append("cmdb"))
+        caplog.set_level(logging.WARNING, logger="app")
+        cmd = _make_command()
+
+        cmd.handle(apps="system_mgmt,cmdb", continue_on_error=False)
+
+        assert "create_user" in calls
+        assert calls[-1] == "cmdb"
+        assert not any(message.startswith("ERR:初始化 system_mgmt") for message in cmd.stdout.messages)
+        assert any(
+            "WARN:默认域 admin 运行时账号初始化跳过（RuntimeError），首次登录后仍可自动补齐" in message
+            for message in cmd.stdout.messages
+        )
+        assert all(secret not in message for message in cmd.stdout.messages)
+        records = [record for record in caplog.records if record.name == "app" and getattr(record, "exc_info", None)]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == "event=admin_runtime_user_init_failed failed_stage=ensure_admin_runtime_user error_type=%s"
+        assert record.args == ("RuntimeError",)
+        assert record.exc_info[0] is SafeLogException
+        assert record.exc_info[2] is raised["error"].__traceback__
+        rendered = record.getMessage()
+        formatted = logging.Formatter().format(record)
+        assert rendered == "event=admin_runtime_user_init_failed failed_stage=ensure_admin_runtime_user error_type=RuntimeError"
         assert formatted.count("Traceback (most recent call last)") == 1
         assert secret not in rendered
         assert secret not in formatted
