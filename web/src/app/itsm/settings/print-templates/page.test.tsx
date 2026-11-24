@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { renderItsm as render } from '../../test-utils';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import PrintPreviewPage from './page';
 

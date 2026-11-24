@@ -149,6 +149,18 @@
       "favoriteService": "Add {name} to favorites",
       "unfavoriteService": "Remove {name} from favorites"
     },
+    "print": {
+      "loading": "Loading print preview",
+      "ticketFailed": "Could not load print content",
+      "sampleFailed": "Could not load the print sample",
+      "backToDetail": "Back to ticket details",
+      "title": "Print ticket",
+      "action": "Print",
+      "ticketPreview": "Ticket print preview",
+      "preview": "Print preview",
+      "sampleDescription": "This preview uses sample data. Printed tickets use their actual field values.",
+      "samplePreview": "Sample print preview"
+    },
     "knowledge": {
       "published": "Published",
       "draft": "Draft",

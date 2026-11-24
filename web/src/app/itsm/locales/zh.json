@@ -149,6 +149,18 @@
       "favoriteService": "收藏{name}",
       "unfavoriteService": "取消收藏{name}"
     },
+    "print": {
+      "loading": "正在加载打印预览",
+      "ticketFailed": "无法加载打印内容",
+      "sampleFailed": "无法加载打印样例",
+      "backToDetail": "返回工单详情",
+      "title": "打印工单",
+      "action": "打印",
+      "ticketPreview": "工单打印预览",
+      "preview": "打印预览",
+      "sampleDescription": "此处使用示例数据，打印时填入工单的实际字段值。",
+      "samplePreview": "打印样例预览"
+    },
     "knowledge": {
       "published": "已发布",
       "draft": "草稿",
