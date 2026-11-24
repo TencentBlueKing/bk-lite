@@ -1,17 +1,21 @@
+import { renderItsm as render } from '../test-utils';
 import React from 'react';
-import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
 const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn(), portal: vi.fn(), toggleFavorite: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
-vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('next/link', () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
-vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection?: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { const { rowSelection, dataSource } = props; if (!rowSelection) return <div>{dataSource.length} 条记录</div>; tableProps.current = props; return <div>{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
+vi.mock('next/link', () => ({ default: ({ children, href, onNavigate }: { children: React.ReactNode; href: string; onNavigate?: () => void }) => <a href={href} onClick={event => { event.preventDefault(); onNavigate?.(); }}>{children}</a> }));
+vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection?: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { const { rowSelection, dataSource } = props; if (!rowSelection) return <div>{dataSource.length} 条记录</div>; tableProps.current = props; return <div className="ant-table-body">{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })) });
 // 列配置加载后还会触发防抖查询，给并行运行时的真实异步渲染留出时间。
 configure({ asyncUtilTimeout: 3000 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, '');
+  window.sessionStorage.clear();
+});
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(window.matchMedia).mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) as unknown as MediaQueryList);
@@ -302,4 +306,46 @@ it('提供批量审批所需的意见后才允许执行', async () => {
   fireEvent.change(opinion, { target: { value: '  批量核验  ' } });
   fireEvent.click(confirm);
   await waitFor(() => expect(api.batchTickets).toHaveBeenCalledWith([1], 'approve', '批量核验'));
+});
+
+it('从快速提单返回工单中心时还原筛选、分组、分页与表格滚动', async () => {
+  api.listTickets.mockResolvedValue({ items: [{ id: 1, sn: 'REQ1', title: '测试工单' }], count: 100, can_apply: true });
+  api.portal.mockResolvedValue({
+    can_apply: true, services: [{ id: 21, name: '电脑申请' }], catalogs: [], favorites: [], recents: [], hots: [],
+  });
+  const list = render(<TicketWorkbench />);
+  fireEvent.click(await screen.findByRole('tab', { name: '我的历史' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '工单关键词' }), { target: { value: '返程筛选' } });
+  fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+  act(() => tableProps.current.pagination.onChange(2, 20));
+  await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, q: '返程筛选' })));
+  const table = list.container.querySelector('.ant-table-body')!;
+  table.scrollTop = 92;
+  fireEvent.click(await screen.findByRole('button', { name: '快速提单' }));
+  fireEvent.click(await screen.findByRole('link', { name: '电脑申请' }));
+  list.unmount();
+  window.history.pushState(null, '');
+  api.listTickets.mockClear();
+
+  const restored = render(<TicketWorkbench restoreView />);
+  await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ tab: 'history', q: '返程筛选', page: 2 })));
+  expect(screen.getByRole('textbox', { name: '工单关键词' })).toHaveProperty('value', '返程筛选');
+  await waitFor(() => expect(restored.container.querySelector('.ant-table-body')?.scrollTop).toBe(92));
+});
+
+it('英文快速提单先显示与目录同结构的加载状态再显示搜索', async () => {
+  api.listTickets.mockResolvedValue({ items: [], count: 0, can_apply: true });
+  const portal = { can_apply: true, services: [], catalogs: [], favorites: [], recents: [], hots: [] };
+  let complete: (value: typeof portal) => void;
+  api.portal.mockImplementation(() => new Promise<typeof portal>(resolve => { complete = resolve; }));
+  render(<TicketWorkbench />, { locale: 'en' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Quick request' }));
+  const dialog = within(await screen.findByRole('dialog'));
+  expect(dialog.getByRole('status', { name: 'Loading services' })).toBeTruthy();
+  expect(dialog.queryByRole('textbox', { name: 'Search services' })).toBeNull();
+  await act(async () => complete(portal));
+  await dialog.findByRole('textbox', { name: 'Search services' });
+  expect(dialog.getByRole('tab', { name: 'All services' })).toBeTruthy();
+  expect(dialog.getByRole('combobox', { name: 'Filter by service catalog' })).toBeTruthy();
+  expect(dialog.queryByRole('status', { name: 'Loading services' })).toBeNull();
 });

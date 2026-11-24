@@ -17,6 +17,8 @@
       "loading": "正在加载..."
     },
     "ticket": {
+      "backToPortal": "返回服务门户",
+      "backToList": "返回工单列表",
       "center": "工单中心",
       "search": "搜索标题或单号",
       "submit": "提单",
@@ -121,6 +123,31 @@
       "passed": "已经过",
       "notReached": "未到达",
       "currentHandler": "当前 · {names}"
+    },
+    "quickSubmit": {
+      "title": "快速提单",
+      "searchPlaceholder": "搜索服务名称、描述或流程",
+      "notAllowed": "你没有提单权限",
+      "loadFailed": "服务加载失败",
+      "favoriteFailed": "更新收藏失败",
+      "emptyFavorites": "暂无收藏的服务",
+      "emptyRecents": "暂无最近使用的服务",
+      "noMatch": "未找到匹配的服务",
+      "loading": "正在加载服务"
+    },
+    "serviceBrowser": {
+      "prompt": "选择服务，开始你的申请",
+      "filter": "服务目录筛选",
+      "allCatalogs": "全部目录",
+      "uncategorized": "未分类",
+      "noMatch": "未找到匹配的服务，试试其他关键词",
+      "empty": "暂无可申请的服务",
+      "fallbackCatalog": "其他服务",
+      "emptyCards": "暂无服务",
+      "description": "按需申请，在线跟进处理进度",
+      "unfavorite": "取消收藏",
+      "favoriteService": "收藏{name}",
+      "unfavoriteService": "取消收藏{name}"
     },
     "portal": {
       "title": "服务门户",

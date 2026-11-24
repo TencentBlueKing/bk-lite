@@ -33,7 +33,7 @@ it('提交校验后创建并跳转真实详情，重复提交不重复建单', a
   const { result } = renderHook(() => useServiceDraft(1, form as unknown as FormInstance), { wrapper });
   await waitFor(() => expect(result.current.ticket).not.toBeNull());
   await act(() => result.current.save(true));
-  expect(api.createTicket).toHaveBeenCalledWith({ service_id: 1, workflow_version_id: 2, form_data: { title: '申请', amount: 30 } });
+  expect(api.createTicket).toHaveBeenCalledWith({ creation_key: expect.any(String), service_id: 1, workflow_version_id: 2, form_data: { title: '申请', amount: 30 } });
   expect(router.replace).toHaveBeenCalledWith('/itsm/tickets/90');
   await act(() => result.current.save(true));
   expect(api.createTicket).toHaveBeenCalledTimes(1);
@@ -51,4 +51,25 @@ it('不可见服务拒绝读取表单及创建', async () => {
   await waitFor(() => expect(result.current.error).toContain('没有申请权限'));
   expect(api.ticketForm).not.toHaveBeenCalled();
   expect(api.createTicket).not.toHaveBeenCalled();
+});
+
+it('工单中心快速提单后保留返回列表的来源', async () => {
+  const { result } = renderHook(() => useServiceDraft(1, form as unknown as FormInstance, true), { wrapper });
+  await waitFor(() => expect(result.current.ticket).not.toBeNull());
+  await act(() => result.current.save(true));
+  expect(router.replace).toHaveBeenCalledWith('/itsm/tickets/90?from=tickets');
+});
+
+it('引擎响应丢失后刷新再次提交，沿用同一申请标识', async () => {
+  api.createTicket.mockRejectedValueOnce(new Error('未收到响应'));
+  const first = renderHook(() => useServiceDraft(1, form as unknown as FormInstance), { wrapper });
+  await waitFor(() => expect(first.result.current.ticket).not.toBeNull());
+  await act(() => first.result.current.save(true));
+  const key = api.createTicket.mock.calls[0][0].creation_key;
+  expect(typeof key).toBe('string');
+  first.unmount();
+  const retry = renderHook(() => useServiceDraft(1, form as unknown as FormInstance), { wrapper });
+  await waitFor(() => expect(retry.result.current.ticket).not.toBeNull());
+  await act(() => retry.result.current.save(true));
+  expect(api.createTicket.mock.calls[1][0].creation_key).toBe(key);
 });

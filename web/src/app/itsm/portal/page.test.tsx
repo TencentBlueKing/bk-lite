@@ -1,12 +1,12 @@
+import { renderItsm as render } from '../test-utils';
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from 'antd';
 import PortalPage from './page';
 const api = vi.hoisted(() => ({ ready: true, portal: vi.fn(), portalLayout: vi.fn(), portalDashboard: vi.fn(), savePortalLayout: vi.fn(), toggleFavorite: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('next/link', () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
-vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: () => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
 afterEach(cleanup);
 beforeEach(() => {

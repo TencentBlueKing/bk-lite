@@ -84,6 +84,7 @@ export interface PortalCatalog {
 }
 
 export interface PortalData {
+  service_total?: number;
   can_manage?: boolean;
   can_apply?: boolean;
   catalogs: PortalCatalog[];
@@ -277,6 +278,8 @@ export interface SurveyResult {
 }
 
 export interface TicketDetail {
+  selected_task_id?: number | null;
+  form_rules?: FormSchema['rules'];
   history?: TicketHistoryItem[];
   created_at?: string;
   workflow_name?: string;

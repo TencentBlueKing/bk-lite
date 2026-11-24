@@ -2,9 +2,10 @@
 
 import { Alert, App, Form, Button, Empty, Tag } from 'antd';
 import { ItsmBackButton } from './back-button';
+import { TICKET_LIST_RETURN } from './ticket-list-view';
 import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined, PrinterOutlined } from '@ant-design/icons';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
 import { FormRenderer } from './form-renderer';
 import { TicketHeaderSocial, TicketRelations } from './ticket-social';
@@ -32,6 +33,10 @@ const STATUS_LABEL: Record<string, { id: string; color: string }> = {
 export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serviceId?: number; fromTicketCenter?: boolean }) {
   const params = useParams<{ id: string }>();
   const ticketId = Number(params.id);
+  return <TicketContent key={serviceId ? `service-${serviceId}` : ticketId} ticketId={ticketId} serviceId={serviceId} fromTicketCenter={fromTicketCenter} />;
+}
+
+function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: number; serviceId?: number; fromTicketCenter?: boolean }) {
   const { t } = useTranslation();
   const router = useRouter();
   const { settings } = useItsmRuntimeSettings();
@@ -40,36 +45,56 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
   const [existingTicket, setTicket] = useState<TicketDetail | null>(null);
   const [triggerLogRevision, setTriggerLogRevision] = useState(0);
   const [form] = Form.useForm();
-  const draft = useServiceDraft(serviceId, form);
+  const draft = useServiceDraft(serviceId, form, fromTicketCenter);
   const ticket = serviceId ? draft.ticket : existingTicket;
   const [operationBusy, setBusy] = useState(false);
-  const busy = operationBusy || draft.busy;
+  const [loadError, setLoadError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const busy = operationBusy || draft.busy || loading;
   const [logsOpen, setLogsOpen] = useState(true);
 
-  const load = useCallback(async () => {
-    const data = await api.getTicket(ticketId) as TicketDetail;
-    setTicket(data);
-    setTriggerLogRevision(revision => revision + 1);
+  const sequence = useRef(0);
+  const selectedTaskId = useRef<number>(undefined);
+  const load = useCallback(async (taskId = selectedTaskId.current, background = false) => {
+    const request = ++sequence.current;
+    if (!background) setLoading(true);
+    setLoadError(undefined);
+    try {
+      const data = await api.getTicket(ticketId, taskId) as TicketDetail;
+      if (request !== sequence.current) return;
+      selectedTaskId.current = data.tasks.find(task => task.can_operate && task.id === data.selected_task_id)?.id;
+      setTicket(data);
+      setTriggerLogRevision(revision => revision + 1);
+    } catch (cause) {
+      if (request !== sequence.current || background) return;
+      const status = (cause as { status?: number })?.status;
+      const unavailable = status === 403 || status === 404;
+      setTicket(null);
+      setLoadError(unavailable ? '工单不存在或当前账号没有访问权限' : cause instanceof Error ? cause.message : '加载工单失败');
+    } finally {
+      if (request === sequence.current) setLoading(false);
+    }
   }, [api.getTicket, ticketId]);
 
   useEffect(() => {
-    if (ticket) form.setFieldsValue(ticket.form_data);
+    if (ticket) {
+      form.resetFields();
+      form.setFieldsValue(ticket.form_data);
+    }
   }, [ticket, form]);
 
   useEffect(() => {
-    if (!api.ready || !ticketId) {
-      return;
-    }
-    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
-  }, [api.ready, load, ticketId]);
+    if (api.ready && ticketId && !serviceId) void load();
+    return () => { sequence.current++; };
+  }, [api.ready, load, ticketId, serviceId]);
 
   useEffect(() => {
-    if (serviceId || !ticket || ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
+    if (busy || serviceId || !ticket || ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
     const hasRunningStep = ticket.history?.some(item => item.action === 'auto' && item.state === 'current');
     if (ticket.tasks.length && !hasRunningStep) return;
-    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 5000);
+    const timer = window.setInterval(() => { void load(undefined, true); }, 5000);
     return () => window.clearInterval(timer);
-  }, [ticket, load, serviceId]);
+  }, [ticket, load, serviceId, busy]);
 
   const operate = async (action: string, task?: TicketTaskItem, extra?: OperationInput) => {
     setBusy(true);
@@ -83,6 +108,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
         form_data: ['submit', 'approve', 'reject', 'save'].includes(action) ? await form.validateFields() : undefined,
       });
       message.success(t('itsm.ticket.operateOk'));
+      if (!['claim', 'save'].includes(action)) selectedTaskId.current = undefined;
       await load();
       return true;
     } catch (error) {
@@ -109,10 +135,16 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
 
   if (serviceId && draft.error) return <Alert type="error" message={draft.error} action={<Button onClick={() => void draft.load()}>重试</Button>} />;
 
+  if (loadError && !serviceId) return <Alert type="error" message={loadError} action={<div className="flex gap-2">
+    <ItsmBackButton href={fromTicketCenter ? TICKET_LIST_RETURN : '/itsm/tickets'} label="返回工单列表" />
+    <Button onClick={() => { selectedTaskId.current = undefined; void load(); }}>重试</Button>
+  </div>} />;
+
   if (!ticket) {
     return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-8 text-center text-sm text-[var(--color-text-3)]">{t('itsm.ticket.detailLoading')}</div>;
   }
 
+  const selectedTask = ticket.tasks.find(task => task.id === ticket.selected_task_id && task.can_operate);
   const status = STATUS_LABEL[ticket.status];
   const backToPortal = serviceId && !fromTicketCenter;
 
@@ -121,12 +153,12 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
       <header className="sticky top-0 z-20 shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <ItsmBackButton href={backToPortal ? "/itsm/portal" : "/itsm/tickets"} label={backToPortal ? "返回服务门户" : "返回工单列表"} />
+            <ItsmBackButton href={backToPortal ? "/itsm/portal" : fromTicketCenter ? TICKET_LIST_RETURN : "/itsm/tickets"} label={t(backToPortal ? "itsm.ticket.backToPortal" : "itsm.ticket.backToList")} />
             <Tag color={status?.color || 'default'}>{serviceId ? '待提单' : status ? t(status.id) : ticket.status}</Tag>
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
             <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print`)}>打印</Button><TicketActions ticket={ticket} busy={busy} operate={operate} /></>}</div>
+          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>
@@ -143,7 +175,7 @@ export default function TicketDetailPage({ serviceId, fromTicketCenter }: { serv
         <div role="region" aria-label="工单表单" tabIndex={0} className="h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain p-5">
           <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">{t('itsm.ticket.form')}</div>
           <div className="mb-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-3)]">{ticket.sla?.map((item) => <span key={item.target}>{item.target === 'response' ? '响应期限' : '解决期限'}：{formatTicketTime(item.due_at)}{item.paused ? ' · 已暂停' : item.breached ? ' · 已超时' : item.finished_at ? ' · 已达标' : ''}</span>)}</div>
-          <FormRenderer fetchContext={serviceId ? { service_id: serviceId } : { ticket_id: ticketId }} form={form} schema={{ version: 1, fields: ticket.fields }} initialValues={ticket.form_data} fieldPerm={serviceId ? draft.fieldPerm : ticket.tasks.find((task) => task.can_operate)?.field_perm} readOnly={!serviceId && !ticket.tasks.some((task) => task.can_operate)} hideSubmit onSubmit={() => undefined} />
+          <FormRenderer fetchContext={serviceId ? { service_id: serviceId } : { ticket_id: ticketId, task_id: selectedTask?.id }} form={form} schema={{ version: 1, fields: ticket.fields, rules: ticket.form_rules }} initialValues={ticket.form_data} fieldPerm={serviceId ? draft.fieldPerm : selectedTask?.field_perm} readOnly={!serviceId && (!selectedTask || loading)} hideSubmit onSubmit={() => undefined} />
         </div>
 
         <aside aria-label="工单协作" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--color-border)]">

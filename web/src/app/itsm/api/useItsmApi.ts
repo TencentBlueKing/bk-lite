@@ -130,7 +130,7 @@ export function useItsmApi() {
   );
   const deleteResource = useCallback((kind: string, id: number) => del(`/itsm/api/resources/${kind}/${id}/`), [del]);
   const createTicket = useCallback(
-    (body: { workflow_version_id: number; form_data: Record<string, unknown>; service_id?: number }) => post('/itsm/api/tickets/', body),
+    (body: { workflow_version_id: number; form_data: Record<string, unknown>; service_id?: number; creation_key?: string }) => post('/itsm/api/tickets/', body),
     [post],
   );
   const operateTicket = useCallback(
@@ -140,7 +140,7 @@ export function useItsmApi() {
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
-  const getTicket = useCallback((id: number) => get(`/itsm/api/tickets/${id}/`), [get]);
+  const getTicket = useCallback((id: number, taskId?: number) => get(`/itsm/api/tickets/${id}/`, { params: { task_id: taskId }, suppressErrorNotification: true }), [get]);
   const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
     `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
   ), [get]);
@@ -150,7 +150,8 @@ export function useItsmApi() {
     (id: number, body: SurveySubmission) => post(`/itsm/api/tickets/${id}/survey/`, body),
     [post],
   );
-  const portal = useCallback(() => get<PortalData>('/itsm/api/services/portal/'), [get]);
+  const portal = useCallback((serviceId?: number) => get<PortalData>(`/itsm/api/services/portal/?${serviceId ? `service_id=${serviceId}` : 'summary=1'}`), [get]);
+  const directoryPage = useCallback((query: Record<string, string>) => get<{items: PortalData['services']; total: number; page: number}>(`/itsm/api/services/portal/?directory=1&${new URLSearchParams(query)}`), [get]);
   const portalLayout = useCallback(() => get('/itsm/api/services/layout/'), [get]);
   const savePortalLayout = useCallback((value: PortalLayout) => put('/itsm/api/services/layout/', value), [put]);
   const portalDashboard = useCallback(() => get('/itsm/api/services/dashboard/'), [get]);
@@ -165,7 +166,7 @@ export function useItsmApi() {
     [post],
   );
   const deleteService = useCallback((id: number) => del(`/itsm/api/services/?id=${id}`), [del]);
-  const toggleFavorite = useCallback((id: number) => post<{ favorite: boolean }>(`/itsm/api/services/${id}/favorite/`), [post]);
+  const toggleFavorite = useCallback((id: number) => post<{ favorite: boolean; service?: PortalData['services'][number] }>(`/itsm/api/services/${id}/favorite/`), [post]);
   const useService = useCallback((id: number) => post(`/itsm/api/services/${id}/use/`), [post]);
   const searchUsers = useCallback(
     (q: string, page = 1) => get('/itsm/api/users/search/', { params: { q, page, page_size: 10 } }),
@@ -301,7 +302,7 @@ export function useItsmApi() {
     ticketForm,
     listTicketWorkflows,
     submitSurvey,
-    portal,
+    directoryPage, portal,
     portalLayout,
     savePortalLayout,
     portalDashboard,

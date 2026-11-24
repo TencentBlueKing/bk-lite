@@ -17,6 +17,8 @@
       "loading": "Loading..."
     },
     "ticket": {
+      "backToPortal": "Back to service portal",
+      "backToList": "Back to tickets",
       "center": "Tickets",
       "search": "Search title or number",
       "submit": "New ticket",
@@ -121,6 +123,31 @@
       "passed": "Passed",
       "notReached": "Not reached",
       "currentHandler": "Current · {names}"
+    },
+    "quickSubmit": {
+      "title": "Quick request",
+      "searchPlaceholder": "Search service names, descriptions or workflows",
+      "notAllowed": "You do not have permission to submit a request",
+      "loadFailed": "Could not load services",
+      "favoriteFailed": "Could not update favorite",
+      "emptyFavorites": "No favorite services",
+      "emptyRecents": "No recently used services",
+      "noMatch": "No matching services",
+      "loading": "Loading services"
+    },
+    "serviceBrowser": {
+      "prompt": "Choose a service to start a request",
+      "filter": "Filter by service catalog",
+      "allCatalogs": "All catalogs",
+      "uncategorized": "Uncategorized",
+      "noMatch": "No matching services. Try a different search.",
+      "empty": "No services available for requests",
+      "fallbackCatalog": "Other services",
+      "emptyCards": "No services",
+      "description": "Submit a request and track its progress online",
+      "unfavorite": "Remove from favorites",
+      "favoriteService": "Add {name} to favorites",
+      "unfavoriteService": "Remove {name} from favorites"
     },
     "portal": {
       "title": "Service portal",

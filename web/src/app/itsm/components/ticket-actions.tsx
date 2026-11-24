@@ -20,6 +20,7 @@ export interface OperationInput {
 interface Props {
   ticket: TicketDetail;
   busy: boolean;
+  onTaskChange?: (taskId: number) => void;
   operate: (action: string, task?: TicketTaskItem, extra?: OperationInput) => Promise<boolean>;
 }
 
@@ -30,10 +31,10 @@ interface PendingOperation {
   taskId?: number;
 }
 
-export function TicketActions({ ticket, busy, operate }: Props) {
+export function TicketActions({ ticket, busy, operate, onTaskChange }: Props) {
   const tasks = ticket.tasks.filter(task => task.can_operate);
   const [taskId, setTaskId] = useState<number>();
-  const task = tasks.find(item => item.id === taskId) || tasks[0];
+  const task = tasks.find(item => item.id === (onTaskChange ? ticket.selected_task_id : taskId)) || tasks[0];
   const [pending, setPending] = useState<PendingOperation>();
   const [target, setTarget] = useState<string[]>([]);
   const [opinion, setOpinion] = useState('');
@@ -86,7 +87,7 @@ export function TicketActions({ ticket, busy, operate }: Props) {
 
   return <>
     <div role="group" aria-label="工单操作" className="flex flex-wrap items-center gap-2">
-      {tasks.length > 1 ? <Select aria-label="处理任务" value={task?.id} onChange={setTaskId} options={tasks.map(item => ({ value: item.id, label: item.node_name || item.node_id }))} /> : null}
+      {tasks.length > 1 ? <Select aria-label="处理任务" value={task?.id} disabled={busy} onChange={onTaskChange || setTaskId} options={tasks.map(item => ({ value: item.id, label: item.node_name || item.node_id }))} /> : null}
       {configured.map(row => renderButton(row.action, displayActionLabel(row, ticketActionLabel)))}
       {visible.map(value => renderButton(value))}
       {more.length ? <Dropdown disabled={busy} menu={{ items: more.map(value => ({ key: value, label: ticketActionLabel(value), danger: DANGER_ACTIONS.has(value), onClick: () => select(value, ticketActionLabel(value)) })) }}><Button disabled={busy}>更多操作</Button></Dropdown> : null}

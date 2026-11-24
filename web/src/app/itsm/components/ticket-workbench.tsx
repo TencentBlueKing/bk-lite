@@ -10,12 +10,14 @@ import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { Alert, App, Button, Checkbox, DatePicker, Input, Popconfirm, Popover, Tooltip, Select, Spin, Table, Tabs, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { CloseOutlined, DownloadOutlined, FilterOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons';
+import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { UserSelector } from './user-selector';
 import { TicketTagSelector } from './ticket-tag-selector';
 import { TicketFormFilters, completeFormConditions } from './ticket-form-filters';
 import { TicketExportDialog } from './ticket-export-dialog';
 import { TicketExportHistory } from './ticket-export-history';
+import { readTicketListView, rememberTicketListView } from './ticket-list-view';
 import { ItsmCreateButton } from './list-controls';
 import { QuickSubmitDrawer } from './quick-submit-drawer';
 import { useItsmApi } from '../api/useItsmApi';
@@ -41,8 +43,9 @@ interface BatchOptions {
 }
 const errorText = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
 
-export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string }) {
+export function TicketWorkbench({ initialTab = 'all', restoreView = false }: { initialTab?: string; restoreView?: boolean }) {
   const api = useItsmApi();
+  const { t } = useTranslation();
   const { message } = App.useApp();
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [columnDraft, setColumnDraft] = useState(DEFAULT_COLUMNS);
@@ -54,6 +57,9 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   const [draft, setDraft] = useState<Filters>({ ...EMPTY, tab: initialTab });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [viewReady, setViewReady] = useState(false);
+  const tableContainer = useRef<HTMLDivElement>(null);
+  const restoredScroll = useRef<{ top: number; left: number } | null>(null);
   const [total, setTotal] = useState(0);
   const [canExport, setCanExport] = useState(false);
   const [canApply, setCanApply] = useState(false);
@@ -87,6 +93,26 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   const batchActionAvailable = !optionsLoading && batchOptions.includes(action);
   const canConfirmBatch = batchActionAvailable && (!opinionRequired || Boolean(opinion.trim()));
 
+  useEffect(() => {
+    const view = readTicketListView(restoreView);
+    if (view) {
+      setTab(view.tab);
+      setQuery(view.query);
+      setDraft(view.draft);
+      setPage(view.page);
+      setPageSize(view.pageSize);
+      restoredScroll.current = { top: view.scrollTop, left: view.scrollLeft };
+    }
+    setViewReady(true);
+  }, [restoreView]);
+
+  const saveReturnView = () => {
+    const body = tableContainer.current?.querySelector('.ant-table-body');
+    rememberTicketListView({
+      tab, query, draft, page, pageSize, scrollTop: body?.scrollTop ?? 0, scrollLeft: body?.scrollLeft ?? 0,
+    });
+  };
+
   const loadSettings = useCallback(async () => {
     try {
       const value = await api.centerSettings() as Settings;
@@ -95,7 +121,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
   }, [api.centerSettings]);
   useEffect(() => { if (api.ready) void loadSettings(); }, [api.ready, loadSettings]);
   useEffect(() => {
-    if (!api.ready || !settingsReady) return;
+    if (!api.ready || !settingsReady || !viewReady) return;
     let active = true;
     setLoading(true); setLoadError('');
     void api.listTickets({ ...query, fields: columns.join(','), page, page_size: pageSize }).then((value) => {
@@ -106,7 +132,18 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
       if (!result.can_apply) setQuickSubmitOpen(false);
     }).catch((error: unknown) => { if (active) { setLoadError(errorText(error)); setItems([]); setTotal(0); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [api.ready, api.listTickets, settingsReady, query, columns, page, pageSize, refresh]);
+  }, [api.ready, api.listTickets, settingsReady, viewReady, query, columns, page, pageSize, refresh]);
+
+  useEffect(() => {
+    const scroll = restoredScroll.current;
+    if (!scroll || loading || !items.length) return;
+    const body = tableContainer.current?.querySelector('.ant-table-body');
+    if (body) {
+      body.scrollTop = scroll.top;
+      body.scrollLeft = scroll.left;
+      restoredScroll.current = null;
+    }
+  }, [items, loading]);
 
   useEffect(() => {
     if (!selected.length) return;
@@ -171,7 +208,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
     sorter: sortable.has(key), sortOrder: query.ordering.replace('-', '') === key ? query.ordering.startsWith('-') ? 'descend' : 'ascend' : null,
     ellipsis: true,
     render: (value: unknown, record: TicketListItem) => {
-      if (key === 'sn' || key === 'title') return <ItsmListEntry href={`/itsm/tickets/${record.id}`}>{String(value || '—')}</ItsmListEntry>;
+      if (key === 'sn' || key === 'title') return <ItsmListEntry href={`/itsm/tickets/${record.id}?from=tickets`} onNavigate={saveReturnView}>{String(value || '—')}</ItsmListEntry>;
       if (key === 'status') { const status = STATUS.find(item => item.value === value); return <Tag color={status?.color}>{status?.label || String(value || '—')}</Tag>; }
       if (key === 'node') return record.tasks?.map(task => task.node_name || task.node_id).join('、') || '—';
       if (key === 'assignees') return [...new Set(record.tasks?.map(task => task.assignee).filter(Boolean))].map(name => <Tag key={name}>{name}</Tag>);
@@ -209,11 +246,11 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         <Button aria-label="导出" icon={<DownloadOutlined />} disabled={loading || total === 0} onClick={() => setExportOpen(true)}>导出</Button>
       </>}
       <Button type={canApply ? 'default' : 'primary'} disabled={loading || !batchActionAvailable} onClick={() => { setOpinion(''); setResults(null); setBatchNames(Object.fromEntries(items.map(item => [item.id, `${item.sn} · ${item.title}`]))); setBatchOpen(true); }}>批量处理</Button>
-      {canApply && <ItsmCreateButton onClick={() => setQuickSubmitOpen(true)}>快速提单</ItsmCreateButton>}
+      {canApply && <ItsmCreateButton onClick={() => setQuickSubmitOpen(true)}>{t('itsm.quickSubmit.title')}</ItsmCreateButton>}
     </>} />
     {selected.length > 0 ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-primary)] bg-[var(--color-bg)] p-3"><span>已选 {selected.length} 项</span><Select aria-label="批量操作类型" className="w-36" value={action} loading={optionsLoading} disabled={optionsLoading} options={ACTIONS.filter(item => batchOptions.includes(item.value))} onChange={setAction} /><Button type="text" onClick={() => setSelected([])}>取消选择</Button><span className="text-xs text-[var(--color-text-3)]">仅选择当前页，每次最多 50 项</span></div> : null}
     {loadError ? <Alert className="mb-3" type="error" message={loadError} action={<Button onClick={() => setRefresh(value => value + 1)}>重试</Button>} /> : null}
-    <div className="relative [&_thead_th:last-child]:!pr-12">
+    <div ref={tableContainer} className="relative [&_thead_th:last-child]:!pr-12">
     <Tooltip title="展示字段"><Button className="!absolute right-1 top-3 z-10" type="text" aria-label="展示字段" icon={<SettingOutlined />} onClick={() => { setColumnDraft(columns); setColumnOpen(true); }} /></Tooltip>
     <CustomTable<TicketListItem> scroll={{ y: selected.length ? 'calc(100vh - 460px)' : 'calc(100vh - 360px)' }} rowKey="id" loading={loading} dataSource={items} columns={tableColumns}
       rowSelection={{ selectedRowKeys: selected, onChange: keys => setSelected(keys.slice(0, 50)), preserveSelectedRowKeys: false, getCheckboxProps: () => ({ disabled: loading }) }}
@@ -246,7 +283,7 @@ export function TicketWorkbench({ initialTab = 'all' }: { initialTab?: string })
         message.success('已提交导出任务');
       }} />}
     {exportHistoryOpen && <TicketExportHistory onClose={() => setExportHistoryOpen(false)} />}
-    {canApply && quickSubmitOpen && <QuickSubmitDrawer onClose={() => setQuickSubmitOpen(false)} />}
+    {canApply && quickSubmitOpen && <QuickSubmitDrawer onClose={() => setQuickSubmitOpen(false)} onNavigate={saveReturnView} />}
     {selected.length > 0 && availability?.reason ? <Alert className="mb-3" type="warning" message={availability.reason} /> : null}
     <Modal confirmLoading={batchBusy} formValue={results ? undefined : opinion} title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={!canConfirmBatch} onClick={() => void runBatch()}>确认执行</Button>}>
       {results ? <><Alert className="mb-3" type={results.every(item => item.ok) ? 'success' : 'warning'} message={`成功 ${results.filter(item => item.ok).length} 项，失败 ${results.filter(item => !item.ok).length} 项`} /><Table size="small" rowKey="id" pagination={false} dataSource={results} columns={[{ title: '工单', render: (_value, record: BatchResult) => batchNames[record.id] || record.id }, { title: '结果', render: (_value, record: BatchResult) => record.ok ? <Tag color="success">成功</Tag> : record.error }]} /></> : <><Alert type="info" className="mb-3" message={`将对选中的 ${selected.length} 张工单执行操作，逐单校验权限、节点和必填字段。`} /><div className="mb-3 max-h-36 overflow-auto text-sm">{selected.map(id => <div key={id} className="py-1">{batchNames[Number(id)]}</div>)}</div>{!['follow', 'unfollow'].includes(action) ? <div className="flex flex-col gap-2">
