@@ -628,9 +628,12 @@ const Node = () => {
         title: t('node-manager.cloudregion.node.hostedProgram'),
         dataIndex: 'collectors',
         key: 'collectors',
+        width: 220,
         onCell: () => ({
           style: {
-            minWidth: 200
+            minWidth: 160,
+            maxWidth: 280,
+            whiteSpace: 'normal'
           }
         }),
         render: (_: any, record: TableDataItem) => {
@@ -718,7 +721,7 @@ const Node = () => {
             return <span>--</span>;
           }
           return (
-            <div className="flex flex-nowrap gap-1">
+            <div className="flex flex-wrap gap-1">
               {upgradeableTags}
               {focusTags}
               {statusTags}

@@ -70,7 +70,13 @@ const useColumns = ({
         title: t('node-manager.cloudregion.node.lastReportTime'),
         dataIndex: 'updated_at',
         key: 'updated_at',
-        width: 160,
+        width: 188,
+        onCell: () => ({
+          style: {
+            minWidth: 188,
+            whiteSpace: 'nowrap'
+          }
+        }),
         render: (text: string) => {
           return text ? convertToLocalizedTime(text) : '--';
         }
