@@ -1,5 +1,6 @@
 from io import BytesIO
 
+from django.db.models import Exists, OuterRef
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from openpyxl import Workbook
@@ -10,10 +11,11 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
-from apps.system_mgmt.models import UserLoginLog
+from apps.system_mgmt.models import User, UserLoginLog
 from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
 from apps.system_mgmt.utils.audit_log_export import export_limit_rejection
 from apps.system_mgmt.utils.group_filter_mixin import GroupFilterMixin
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.login_log_utils import format_client_display, format_login_method_display
 
 
@@ -70,6 +72,22 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
     serializer_class = UserLoginLogSerializer
     filterset_class = UserLoginLogFilter
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self._include_unassigned_failed_logins():
+            return queryset
+        unassigned = UserLoginLog.objects.filter(status=UserLoginLog.STATUS_FAILED).exclude(
+            Exists(User.objects.filter(username=OuterRef("username"), domain=OuterRef("domain")))
+        )
+        return (queryset | unassigned).order_by("-created_at")
+
+    def _include_unassigned_failed_logins(self):
+        """超管查看根组织 Default 时，附带对不上任何平台用户的失败登录。"""
+        if not getattr(self.request.user, "is_superuser", False):
+            return False
+        team_id = self._parse_current_team_cookie(self.request)
+        return GroupUtils.active_queryset(id=team_id, name="Default", parent_id=0).exists()
 
     @HasPermission("audit_log-View")
     def list(self, request, *args, **kwargs):
