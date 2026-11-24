@@ -104,6 +104,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "response_status_code",
     "response_string_match",
     "run_as",
+    "run_dir",
     "region",
     "follow_redirects",
     "gather_binary_logs",

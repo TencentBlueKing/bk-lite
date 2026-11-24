@@ -1,6 +1,7 @@
 """脚本采集 child 模板：inputs.bklite_script 之后强制覆盖平台保留标签。"""
 
 import copy
+import re
 
 from django.db import transaction
 
@@ -89,6 +90,7 @@ def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
 # timeout 不下发，由采集器按 interval-1s 推导。
 # run_as 仅在 Linux 填写了执行用户时渲染。留空不写该键，按采集进程用户（当前为 root）运行。
 # 平台不创建账号。用户不存在或无权只让该条脚本失败，不在下发前拒绝整份配置。
+# run_dir 未手写时按 config_id 生成各自目录。采集端已有该字段，重新下发后多份脚本不再共用同一把文件锁。
 SCRIPT_MIN_INTERVAL_SECONDS = 60
 SCRIPT_INTERVAL_MIN_ERROR = "脚本采集间隔不能小于 60 秒"
 SCRIPT_DETECT_TIMEOUT_MARGIN = 10
@@ -101,6 +103,7 @@ DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     {% if environment %}environment = {{ environment | to_toml_str_array }}{% endif %}
     {% if run_as %}run_as = "{{ run_as }}"{% endif %}
     {% if script_name %}script_name = "{{ script_name }}"{% endif %}
+    {% if run_dir %}run_dir = "{{ run_dir }}"{% endif %}
     [inputs.bklite_script.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
@@ -433,6 +436,24 @@ def assert_script_interval(interval):
     return interval_seconds
 
 
+_RUN_DIR_UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def script_isolated_run_dir(context) -> str:
+    """每份配置一个目录。调用方已经写了 run_dir 时原样保留。"""
+    if not isinstance(context, dict):
+        return ""
+    raw = str(context.get("run_dir") or "").strip()
+    if raw:
+        return raw
+    safe = _RUN_DIR_UNSAFE.sub("_", str(context.get("config_id") or "").strip()).strip("_")
+    if not safe:
+        return ""
+    if script_run_as_targets_windows(context):
+        return f"C:/ProgramData/bklite_script-{safe}"
+    return f"/tmp/bklite_script-{safe}"
+
+
 def script_run_as_targets_windows(context) -> bool:
     """与表单一致：显式 script_os 优先；缺省时才看节点操作系统。未知目标按 Linux。"""
     script_os = str((context or {}).get("script_os") or "").strip().lower()
@@ -490,6 +511,9 @@ def _child_render_context(context: dict) -> dict:
         render_context["interval"] = interval_seconds
     render_context.pop("timeout", None)
     normalize_script_run_as(render_context)
+    run_dir = script_isolated_run_dir(render_context)
+    if run_dir:
+        render_context["run_dir"] = run_dir
     return render_context
 
 
