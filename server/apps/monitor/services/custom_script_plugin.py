@@ -80,8 +80,10 @@ def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
 
 
 # 业务指标不下发 name_prefix，入库使用脚本 stdout 短名（不含 bklite_script_{id}_）。
-# 多实例隔离依赖点上的 instance_id / config_id / collect_type；starlark 用 tagpass
-# 只处理本 child，避免改写同一 Telegraf 上的其他采集。
+# Telegraf 1.32 的 tagpass 跨 key 是 OR。collect_type=script 是每份脚本共有的，
+# 写进 tagpass 会让后一份锁改写先一份的 instance_id / plugin_id / config_id。
+# tagpass 只保留本 child 独有的 config_id。starlark 落笔前再核对 config_id 与
+# collect_type，对不上就原样返回，避免同一节点上的多份脚本互相覆盖。
 # 插件契约：script 为脚本正文（可从旧字段 command 迁入）；data_format /
 # command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"。
 # timeout 不下发，由采集器按 interval-1s 推导。
@@ -110,11 +112,6 @@ DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
 [[processors.starlark]]
     source = '''
 def apply(metric):
-    name = metric.name
-    if name.startswith("prometheus_"):
-        trimmed = name[len("prometheus_"):]
-        if trimmed != "":
-            metric.name = trimmed
     conflicts = []
     instance_id = ""
     instance_type = ""
@@ -143,6 +140,13 @@ def apply(metric):
             script = metric.tags[k]
         elif k.startswith("bklite_script_"):
             conflicts.append(k)
+    if config_id == "" or config_id != reserved_config_id or collect_type != reserved_collect_type:
+        return metric
+    name = metric.name
+    if name.startswith("prometheus_"):
+        trimmed = name[len("prometheus_"):]
+        if trimmed != "":
+            metric.name = trimmed
     if instance_id != "" and instance_id != reserved_instance_id:
         conflicts.append("instance_id")
     if instance_type != "" and instance_type != reserved_instance_type:
@@ -183,8 +187,6 @@ def apply(metric):
         reserved_script = "default"
 
     [processors.starlark.tagpass]
-        instance_id = ["{{ instance_id }}"]
-        collect_type = ["script"]
         config_id = ["{{ config_id }}"]
 """
 
