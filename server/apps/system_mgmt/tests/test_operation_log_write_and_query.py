@@ -371,3 +371,32 @@ def test_export_columns_app_display_name_and_redaction():
     dumped = " ".join("" if cell is None else str(cell) for cell in values)
     assert SENTINEL not in dumped
     assert "成功" != values[10]
+
+
+def test_export_blank_failure_reason_only_when_outcome_is_failure():
+    admin = _admin()
+    team_id = _team_user("alice")
+    OperationLog.objects.create(
+        username="alice",
+        domain=VISIBLE_DOMAIN,
+        source_ip="127.0.0.1",
+        app="cmdb",
+        action_type="update",
+        summary="failed-without-reason",
+        outcome="failure",
+        failure_reason="",
+    )
+    OperationLog.objects.create(
+        username="alice",
+        domain=VISIBLE_DOMAIN,
+        source_ip="127.0.0.1",
+        app="cmdb",
+        action_type="update",
+        summary="succeeded-without-reason",
+        outcome="success",
+        failure_reason="",
+    )
+    sheet = _export_sheet(admin, team_id, {})
+    reasons = {sheet.cell(row=row, column=7).value: sheet.cell(row=row, column=12).value for row in range(2, sheet.max_row + 1)}
+    assert reasons["failed-without-reason"] == "未记录"
+    assert reasons["succeeded-without-reason"] == "-"

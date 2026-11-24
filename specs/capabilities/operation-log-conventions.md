@@ -114,6 +114,48 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 - **WHEN** 批量操作多个资源
 - **THEN** summary SHALL 包含数量信息，如 `"批量删除用户: user1, user2 (共2个)"`
 
+### Requirement: 读出与导出
+列表、详情和导出 SHALL 使用写入时保存的结果、对象名称和变更，不把空结果展示成成功。
+
+#### Scenario: 列表
+- **WHEN** 展示操作日志列表
+- **THEN** 列 SHALL 为操作时间、操作者、来源 IP、应用名称、操作类型、操作对象、执行结果、操作详情
+- **AND** 应用名称 SHALL 使用控制台显示名，对不上时回退应用 ID
+- **AND** 操作对象 SHALL 展示写入时的 `target_name`
+- **AND** 空的对象类型、对象名称、对象 ID 和执行结果 SHALL 显示「未记录」
+
+#### Scenario: 筛选
+- **WHEN** 查询操作日志
+- **THEN** SHALL 支持操作者、对象名称或对象 ID、应用、操作类型、执行结果、时间，并可组合
+- **AND** 对象条件 SHALL 对 `target_name` 或 `target_id` 做包含匹配
+- **AND** 执行结果 SHALL 取 `success`、`failure`、`accepted` 或未记录（空字符串）
+
+#### Scenario: 详情
+- **WHEN** 打开一条操作日志的详情
+- **THEN** SHALL 展示基本信息（操作者、时间、应用名称、来源 IP）、操作对象（类型、名称、ID）、执行结果（结果、失败原因）、变更内容
+- **AND** 变更内容 SHALL 只使用 `detail.before_data` 与 `detail.after_data` 中已生效的数据
+- **AND** 修改 SHALL 只突出变化字段。创建展示创建后的数据，删除展示删除前的数据
+- **AND** 没有这两份已生效数据时 MUST NOT 把提交值展示为修改后
+- **AND** `outcome` 为 `accepted` 时 SHALL 提示这只表示已提交，不表示任务执行成功
+
+#### Scenario: 失败原因为空
+- **WHEN** `outcome` 为 `failure` 且 `failure_reason` 为空
+- **THEN** 详情和导出的失败原因 SHALL 写「未记录」
+- **WHEN** `outcome` 为 `success`、`accepted` 或未记录，且 `failure_reason` 为空
+- **THEN** 详情和导出的失败原因 SHALL 写 `-`
+- **AND** MUST NOT 写成「未记录」
+
+#### Scenario: 导出列
+- **WHEN** 导出操作日志
+- **THEN** 列 SHALL 为用户名、域名、操作时间、源 IP 地址、应用、操作类型、概要描述、对象类型、对象名称、对象 ID、执行结果、失败原因
+- **AND** 敏感字段 SHALL 使用与列表相同的脱敏结果
+
+#### Scenario: 其他模块尚未补结果
+- **WHEN** 调用方未传 `outcome`
+- **THEN** 列表执行结果 SHALL 显示「未记录」
+- **AND** 系统管理中已生效、已提交或需要留下失败记录的调用 SHALL 传入 `outcome`
+- **AND** 其他模块的调用点以后再补，不在同一次改动里铺开
+
 ### Requirement: 脱敏
 写入前 SHALL 递归处理 `detail`。读取、列表和导出 SHALL 使用同一函数脱敏，避免旧数据明文流出。
 

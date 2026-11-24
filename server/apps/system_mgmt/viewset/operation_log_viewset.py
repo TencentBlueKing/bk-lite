@@ -252,7 +252,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
                 data.get("target_name") or unrecorded_label,
                 data.get("target_id") or unrecorded_label,
                 outcome_display_map.get(data.get("outcome"), unrecorded_label),
-                data.get("failure_reason") or "-",
+                data.get("failure_reason") or (unrecorded_label if log.outcome == OperationLog.OUTCOME_FAILURE else "-"),
             ]
             sheet.append(row_data)
 
