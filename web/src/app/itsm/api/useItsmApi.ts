@@ -5,7 +5,7 @@ import { readListPages } from './list-pages';
 import type { TriggerOptions } from '../rule/triggers/trigger-config';
 import type { TriggerOptionsQuery } from '../rule/triggers/trigger-option-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
+import type { AutoExecutionReview, HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 export interface TicketTriggerLogPage {
@@ -149,6 +149,8 @@ export function useItsmApi() {
   const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
     `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
   ), [get]);
+  const reconcileAutoNode = useCallback((ticketId: number, executionId: number, review: AutoExecutionReview) =>
+    post(`/itsm/api/tickets/${ticketId}/auto/${executionId}/reconcile/`, review), [post]);
   const retryAutoNode = useCallback((ticketId: number, executionId: number) => post(`/itsm/api/tickets/${ticketId}/auto/${executionId}/retry/`), [post]);
   const listScheduleRuns = useCallback((page: number, scheduleId?: number) => get('/itsm/api/schedules/runs/', { params: { page, schedule_id: scheduleId } }), [get]);
   const submitSurvey = useCallback(
@@ -303,6 +305,7 @@ export function useItsmApi() {
     getTicket,
     getTicketTriggerLogs,
     retryAutoNode,
+    reconcileAutoNode,
     listScheduleRuns,
     ticketForm,
     listTicketWorkflows,

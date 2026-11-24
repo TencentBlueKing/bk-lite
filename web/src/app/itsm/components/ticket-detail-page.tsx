@@ -19,7 +19,7 @@ import { TicketActions, type OperationInput } from './ticket-actions';
 import { TicketCollaboration, formatTicketTime } from './ticket-collaboration';
 import { useTranslation } from '@/utils/i18n';
 import { useServiceDraft } from './use-service-draft';
-import type { TicketDetail, TicketTaskItem } from '../types';
+import type { AutoExecutionReview, TicketDetail, TicketTaskItem } from '../types';
 
 const STATUS_LABEL: Record<string, { id: string; color: string }> = {
   new: { id: 'itsm.ticket.statusNew', color: 'processing' },
@@ -120,6 +120,12 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
     }
   };
 
+  const reconcileAuto = async (executionId: number, review: AutoExecutionReview) => {
+    await api.reconcileAutoNode(ticketId, executionId, review);
+    message.success('已记录核对结果');
+    await load();
+  };
+
   const retryAuto = async (executionId: number) => {
     setBusy(true);
     try {
@@ -187,7 +193,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
         <>{serviceId ? <Empty className="mt-10" image={Empty.PRESENTED_IMAGE_SIMPLE} description="提交后可查看流转记录、评论和附件" /> : <TicketCollaboration ticketId={ticketId} historyFirst extraTabs={[
           ...(settings.show_process_log ? [{ key: 'history', label: '流转日志', children: <>
             {ticket.history?.length ? (
-              <TicketHistory items={ticket.history} nodes={ticket.nodes} retry={retryAuto} busy={busy} />
+              <TicketHistory items={ticket.history} nodes={ticket.nodes} retry={retryAuto} reconcile={reconcileAuto} busy={busy} />
             ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('itsm.ticket.noLogs')} />}
 
           </> }] : []),

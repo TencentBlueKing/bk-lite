@@ -1,11 +1,8 @@
 """使用任务实例和操作记录还原流转，不把技术动作名作为步骤名。"""
-from datetime import timedelta
-
-from django.utils import timezone
 
 from apps.itsm.services.ticket.actions import SIDE_OPINION_ACTIONS, TASK_ACTIONS
 
-OPINION_ACTIONS = TASK_ACTIONS | SIDE_OPINION_ACTIONS | {"resume"}
+OPINION_ACTIONS = TASK_ACTIONS | SIDE_OPINION_ACTIONS | {"resume", "auto_reconcile"}
 
 ACTION_LABELS = {
     "create": "发起工单",
@@ -26,6 +23,7 @@ ACTION_LABELS = {
     "respond": "响应",
     "survey_ready": "邀请评价",
     "auto": "自动处理",
+    "auto_reconcile": "人工核对",
     "auto_retry": "请求重试",
 }
 
@@ -66,18 +64,16 @@ def ticket_history(ticket, tasks, design):
                 **({"opinion": opinion} if isinstance(opinion, str) and opinion.strip() else {}),
             }
         )
-    stale_at = timezone.now() - timedelta(minutes=5)
     for execution in ticket.auto_executions.all():
         node_id = execution.detail.get("node_id", "")
-        stale = execution.status == "running" and execution.updated_at < stale_at
-        failed = stale or execution.status == "failed" or (execution.status == "executed" and bool(execution.detail.get("reason")))
+        failed = execution.status in {"unknown", "failed"} or (execution.status == "executed" and bool(execution.detail.get("reason")))
         queued = execution.status == "queued" or execution.detail.get("retry_requested")
         rows.append(
             {
                 "id": f"auto-{execution.id}",
                 "node_id": node_id,
                 "name": nodes.get(node_id, {}).get("name") or "自动处理",
-                "action_label": "等待重试" if queued else "自动节点失败" if failed else "自动处理",
+                "action_label": "待核对" if execution.status == "unknown" else "等待重试" if queued else "自动节点失败" if failed else "自动处理",
                 "action": "auto",
                 "operator": "系统",
                 "state": "done" if execution.status == "done" else "failed" if failed and not queued else "current",

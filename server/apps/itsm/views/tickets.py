@@ -14,7 +14,7 @@ from apps.core.utils.web_utils import WebUtils
 from apps.itsm.flowable.client import FlowableClient
 from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
-from apps.itsm.services.external_jobs import request_retry, retry_available
+from apps.itsm.services.external_jobs import reconcile_execution, request_retry, result_field, retry_available, review_available
 from apps.itsm.services.form.fetch import walk
 from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
@@ -24,7 +24,7 @@ from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tic
 from apps.itsm.services.ticket.returns import return_targets
 from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
 from apps.itsm.services.ticket.survey import SURVEY_READY, SurveyValidationError, survey_data, survey_snapshot, survey_submission
-from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, ticket_scope
+from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, json_object, ticket_scope
 from apps.itsm.views.users import search_users
 
 
@@ -101,7 +101,11 @@ def tickets(request):
 
     service = check_service_request(request, version, service_id)
     ticket = _service(request).create(
-        version, payload.get("form_data") or {}, _user(request), bool(payload.get("is_test")), service=service,
+        version,
+        payload.get("form_data") or {},
+        _user(request),
+        bool(payload.get("is_test")),
+        service=service,
         creation_key=_http_creation_key(payload.get("creation_key")),
     )
     return WebUtils.response_success({"id": ticket.id, "sn": ticket.sn, "status": ticket.status.key if ticket.status_id else ""})
@@ -144,6 +148,18 @@ def retry_auto_node(request, ticket_id, execution_id):
         raise PermissionError()
     if not request_retry(get_ticket(request, ticket_id), execution_id, _user(request)):
         return WebUtils.response_error(error_message="当前执行无法重试，请刷新并核对执行结果", status_code=409)
+    return WebUtils.response_success({"id": execution_id})
+
+
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("ticket-Operate")
+def reconcile_auto_node(request, ticket_id, execution_id):
+    if not has_permission(request, "ticket-View") or not has_permission(request, "workflow-Edit"):
+        raise PermissionError()
+    if not reconcile_execution(get_ticket(request, ticket_id), execution_id, _user(request), json_object(request)):
+        return WebUtils.response_error(error_message="执行状态已变化，请刷新后核对", status_code=409)
     return WebUtils.response_success({"id": execution_id})
 
 
@@ -277,8 +293,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     fields, values, schema, _ = ticket_form_view(ticket, design, own_task, status_key)
     visible_keys = {field["key"] for field in walk(fields)}
     form_rules = [
-        rule for rule in (schema or {}).get("rules", [])
-        if rule.get("type") in {"required", "visible"} and rule.get("field") in visible_keys
+        rule for rule in (schema or {}).get("rules", []) if rule.get("type") in {"required", "visible"} and rule.get("field") in visible_keys
     ]
 
     stages = []
@@ -324,6 +339,10 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         execution = active_executions.get(row.get("execution_id"))
         if execution:
             row["can_retry"] = can_retry and retry_available(ticket, execution)
+            if can_retry and review_available(ticket, execution):
+                row["review_token"] = execution.updated_at.isoformat()
+                row["result_field"] = result_field(ticket, execution)
+                row["job_id"] = execution.detail.get("job_id")
     failed_ids = {row["node_id"] for row in history if row.get("execution_id") in active_executions and row["state"] == "failed"}
     pending_ids.update(row["node_id"] for row in history if row.get("execution_id") in active_executions and row["state"] == "current")
     progress_history = history

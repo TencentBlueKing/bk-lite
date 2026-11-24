@@ -219,6 +219,13 @@ export interface TicketSLANotice {
   message: string;
 }
 
+export interface AutoExecutionReview {
+  review_token: string;
+  outcome: 'executed' | 'not_executed';
+  note: string;
+  result_value?: unknown;
+}
+
 export interface TicketHistoryItem {
   id: string;
   node_id: string;
@@ -233,6 +240,9 @@ export interface TicketHistoryItem {
   opinion?: string;
   execution_id?: number;
   can_retry?: boolean;
+  review_token?: string;
+  result_field?: string | null;
+  job_id?: string;
 }
 
 export interface TicketAttachmentItem {

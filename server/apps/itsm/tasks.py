@@ -86,6 +86,9 @@ def auto_tick():
     if not settings.FLOWABLE_PASSWORD:
         return {"acquired": 0}
     client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD)
+    from apps.itsm.services.external_jobs import reconcile_stale_executions
+
+    recovered = reconcile_stale_executions(client)
     done = 0
     for topic, kind in (("itsm.auto", "auto"), ("itsm.notify", "notify")):
         try:
@@ -100,7 +103,7 @@ def auto_tick():
     from apps.itsm.services.external_jobs import reconcile_tickets
 
     reconciled = reconcile_tickets(client)
-    return {"acquired": done, "reconciled": reconciled}
+    return {"acquired": done, "reconciled": reconciled, "stale_jobs": recovered}
 
 
 @shared_task(ignore_result=True)

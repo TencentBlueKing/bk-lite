@@ -61,12 +61,18 @@ class FlowableClient:
 
     def instance_for_business_key(self, business_key: str, definition_id: str) -> str:
         page = self._request(
-            "GET", "/flowable-rest/service/history/historic-process-instances",
+            "GET",
+            "/flowable-rest/service/history/historic-process-instances",
             params={"businessKey": business_key, "processDefinitionId": definition_id},
         )
         rows = page.get("data") or []
-        if (len(rows) != 1 or page.get("total") != 1 or rows[0].get("businessKey") != business_key
-                or rows[0].get("processDefinitionId") != definition_id or not rows[0].get("id")):
+        if (
+            len(rows) != 1
+            or page.get("total") != 1
+            or rows[0].get("businessKey") != business_key
+            or rows[0].get("processDefinitionId") != definition_id
+            or not rows[0].get("id")
+        ):
             raise FlowableError(409, "流程启动结果待核对")
         return str(rows[0]["id"])
 
@@ -131,6 +137,25 @@ class FlowableClient:
         if isinstance(payload, list):
             return payload
         return list(payload.get("data") or [])
+
+    def confirmed_external_job(self, process_id: str, name: str, value: str) -> bool:
+        page = self._request(
+            "GET",
+            "/flowable-rest/service/history/historic-variable-instances",
+            params={"processInstanceId": process_id, "variableName": name, "size": 2},
+        )
+        rows = page.get("data") or []
+        if page.get("total") != 1 or len(rows) != 1:
+            return False
+        row = rows[0]
+        variable = row.get("variable") or {}
+        return (
+            row.get("processInstanceId") == process_id
+            and variable.get("name") == name
+            and variable.get("scope") == "global"
+            and variable.get("type") == "string"
+            and variable.get("value") == value
+        )
 
     def complete_external_job(self, job_id: str, worker_id: str = "itsm", variables: dict | None = None) -> dict[str, Any]:
         return self._request(
