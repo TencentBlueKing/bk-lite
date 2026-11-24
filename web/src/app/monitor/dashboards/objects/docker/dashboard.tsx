@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
@@ -13,9 +13,20 @@ import {
 import { HorizontalBarPanel, TitleWithGuide, TrendChartPanel } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import { DOCKER_DASHBOARD_CONFIG } from './config';
+import DockerCategoryLayout from './layered/category-layout';
 import { DOCKER_TOP_QUERIES } from './queries';
 import styles from './index.module.scss';
+
+const isDockerDashboardMode = (mode: string): mode is ObjectDashboardMode => (
+  mode === 'dashboard' || mode === 'metrics' || mode === 'category'
+);
 
 const SUMMARY_TITLES = ['运行容器数', '停止容器占比', '时段内重启', '容器 CPU 使用率', '容器内存使用率'];
 const RESOURCE_CHART_TITLES = ['容器资源使用趋势', '块设备吞吐趋势'];
@@ -23,9 +34,14 @@ const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
 const TOP_CONCURRENCY = 2;
 
 export default function DockerDashboardPage() {
-  const dashboard = useSimpleDashboardData(DOCKER_DASHBOARD_CONFIG);
-  const { getInstanceQuery } = useViewApi();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const layout = resolveObjectDashboardMode('docker', new URLSearchParams(searchParams.toString()));
+  const dashboard = useSimpleDashboardData(
+    DOCKER_DASHBOARD_CONFIG,
+    layout === 'category' ? { metricNames: [], reuseLoadedSeries: true } : undefined
+  );
+  const { getInstanceQuery } = useViewApi();
   const instanceIdKeys = useMemo(
     () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
     [searchParams]
@@ -44,7 +60,7 @@ export default function DockerDashboardPage() {
   const timeKey = JSON.stringify(timeValues);
 
   useEffect(() => {
-    if (!isDashboardMode || !idValues.length) {
+    if (layout !== 'dashboard' || !isDashboardMode || !idValues.length) {
       setTopBars({});
       return;
     }
@@ -71,12 +87,40 @@ export default function DockerDashboardPage() {
     return () => {
       active = false;
     };
-  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, layout, loadTick]);
+
+  const onLayoutChange = (mode: string) => {
+    if (!isDockerDashboardMode(mode) || mode === layout) return;
+    const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      preserveLayouts
+      unifiedChrome
+      viewSwitcher={{
+        mode: layout,
+        onChange: onLayoutChange,
+        control: 'pill',
+        options: dashboardModeOptions('docker')
+      }}
+      pageClassName={layout === 'category' ? styles.proPage : undefined}
+      shellClassName={layout === 'category' ? styles.proShell : undefined}
+      categoryContent={(
+        <DockerCategoryLayout
+          instanceId={dashboard.instanceId}
+          monitorObjectId={dashboard.monitorObjectId}
+          idValues={dashboard.idValues}
+          instanceIdKeys={instanceIdKeys}
+          timeValues={dashboard.timeValues}
+          queryTimeRange={dashboard.queryTimeRange}
+          intervalSec={dashboard.currentInstanceInterval}
+          reloadKey={dashboard.loadTick}
+        />
+      )}
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>
