@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { renderItsm as render } from '../../test-utils';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { Modal } from 'antd';
 import { afterEach, expect, it, vi } from 'vitest';
 import Page from './page';
 
@@ -11,10 +13,9 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('@/utils/request', () => ({ default: () => api }));
-vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/theme', () => ({ useThemeMode: () => ({ mode: 'light' }) }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: () => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { Modal.destroyAll(); cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
 const article = { id: 1, title: '值班手册', content: '<img src=invalid>\n操作步骤', status: 'published', updated_at: '2026-11-20T01:00:00Z' };
 const articlesPath = '/itsm/api/resources/knowledge';
@@ -52,7 +53,7 @@ it('保存 Markdown 草稿的分类和关联工单', async () => {
   fireEvent.change(screen.getByLabelText('分类'), { target: { value: '运维' } });
   fireEvent.click(screen.getByText('Markdown', { exact: true }));
   fireEvent.change(screen.getByLabelText('正文'), { target: { value: '**步骤说明**' } });
-  fireEvent.click(screen.getByRole('button', { name: '预览', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '预览' }));
   expect((await screen.findByText('步骤说明')).tagName).toBe('STRONG');
   const tickets = screen.getByRole('combobox', { name: '关联工单' });
   fireEvent.mouseDown(tickets);
@@ -86,4 +87,36 @@ it('附件上传失败时保留原草稿和附件，重试沿用已保存的文�
     articlesPath, '/itsm/api/knowledge/1/attachments', '/itsm/api/knowledge/1/attachments',
   ]));
   expect(api.put).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('已删除的附件不参与表单变更判断，文章是否被改动 %s', async (changed) => {
+  api.get.mockResolvedValueOnce({ items: [article], count: 1, can_edit: true }).mockResolvedValueOnce({
+    ...article, attachments: [{ id: 9, name: '附件.md', can_delete: true }],
+  });
+  api.del.mockResolvedValueOnce({});
+  const confirmLeave = vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn(), update: vi.fn() });
+  render(<Page />);
+  fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
+  if (changed) fireEvent.change(await screen.findByLabelText('标题'), { target: { value: '已变更标题' } });
+  fireEvent.click(await screen.findByRole('button', { name: '删除附件 附件.md' }));
+  fireEvent.click(screen.getByRole('button', { name: /^删\s*除$/ }));
+  await waitFor(() => expect(screen.queryByText('附件.md')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+  if (changed) {
+    expect(confirmLeave).toHaveBeenCalledWith(expect.objectContaining({ title: '放弃未保存的修改？' }));
+    expect(screen.getByLabelText('标题')).toHaveProperty('value', '已变更标题');
+  } else {
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(confirmLeave).not.toHaveBeenCalled();
+  }
+});
+
+it('英文界面显示本地化的文章列和编辑文案', async () => {
+  api.get.mockResolvedValueOnce({ items: [article], count: 1, can_edit: true }).mockResolvedValueOnce(article);
+  render(<Page />, { locale: 'en' });
+  expect(await screen.findByRole('columnheader', { name: 'Article title' })).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  expect(await screen.findByLabelText('Title')).toHaveProperty('value', article.title);
+  expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
 });

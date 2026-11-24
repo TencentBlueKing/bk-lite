@@ -2,6 +2,7 @@
 
 import { Select } from 'antd';
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 
 export interface ArticleTicket {
@@ -17,6 +18,7 @@ interface ArticleTicketPickerProps {
 }
 
 export function ArticleTicketPicker({ tickets, disabled, onChange }: ArticleTicketPickerProps) {
+  const { t } = useTranslation();
   const { get } = useApiClient();
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -49,9 +51,9 @@ export function ArticleTicketPicker({ tickets, disabled, onChange }: ArticleTick
 
   const byId = new Map([...tickets, ...matches].map(ticket => [ticket.id, ticket]));
   return <div className="flex flex-col gap-2">
-    <span>关联工单</span>
-    <Select aria-label="关联工单" mode="multiple" disabled={disabled} showSearch filterOption={false} virtual={false}
-      placeholder="按单号或标题搜索" onOpenChange={setOpen} onSearch={setKeyword} loading={searching}
+    <span>{t('itsm.knowledge.relatedTickets')}</span>
+    <Select aria-label={t('itsm.knowledge.relatedTickets')} mode="multiple" disabled={disabled} showSearch filterOption={false} virtual={false}
+      placeholder={t('itsm.knowledge.ticketSearch')} onOpenChange={setOpen} onSearch={setKeyword} loading={searching}
       value={tickets.map(ticket => ticket.id)}
       options={[...byId.values()].map(ticket => ({ value: ticket.id, label: `${ticket.title}（${ticket.sn}）`, ticket }))}
       onChange={ids => onChange(ids.flatMap(id => byId.get(id) ?? []))}
@@ -59,6 +61,6 @@ export function ArticleTicketPicker({ tickets, disabled, onChange }: ArticleTick
         <span className="whitespace-normal break-words">{data.ticket.title}</span>
         <span className="text-xs text-[var(--color-text-3)]">{data.ticket.sn}</span>
       </div>}
-      notFoundContent={searching ? '正在搜索' : failed ? '工单搜索失败，请重新搜索' : '没有可关联的工单'} />
+      notFoundContent={searching ? t('itsm.knowledge.ticketSearching') : failed ? t('itsm.knowledge.ticketSearchFailed') : t('itsm.knowledge.noTickets')} />
   </div>;
 }

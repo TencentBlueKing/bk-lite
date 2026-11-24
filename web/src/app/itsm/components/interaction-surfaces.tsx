@@ -30,7 +30,7 @@ export function ItsmModal({ formValue, onCancel, onOk, confirmLoading, open, chi
 type DrawerProps = Omit<ModalProps, 'styles' | 'classNames' | 'onCancel' | 'onOk' | 'footer' | 'width'> & {
   width?: number | string; onCancel?: () => void; onOk?: () => void | Promise<unknown>; footer?: ReactNode;
 };
-export function ItsmDrawer({ title, subTitle, open, onCancel, onOk, formValue, confirmLoading, footer, children, width = 860, okText = '保存', okButtonProps, destroyOnHidden }: DrawerProps) {
+export function ItsmDrawer({ title, subTitle, open, onCancel, onOk, formValue, confirmLoading, footer, children, width = 860, okText = '保存', cancelText = '取消', okButtonProps, destroyOnHidden }: DrawerProps) {
   const dirty = useDirty(!!open, formValue);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState('');
@@ -40,7 +40,7 @@ export function ItsmDrawer({ title, subTitle, open, onCancel, onOk, formValue, c
   const close = () => { if (!busy) confirmLeave(dirty, () => onCancel?.()); };
   return <OperateDrawer zIndex={1300} title={title} subTitle={subTitle} open={open} width={width} onClose={close}
     maskClosable={false} closable={!busy} keyboard={!busy} destroyOnHidden={destroyOnHidden}
-    footer={footer !== undefined ? footer : onOk ? <><Button disabled={busy} onClick={close}>取消</Button><Button type="primary" {...okButtonProps} loading={busy} onClick={()=>void save()}>{okText}</Button></> : undefined}>
+    footer={footer !== undefined ? footer : onOk ? <><Button disabled={busy} onClick={close}>{cancelText}</Button><Button type="primary" {...okButtonProps} loading={busy} onClick={()=>void save()}>{okText}</Button></> : undefined}>
     {error && <Alert type="error" message={error} />}{children}
   </OperateDrawer>;
 }

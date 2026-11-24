@@ -6,6 +6,7 @@ import type { AiEditor } from 'aieditor';
 import MarkdownIt from 'markdown-it';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import MarkdownRenderer from '@/components/markdown';
 import { sanitizeArticleHtml } from './article-html';
 
@@ -20,7 +21,8 @@ interface ArticleBodyProps {
 }
 
 export function ArticleBody({ content, format }: ArticleBodyProps) {
-  if (!content.trim()) return <p className="text-sm text-[var(--color-text-3)]">暂无正文</p>;
+  const { t } = useTranslation();
+  if (!content.trim()) return <p className="text-sm text-[var(--color-text-3)]">{t('itsm.knowledge.emptyBody')}</p>;
   if (format === 'markdown') return <MarkdownRenderer content={content} enableCodeCopy />;
   if (format === 'richtext') return <div className="markdown-body break-words" dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(content) }} />;
   return <div className="whitespace-pre-wrap break-words">{content}</div>;
@@ -33,6 +35,7 @@ interface ArticleBodyEditorProps extends ArticleBodyProps {
 }
 
 export function ArticleBodyEditor({ content, format, disabled, onContentChange, onFormatChange }: ArticleBodyEditorProps) {
+  const { t } = useTranslation();
   const { message } = App.useApp();
   const editor = useRef<AiEditor | null>(null);
   const importFile = useRef<HTMLInputElement>(null);
@@ -52,7 +55,7 @@ export function ArticleBodyEditor({ content, format, disabled, onContentChange, 
       }
     } else if (format === 'richtext') {
       if (!editor.current && content) {
-        message.warning('请等待富文本编辑器加载');
+        message.warning(t('itsm.knowledge.editorLoading'));
         return;
       }
       converted = editor.current?.isEmpty() ? '' : String(editor.current?.getMarkdown() ?? '');
@@ -63,20 +66,20 @@ export function ArticleBodyEditor({ content, format, disabled, onContentChange, 
 
   return <div className="flex flex-col gap-2">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <span>正文</span>
+      <span>{t('itsm.knowledge.body')}</span>
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<ArticleFormat> aria-label="正文格式" value={format} disabled={disabled} onChange={changeFormat} options={[
-          ...(format === 'text' ? [{ label: '纯文本', value: 'text' as const }] : []),
-          { label: '富文本', value: 'richtext' }, { label: 'Markdown', value: 'markdown' },
+        <Segmented<ArticleFormat> aria-label={t('itsm.knowledge.bodyFormat')} value={format} disabled={disabled} onChange={changeFormat} options={[
+          ...(format === 'text' ? [{ label: t('itsm.knowledge.plainText'), value: 'text' as const }] : []),
+          { label: t('itsm.knowledge.richText'), value: 'richtext' }, { label: 'Markdown', value: 'markdown' },
         ]} />
         {format === 'markdown' && <Button size="small" disabled={disabled} icon={<UploadOutlined />}
-          onClick={() => importFile.current?.click()}>导入 Markdown</Button>}
+          onClick={() => importFile.current?.click()}>{t('itsm.knowledge.importMarkdown')}</Button>}
         {format === 'markdown' && <Button size="small" autoInsertSpace={false} onClick={() => setPreview(value => !value)}>
-          {preview ? '继续编辑' : '预览'}
+          {preview ? t('itsm.knowledge.continueEditing') : t('itsm.knowledge.preview')}
         </Button>}
       </div>
     </div>
-    <input ref={importFile} type="file" accept=".md,.markdown" aria-label="Markdown 文件" disabled={disabled} hidden tabIndex={-1} onChange={event => {
+    <input ref={importFile} type="file" accept=".md,.markdown" aria-label={t('itsm.knowledge.markdownFile')} disabled={disabled} hidden tabIndex={-1} onChange={event => {
       const file = event.currentTarget.files?.[0];
       event.currentTarget.value = '';
       if (!file) return;
@@ -87,13 +90,13 @@ export function ArticleBodyEditor({ content, format, disabled, onContentChange, 
         if (request.signal.aborted) return;
         setPreview(false);
         onContentChange(source);
-      }).catch(() => { if (!request.signal.aborted) message.error('读取 Markdown 文件失败'); });
+      }).catch(() => { if (!request.signal.aborted) message.error(t('itsm.knowledge.markdownReadFailed')); });
     }} />
     {format === 'richtext' && <RichTextEditor editorRef={editor} value={content} onChange={onContentChange} disabled={disabled} />}
     {format === 'markdown' && preview && <div className="min-h-48 rounded-md border border-[var(--color-border)] p-3">
       <ArticleBody content={content} format={format} />
     </div>}
-    {format !== 'richtext' && (format !== 'markdown' || !preview) && <Input.TextArea aria-label="正文" value={content}
+    {format !== 'richtext' && (format !== 'markdown' || !preview) && <Input.TextArea aria-label={t('itsm.knowledge.body')} value={content}
       disabled={disabled} autoSize={{ minRows: 10, maxRows: 20 }} onChange={event => onContentChange(event.target.value)} />}
   </div>;
 }

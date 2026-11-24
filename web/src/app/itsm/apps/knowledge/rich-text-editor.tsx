@@ -1,8 +1,10 @@
 'use client';
 
 import { AiEditor } from 'aieditor';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import 'aieditor/dist/style.css';
+import { useIntl } from 'react-intl';
+import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import { sanitizeArticleHtml } from './article-html';
 
@@ -16,16 +18,21 @@ interface RichTextEditorProps {
 export default function RichTextEditor({ editorRef, value, onChange, disabled }: RichTextEditorProps) {
   const { mode } = useThemeMode();
   const host = useRef<HTMLDivElement>(null);
-  const [initialContent] = useState(value);
+  const content = useRef(value);
+  content.current = value;
+  const { locale } = useIntl();
+  const { t } = useTranslation();
+  const language = locale.startsWith('zh') ? 'zh' : 'en';
+  const label = t('itsm.knowledge.body');
 
   useEffect(() => {
     if (!host.current) return;
     const editor = new AiEditor({
       element: host.current,
-      content: sanitizeArticleHtml(initialContent),
+      content: sanitizeArticleHtml(content.current),
       contentRetention: false,
       draggable: false,
-      lang: 'zh',
+      lang: language,
       toolbarKeys: [
         'undo', 'redo', 'divider', 'heading', 'bold', 'italic', 'underline', 'strike',
         'divider', 'bullet-list', 'ordered-list', 'quote', 'code-block', 'link', 'table',
@@ -35,7 +42,7 @@ export default function RichTextEditor({ editorRef, value, onChange, disabled }:
       htmlPasteConfig: { pasteProcessor: sanitizeArticleHtml },
       onCreated: current => {
         current.innerEditor.view.dom.setAttribute('role', 'textbox');
-        current.innerEditor.view.dom.setAttribute('aria-label', '正文');
+        current.innerEditor.view.dom.setAttribute('aria-label', label);
         current.innerEditor.view.dom.setAttribute('aria-multiline', 'true');
       },
       onChange: current => onChange(current.isEmpty() ? '' : current.getHtml()),
@@ -45,7 +52,7 @@ export default function RichTextEditor({ editorRef, value, onChange, disabled }:
       editorRef.current = null;
       editor.destroy();
     };
-  }, [editorRef, initialContent, onChange]);
+  }, [editorRef, language, label, onChange]);
 
   useEffect(() => {
     editorRef.current?.setEditable(!disabled);
