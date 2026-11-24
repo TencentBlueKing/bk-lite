@@ -150,10 +150,7 @@
         {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"},
-        {"title": "业务对象", "url": "/itsm/apps/biz-object", "name": "biz_object"},
-        {"title": "在线客服", "url": "/itsm/apps/chat", "name": "chat"},
-        {"title": "AI", "url": "/itsm/apps/ai", "name": "ai"}
+        {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"}
       ]
     },
     {
@@ -242,10 +239,7 @@
         {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
         {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
         {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"},
-        {"title": "Business objects", "url": "/itsm/apps/biz-object", "name": "biz_object"},
-        {"title": "Chat", "url": "/itsm/apps/chat", "name": "chat"},
-        {"title": "AI", "url": "/itsm/apps/ai", "name": "ai"}
+        {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"}
       ]
     },
     {
