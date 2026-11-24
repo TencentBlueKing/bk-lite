@@ -2,6 +2,10 @@ import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { extractComparableValue } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+} from '@/app/ops-analysis/utils/scalarReduction';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { extractMultiValueItems, validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
 import { parseCardListItems } from '@/app/ops-analysis/utils/cardList';
@@ -72,6 +76,7 @@ export const buildInteractionPoints = (
     | 'seriesField'
     | 'pieScalarFields'
     | 'selectedFields'
+    | 'scalarCalc'
     | 'topNLabelField'
     | 'topNValueField'
     | 'topNScalarFields'
@@ -128,7 +133,11 @@ export const buildInteractionPoints = (
 
   if (chartType === 'single' || chartType === 'gauge') {
     const selectedField = config?.selectedFields?.[0];
-    const raw = extractComparableValue(rawData, selectedField);
+    const scalarCalc = readScalarCalc(config?.scalarCalc);
+    const reduced = scalarCalc ? reduceScalarRecords(rawData, scalarCalc) : null;
+    const raw = reduced
+      ? (reduced.status === 'value' ? reduced.value : null)
+      : extractComparableValue(rawData, selectedField);
     const fields = chartLinkFields(rawData);
     if (raw == null && !fields) return [];
     return [numericPoint(raw, {

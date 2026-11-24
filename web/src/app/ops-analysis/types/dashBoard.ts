@@ -176,6 +176,8 @@ export interface ValueConfig {
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: ThresholdColorConfig[];
+  /** 未设置时仍读取第一条选定字段。计数不使用 field。最新值使用 timeField。 */
+  scalarCalc?: import('@/app/ops-analysis/utils/scalarReduction').ScalarCalcConfig;
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';

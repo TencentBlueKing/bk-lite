@@ -4,6 +4,11 @@ import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSou
 import type { ColumnResult } from '@/app/ops-analysis/utils/dataVariable';
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import {
+  chartFieldMissingMessage,
+  missingConfiguredField,
+} from '@/app/ops-analysis/utils/chartFieldContract';
+import { readScalarCalc } from '@/app/ops-analysis/utils/scalarReduction';
 import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
@@ -252,6 +257,25 @@ export const extractComparableValue = (
 
 export const toComparableNumber = (value: number | string | boolean | null): number | null =>
   coerceTopNNumericValue(value);
+
+export const validateSingleOrGaugeData = (
+  data: unknown,
+  chartType: string | undefined,
+  config?: ValueConfig,
+): { isValid: boolean; message?: string } => {
+  if (readScalarCalc(config?.scalarCalc)) {
+    return { isValid: true };
+  }
+
+  const missing = missingConfiguredField(data, [config?.selectedFields?.[0]]);
+  if (missing) {
+    return { isValid: false, message: chartFieldMissingMessage(missing) };
+  }
+  if (chartType === 'gauge') {
+    return validateGaugeData(data, config);
+  }
+  return { isValid: true };
+};
 
 export const validateGaugeData = (
   data: unknown,
