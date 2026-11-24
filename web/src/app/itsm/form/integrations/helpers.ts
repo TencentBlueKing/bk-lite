@@ -16,8 +16,10 @@ export interface IntegrationItem {
   id: number; name: string; kind: IntegrationKind; is_enabled: boolean; updated_by: string;
   config: { transport?: 'gateway' | 'external'; request_schema?: { type?: string; properties?: Record<string, { type: string; description?: string }>; required?: string[] }; path?: string; method?: string; script?: string; filename?: string; url?: string; token?: string };
   has_token?: boolean;
+  run_next_cursor?: string; delivery_next_cursor?: string;
+  run_count?: number; run_page?: number; delivery_count?: number; delivery_page?: number;
   runs?: { id: number; status: string; code: string; duration_ms: number; created_by: string; created_at: string }[];
-  deliveries?: { id: number; task_id: number; status: string; code: string; attempts: number }[];
+  deliveries?: { id: number; task_id: number; event_key: string; status: string; code: string; attempts: number }[];
 }
 export interface IntegrationResult { status: string; output: unknown; code: string; duration_ms: number; run_id: number }
 export const PYTHON_EXAMPLE = 'def transform(rows, params):\n    return [{**row, "result": row.get("amount", 0) * params.get("rate", 1)} for row in rows]\n';

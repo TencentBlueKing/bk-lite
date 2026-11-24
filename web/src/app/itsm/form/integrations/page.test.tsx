@@ -6,7 +6,7 @@ import Workspace from './workspace';
 const router=vi.hoisted(()=>({push:vi.fn(),replace:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>router}));
 import type { IntegrationItem } from './helpers';
-const api = vi.hoisted(() => ({ ready: true, listIntegrations: vi.fn(), integrationCatalog: vi.fn(), getIntegration: vi.fn(), saveIntegration: vi.fn(), testIntegration: vi.fn(), retryDelivery: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, listIntegrations: vi.fn(), integrationCatalog: vi.fn(), getIntegration: vi.fn(), saveIntegration: vi.fn(), testIntegration: vi.fn(), retryDelivery: vi.fn(), reconcileDelivery: vi.fn() }));
 vi.mock('../../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/app/system-manager/(pages)/settings/openapi-docs/OpenApiDocsDetail', () => ({ default: () => <div>平台参数文档</div> }));
 vi.mock('../../components/itsm-list-table', () => ({ default: ({ dataSource, columns }: { dataSource: IntegrationItem[]; columns: { key: string; dataIndex?: keyof IntegrationItem; render?: (v: unknown, row: IntegrationItem) => React.ReactNode }[] }) => <div>{dataSource.map(row => <div key={row.id}>{columns.map(column => <span key={column.key}>{column.render ? column.render(column.dataIndex ? row[column.dataIndex] : undefined, row) : String(row[column.dataIndex!] || '')}</span>)}</div>)}</div> }));
@@ -74,4 +74,18 @@ it('Python 调试不读取无关的网关目录', async () => {
   render(<Workspace integrationId="1" mode="records" />);
   await screen.findByRole('textbox', { name: '调试参数' });
   expect(api.integrationCatalog).not.toHaveBeenCalled();
+});
+
+it('未知投递必须核对接收结果', async () => {
+  api.getIntegration.mockResolvedValue({
+    ...item, kind: 'todo', deliveries: [{ id: 42, task_id: 10, status: 'unknown', code: '', attempts: 2, event_key: 'stable-event-id' }],
+  });
+  render(<Workspace integrationId="1" mode="records" />);
+  fireEvent.click(await screen.findByRole('tab', { name: '待办投递' }));
+  expect(await screen.findByRole('button', { name: '已核对，接收方已收到' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '已核对，接收方未收到，重新投递' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
+  api.reconcileDelivery.mockResolvedValue({ status: 'done' });
+  fireEvent.click(screen.getByRole('button', { name: '已核对，接收方已收到' }));
+  expect(api.reconcileDelivery).toHaveBeenCalledWith(1, 42, 2, true);
 });

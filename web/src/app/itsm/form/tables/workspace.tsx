@@ -41,6 +41,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
   const [busy,setBusy]=useState(false);
   const leave=usePageLeave(!!(draft && baseline !== JSON.stringify(draft)) || !!(rowDraft && baseline !== JSON.stringify(rowDraft)));
   const [formError,setFormError]=useState('');
+  const [rowPage, setRowPage] = useState({ current: 1, pageSize: 20, total: 0 });
   const rowsRequest=useRef(0);
   useEffect(()=>()=>{rowsRequest.current++;},[]);
   const notify=(error:unknown)=>message.error(error instanceof Error?error.message:'操作失败');
@@ -50,11 +51,12 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
   },[api.listDataTables]);
   useEffect(()=>{if(api.ready && !tableId) void load().catch(notify);},[api.ready,load,tableId]);
 
-  const openRows=async(item:TableItem)=>{
+  const openRows=async(item:TableItem, page = rowPage.current, pageSize = rowPage.pageSize)=>{
     const seq=++rowsRequest.current;setActive(item);setRows([]);setFields([]);setRowsError('');setCanEditRows(false);setRowsLoading(true);
     try{
-      const data=await api.listDataRows(item.id) as {items:RowItem[];fields?:TableField[];can_edit:boolean};
+      const data=await api.listDataRows(item.id, page, pageSize) as {page:number;total:number;items:RowItem[];fields?:TableField[];can_edit:boolean};
       if(seq!==rowsRequest.current)return;
+      setRowPage({current:data.page, pageSize, total:data.total});
       setRows(data.items||[]);setFields(data.fields||[]);setCanEditRows(data.can_edit===true);
     }catch(error){if(seq===rowsRequest.current)setRowsError(error instanceof Error?error.message:'加载数据失败，请重试');}
     finally{if(seq===rowsRequest.current)setRowsLoading(false);}
@@ -62,7 +64,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
   useEffect(()=>{
     if (!api.ready || !tableId) return;
     let live=true;
-    void api.getDataTable(tableId).then(value=>{if(live)void openRows(value as TableItem);}).catch(error=>{if(live)setRowsError(error instanceof Error?error.message:'加载失败');});
+    void api.getDataTable(tableId).then(value=>{if(live)void openRows(value as TableItem, 1, 20);}).catch(error=>{if(live)setRowsError(error instanceof Error?error.message:'加载失败');});
     return ()=>{live=false;rowsRequest.current++;};
   },[api.ready,tableId,api.getDataTable]);
   const editFields=async(item:TableItem)=>{
@@ -119,7 +121,7 @@ export default function DataTablesWorkspace({ tableId }: { tableId?: number }) {
       <div className="mb-4 flex items-center gap-3"><ItsmBackButton label="返回数据表列表" onClick={()=>leave(()=>router.push('/itsm/form/tables'))} /><span className="text-base font-semibold">{active?.name || '数据表'} · 数据</span><span className="text-xs text-[var(--color-text-3)]">{active?.key}</span></div>
       {rowsError?<Alert type="error" message={rowsError} action={<Button onClick={()=>{if(active)void openRows(active);else if(tableId)void api.getDataTable(tableId).then(value=>openRows(value as TableItem)).catch(notify);}}>重试</Button>}/>:<>
         {canEditRows&&<ItsmListToolbar actions={<ItsmCreateButton onClick={()=>beginRow()}>新增数据</ItsmCreateButton>} />}
-        <CustomTable rowKey="id" loading={rowsLoading} dataSource={rows} scroll={{x:'max-content',y:'40vh'}} columns={[
+        <CustomTable serverPagination={{ ...rowPage, onChange: (page, size) => { if (active) void openRows(active, size === rowPage.pageSize ? page : 1, size); } }} rowKey="id" loading={rowsLoading} dataSource={rows} scroll={{x:'max-content',y:'40vh'}} columns={[
           ...visibleFields.map(f=>({title:f.label||f.key,key:f.key,render:(_:unknown,row:RowItem)=>row.data[f.key]==null?'':typeof row.data[f.key]==='boolean'?(row.data[f.key]?'是':'否'):typeof row.data[f.key]==='object'?JSON.stringify(row.data[f.key]):String(row.data[f.key])})),
           ...(canEditRows?[{ fixed: 'right' as const, width: 120,title:'操作',key:'actions',render:(_:unknown,row:RowItem)=><ItsmRowActions items={[{key: 'action-3', label: "编辑", kind: 'edit' as const, onClick: ()=>beginRow(row)},
             {key: 'action-4', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: '确定删除这条数据？'}, onClick: ()=>{const seq=rowsRequest.current;void api.deleteDataRows(active!.id,[row.id]).then(()=>{if(seq===rowsRequest.current)active && void openRows(active);}).catch(notify);}}]} />}]:[]),

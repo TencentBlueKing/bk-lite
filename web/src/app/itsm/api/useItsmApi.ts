@@ -39,10 +39,12 @@ export function useItsmApi() {
 
   const listIntegrations = useCallback((summary = false) => get('/itsm/api/integrations/', { params: summary ? { summary: '1' } : {} }), [get]);
   const integrationCatalog = useCallback(() => get('/itsm/api/integrations/catalog/'), [get]);
-  const getIntegration = useCallback((id: number) => get(`/itsm/api/integrations/${id}/`), [get]);
+  const getIntegration = useCallback((id: number, filters?: Record<string, string>) => get(`/itsm/api/integrations/${id}/${filters ? `?${new URLSearchParams(filters)}` : ''}`), [get]);
   const saveIntegration = useCallback((body: Record<string, unknown>, id?: number) => id ? put(`/itsm/api/integrations/${id}/`, body) : post('/itsm/api/integrations/', body), [post, put]);
   const testIntegration = useCallback((id: number, inputs: Record<string, unknown>) => post(`/itsm/api/integrations/${id}/test/`, { inputs }), [post]);
   const retryDelivery = useCallback((id: number, delivery: number) => post(`/itsm/api/integrations/${id}/deliveries/${delivery}/retry/`), [post]);
+  const reconcileDelivery = useCallback((id: number, delivery: number, attempts: number, received: boolean) =>
+    post(`/itsm/api/integrations/${id}/deliveries/${delivery}/reconcile/`, { attempts, received }), [post]);
 
   const searchTicketTags = useCallback((q: string) => get('/itsm/api/tickets/filter_tags/', { params: { q } }), [get]);
   const centerSettings = useCallback(() => get('/itsm/api/tickets/center_settings/'), [get]);
@@ -197,7 +199,7 @@ export function useItsmApi() {
   const saveDataTable = useCallback((id: number, body: Record<string, unknown>) => put(`/itsm/api/data_tables/${id}/`, body), [put]);
   const saveDataRow = useCallback((id: number, data: Record<string, unknown>, rowId?: number) => rowId ? put(`/itsm/api/data_tables/${id}/rows/${rowId}/`, { data }) : post(`/itsm/api/data_tables/${id}/rows/`, { data }), [post, put]);
   const deleteDataRows = useCallback((id: number, ids: number[]) => post(`/itsm/api/data_tables/${id}/rows/delete/`, { ids }), [post]);
-  const listDataRows = useCallback((id: number) => get(`/itsm/api/data_tables/${id}/rows/`), [get]);
+  const listDataRows = useCallback((id: number, page = 1, pageSize = 20) => get(`/itsm/api/data_tables/${id}/rows/?page=${page}&page_size=${pageSize}`), [get]);
   const listWorkflowVersions = useCallback((id: number) => get(`/itsm/api/workflows/${id}/versions/`), [get]);
   const enableWorkflowVersion = useCallback((workflowId: number, versionId: number) => post(`/itsm/api/workflows/${workflowId}/versions/${versionId}/enable/`, {}), [post]);
   const listComments = useCallback((id: number) => get(`/itsm/api/tickets/${id}/comments/`), [get]);
@@ -273,7 +275,7 @@ export function useItsmApi() {
 
   return {
     ready: !isLoading,
-    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery,
+    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery, reconcileDelivery,
     searchTicketTags, centerSettings, saveTicketColumns, saveTicketGroup, deleteTicketGroup, batchTickets, batchOptions,
     listForms,
     createForm,

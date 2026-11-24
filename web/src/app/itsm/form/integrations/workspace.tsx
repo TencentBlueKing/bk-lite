@@ -7,9 +7,9 @@ import { ItsmRowActions, ItsmListToolbar, ItsmListTabs, ItsmCreateButton } from 
 import { useRouter } from 'next/navigation';
 import { usePageLeave } from '../../components/interaction-surfaces';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
-import { Alert, Button, Checkbox, Input, Select, Space, Spin, Switch, Tabs, Tag, Upload, message as antdMessage } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiOutlined, CheckCircleOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { Alert, Button, Checkbox, Input, Select, Space, Spin, Switch, Tabs, Tag, Typography, Upload, message as antdMessage } from 'antd';
 import CustomTable from '../../components/itsm-list-table';
 import { FieldRow } from '../../components/field-row';
 import { useItsmApi } from '../../api/useItsmApi';
@@ -18,7 +18,7 @@ import { flattenOpenApiCatalog, generateSamplePayload } from '@/app/system-manag
 import type { OpenAPIDocsCatalog } from '@/app/system-manager/api/settings';
 import { parseInputs, PYTHON_EXAMPLE, readPythonFile, type IntegrationItem, type IntegrationKind, type IntegrationResult } from './helpers';
 
-const statuses: Record<string, string> = { running: '执行中', pending: '待投递', failed: '失败', done: '成功', superseded: '已被新状态替代' };
+const statuses: Record<string, string> = { running: '执行中', pending: '待投递', failed: '失败', unknown: '待核对', done: '成功', superseded: '已被新状态替代' };
 
 export default function IntegrationWorkspace({ integrationId, mode = "configure" }: { integrationId?: string; mode?: string }) {
   const router = useRouter();
@@ -35,6 +35,34 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
   const [permissions, setPermissions] = useState({ can_add: false, can_edit: false });
   const [draft, setDraft] = useState<IntegrationItem>();
   const [selected, setSelected] = useState<IntegrationItem>();
+  const [savedUrl, setSavedUrl] = useState<string>();
+  const [historyQuery, setHistoryQuery] = useState<Record<string, string>>({});
+  const historyRequest = useRef(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const refreshHistory = async (id: number, query: Record<string, string>) => {
+    const sequence = ++historyRequest.current;
+    setHistoryLoading(true);
+    try {
+      const detail = await api.getIntegration(id, query) as IntegrationItem;
+      if (sequence === historyRequest.current) { setSelected(detail); setHistoryQuery(query); }
+    } catch (error) { if (sequence === historyRequest.current) notifyError(error); }
+    finally { if (sequence === historyRequest.current) setHistoryLoading(false); }
+  };
+  const historyControls = (kind: 'run' | 'delivery') => {
+    const pageSize = Number(historyQuery[`${kind}_page_size`] || 20);
+    const change = (page: number, size: number, status = historyQuery[`${kind}_status`] || '') => {
+      if (!selected) return;
+      const next = size === pageSize && status === (historyQuery[`${kind}_status`] || '') && page === (selected[`${kind}_page`] ?? 1) + 1;
+      void refreshHistory(selected.id, {...historyQuery, [`${kind}_page`]: String(page), [`${kind}_page_size`]: String(size),
+        [`${kind}_after`]: next ? selected[`${kind}_next_cursor`] || '' : '', [`${kind}_status`]: status});
+    };
+    return {
+      pagination: { current: selected?.[`${kind}_page`] ?? 1, pageSize, total: selected?.[`${kind}_count`] ?? 0,
+        onChange: (page: number, size: number) => change(size === pageSize ? page : 1, size) },
+      filter: <Select aria-label="记录状态" className="mb-3 min-w-32" value={historyQuery[`${kind}_status`] || ''} onChange={value => change(1, pageSize, value)}
+        options={[{value:'',label:'全部状态'}, ...Object.entries(statuses).filter(([value]) => kind === 'delivery' || ['done','failed','running'].includes(value)).map(([value,label])=>({value,label}))]} />,
+    };
+  };
   const [input, setInput] = useState('{}');
   const [result, setResult] = useState<IntegrationResult>();
   const [busy, setBusy] = useState(false);
@@ -56,20 +84,22 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
     return () => { live = false; };
   }, [api.ready, api.integrationCatalog, mode, draft?.kind, notifyError]);
 
+  const tokenHint = draft?.has_token && (draft.config.url === savedUrl ? '已配置，留空保留' : '接收地址已更改，请重新填写令牌');
   const patchConfig = (value: IntegrationItem['config']) => setDraft(current => current ? { ...current, config: { ...current.config, ...value } } : current);
   const save = async () => {
     if (!draft?.name.trim()) { message.warning('请输入集成名称'); return; }
     setBusy(true);
     try {
       const saved = await api.saveIntegration({ name: draft.name.trim(), kind: draft.kind, config: draft.config, is_enabled: draft.is_enabled }, draft.id || undefined);
-      setBaseline(JSON.stringify(draft)); await load(); message.success('已保存');
+      const updated = saved as IntegrationItem;
+      setSavedUrl(updated.config?.url); setDraft(updated); setBaseline(JSON.stringify(updated)); await load(); message.success('已保存');
       if (!draft.id) router.replace(`/itsm/form/integrations/${(saved as {id:number}).id}/configure`);
     } catch (error) { notifyError(error); } finally { setBusy(false); }
   };
   useEffect(()=>{
     if (!api.ready || !integrationId) return;
     let live=true;
-    setDraft(undefined);setSelected(undefined);setPageError('');
+    setDraft(undefined);setSelected(undefined);setPageError('');setHistoryQuery({});setHistoryLoading(false);
     if (integrationId.startsWith('new-')) {
       const newKind=integrationId.slice(4) as IntegrationKind;
       if (!['api','python','todo'].includes(newKind)) {setPageError('未知集成类型');return;}
@@ -87,16 +117,31 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
           const sample=detail.kind==='python'?{rows:[{amount:100}],params:{rate:2}}:detail.kind==='todo'?{event:'test',event_id:crypto.randomUUID(),title:'待办对接测试',assignees:[]}:generateSamplePayload(detail.config.transport==='external'?detail.config.request_schema:definition?.requestSchema)||{};
           setInput(JSON.stringify(sample,null,2));
         }
-        else {setDraft(detail);setBaseline(JSON.stringify(detail));}
+        else {setDraft(detail);setSavedUrl(detail.config.url);setBaseline(JSON.stringify(detail));}
       }).catch(error=>{if(live)setPageError(error instanceof Error?error.message:'加载失败');});
     }
-    return ()=>{live=false;};
+    return ()=>{live=false;historyRequest.current++;};
   },[api.ready,integrationId,mode,api.getIntegration,api.integrationCatalog]);
   const test = async () => {
     if (!selected) return;
     setBusy(true); setResult(undefined);
-    try { setResult(await api.testIntegration(selected.id, parseInputs(input)) as IntegrationResult); setSelected(await api.getIntegration(selected.id) as IntegrationItem); }
+    try { setResult(await api.testIntegration(selected.id, parseInputs(input)) as IntegrationResult); await refreshHistory(selected.id, historyQuery); }
     catch (error) { notifyError(error); } finally { setBusy(false); }
+  };
+
+  const deliveryActions = (row: NonNullable<IntegrationItem['deliveries']>[number]) => {
+    if (!selected?.is_enabled || !permissions.can_edit) return null;
+    const update = (request: Promise<unknown>) => {
+      void request.then(() => refreshHistory(selected.id, historyQuery)).catch(notifyError);
+    };
+    if (row.status === 'unknown') return <ItsmRowActions items={[
+      { key: 'received', label: '已核对，接收方已收到', icon: <CheckCircleOutlined />, onClick: () => update(api.reconcileDelivery(selected.id, row.id, row.attempts, true)) },
+      { key: 'retry', label: '已核对，接收方未收到，重新投递', kind: 'retry', onClick: () => update(api.reconcileDelivery(selected.id, row.id, row.attempts, false)) },
+    ]} />;
+    if (row.status === 'failed') return <ItsmRowActions items={[
+      { key: 'retry', label: '重试', kind: 'retry', onClick: () => update(api.retryDelivery(selected.id, row.id)) },
+    ]} />;
+    return null;
   };
 
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
@@ -135,7 +180,7 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
           {draft.config.transport === 'external' ? <>
             <FieldRow label="请求地址"><Input aria-label="外部 API 地址" value={draft.config.url} placeholder="https://api.example.com/items" onChange={e => patchConfig({ url: e.target.value })} /></FieldRow>
             <FieldRow label="请求方法"><Select aria-label="请求方法" className="w-full" value={draft.config.method || 'GET'} options={['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(value => ({value, label: value}))} onChange={method => patchConfig({method})} /></FieldRow>
-            <FieldRow label="Bearer Token"><Input.Password aria-label="外部 API 认证令牌" autoComplete="new-password" value={draft.config.token} placeholder={draft.has_token ? '已配置，留空保留' : '可选；令牌加密保存'} onChange={e => patchConfig({token:e.target.value})} /></FieldRow>
+            <FieldRow label="Bearer Token"><Input.Password aria-label="外部 API 认证令牌" autoComplete="new-password" value={draft.config.token} placeholder={tokenHint || '可选；令牌加密保存'} onChange={e => patchConfig({token:e.target.value})} /></FieldRow>
             <FieldRow label="输入参数" align="start"><div className="flex w-full flex-col gap-2">
               {Object.entries(draft.config.request_schema?.properties || {}).map(([name, spec], index) => <div className="grid grid-cols-[1fr_110px_70px_1fr_90px] items-center gap-2" key={name}>
                 <Input aria-label={`外部参数${index + 1}名称`} defaultValue={name} placeholder="参数名称" onBlur={e => { const next = e.target.value.trim(); if (next && next !== name && !(next in (draft.config.request_schema?.properties || {}))) patchConfig({request_schema: { ...draft.config.request_schema, required: (draft.config.request_schema?.required || []).map(k => k === name ? next : k), properties: Object.fromEntries(Object.entries(draft.config.request_schema?.properties || {}).map(([k,v]) => [k === name ? next : k,v])) }}); }} />
@@ -160,7 +205,7 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
         </>}
         {draft.kind === 'todo' && <>
           <FieldRow label="接收地址"><Input aria-label="待办接收地址" value={draft.config.url} placeholder="https://example.com/todo/events" onChange={event => patchConfig({ url: event.target.value })} /></FieldRow>
-          <FieldRow label="Bearer Token"><Input.Password aria-label="待办认证令牌" autoComplete="new-password" value={draft.config.token} placeholder={draft.has_token ? '已配置，留空保留' : '接收方要求认证时填写'} onChange={event => patchConfig({ token: event.target.value })} /></FieldRow>
+          <FieldRow label="Bearer Token"><Input.Password aria-label="待办认证令牌" autoComplete="new-password" value={draft.config.token} placeholder={tokenHint || '接收方要求认证时填写'} onChange={event => patchConfig({ token: event.target.value })} /></FieldRow>
           <Alert type="info" showIcon message="推送 ITSM 待办到外部系统" description="同步 create / update / close 事件、处理人和工单链接。接收方按 task_id 更新待办、使用 event_id 去重，并返回 2xx；失败可在记录中重试。测试工单不会向外推送。" />
         </>}
       </div>}
@@ -172,14 +217,16 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
           <div><Button type="primary" aria-label="执行测试" icon={<PlayCircleOutlined />} loading={busy} disabled={!permissions.can_edit || !selected?.is_enabled} onClick={() => void test()}>执行测试</Button><span className="ml-3 text-xs text-[var(--color-text-3)]">使用当前用户权限执行；API 与待办测试会产生真实请求。</span></div>
           {result && <><Alert showIcon type={result.status === 'done' ? 'success' : 'error'} message={`${statuses[result.status]} · ${result.duration_ms} ms${result.code ? ` · ${result.code}` : ''}`} /><pre className="max-h-72 overflow-auto rounded bg-[var(--color-fill-2)] p-3 text-xs">{JSON.stringify(result.output, null, 2)}</pre></>}
         </div> },
-        { key: 'runs', label: '执行记录', children: <CustomTable rowKey="id" dataSource={selected?.runs || []} columns={[
+        { key: 'runs', label: '执行记录', children: <>{historyControls('run').filter}<CustomTable loading={historyLoading} serverPagination={historyControls('run').pagination} rowKey="id" dataSource={selected?.runs || []} columns={[
           { title: '时间', dataIndex: 'created_at', key: 'time' }, { title: '操作者', dataIndex: 'created_by', key: 'user' },
           { title: '状态', key: 'status', render: (_: unknown, row: { status: string; code: string }) => `${statuses[row.status] || row.status} ${row.code}` }, { title: '耗时（ms）', dataIndex: 'duration_ms', key: 'duration' },
-        ]} /> },
-        ...(selected?.kind === 'todo' ? [{ key: 'deliveries', label: '待办投递', children: <CustomTable<NonNullable<IntegrationItem['deliveries']>[number]> rowKey="id" dataSource={selected.deliveries || []} columns={[
+        ]} /></> },
+        ...(selected?.kind === 'todo' ? [{ key: 'deliveries', label: '待办投递', children: <>{historyControls('delivery').filter}<CustomTable<NonNullable<IntegrationItem['deliveries']>[number]> loading={historyLoading} serverPagination={historyControls('delivery').pagination} rowKey="id" dataSource={selected.deliveries || []} columns={[
           { title: '任务', dataIndex: 'task_id', key: 'task' }, { title: '状态', key: 'status', render: (_: unknown, row: { status: string; code: string }) => `${statuses[row.status] || row.status} ${row.code}` },
-          { title: '次数', dataIndex: 'attempts', key: 'attempts' }, { fixed: 'right' as const, width: 120, title: '操作', key: 'action', render: (_: unknown, row: { id: number; status: string }) => <ItsmRowActions items={(row.status === 'failed' && permissions.can_edit ? [{key: 'action-2', label: "重试", kind: 'retry' as const, onClick: () => { void api.retryDelivery(selected.id, row.id).then(() => api.getIntegration(selected.id)).then(value => setSelected(value as IntegrationItem)).catch(notifyError); }}] : [])} /> },
-        ]} /> }] : []),
+          { title: '事件标识', key: 'event', render: (_, row) => <Typography.Text copyable={{ text: row.event_key }}>{row.event_key.slice(0, 12)}…</Typography.Text> },
+          { title: '次数', dataIndex: 'attempts', key: 'attempts' },
+          { fixed: 'right' as const, width: 120, title: '操作', key: 'action', render: (_, row) => deliveryActions(row) },
+        ]} /></> }] : []),
       ]} />
     </section>}
     </>}

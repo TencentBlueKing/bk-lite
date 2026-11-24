@@ -7,10 +7,18 @@ type ListTableProps<T extends object> = Omit<ComponentProps<typeof CustomTable<T
   /** 搜索或分组切换时回首页，保留每页条数。 */
   queryKey?: string;
   storageKey?: string;
+  serverPagination?: Exclude<ComponentProps<typeof CustomTable<T>>['pagination'], false | undefined>;
 };
 
 /** 已完整加载的管理列表共用 BK-Lite 表格分页；工单中心使用服务端分页。 */
-export default function ItsmListTable<T extends object>({ dataSource = [], queryKey = '', storageKey, ...props }: ListTableProps<T>) {
+export default function ItsmListTable<T extends object>({ serverPagination, queryKey, storageKey, ...props }: ListTableProps<T>) {
+  if (serverPagination) {
+    return <CustomTable<T> scroll={{ y: 'calc(100vh - 320px)' }} {...props} pagination={{ showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], ...serverPagination }} />;
+  }
+  return <LocalListTable<T> {...props} queryKey={queryKey} storageKey={storageKey} />;
+}
+
+function LocalListTable<T extends object>({ dataSource = [], queryKey = '', storageKey, ...props }: ListTableProps<T>) {
   const container=useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ page: 1, queryKey });
   const [pageSize, setPageSize] = useState(20);
