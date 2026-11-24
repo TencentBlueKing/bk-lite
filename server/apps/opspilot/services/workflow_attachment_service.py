@@ -986,13 +986,6 @@ def _single_note(notes: list):
     return [_TextRun("；".join(texts))]
 
 
-def _append_note(slide: dict, text: str) -> None:
-    if not text:
-        return
-    current = _run_text(slide.get("note"))
-    slide["note"] = [_TextRun("；".join(part for part in (current, text) if part))]
-
-
 def _section_to_slides(section: dict, *, cover: bool) -> list[dict]:
     title = section["title"]
     blocks = section["blocks"]
@@ -1038,10 +1031,7 @@ def _section_to_slides(section: dict, *, cover: bool) -> list[dict]:
     facts, notes = _inline_facts(bullets)
     if facts:
         slide = _metrics_slide(title, facts, notes[0] if notes else "")
-        prose = _prose_lines(blocks)
-        if prose:
-            slide["lines"] = _text_lines([prose[0]])
-            _append_note(slide, "；".join(prose[1:]))
+        slide["lines"] = _text_lines(_prose_lines(blocks))
         return [slide]
     if not cover:
         clauses = _clause_cards(blocks)

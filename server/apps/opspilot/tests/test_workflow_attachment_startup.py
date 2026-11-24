@@ -439,6 +439,15 @@ def test_build_attachment_bytes_pptx_keeps_prose_beside_metric_cards():
 
 - 甲 1 条，乙 2 条，丙 3 个
 - 丁 4 台，戊 5 次，己 6 人
+
+## 双说明
+
+第一句说明。
+
+第二句说明也不能丢。
+
+- 处理中 2 条
+- 待响应 3 条
 """
     deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
     overview = next(_pptx_slide_text(slide) for slide in deck.slides if "概览" in _pptx_slide_text(slide))
@@ -448,6 +457,9 @@ def test_build_attachment_bytes_pptx_keeps_prose_beside_metric_cards():
     assert "仍在排查" in overview
     more = next(_pptx_slide_text(slide) for slide in deck.slides if "更多" in _pptx_slide_text(slide))
     assert "己" in more and "6" in more
+    doubled = next(_pptx_slide_text(slide) for slide in deck.slides if "第一句说明" in _pptx_slide_text(slide))
+    assert "第二句说明也不能丢" in doubled
+    assert "处理中" in doubled
 
 
 def test_build_attachment_bytes_pptx_keeps_section_intro_with_cards():
