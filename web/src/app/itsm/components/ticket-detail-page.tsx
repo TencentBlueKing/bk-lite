@@ -15,6 +15,7 @@ import { TicketSla } from './ticket-sla';
 import { TicketTriggerRecords } from './ticket-trigger-records';
 import { TicketSurveyPanel } from './ticket-survey';
 import { TicketFlowBoard } from './ticket-flow-board';
+import { TicketEngineRecovery } from './ticket-engine-recovery';
 import { TicketActions, type OperationInput } from './ticket-actions';
 import { TicketCollaboration, formatTicketTime } from './ticket-collaboration';
 import { useTranslation } from '@/utils/i18n';
@@ -89,9 +90,11 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
   }, [api.ready, load, ticketId, serviceId]);
 
   useEffect(() => {
-    if (busy || serviceId || !ticket || ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
+    if (busy || serviceId || !ticket) return;
+    const recovering = ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery;
+    if (!recovering && ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
     const hasRunningStep = ticket.history?.some(item => item.action === 'auto' && item.state === 'current');
-    if (ticket.tasks.length && !hasRunningStep) return;
+    if (!recovering && ticket.tasks.length && !hasRunningStep) return;
     const timer = window.setInterval(() => { void load(undefined, true); }, 5000);
     return () => window.clearInterval(timer);
   }, [ticket, load, serviceId, busy]);
@@ -102,6 +105,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
       await api.operateTicket(ticketId, {
         task_id: task?.id,
         action,
+        reopen_from: action === 'reopen' ? ticket?.reopen_from ?? undefined : undefined,
         target: extra?.target || '',
         opinion: extra?.opinion || '',
         return_node_id: extra?.return_node_id,
@@ -114,6 +118,10 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) return false;
       message.error(error instanceof Error ? error.message : t('itsm.ticket.operateFailed'));
+      if ([409, 502, 503, 504].includes((error as { status?: number })?.status ?? 0)) {
+        selectedTaskId.current = undefined;
+        await load(undefined, true);
+      }
       return false;
     } finally {
       setBusy(false);
@@ -164,7 +172,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
             <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
+          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>
@@ -175,6 +183,9 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
         </div>
       </header>
 
+      {!serviceId && (ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery) && <TicketEngineRecovery
+        key={ticket.start_recovery ? `${ticket.start_recovery.id}-${ticket.start_recovery.sent_at}` : ticket.manual_recovery?.token || 'operation'}
+        ticket={ticket} refresh={() => { selectedTaskId.current = undefined; return load(); }} />}
       {ticket.nodes.length ? <div className="shrink-0"><TicketFlowBoard nodes={ticket.nodes} edges={ticket.edges || []} /></div> : null}
 
       <div className={`grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] ${logsOpen ? 'grid-rows-2 xl:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_400px]' : 'grid-rows-[minmax(0,1fr)_48px] xl:grid-rows-1 xl:grid-cols-[minmax(0,1fr)_48px]'}`}>

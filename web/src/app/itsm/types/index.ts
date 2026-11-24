@@ -287,7 +287,14 @@ export interface SurveyResult {
   answers?: Array<{ id: string; title: string; value: string }>;
 }
 
+export interface ManualRecoveryDecision { decision: 'abandon'; token: string; sent_at: string; verified: true; reason: string }
+export type StartRecoveryRequest = { id: number; action: 'check' } | { id: number; action: 'confirmed_not_started'; sent_at: string; reason: string };
+
 export interface TicketDetail {
+  reopen_from?: string | null;
+  engine_pending?: boolean;
+  manual_recovery?: { action: string; status: string; can_check: boolean; can_abandon?: boolean; token?: string; sent_at?: string | null } | null;
+  start_recovery?: { id: number; kind: 'initial' | 'reopen'; state: string; business_key: string; sent_at: string | null; can_confirm: boolean } | null;
   selected_task_id?: number | null;
   form_rules?: FormSchema['rules'];
   history?: TicketHistoryItem[];

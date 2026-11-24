@@ -5,7 +5,7 @@ import { readListPages } from './list-pages';
 import type { TriggerOptions } from '../rule/triggers/trigger-config';
 import type { TriggerOptionsQuery } from '../rule/triggers/trigger-option-pages';
 import type { PortalLayout } from '../portal/workbench-types';
-import type { AutoExecutionReview, HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
+import type { ManualRecoveryDecision, StartRecoveryRequest, AutoExecutionReview, HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
 export interface TicketTriggerLogPage {
@@ -139,9 +139,11 @@ export function useItsmApi() {
     [post],
   );
   const operateTicket = useCallback(
-    (id: number, body: { task_id?: number; action: string; opinion?: string; target?: string; return_node_id?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
+    (id: number, body: { task_id?: number; action: string; reopen_from?: string; opinion?: string; target?: string; return_node_id?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
     [post],
   );
+  const recoverOperation = useCallback((id: number, decision?: ManualRecoveryDecision) => post(`/itsm/api/tickets/${id}/operation-recovery/`, decision ?? {}), [post]);
+  const recoverStart = useCallback((id: number, body: StartRecoveryRequest) => post(`/itsm/api/tickets/${id}/start-recovery/`, body), [post]);
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
@@ -300,7 +302,7 @@ export function useItsmApi() {
     updateResource,
     deleteResource,
     createTicket,
-    operateTicket,
+    operateTicket, recoverOperation, recoverStart,
     ticketLogs,
     getTicket,
     getTicketTriggerLogs,
