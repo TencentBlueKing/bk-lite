@@ -203,3 +203,30 @@ def test_application_preview_exposes_only_display_fields(service):
         {"id": "a", "type": "approval", "name": "审批", "state": "waiting"},
     ]
     assert result["edges"] == [{"from": "s", "to": "a"}]
+
+
+def test_public_service_lookup_skips_unrelated_group_memberships(service, django_assert_num_queries):
+    from apps.itsm.services.service_access import visible_services
+
+    public = Service.objects.create(name="公开", workflow=service.workflow)
+    group = HandlerGroup.objects.create(name="其他组", members=["owner"])
+    service.visible_groups = [group.pk]
+    service.save()
+    with django_assert_num_queries(2):
+        assert visible_services(req(), service_id=public.pk).get() == public
+
+
+def test_directory_search_pages_respect_acl_and_catalog_descendants(service):
+    from apps.itsm.models import ServiceCatalog
+
+    parent = ServiceCatalog.objects.create(name="基础设施")
+    child = ServiceCatalog.objects.create(name="主机", parent=parent)
+    for index in range(13):
+        Service.objects.create(name=f"主机{index}", workflow=service.workflow, catalog=child, description="Linux")
+    service.description = "Linux"
+    service.catalog = child
+    service.save()
+    response = data(service_portal(req(payload={"directory": 1, "catalog": parent.pk, "keyword": "linux", "page": 2, "page_size": 10}, user="viewer")))
+    assert response["total"] == 13
+    assert len(response["items"]) == 3
+    assert data(service_portal(req(payload={"service_id": service.pk})))["services"][0]["id"] == service.pk

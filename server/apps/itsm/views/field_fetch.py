@@ -94,7 +94,7 @@ def field_fetch(request):
         perm, context = {}, "preview"
     elif body.get("service_id"):
         require(request, "ticket-Add")
-        service = visible_services(request).select_related("workflow__current_version").get(id=body["service_id"])
+        service = visible_services(request, service_id=body["service_id"]).select_related("workflow__current_version").get()
         version = service.workflow.current_version
         schema = workflow_schema(version)
         perm = _find_node(version.design, node_type="submit").get("field_perm")
