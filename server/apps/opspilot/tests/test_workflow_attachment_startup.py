@@ -419,6 +419,109 @@ def test_build_attachment_bytes_pptx_keeps_table_intro_on_the_table_slide():
     assert tables[0].cell(1, 0).text == "SEED-AC-01"
 
 
+def test_build_attachment_bytes_pptx_keeps_prose_beside_metric_cards():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 概览
+
+本周只看未关闭工单。
+
+- 处理中 2 条，仍在排查
+- 待响应 3 条
+- 等级均为 0
+- 来源均为本地验收
+
+## 更多
+
+- 甲 1 条，乙 2 条，丙 3 个
+- 丁 4 台，戊 5 次，己 6 人
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+    overview = next(_pptx_slide_text(slide) for slide in deck.slides if "概览" in _pptx_slide_text(slide))
+    assert "本周只看未关闭工单" in overview
+    assert "等级均为 0" in overview
+    assert "来源均为本地验收" in overview
+    assert "仍在排查" in overview
+    more = next(_pptx_slide_text(slide) for slide in deck.slides if "更多" in _pptx_slide_text(slide))
+    assert "己" in more and "6" in more
+
+
+def test_build_attachment_bytes_pptx_keeps_section_intro_with_cards():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    content = """# 汇总
+
+## 核心结论
+
+先看这段总述，不能丢。
+
+- 第一条，建议甲
+- 第二条，建议乙
+
+## 环节
+
+第一句说明
+
+第二句说明也不能丢
+
+### 甲
+正文甲
+
+### 乙
+正文乙
+
+## 动作
+
+先做这两件。
+
+1. **逐条核实**：已恢复的直接关闭
+2. **认领未分派**：先指定责任人
+
+## 分布
+
+按来源看。
+
+- 处理中：2 条（SEED-OG-02）
+- 待响应：2 条（SEED-OG-01）
+
+## 告警明细
+
+只看这两条。
+
+- SEED-OG-02：Guest组CPU过高，资源 noperm-opaque-01，处理中，处理人 admin
+- SEED-AC-01：磁盘使用率过高，资源 noperm-host-10.10.70.21，待响应，处理人 admin
+"""
+    deck = Presentation(BytesIO(build_attachment_bytes(content, "pptx", title="汇总")))
+
+    def slide_blob(slide) -> str:
+        parts = [_pptx_slide_text(slide)]
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            parts.extend(cell.text for row in shape.table.rows for cell in row.cells)
+        return "\n".join(parts)
+
+    texts = [slide_blob(slide) for slide in deck.slides]
+    conclusion = next(text for text in texts if "建议甲" in text)
+    assert "先看这段总述，不能丢" in conclusion
+    status = next(text for text in texts if "正文甲" in text)
+    assert "第一句说明" in status
+    assert "第二句说明也不能丢" in status
+    action = next(text for text in texts if "逐条核实" in text)
+    assert "先做这两件" in action
+    spread = next(text for text in texts if "按来源看" in text)
+    assert "处理中" in spread and "SEED-OG-02" in spread
+    detail = next(text for text in texts if "只看这两条" in text)
+    assert "只看这两条" in detail
+    assert "admin" in detail
+
+
 def test_build_attachment_bytes_pptx_unescapes_literal_newlines():
     from io import BytesIO
 

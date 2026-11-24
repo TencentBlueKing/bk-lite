@@ -461,7 +461,10 @@ _PPT_COVER_LINES = 4
 _PPT_BODY_LINES = 4
 _PPT_CARD_LIMIT = 4
 _PPT_METRIC_RE = re.compile(
-    r"^(?P<value>\d+(?:\.\d+)?%?)" r"(?:\s*(?P<unit>条|个|次|人|台|分钟|小时|天))?" r"\s*(?P<label>[^，,。；;]{0,18})" r"(?:[，,。；;]\s*(?P<note>.*))?$"
+    r"^(?P<value>\d+(?:\.\d+)?%?)"
+    r"(?:\s*(?P<unit>条|个|次|人|台|分钟|小时|天))?"
+    r"\s*(?P<label>[^，,。；;]{0,18})"
+    r"(?:[，,。；;]\s*(?P<note>.*))?$"
 )
 _PPT_INLINE_COUNT_RE = re.compile(r"(?:^|[，,、;；\s])(?P<label>[\u4e00-\u9fffA-Za-z]{1,8})\s*(?P<value>\d+)\s*(?P<unit>条|个|次|台|人|分钟|小时|天)")
 _PPT_DIST_RE = re.compile(r"^(?P<label>.{1,48}?)[：:]\s*(?P<value>\d+)\s*(?P<unit>条|个|次|台|人)?\s*(?P<note>.*)$")
@@ -598,7 +601,7 @@ def _metric_list(blocks) -> tuple[list, list[dict], list] | None:
             after.append(runs)
         else:
             before.append(runs)
-    return before[:1], metrics, after[:1]
+    return before, metrics, after
 
 
 def _ordered_cards(blocks) -> list[dict] | None:
@@ -622,7 +625,7 @@ def _card_slides(title: str, intro: list[str], cards: list[dict]) -> list[dict]:
         chunk = cards[start : start + _PPT_CARD_LIMIT]
         slide = _blank_slide(title, "cards")
         if start == 0 and intro:
-            slide["lines"] = [[_TextRun(intro[0])]]
+            slide["lines"] = [[_TextRun(line)] for line in intro if line]
         slide["cards"] = chunk
         slides.append(slide)
     return slides
@@ -791,9 +794,15 @@ def _inline_facts(items: list[str]) -> tuple[list[dict], list[str]]:
             notes.append(item)
             continue
         hits += 1
+        taken = False
         for index, match in enumerate(found):
             if len(metrics) >= 5:
+                leftover = item if not taken else item[match.start() :]
+                leftover = leftover.strip(" ，,、")
+                if leftover:
+                    notes.append(leftover)
                 break
+            taken = True
             label = match.group("label")
             end = found[index + 1].start() if index + 1 < len(found) else len(item)
             tail = item[match.end() : end].strip(" ，,、")
@@ -807,8 +816,9 @@ def _inline_facts(items: list[str]) -> tuple[list[dict], list[str]]:
         extras = [item["note"] for item in metrics if item["note"]]
         for item in metrics:
             item["note"] = ""
-        if extras:
-            notes = ["；".join([*extras, *notes])]
+        notes = [*extras, *notes]
+    if len(notes) > 1:
+        notes = ["；".join(note for note in notes if note)]
     return metrics, notes[:1]
 
 
@@ -953,6 +963,36 @@ def _metrics_slide(title: str, metrics: list[dict], note: str = "") -> dict:
     return slide
 
 
+def _prose_lines(blocks) -> list[str]:
+    lines = []
+    for block in blocks:
+        if block[0] in {"ul", "ol"}:
+            continue
+        lines.extend(bit for bit in _block_bits(block) if bit)
+    return lines
+
+
+def _text_lines(texts: list[str]) -> list:
+    return [[_TextRun(text)] for text in texts if text]
+
+
+def _single_note(notes: list):
+    texts = [_run_text(note) for note in notes]
+    texts = [text for text in texts if text]
+    if not texts:
+        return None
+    if len(notes) == 1:
+        return notes[0]
+    return [_TextRun("；".join(texts))]
+
+
+def _append_note(slide: dict, text: str) -> None:
+    if not text:
+        return
+    current = _run_text(slide.get("note"))
+    slide["note"] = [_TextRun("；".join(part for part in (current, text) if part))]
+
+
 def _section_to_slides(section: dict, *, cover: bool) -> list[dict]:
     title = section["title"]
     blocks = section["blocks"]
@@ -963,7 +1003,7 @@ def _section_to_slides(section: dict, *, cover: bool) -> list[dict]:
     if title in _PPT_CALLOUT_TITLES:
         cards = _insight_cards(bullets)
         if cards is not None:
-            return _card_slides(title, [], cards)
+            return _card_slides(title, _prose_lines(blocks), cards)
         return _line_slides(title, _content_pieces(blocks), cover=cover)
     metrics = _metric_list(blocks)
     if metrics is not None:
@@ -977,24 +1017,32 @@ def _section_to_slides(section: dict, *, cover: bool) -> list[dict]:
         slide = _blank_slide(title, "metrics")
         slide["lines"] = headline
         slide["metrics"] = items
-        slide["note"] = note[0] if note else None
+        slide["note"] = _single_note(note)
         slides.append(slide)
         return slides
     cards = _ordered_cards(blocks)
     if cards is not None:
-        return _card_slides(title, [], cards)
+        return _card_slides(title, _prose_lines(blocks), cards)
     records = _record_table(bullets)
     if records is not None:
         slide = _blank_slide(title, "points")
         slide["table"] = records
         slide["header"] = True
+        slide["lines"] = _text_lines(_prose_lines(blocks))
         return [slide]
     distributed = _distribution_metrics(bullets)
     if distributed is not None:
-        return [_metrics_slide(title, distributed)]
+        slide = _metrics_slide(title, distributed)
+        slide["lines"] = _text_lines(_prose_lines(blocks))
+        return [slide]
     facts, notes = _inline_facts(bullets)
     if facts:
-        return [_metrics_slide(title, facts, notes[0] if notes else "")]
+        slide = _metrics_slide(title, facts, notes[0] if notes else "")
+        prose = _prose_lines(blocks)
+        if prose:
+            slide["lines"] = _text_lines([prose[0]])
+            _append_note(slide, "；".join(prose[1:]))
+        return [slide]
     if not cover:
         clauses = _clause_cards(blocks)
         if clauses is not None:
@@ -1230,9 +1278,11 @@ def _build_pptx_bytes(content: str, title: str) -> bytes:
         if role == "metrics" and slide_data["metrics"]:
             card_top = 1.55
             if slide_data["lines"]:
-                headline = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(0.8))
+                line_count = len(slide_data["lines"])
+                headline_height = 0.8 if line_count <= 1 else min(1.6, 0.4 * line_count)
+                headline = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(headline_height))
                 _pptx_lines(headline, slide_data["lines"], 20, _TEXT, bullet=False)
-                card_top = 2.35
+                card_top = 2.35 if line_count <= 1 else 1.4 + headline_height + 0.15
             _pptx_metric_cards(slide, slide_data["metrics"], card_top)
             if slide_data["note"]:
                 note = _pptx_box(slide, Inches(0.7), Inches(6.4), Inches(9.2), Inches(0.5))
@@ -1245,16 +1295,20 @@ def _build_pptx_bytes(content: str, title: str) -> bytes:
         elif role == "cards" and slide_data["cards"]:
             card_top = 1.5
             if slide_data["lines"]:
-                intro = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(0.55))
+                line_count = len(slide_data["lines"])
+                intro_height = 0.55 if line_count <= 1 else min(1.3, 0.4 * line_count)
+                intro = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(intro_height))
                 _pptx_lines(intro, slide_data["lines"], 16, _MUTED, bullet=False)
-                card_top = 2.05
+                card_top = 2.05 if line_count <= 1 else 1.4 + intro_height + 0.1
             _pptx_info_cards(slide, slide_data["cards"], card_top)
         elif slide_data["table"]:
             table_top = 1.55
             if slide_data["lines"]:
-                headline = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(0.7))
+                line_count = len(slide_data["lines"])
+                headline_height = 0.7 if line_count <= 1 else min(1.4, 0.35 * line_count)
+                headline = _pptx_box(slide, Inches(0.7), Inches(1.4), Inches(11.6), Inches(headline_height))
                 _pptx_lines(headline, slide_data["lines"], 18, _TEXT, bullet=False)
-                table_top = 2.2
+                table_top = 2.2 if line_count <= 1 else 1.4 + headline_height + 0.1
             _pptx_table(slide, slide_data["table"], slide_data["header"], top=table_top)
         elif slide_data["lines"]:
             body = _pptx_box(
