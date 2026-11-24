@@ -275,7 +275,7 @@ class BasicNode:
         trace_id = config["configurable"]["trace_id"]
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False):
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None, max_retries=None):
         """
         获取LLM客户端
 
@@ -283,11 +283,19 @@ class BasicNode:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+            timeout: 单次调用超时（秒）。不传时用 LLM_INVOKE_TIMEOUT。
+            max_retries: HTTP 重试次数。不传时用 SDK 默认。
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
+        return LLMClientFactory.create_client(
+            request,
+            disable_stream=disable_stream,
+            isolated=isolated,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     async def _prepare_messages_for_llm(self, messages, graph_request, *, tools=None):
         if graph_request is None:
@@ -2528,6 +2536,8 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
                 DECLARED_CMDB_MODEL_KEY,
                 MISSING_PARAMS_CHOICE_HINT,
+                PLANNER_LLM_MAX_RETRIES,
+                PLANNER_LLM_TIMEOUT_SECONDS,
                 TOOL_FAILURE_AUTHZ,
                 TOOL_FAILURE_CONFIG,
                 TOOL_FAILURE_INTERNAL,
@@ -2772,7 +2782,13 @@ class ToolsNodes(
                     raise
                 return {"messages": new_messages}
 
-            planner_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+            planner_llm = self.get_llm_client(
+                graph_request,
+                disable_stream=True,
+                isolated=True,
+                timeout=PLANNER_LLM_TIMEOUT_SECONDS,
+                max_retries=PLANNER_LLM_MAX_RETRIES,
+            )
             planner = ToolExecutionPlanner(
                 planner_llm,
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),

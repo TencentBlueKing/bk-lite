@@ -249,6 +249,17 @@ def test_anthropic_chat_client_generates_text_and_tool_calls(monkeypatch):
     assert captured["json"]["tool_choice"] == {"type": "auto"}
 
 
+def test_planner_client_caps_long_invoke_timeout(monkeypatch):
+    monkeypatch.setenv("LLM_INVOKE_TIMEOUT", "1900")
+    request = BasicLLMRequest(openai_api_base="https://api.openai.com/v1", openai_api_key="test", model="auto")
+    client = LLMClientFactory.create_client(request, disable_stream=True, isolated=True, timeout=180, max_retries=0)
+    assert client.request_timeout == 180
+    assert client.max_retries == 0
+    assert client.root_async_client.max_retries == 0
+    read_timeout = getattr(client.root_async_client.timeout, "read", client.root_async_client.timeout)
+    assert read_timeout == 180
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [(None, 300.0), ("bad", 300.0), (0, 1.0), ("2.5", 2.5)],
@@ -274,7 +285,7 @@ def test_llm_factory_routes_public_client_creation(monkeypatch, protocol, capabi
         "apps.opspilot.metis.llm.common.llm_client_factory.build_anthropic_runtime_capabilities",
         lambda *_: SimpleNamespace(use_anthropic_compatible_adapter=capability),
     )
-    selected = monkeypatch.setattr(LLMClientFactory, creator, lambda *_args: created)
+    selected = monkeypatch.setattr(LLMClientFactory, creator, lambda *_args, **_kwargs: created)
 
     result = LLMClientFactory.create_client(request, disable_stream=True, isolated=True, timeout=12)
     assert result is created
