@@ -3,19 +3,11 @@
 import { useMemo, useState } from 'react';
 import type { ChartData } from '@/app/monitor/types';
 import { ProInfoHint, ThinTimeSeries } from '../../host/layered/pro-chrome';
-import { ES_PALETTE } from '../config';
 import { dimensionChrome, selectedLineIds } from './model';
 import { formatEsValue, type EsChartModel, type EsLineModel } from './assemble';
+import { ES_LINE_COLORS } from './palette';
 
-const LINE_COLORS = [
-  ES_PALETTE.blue,
-  ES_PALETTE.orange,
-  ES_PALETTE.emerald,
-  ES_PALETTE.cyan,
-  ES_PALETTE.indigo,
-  ES_PALETTE.amber,
-  ES_PALETTE.rose
-] as const;
+const LINE_COLORS = ES_LINE_COLORS;
 
 const colorAt = (index: number) => LINE_COLORS[index % LINE_COLORS.length];
 

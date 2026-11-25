@@ -29,7 +29,7 @@ import { useElasticsearchProData } from './layered/use-pro-data';
 import styles from './index.module.scss';
 
 const HEALTH_CARD_TITLE = '集群健康状态';
-const SUMMARY_TITLES = ['未分配分片', '节点可用磁盘', 'JVM 堆使用率'];
+const SUMMARY_TITLES = ['未分配分片', '主分片分配率', '节点可用磁盘', 'JVM 堆使用率'];
 const ES_CATEGORY_METRICS: readonly string[] = [];
 
 const isElasticsearchMode = (mode: string): mode is ObjectDashboardMode => (

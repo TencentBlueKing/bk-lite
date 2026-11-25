@@ -741,6 +741,13 @@
       "template": "sum without (db) (rate(postgresql_tup_returned{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:16e207b6",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "100 * elasticsearch_cluster_health_active_primary_shards{__$labels__} / clamp_min(elasticsearch_cluster_health_active_primary_shards{__$labels__} + elasticsearch_cluster_health_unassigned_shards{__$labels__}, 1)"
+    },
+    {
       "id": "dashboard:v1:16ecd72d",
       "object_names": [
         "K3SNode"
