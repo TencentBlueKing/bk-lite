@@ -485,6 +485,14 @@ test('wiki material write stays inside the tool call, not the chat bubble', () =
   assert.equal(String(replayed[0].content).includes('wiki_material_write'), false);
   const chunks = replayed[0].metadata?.contentChunks as Array<{ type: string; toolCalls?: Array<{ result?: string }> }>;
   assert.equal(chunks[0].toolCalls?.[0].result, '正在写入，请在此等待结果');
+  assert.deepEqual(replayed[0].metadata?.wikiMaterialWrites, [
+    {
+      material_id: 22,
+      phase: 'writing',
+      summary: '正在写入，请在此等待结果',
+      received_at: 0,
+    },
+  ]);
 });
 
 test('history replay restores tool call args for webchat display', () => {
