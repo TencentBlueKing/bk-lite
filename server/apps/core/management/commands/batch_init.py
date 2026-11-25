@@ -204,27 +204,38 @@ class Command(BaseCommand):
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
         self._schedule_ci_context_rebuild()
-        # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
+        # UUID 存量清洗：未完成时只注册周期任务并投递一次。禁止在此同步 --apply。
         try:
+            from apps.cmdb.services.uuid_migration_runtime import is_uuid_migration_periodic_retired
             from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime
 
             ensure_uuid_migration_periodic_task()
-            try:
-                migrate_cmdb_instance_uuid_runtime.delay()
-            except Exception as exc:
-                # Broker 暂不可达时不阻断启动；周期任务会在 Beat/Worker 就绪后收敛。
-                logger.warning("投递 CMDB UUID 运行期清洗任务失败（将由周期任务重试）: %s", exc)
-            self.stdout.write("已注册 CMDB UUID 运行期清洗任务（异步收敛，不阻断启动）")
+            if is_uuid_migration_periodic_retired():
+                self.stdout.write("CMDB UUID 运行期清洗已完成，跳过")
+            else:
+                try:
+                    migrate_cmdb_instance_uuid_runtime.delay()
+                except Exception as exc:
+                    # Broker 暂不可达时不阻断启动；周期任务会在 Beat/Worker 就绪后收敛。
+                    logger.warning("投递 CMDB UUID 运行期清洗任务失败（将由周期任务重试）: %s", exc)
+                self.stdout.write("已注册 CMDB UUID 运行期清洗任务（异步收敛，不阻断启动）")
         except Exception as exc:
             logger.warning("注册 CMDB UUID 运行期清洗失败（不阻断启动）: %s", exc)
             self.stdout.write(self.style.WARNING(f"CMDB UUID 运行期清洗注册跳过: {exc}"))
 
     def _schedule_display_field_backfill(self) -> None:
-        """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
+        """实例 _display 回填是可重建派生数据。启动期不扫实例；做完后不再投递。"""
         try:
-            from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task
+            from apps.cmdb.tasks.display_field_backfill import (
+                backfill_cmdb_display_fields,
+                disable_display_field_backfill_periodic_task,
+                display_backfill_pending,
+            )
 
-            ensure_display_field_backfill_periodic_task()
+            disable_display_field_backfill_periodic_task()
+            if not display_backfill_pending():
+                self.stdout.write("CMDB 显示字段已回填，跳过投递")
+                return
             try:
                 backfill_cmdb_display_fields.delay(force=False)
             except Exception as exc:
@@ -233,9 +244,9 @@ class Command(BaseCommand):
                     type(exc).__name__,
                     exc_info=safe_exception_info(exc),
                 )
-                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），周期任务会重试"))
+                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），下次启动会再投递"))
             else:
-                self.stdout.write("已注册 CMDB 显示字段回填任务（异步收敛，不阻断启动）")
+                self.stdout.write("已投递 CMDB 显示字段回填（一次性，不阻断启动）")
         except Exception as exc:
             logger.warning(
                 "event=display_backfill_register_failed failed_stage=register error_type=%s",

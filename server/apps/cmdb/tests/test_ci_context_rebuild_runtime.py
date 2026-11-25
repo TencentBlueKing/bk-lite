@@ -205,7 +205,7 @@ def test_init_cmdb_enqueues_rebuild_and_survives_broker_outage(monkeypatch, capl
         calls.append((name, kwargs))
 
     monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", _call)
-    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.disable_display_field_backfill_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay", lambda *args, **kwargs: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay", lambda: None)
@@ -239,7 +239,7 @@ def test_init_cmdb_skips_enqueue_when_rebuild_already_done(monkeypatch):
     delayed = []
 
     monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", lambda *args, **kwargs: None)
-    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.disable_display_field_backfill_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay", lambda *args, **kwargs: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.ensure_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay", lambda: None)

@@ -155,10 +155,10 @@ startup.sh
 
 实例 `_display` 是由 organization、user、enum、tag 原值算出的派生字段。新建和修改实例时，保存逻辑已经写入这份文本。存量回填只补历史实例，失败不影响实例读写。
 
-- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。只补定义时不加载用户表和组织表。
-- 启动期入队：`ensure_display_field_backfill_periodic_task()` 并 `backfill_cmdb_display_fields.delay(force=False)`。不删除完成标记，也不强制重扫。Broker 不可达只记告警，不让 `startup.sh` 退出。
-- 完成状态和游标记在 `CmdbRepairState` 的 `display_backfill` 阶段，不用会过期的缓存。阶段已完成且没有游标时，任务直接返回。某个模型真的写下了新的 `_display` 字段，才把该阶段改回未完成。
-- 运行期：Worker 按页扫描。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败停在游标上，由 `*/5` 周期任务重试。这个周期任务只接下中途失败，不负责每次重启重扫。
+- 启动期：`batch_init` 只执行 `init_display_fields --models-only`，给模型补 `_display` 字段定义。只补定义时不加载用户表和组织表。某个模型真的写下了新的 `_display` 字段，才把该阶段改回未完成。
+- 启动期入队：停用历史周期任务 `cmdb_display_field_backfill`。阶段未完成或游标还在时，`backfill_cmdb_display_fields.delay(force=False)`。已完成且游标为空则不投递。不删除完成标记，也不强制重扫。Broker 不可达只记告警，不让 `startup.sh` 退出；下次启动看到未完成再投递。
+- 完成状态和游标记在 `CmdbRepairState` 的 `display_backfill` 阶段，不用会过期的缓存。阶段已完成且没有游标时，任务直接返回。
+- 运行期：Worker 起来后才扫描。新开的回填按实例 id 一条流扫过带展示字段的模型。游标里还带着模型 id 的旧断点，按模型走完。计算值和已有 `_display` 相同则不写；有差异时按字段批量写入。单次任务有实例数上限，未扫完则 1 秒后继续。查询失败、软超时或锁被占用时，停在游标上，60 秒后自己再投一次。
 - 手动补偿：`python manage.py init_display_fields` 仍可在运行期扫完全部实例，同样跳过未变化的值。扫完后把同一阶段标成完成。
 
 ## CMDB 实例形态清洗（运行期一次性，非启动硬依赖）

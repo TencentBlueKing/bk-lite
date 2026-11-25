@@ -516,9 +516,16 @@ class CollectNetworkMetrics(CollectBase):
 
     def save_topology_snapshot(self, snapshot):
         try:
+            from apps.cmdb.services.collect_snapshot_uuid import normalize_collect_result_payloads
+
+            (snapshot,) = normalize_collect_result_payloads(snapshot)
             CollectModels.objects.filter(id=self.task_id).update(topology_snapshot=snapshot)
         except Exception as err:  # noqa: BLE001
-            logger.warning("==保存拓扑快照失败，跳过（不影响采集主流程）task_id={} error={}==".format(self.task_id, err))
+            logger.warning(
+                "event=topology_snapshot_save_skipped task_id=%s failed_stage=save error_type=%s",
+                self.task_id,
+                type(err).__name__,
+            )
 
     @staticmethod
     def append_unique_relationship(relationships, seen, relation):

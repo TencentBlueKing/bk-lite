@@ -65,6 +65,25 @@ def is_uuid_runtime_migration_complete() -> bool:
     return is_cmdb_uuid_migration_complete() and is_oa_uuid_migration_complete()
 
 
+def clear_stale_uuid_runtime_done() -> None:
+    """必需 stage 还有未完成项时，删掉上一轮留下的 uuid_runtime_done。
+
+    新阶段的 apply 会先把该阶段标完成。若旧标记还在，verify 失败的下一轮会被当成已经退出。
+    """
+    if is_uuid_runtime_migration_complete():
+        return
+    CmdbUuidMigrationState.objects.filter(stage=RUNTIME_DONE_STAGE).delete()
+
+
+def is_uuid_migration_periodic_retired() -> bool:
+    """周期任务退出的条件：必需 stage 都完成，并且 verify 通过后写下了 uuid_runtime_done。
+
+    apply 会在 verify 之前把 stage 标成完成。只看 stage 的话，verify 失败的下一轮会直接停掉任务。
+    调用前先 clear_stale_uuid_runtime_done()，避免旧标记在新阶段出现后继续生效。
+    """
+    return is_uuid_runtime_migration_complete() and _stage_completed(RUNTIME_DONE_STAGE)
+
+
 def mark_uuid_runtime_migration_complete() -> None:
     CmdbUuidMigrationState.objects.update_or_create(
         stage=RUNTIME_DONE_STAGE,
