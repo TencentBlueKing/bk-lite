@@ -32,7 +32,11 @@ import {
   normalizeLineBarFieldList,
 } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
-import { readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
+import {
+  DEFAULT_SCROLL_SECONDS,
+  readChartDisplay,
+  referenceLineColor,
+} from '@/app/ops-analysis/utils/chartDisplay';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
@@ -237,6 +241,10 @@ function buildClearedChartDependentFormFields() {
     scalarCalcTimeField: undefined,
     displayLimit: undefined,
     sortByValue: false,
+    stackBars: false,
+    autoScroll: false,
+    scrollSeconds: DEFAULT_SCROLL_SECONDS,
+    referenceLines: [] as Array<{ name?: string; value?: number | null; color?: string }>,
   };
 }
 
@@ -463,6 +471,14 @@ export function applyOpenedValueConfigToFormValues(
   const openedChartDisplay = readChartDisplay(valueConfig);
   formValues.displayLimit = openedChartDisplay.displayLimit;
   formValues.sortByValue = openedChartDisplay.sortByValue === true;
+  formValues.stackBars = openedChartDisplay.stackBars === true;
+  formValues.autoScroll = openedChartDisplay.autoScroll === true;
+  formValues.scrollSeconds = openedChartDisplay.scrollSeconds ?? DEFAULT_SCROLL_SECONDS;
+  formValues.referenceLines = openedChartDisplay.referenceLines?.map((line) => ({
+    name: line.name,
+    value: line.value,
+    color: line.color ?? referenceLineColor(),
+  })) ?? [];
   if (
     normalizeLineBarFieldList(formValues.selectedFields).length === 0
     && (formValues.chartType === 'single' || formValues.chartType === 'gauge')

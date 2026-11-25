@@ -7,6 +7,8 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type { DatasourceItem, ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { applyBarLineGuides, withoutReferenceGuideSeries } from '@/app/ops-analysis/utils/barLineGuides';
+import { readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { toLineBarFieldMapping } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
@@ -407,7 +409,6 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
         smooth: LINE_SMOOTHNESS,
         smoothMonotone: 'x',
         ...linePointMark(item.data),
-        ...(config?.stack ? { stack: 'total' } : {}),
         yAxisIndex: useDualAxis ? (largeSeriesIndices.includes(index) ? 0 : 1) : 0,
         lineStyle: {
           width: chartTheme.lineWidth,
@@ -460,26 +461,17 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
       ];
     }
 
-    const thresholdLines = (config?.thresholdColors || [])
-      .map((threshold) => ({ value: Number(threshold.value), color: threshold.color }))
-      .filter((threshold) => !Number.isNaN(threshold.value) && threshold.value !== 0);
-    if (thresholdLines.length > 0 && built.series.length > 0) {
-      built.series[0].markLine = {
-        symbol: 'none',
-        silent: true,
-        data: thresholdLines.map((threshold) => ({
-          yAxis: threshold.value,
-          lineStyle: { color: threshold.color, type: 'dashed', width: 1.5 },
-          label: {
-            show: true,
-            position: 'insideEndTop',
-            formatter: String(threshold.value),
-            color: threshold.color,
-            fontSize: 10,
-          },
-        })),
-      };
-    }
+    applyBarLineGuides({
+      series: built.series,
+      yAxis: Array.isArray(built.yAxis) ? built.yAxis[0] : built.yAxis,
+    }, {
+      chart: 'line',
+      display: readChartDisplay(config),
+      data: chartData,
+      thresholdColors: config?.thresholdColors,
+      scale: (px) => px,
+      scaleFloat: (px) => px,
+    });
 
     return built;
   }, [
@@ -493,7 +485,7 @@ const OpsAnalysisLine: React.FC<OpsAnalysisLineProps> = ({
     zoomRange,
   ]);
 
-  const legendData = option.series.map((item: { name?: string }) => ({
+  const legendData = withoutReferenceGuideSeries(option.series).map((item: { id?: string; name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
   }));
 

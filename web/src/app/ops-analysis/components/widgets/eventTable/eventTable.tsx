@@ -1,6 +1,8 @@
 import React, {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { Tooltip } from 'antd';
@@ -21,6 +23,7 @@ import {
 import { EventTableDetail } from './eventTableDetail';
 import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 import { useTableBodyScrollY } from '../shared/useTableBodyScrollY';
+import { rowScrollRead, watchTableAutoScroll } from '@/app/ops-analysis/utils/rowAutoScroll';
 import { getScreenWidgetScale } from '../shared/screenMetrics';
 import styles from '../comTable.module.scss';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -107,14 +110,26 @@ const EventTable: React.FC<EventTableProps> = ({
     } as React.CSSProperties;
   }, [screenTableTheme, usesScreenTheme, widgetScale]);
 
-  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
+  const tableSlotNodeRef = useRef<HTMLDivElement | null>(null);
+  const { slotRef: setTableSlot, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
   });
+  const tableSlotRef = useCallback((node: HTMLDivElement | null) => {
+    tableSlotNodeRef.current = node;
+    setTableSlot(node);
+  }, [setTableSlot]);
   const configuredColumns = useMemo<TableColumnConfigItem[]>(() => {
     return (config?.tableConfig?.columns || [])
       .filter((col) => col.visible)
       .sort((a, b) => a.order - b.order);
   }, [config?.tableConfig?.columns]);
+
+  useEffect(() => {
+    return watchTableAutoScroll(
+      tableSlotNodeRef.current,
+      () => rowScrollRead(config, screenRenderContext?.enabled === true),
+    );
+  }, [config, rows, screenRenderContext?.enabled, tableScrollY]);
 
   useEffect(() => {
     setExpandedRowKeys([]);

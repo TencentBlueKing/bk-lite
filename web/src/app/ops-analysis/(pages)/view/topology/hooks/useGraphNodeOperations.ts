@@ -27,7 +27,7 @@ import {
   singleValueSourceReady,
 } from '@/app/ops-analysis/utils/scalarReduction';
 import { useTranslation } from '@/utils/i18n';
-import { chartDisplayControls } from '@/app/ops-analysis/utils/chartDisplay';
+import { applyChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { applyTopNValueConfig, buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
 import { getColorByThreshold, isFiniteNumber } from '../utils/thresholdUtils';
@@ -517,11 +517,10 @@ export const useGraphNodeOperations = ({
       unitId: values.unitId ?? valueConfig?.unitId,
       valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
     };
-    const displayControls = chartDisplayControls(
-      values.chartType || valueConfig?.chartType,
+    applyChartDisplay(
+      nextValueConfig as Record<string, unknown>,
+      nextValueConfig,
     );
-    if (!displayControls.limit) delete nextValueConfig.displayLimit;
-    if (!displayControls.sort) delete nextValueConfig.sortByValue;
     if ((values.chartType || valueConfig?.chartType) === 'topN') {
       delete nextValueConfig.topNLabelField;
       delete nextValueConfig.topNValueField;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import DataLinkHoverMark from '@/app/ops-analysis/components/dataLinkHoverMark';
 import { buildInteractionPoints } from '@/app/ops-analysis/utils/interactionPoints';
@@ -10,6 +10,7 @@ import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import { scaleScreenMetric } from './shared/screenMetrics';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import { resolveMultiValueRowDisplay } from '@/app/ops-analysis/utils/chartValueFormat';
+import { rowScrollRead, startRowAutoScroll } from '@/app/ops-analysis/utils/rowAutoScroll';
 
 interface ComMultiValueProps {
   rawData: unknown;
@@ -42,9 +43,20 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
     [config?.multiValueLabelField, config?.multiValueValueField, errorMessage, rawData],
   );
 
+  const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!loading) onReady?.(result.isValid && result.items.length > 0);
   }, [loading, onReady, result]);
+
+  useEffect(() => {
+    const viewport = listRef.current;
+    if (!viewport) return undefined;
+    return startRowAutoScroll(
+      viewport,
+      () => rowScrollRead(config, screenRenderContext?.enabled === true),
+      '[data-auto-scroll-row]',
+    );
+  }, [config, loading, result.isValid, result.items.length, screenRenderContext?.enabled]);
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Spin size="small" /></div>;
@@ -58,7 +70,11 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
 
   const padding = scaleScreenMetric(8, screenRenderContext);
   return (
-    <div className="h-full w-full overflow-y-auto overflow-x-hidden" style={{ padding }}>
+    <div
+      ref={listRef}
+      className="h-full w-full overflow-y-auto overflow-x-hidden"
+      style={{ padding }}
+    >
       <div className="flex flex-col gap-1">
         {result.items.map((item, index) => {
           const display = resolveMultiValueRowDisplay(
@@ -69,6 +85,7 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
           return (
           <div
             key={`${index}-${item.label}`}
+            data-auto-scroll-row=""
             className={`group/data-link flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1 ${dataLinkActive ? 'cursor-pointer' : ''}`}
             onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
           >
