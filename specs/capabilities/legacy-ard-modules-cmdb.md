@@ -150,7 +150,7 @@
 采集能力分两层：`collection/collect_plugin/` 下的采集映射实现（Python 文件），与 `constants/constants.py` 中面向 UI 的插件目录（`COLLECTION_METRICS` 分组，含 Beta 标记，部分条目由 Stargazer 以 JOB/PROTOCOL 驱动，无独立映射文件）。
 
 - **协议 / 网络**：SNMP/SSH、网络拓扑（LLDP/CDP/FDB/ARP）（`network.py`、`topology/`、`protocol.py`）。
-- **云平台**（constants.py:488-562）：阿里云、腾讯云（`qcloud.py`，id=`qcloud`，目录中仅此一项，不存在独立 Tencent 插件）、华为云、ManageOne、OpenStack、SmartX、FusionInsight（`aliyun.py`/`qcloud.py`/`hwcloud.py`/`manageone.py`/`openstack.py`/`smartx.py`/`fusioninsight.py`）。
+- **云平台**（constants.py 云平台分组）：阿里云、腾讯云（`qcloud.py`，id=`qcloud`，目录中仅此一项，不存在独立 Tencent 插件）、华为云、火山引擎（`volcengine.py`，账号 `volcengine_account`，子模型 ECS、EIP、传统型 CLB、MySQL、PostgreSQL、TOS）、ManageOne、OpenStack、SmartX、FusionInsight（`aliyun.py`/`qcloud.py`/`hwcloud.py`/`volcengine.py`/`manageone.py`/`openstack.py`/`smartx.py`/`fusioninsight.py`）。
 - **容器 / 虚拟化**（constants.py:318-359）：K8s、Docker（`k8s.py`）；VMware vCenter（`vmware.py`）。目录中无 Hyper-V 条目，亦无 hyperv 插件文件。
 - **存储设备**（constants.py:472-485，近期新增 git 640548eab）：华为存储 OceanStor（`oceanstor.py`），对象树 `storage_device→storage`，采集存储设备/存储池/磁盘/卷（LUN），主对象 `storage`，子对象 `storage_pool/storage_disk/storage_volume`，复用云家族机制（`oceanstor.py:17-19`）。
 - **数据库**（constants.py:376-471）：MySQL、InfluxDB、PostgreSQL、MSSQL、Redis、MongoDB、Elasticsearch、HBase、TiDB（实现集中于 `databases.py`）。目录与映射中均无 Oracle 条目。

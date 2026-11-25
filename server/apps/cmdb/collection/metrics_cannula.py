@@ -10,6 +10,28 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.host_sync_identity import align_collected_host_inst_names
 
 
+def collection_match_keys(model_id: str) -> list[str]:
+    """火山引擎子资源用资源 ID 认出同一条资产，其余模型仍用实例名。"""
+    text = str(model_id or "")
+    if text.startswith("volcengine_") and text != "volcengine_account":
+        return ["resource_id"]
+    return ["inst_name"]
+
+
+def _matchable_rows(model_id: str, rows):
+    if collection_match_keys(model_id) != ["resource_id"]:
+        return rows
+    prepared = []
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("resource_id") or "").strip():
+            prepared.append(row)
+            continue
+        copied = dict(row)
+        copied["resource_id"] = f"__missing_resource__{row.get('_id')}"
+        prepared.append(copied)
+    return prepared
+
+
 class MetricsCannula:
     def __init__(
         self,
@@ -89,7 +111,17 @@ class MetricsCannula:
         base_params = [{"field": "model_id", "type": "str=", "value": model_id}]
         old_by_id = {}
         # 条件删除会核对 _collect_sources。投影漏掉它时，有来源的实例会被当成空来源而删不掉。
-        asset_fields = ["_id", "inst_uuid", "inst_name", "collect_task", "collect_time", "organization", "ip_addr", "_collect_sources"]
+        asset_fields = [
+            "_id",
+            "inst_uuid",
+            "inst_name",
+            "resource_id",
+            "collect_task",
+            "collect_time",
+            "organization",
+            "ip_addr",
+            "_collect_sources",
+        ]
         # 历史数据同时存在整数和字符串任务 ID。
         for field_type, task_id in (("str=", self.task_id), ("int=", int(self.task_id))):
             cursor = None
@@ -229,13 +261,17 @@ class MetricsCannula:
                         cursor = next_cursor
                 if model_id == "host":
                     preserve_collected_host_machine_type(already_data, metrics)
+                match_keys = collection_match_keys(model_id)
+                if match_keys == ["resource_id"]:
+                    metrics = [row for row in metrics if isinstance(row, dict) and str(row.get("resource_id") or "").strip()]
+                    already_data = _matchable_rows(model_id, already_data)
                 management = Management(
                     self.organization,
                     self.inst_name,
                     model_id,
                     already_data,
                     metrics,
-                    ["inst_name"],
+                    match_keys,
                     self.now_time,
                     self.task_id,
                     collect_plugin=(self.collect_plugin_instance or self.collect_plugin),

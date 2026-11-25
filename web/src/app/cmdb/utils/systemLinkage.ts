@@ -45,6 +45,7 @@ const PLATFORM_MODEL_IDS = new Set([
   'qcloud',
   'hwcloud',
   'fusioninsight',
+  'volcengine_account',
 ]);
 const PLATFORM_MODEL_PREFIXES = [
   'k8s_',
@@ -53,6 +54,7 @@ const PLATFORM_MODEL_PREFIXES = [
   'hwcloud',
   'vmware_',
   'fusioninsight',
+  'volcengine',
 ];
 
 export const isPlatformTreeModel = (modelId: string) => {

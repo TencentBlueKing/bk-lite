@@ -185,6 +185,34 @@ export const BUILD_IN_MODEL: Array<{
     icon: 'cc-cloud-aliyun',
   },
   {
+    key: 'volcengine_account',
+    icon: 'cc-cloud-plat',
+  },
+  {
+    key: 'volcengine_ecs',
+    icon: 'cc-cloud-server',
+  },
+  {
+    key: 'volcengine_eip',
+    icon: 'cc-ip',
+  },
+  {
+    key: 'volcengine_clb',
+    icon: 'cc-cloud-elb',
+  },
+  {
+    key: 'volcengine_mysql',
+    icon: 'cc-mysql',
+  },
+  {
+    key: 'volcengine_pgsql',
+    icon: 'cc-postgresql',
+  },
+  {
+    key: 'volcengine_tos',
+    icon: 'cc-cloud-sp',
+  },
+  {
     key: 'qcloud_account',
     icon: 'cc-cloud-qcloud',
   },
