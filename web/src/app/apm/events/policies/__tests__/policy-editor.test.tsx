@@ -205,7 +205,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor />);
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /邮件.*电子邮件/ }));
     const recipientSearch = await screen.findByLabelText('系统用户 ID');
     await user.click(recipientSearch);
     await user.type(recipientSearch, 'late');
@@ -215,10 +215,10 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     ]);
     await user.click(await screen.findByText('Late User (late-user)'));
 
-    await user.click(screen.getByRole('button', { name: /Webhook.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /Webhook.*自定义Webhook/ }));
     expect(screen.getByLabelText('通知对象')).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: /告警中心.*告警中心副本/ }));
-    expect(screen.getByText('该渠道接收告警事件副本，无需配置接收人。')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: /告警中心.*NATS通道/ }));
+    expect(screen.getByText('告警将进入告警中心，无需选择通知者。')).not.toBeNull();
   });
 
   it('编辑时按 system_user、free_text、none 分别回显并提交原始接收人', async () => {
@@ -484,7 +484,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /邮件.*电子邮件/ }));
     const recipients = await screen.findByLabelText('系统用户 ID');
     expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
   });
