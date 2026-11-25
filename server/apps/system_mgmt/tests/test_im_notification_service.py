@@ -270,6 +270,10 @@ def test_sync_does_not_replace_manual_target_or_map_it_to_another_user(channel, 
     assert run.matched_count == 2
     assert run.conflict_count == 1
     assert run.payload["conflict_issues"][0]["reason"] == "manual_mapping_conflict"
+    sent = CapabilityExecutionResult.success_result("sent", payload={"sent_count": 1})
+    with patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", return_value=sent) as deliver:
+        assert send_im_notification(channel.id, "Title", "Body", [user.id])["result"] is True
+    assert deliver.call_args.kwargs["receive_ids"] == ["ou_manual"]
 
 
 @pytest.mark.django_db

@@ -11,7 +11,7 @@ from apps.itsm.tests.test_review_regressions import request
 from apps.itsm.tests.test_trigger_resources import get, response_data
 from apps.itsm.views.extend import resources
 from apps.itsm.views.users import UserSearchView
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance, User
+from apps.system_mgmt.models import IMAccountAssociation, IMNotificationChannel, IMNotificationUserMapping, IntegrationInstance, User
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("delivery_worker")]
 DOMAIN = "notice.example"
@@ -31,7 +31,10 @@ def channel(name, team, domain=DOMAIN, *, instance_domain=None):
         status="ready",
         capability_status={"im_notification": "ready"},
     )
-    return IMNotificationChannel.objects.create(name=name, integration_instance=instance, team=team, status="ready", domain=domain)
+    association = IMAccountAssociation.objects.create(name=name, integration_instance=instance, domain=domain, status="ready")
+    return IMNotificationChannel.objects.create(
+        account_association=association, name=name, integration_instance=instance, team=team, status="ready", domain=domain
+    )
 
 
 def template(name, media, *, domain=DOMAIN):
@@ -42,7 +45,7 @@ def template(name, media, *, domain=DOMAIN):
 
 def mapping(target, source):
     IMNotificationUserMapping.objects.create(
-        channel=target,
+        account_association=target.account_association,
         user=source,
         external_identity_key="user_id",
         external_identity_value=f"external-{source.pk}",

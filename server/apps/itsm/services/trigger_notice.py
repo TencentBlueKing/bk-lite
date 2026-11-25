@@ -1,4 +1,3 @@
-from collections import defaultdict
 from string import Template
 from typing import Annotated, Literal
 
@@ -10,16 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from apps.core.logger import itsm_logger as logger
 from apps.core.logger import safe_exception_info
 from apps.itsm.models import HandlerGroup, NotifyTemplate, TicketTask
+from apps.itsm.services.notify.recipients import active_users
 from apps.itsm.services.notify.service import (
+    mapped_channel_users,
+    ready_im_channels,
     render_notification_template,
     render_template,
     send_site_notification,
     ticket_notice_variables,
 )
-from apps.itsm.services.notify.recipients import active_users
 from apps.itsm.services.trigger_fields import person_form_fields
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationUserMapping
-from apps.system_mgmt.models.im_notification_channel import IMNotificationChannelStatusChoices
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 from apps.system_mgmt.services.im_channel_access import filter_accessible_im_channels
 
@@ -88,9 +87,7 @@ class NoticeClaimLost(Exception):
 
 
 def _ready_channels(domain, *, user=None, ids=None):
-    queryset = IMNotificationChannel.objects.select_related("integration_instance").filter(
-        domain=domain, integration_instance__domain=domain, enabled=True, status=IMNotificationChannelStatusChoices.READY
-    )
+    queryset = ready_im_channels(domain)
     if ids is not None:
         queryset = queryset.filter(id__in=ids)
     if user is not None:
@@ -175,7 +172,7 @@ def deliver_configured_notice(notice, variables, receivers, *, domain, event_key
     channel_ids = [route.channel_id for route in notice.channels if isinstance(route, IMRoute)]
     channels = _ready_channels(domain, ids=channel_ids)
     templates = _notice_templates(domain, notice.channels)
-    mapped = _mapped_notice_users(channels, receivers) if not is_test else {}
+    mapped = mapped_channel_users(channels.values(), [user_id for user_id, _ in receivers]) if not is_test else {}
     custom_message = None
     if notice.content_mode == "custom":
         title = variables["title"]
@@ -222,15 +219,6 @@ def deliver_configured_notice(notice, variables, receivers, *, domain, event_key
         failures += not ok
     message = "；".join(results)
     return failures == 0, (f"{failures} 个渠道未完整投递。{message}" if failures else message)[:200]
-
-
-def _mapped_notice_users(channels, receivers):
-    result = defaultdict(list)
-    mappings = IMNotificationUserMapping.objects.filter(channel_id__in=channels, user_id__in=[user_id for user_id, _ in receivers])
-    for channel_id, user_id, key, snapshot in mappings.values_list("channel_id", "user_id", "external_receive_key", "external_snapshot"):
-        if str((snapshot or {}).get(key) or "").strip():
-            result[channel_id].append(user_id)
-    return result
 
 
 def _deliver_route(route, variables, receivers, template, mapped_user_ids, *, domain, event_key, custom_message, im_sender):

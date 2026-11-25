@@ -10,7 +10,7 @@ from apps.itsm.serializers.org import NotifyTemplateSerializer
 from apps.itsm.services.notify.service import dispatch_notification
 from apps.itsm.services.ticket.service import TicketService
 from apps.itsm.signals import send_itsm_notification
-from apps.system_mgmt.models import User
+from apps.system_mgmt.models import IMAccountAssociation, User
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel, IMNotificationUserMapping
 from apps.system_mgmt.models.integration_instance import IntegrationInstance
 
@@ -77,19 +77,33 @@ def test_im_routes_each_user_to_one_ready_channel_with_their_mapping():
         IntegrationInstance.objects.create(name=provider, provider_key=provider, status="ready", capability_status={"im_notification": "ready"})
         for provider in ("feishu", "wecom")
     ]
-    ignored = IMNotificationChannel.objects.create(name="Unavailable", integration_instance=unavailable, status="ready")
-    first, second = [
-        IMNotificationChannel.objects.create(name=instance.name, integration_instance=instance, status="ready") for instance in integrations
-    ]
+    channels = []
+    for instance in [unavailable, *integrations]:
+        instance.domain = "test.example"
+        instance.save(update_fields=["domain"])
+        association = IMAccountAssociation.objects.create(name=instance.name, integration_instance=instance, status="ready", domain=instance.domain)
+        channels.append(
+            IMNotificationChannel.objects.create(
+                name=instance.name, integration_instance=instance, account_association=association, status="ready", domain=instance.domain
+            )
+        )
+    ignored, first, second = channels
+    IMNotificationChannel.objects.create(
+        name="共享账号关联",
+        account_association=first.account_association,
+        integration_instance=first.integration_instance,
+        domain=first.domain,
+        status="ready",
+    )
     for channel, user in [(ignored, local), (first, local), (first, remote), (second, local), (second, local_second)]:
         IMNotificationUserMapping.objects.create(
-            channel=channel,
+            account_association=channel.account_association,
             user=user,
             external_identity_value=str(user.id),
             external_receive_key="external_id",
             external_snapshot={"external_id": str(user.id)},
         )
-    IMNotificationUserMapping.objects.create(channel=first, user=unmapped, external_identity_value="missing")
+    IMNotificationUserMapping.objects.create(account_association=first.account_association, user=unmapped, external_identity_value="missing")
     with patch("apps.itsm.services.notify.service.SystemMgmt") as system:
         send = system.return_value.send_msg_with_channel
         send.side_effect = [RuntimeError("提供方请求结果未知"), {"result": True}]
@@ -136,7 +150,9 @@ def test_new_task_renders_ticket_fields_in_im_without_changing_the_site_link(dja
     )
     with patch("apps.itsm.services.notify.service._send_im_if_configured") as send_im, django_capture_on_commit_callbacks(execute=True):
         TicketService(client).sync_ticket(ticket)
-    send_im.assert_called_once_with("工单待办 REQ-NOTICE-1", f"更换设备 · 服务申请流程 · 部门审批 · /itsm/tickets/{ticket.id}", ["handler"], domain=ticket.domain, im_sender=ANY)
+    send_im.assert_called_once_with(
+        "工单待办 REQ-NOTICE-1", f"更换设备 · 服务申请流程 · 部门审批 · /itsm/tickets/{ticket.id}", ["handler"], domain=ticket.domain, im_sender=ANY
+    )
     assert Notification.objects.get().target_url == f"/itsm/tickets/{ticket.id}"
 
 

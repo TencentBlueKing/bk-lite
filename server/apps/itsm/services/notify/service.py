@@ -2,6 +2,7 @@ from collections import defaultdict
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import F
 from jinja2 import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 
@@ -88,25 +89,47 @@ def dispatch_notification(
     return {"title": title, "content": content, "receivers": receivers, "site": site, "im": im}
 
 
-def _send_im_if_configured(title: str, content: str, receivers: list[str], *, domain: str, im_sender=None) -> dict:
-    candidates = (
-        IMNotificationUserMapping.objects.filter(
-            user__in=active_users(domain).filter(username__in=receivers),
-            channel__enabled=True,
-            channel__status=IMNotificationChannelStatusChoices.READY,
-        )
-        .select_related("channel__integration_instance")
-        .order_by("channel_id", "user_id")
+def ready_im_channels(domain):
+    return IMNotificationChannel.objects.select_related("integration_instance").filter(
+        domain=domain,
+        integration_instance__domain=domain,
+        account_association__domain=domain,
+        account_association__integration_instance_id=F("integration_instance_id"),
+        account_association__status="ready",
+        enabled=True,
+        status=IMNotificationChannelStatusChoices.READY,
     )
-    assigned = set()
+
+
+def mapped_channel_users(channels, user_ids):
+    associations = defaultdict(list)
+    for channel in channels:
+        associations[channel.account_association_id].append(channel.pk)
     batches = defaultdict(list)
-    for mapping in candidates:
-        if mapping.user_id in assigned or not str((mapping.external_snapshot or {}).get(mapping.external_receive_key) or "").strip():
-            continue
-        if not get_integration_capability_availability(mapping.channel.integration_instance, "im_notification")["available"]:
-            continue
-        batches[mapping.channel_id].append(mapping.user_id)
-        assigned.add(mapping.user_id)
+    mappings = IMNotificationUserMapping.objects.filter(account_association_id__in=associations, user_id__in=user_ids).order_by("user_id")
+    for association_id, user_id, key, snapshot in mappings.values_list(
+        "account_association_id", "user_id", "external_receive_key", "external_snapshot"
+    ):
+        if str((snapshot or {}).get(key) or "").strip():
+            for channel_id in associations[association_id]:
+                batches[channel_id].append(user_id)
+    return batches
+
+
+def _send_im_if_configured(title: str, content: str, receivers: list[str], *, domain: str, im_sender=None) -> dict:
+    channels = [
+        channel
+        for channel in ready_im_channels(domain).order_by("pk")
+        if get_integration_capability_availability(channel.integration_instance, "im_notification")["available"]
+    ]
+    mapped = mapped_channel_users(channels, active_users(domain).filter(username__in=receivers).values("pk"))
+    assigned = set()
+    batches = {}
+    for channel in channels:
+        recipients = [user_id for user_id in mapped[channel.pk] if user_id not in assigned]
+        if recipients:
+            batches[channel.pk] = recipients
+            assigned.update(recipients)
 
     if not batches:
         return {"result": False, "skipped": True, "message": "no_im_channel"}

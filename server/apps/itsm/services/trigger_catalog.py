@@ -3,11 +3,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from apps.itsm.models import FormModel, HandlerGroup, NotifyTemplate, Service, Workflow
+from apps.itsm.services.notify.service import ready_im_channels
 from apps.itsm.services.trigger_config import ENGINE_STATUSES, status_option_queryset
 from apps.itsm.services.trigger_fields import SYSTEM_FIELDS, _catalog_fields, _form_fields, _form_schema_groups, person_form_fields
 from apps.itsm.services.trigger_notice import _ready_channels
-from apps.system_mgmt.models import IMNotificationChannel
-from apps.system_mgmt.models.im_notification_channel import IMNotificationChannelStatusChoices
 
 CATALOG_KEYS = {"workflows", "forms", "services", "statuses", "groups", "channels", "templates"}
 MAX_PAGE_SIZE = 50
@@ -35,8 +34,10 @@ class CatalogPage:
         for key, values in selected.items():
             if not isinstance(values, list) or len(values) > MAX_PAGE_SIZE:
                 raise ValueError("已选项参数无效")
-            valid = (lambda value: isinstance(value, str) and 1 <= len(value) <= 32) if key == "statuses" else (
-                lambda value: type(value) is int and 1 <= value <= 2**63 - 1
+            valid = (
+                (lambda value: isinstance(value, str) and 1 <= len(value) <= 32)
+                if key == "statuses"
+                else (lambda value: type(value) is int and 1 <= value <= 2**63 - 1)
             )
             if not all(map(valid, values)):
                 raise ValueError("已选项参数无效")
@@ -94,11 +95,7 @@ def _options(rows, key="id"):
 def _notice_options(domain, user, page, schemas):
     channels = page.rows(
         "channels",
-        IMNotificationChannel.objects.filter(
-            domain=domain, integration_instance__domain=domain, enabled=True, status=IMNotificationChannelStatusChoices.READY
-        )
-        .order_by("name", "id")
-        .values("id", "name"),
+        ready_im_channels(domain).order_by("name", "id").values("id", "name"),
     )
     accessible = _ready_channels(domain, user=user, ids=[row["id"] for row in channels])
     return {
