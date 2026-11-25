@@ -8,6 +8,7 @@ import { MenuItem } from '@/types/index';
 import { usePermissions } from '@/context/permissions';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { isScreenModeEnabled } from '@/console-layout';
+import { findSectionMenuChildren } from '@/utils/menuHelpers';
 
 const AppManageLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
@@ -21,10 +22,10 @@ const AppManageLayout = ({ children }: { children: React.ReactNode }) => {
   const id = searchParams ? searchParams.get('clientId') : null;
   const { getClientDetail } = useUserApi();
 
-  const updateMenuItems = useMemo(() => {
-    const currentMenu = menus.find((menu: MenuItem) => menu?.url && pathname?.startsWith(menu.url));
-    return currentMenu?.children || [];
-  }, [menus, pathname]);
+  const updateMenuItems = useMemo(
+    () => findSectionMenuChildren(menus, pathname || ''),
+    [menus, pathname],
+  );
 
   useEffect(() => {
     setMenuItems(updateMenuItems);

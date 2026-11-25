@@ -55,6 +55,7 @@ def get_node_permission(request):
             "domain": getattr(user, "domain", "domain.com"),
             "current_team": current_team_int,
             "is_superuser": getattr(user, "is_superuser", False),
+            "app": "node",
         },
         include_children=include_children,
     )

@@ -224,6 +224,23 @@ export const CREDENTIAL_DESCRIPTORS = {
         { key: 'cloudRegion' },
       ],
     },
+    volcengine_account: {
+      formKind: 'cloud',
+      protocolKey: 'volcengine',
+      credentialKindKey: 'volcengine',
+      instructionKey: 'volcengine',
+      fields: [
+        {
+          key: 'volcengineAccessKey',
+          formLabelKey: 'Collection.cloudTask.volcengineAccessKeyId',
+        },
+        {
+          key: 'volcengineAccessSecret',
+          formLabelKey: 'Collection.cloudTask.volcengineAccessKeySecret',
+        },
+        { key: 'cloudRegion' },
+      ],
+    },
     qcloud: {
       formKind: 'cloud',
       protocolKey: 'tencent',

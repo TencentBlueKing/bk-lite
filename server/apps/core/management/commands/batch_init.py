@@ -156,9 +156,7 @@ class Command(BaseCommand):
                 type(error).__name__,
                 exc_info=safe_exception_info(error),
             )
-            self.stdout.write(
-                self.style.WARNING(f"默认域 admin 运行时账号初始化跳过（{type(error).__name__}），首次登录后仍可自动补齐")
-            )
+            self.stdout.write(self.style.WARNING(f"默认域 admin 运行时账号初始化跳过（{type(error).__name__}），首次登录后仍可自动补齐"))
 
     @staticmethod
     def _create_admin_runtime_user() -> None:
@@ -257,11 +255,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"CMDB UUID 周期任务拆除跳过: {exc}"))
 
     def _schedule_display_field_backfill(self) -> None:
-        """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
+        """实例 _display 回填是可重建派生数据。启动期不扫实例；做完后不再投递。"""
         try:
-            from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task
+            from apps.cmdb.tasks.display_field_backfill import (
+                backfill_cmdb_display_fields,
+                disable_display_field_backfill_periodic_task,
+                display_backfill_pending,
+            )
 
-            ensure_display_field_backfill_periodic_task()
+            disable_display_field_backfill_periodic_task()
+            if not display_backfill_pending():
+                self.stdout.write("CMDB 显示字段已回填，跳过投递")
+                return
             try:
                 backfill_cmdb_display_fields.delay(force=False)
             except Exception as exc:
@@ -270,9 +275,9 @@ class Command(BaseCommand):
                     type(exc).__name__,
                     exc_info=safe_exception_info(exc),
                 )
-                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），周期任务会重试"))
+                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），下次启动会再投递"))
             else:
-                self.stdout.write("已注册 CMDB 显示字段回填任务（异步收敛，不阻断启动）")
+                self.stdout.write("已投递 CMDB 显示字段回填（一次性，不阻断启动）")
         except Exception as exc:
             logger.warning(
                 "event=display_backfill_register_failed failed_stage=register error_type=%s",

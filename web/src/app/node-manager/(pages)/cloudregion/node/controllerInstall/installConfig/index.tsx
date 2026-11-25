@@ -12,7 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
 import { ManualInstallController } from '@/app/node-manager/types/controller';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   CPU_ARCHITECTURE_OPTIONS,
   OPERATE_SYSTEMS
@@ -33,6 +33,8 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { useInstallWays } from '@/app/node-manager/hooks/node';
 import { useHandleCopy } from '@/app/node-manager/hooks';
 import { useUserInfoContext } from '@/context/userInfo';
+import { hasModulePrivilege } from '@/app/system-manager/utils/moduleRoles';
+import { useOperableFlatGroups, useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
@@ -93,6 +95,9 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     useControllerApi();
   const { handleCopy } = useHandleCopy();
   const commonContext = useUserInfoContext();
+  const operableGroupTree = useOperableGroupTree();
+  const operableFlatGroups = useOperableFlatGroups();
+  const pathname = usePathname();
   const { clientData } = useClientData();
   const soldPushTargets = useMemo(
     () => getSoldModulePushTargets(clientData),
@@ -104,18 +109,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [form] = Form.useForm();
   const installWays = useInstallWays();
   const name = searchParams.get('name') || '';
-  const groupList = (commonContext?.groups || []).map((item) => ({
-    label: item.name,
-    value: item.id
-  }));
+  const groupList = (hasModulePrivilege(commonContext.roles, pathname)
+    ? operableFlatGroups
+    : commonContext.groups || []
+  ).map((item) => ({ label: item.name, value: item.id }));
   const excelGroupList = useMemo(
     () =>
       buildOrganizationOptions(
-        commonContext?.groupTree?.length
-          ? commonContext.groupTree
+        operableGroupTree?.length
+          ? operableGroupTree
           : commonContext?.groups || []
       ),
-    [commonContext?.groupTree, commonContext?.groups]
+    [operableGroupTree, commonContext?.groups]
   );
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);

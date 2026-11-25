@@ -247,6 +247,7 @@ def _filter_instance_status(queryset, requested_status: str | None):
 def _notification_actor_context(request, organization_id: int) -> dict:
     include_children = request.COOKIES.get("include_children", "0") == "1"
     return {
+        "app": "apm",
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": organization_id,

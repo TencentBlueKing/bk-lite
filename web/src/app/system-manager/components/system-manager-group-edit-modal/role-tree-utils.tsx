@@ -28,10 +28,12 @@ export function processRoleTreeData(
       )
       : item.name,
     selectable: false,
-    children: item.children.map((child) => ({
-      key: child.id,
-      title: child.name,
-      selectable: true,
-    })),
+    children: item.children
+      .filter((child) => child.name !== 'module_admin' && child.name !== 'module_auditor')
+      .map((child) => ({
+        key: child.id,
+        title: child.name,
+        selectable: true,
+      })),
   }));
 }

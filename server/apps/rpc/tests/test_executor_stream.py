@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.rpc.executor import Executor
 from apps.rpc.ansible import AnsibleExecutor
+from apps.rpc.executor import Executor
 
 pytestmark = pytest.mark.unit
 
@@ -54,6 +54,16 @@ def test_execute_local_stream_sets_stream_fields():
     assert request_data["stream_log_topic"] == "job.stream.99.n7"
 
 
+def test_execute_local_stream_passes_bat_args_without_changing_command():
+    executor = Executor("node-1")
+    args = ["北京", "", "Data Files"]
+    with patch.object(executor.local_client, "run") as send:
+        executor.execute_local_stream("echo %1", shell="cmd", bat_args=args)
+    payload = send.call_args.args[1]
+    assert payload["bat_args"] == args
+    assert payload["command"] == "echo %1"
+
+
 def test_execute_local_forwards_environment_variables():
     ex = Executor("inst-1")
     with patch.object(ex.local_client, "run", return_value={"stdout": "ok"}) as mock_run:
@@ -74,6 +84,7 @@ def test_execute_local_stream_without_optional_fields():
     request_data = mock_run.call_args.args[1]
     assert request_data["stream_logs"] is True
     assert "shell" not in request_data
+    assert "bat_args" not in request_data
     assert "execution_id" not in request_data
     assert "stream_log_topic" not in request_data
 

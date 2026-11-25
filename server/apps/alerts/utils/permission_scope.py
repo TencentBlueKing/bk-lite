@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.utils.i18n import alerts_message
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import build_json_membership_query
@@ -29,13 +30,16 @@ def get_query_group_ids(request):
     if user is None:
         return []
 
-    if not getattr(user, "is_superuser", False):
+    module_scope = effective_module_privilege(user, "alarm")
+    if not getattr(user, "is_superuser", False) and module_scope is None:
         user_group_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))
         if current_team not in user_group_ids:
             raise PermissionDenied(alerts_message(request, "error.team_access_denied"))
 
     include_children = request.COOKIES.get("include_children", "0") == "1"
     if include_children:
+        if module_scope:
+            return GroupUtils.get_group_with_descendants(current_team)
         group_tree = getattr(user, "group_tree", [])
         if group_tree:
             return extract_child_group_ids(group_tree, current_team) or [current_team]

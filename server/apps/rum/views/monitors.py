@@ -227,6 +227,7 @@ def _directory():
 def _actor_context(request, organization_id: int) -> dict:
     user = request.user
     return {
+        "app": "rum",
         "username": user.username,
         "domain": getattr(user, "domain", "domain.com"),
         "current_team": organization_id,

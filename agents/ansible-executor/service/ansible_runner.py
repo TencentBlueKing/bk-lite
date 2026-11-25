@@ -46,6 +46,16 @@ _SENSITIVE_INVENTORY_PATTERNS = (
 
 _SSH_KNOWN_HOSTS_FILE_ENV = "SSH_KNOWN_HOSTS_FILE"
 _LEGACY_PASSWORD_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+_SSH_EXTRA_ARGS_MAX_CHARS = 1024
+_SSH_EXTRA_OPTION_CANONICAL = {
+    "kexalgorithms": "KexAlgorithms",
+    "hostkeyalgorithms": "HostKeyAlgorithms",
+    "pubkeyacceptedalgorithms": "PubkeyAcceptedAlgorithms",
+    "pubkeyacceptedkeytypes": "PubkeyAcceptedKeyTypes",
+    "ciphers": "Ciphers",
+    "macs": "MACs",
+}
+_SSH_EXTRA_OPTION_VALUE_RE = re.compile(r"^\+?[A-Za-z0-9][A-Za-z0-9@._+-]*(?:,\+?[A-Za-z0-9][A-Za-z0-9@._+-]*)*$")
 _RAW_ADHOC_MODULES = {"raw"}
 
 
@@ -505,6 +515,42 @@ def _validate_known_hosts_file(known_hosts_file: str) -> None:
         raise ValueError(f"{_SSH_KNOWN_HOSTS_FILE_ENV} must reference a readable regular file ({type(exc).__name__})") from exc
 
 
+def _normalize_ssh_extra_args(raw: Any) -> str | None:
+    """只允许把遗留 SSH 算法写进 ansible_ssh_extra_args。
+
+    允许的 -o 仅限密钥交换、主机密钥、公钥、加密和 MAC。PubkeyAcceptedKeyTypes
+    是 PubkeyAcceptedAlgorithms 的旧别名，两者都接受。ProxyCommand 以及其它选项拒绝。
+    未提供该字段时返回 None，inventory 保持原样。
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("ssh_extra_args must be a string")
+    text = raw.strip()
+    if not text:
+        return None
+    if len(text) > _SSH_EXTRA_ARGS_MAX_CHARS:
+        raise ValueError("ssh_extra_args is too long")
+    try:
+        tokens = shlex.split(text)
+    except ValueError as exc:
+        raise ValueError("ssh_extra_args is not a valid option list") from exc
+    if not tokens or len(tokens) % 2 != 0:
+        raise ValueError("ssh_extra_args only allows -o Option=value pairs")
+    normalized: list[str] = []
+    for flag, spec in zip(tokens[0::2], tokens[1::2]):
+        if flag != "-o":
+            raise ValueError("ssh_extra_args only allows -o Option=value pairs")
+        key, sep, value = spec.partition("=")
+        canonical = _SSH_EXTRA_OPTION_CANONICAL.get(key.lower())
+        if sep != "=" or canonical is None or not value:
+            raise ValueError("ssh_extra_args contains an option that is not allowed")
+        if _SSH_EXTRA_OPTION_VALUE_RE.fullmatch(value) is None:
+            raise ValueError("ssh_extra_args contains an option value that is not allowed")
+        normalized.append(f"-o {canonical}={value}")
+    return " ".join(normalized)
+
+
 def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
     explicit_args = _get_explicit_ssh_common_args(item)
     if explicit_args:
@@ -739,6 +785,7 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
         _validate_known_hosts_file(known_hosts_file)
 
     for idx, item in enumerate(host_credentials):
+        ssh_extra_args = _normalize_ssh_extra_args(item.get("ssh_extra_args"))
         host = str(item.get("host", "")).strip()
         parts = [host]
 
@@ -791,6 +838,8 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
             raise ValueError("SSH key passphrase requires inline private key content")
         if private_key_file:
             parts.append(f"ansible_ssh_private_key_file={_quote_inventory_value(private_key_file)}")
+        if ssh_extra_args:
+            parts.append(f"ansible_ssh_extra_args={_quote_inventory_value(ssh_extra_args)}")
 
         lines.append(" ".join(parts))
 

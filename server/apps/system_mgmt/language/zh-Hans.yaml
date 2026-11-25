@@ -20,6 +20,10 @@ error:
   order_required: 排序值不能为空
   time_range_required: 时间范围是必填项
   cannot_delete_admin_normal_roles: admin和normal角色不允许删除
+  module_role_locked: 模块管理员和模块审计员不能修改、删除或分配给组织
+  module_role_grant_forbidden: 只有平台超级管理员可以授予或收回模块管理员和模块审计员
+  module_role_identity_transition_forbidden: 身份转换会收回模块管理员或模块审计员角色，需由平台超级管理员操作
+  platform_identity_cannot_take_module_role: 平台超级管理员和平台超级审计员不能分配模块角色
   group_id_required: 组织ID不能为空
   group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
   update_failed: 更新失败
@@ -139,6 +143,7 @@ error:
   account_association_not_found: 账号关联不存在
   account_association_not_ready: 账号关联还不能用于发送，请先完成更新
   account_association_test_receiver_unavailable: 当前登录用户在该账号关联中没有可用的接收标识
+  empty_custom_menu_not_allowed: 自定义菜单至少要有一项
   custom_menu_group_display_name_exists: 应用 {app} 下已存在相同显示名称的菜单组
   custom_menu_group_enabled_exists: 应用 {app} 已有启用的菜单组，每个应用只能启用一个菜单组
   custom_menu_group_name_exists: 应用 {app} 下已存在名称为 {display_name} 的菜单组

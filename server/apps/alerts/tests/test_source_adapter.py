@@ -272,6 +272,14 @@ def test_mapping_fields_to_event_applies_defaults(event_levels, restful_source):
 
 
 @pytest.mark.django_db
+def test_mapping_recovered_action_normalizes_to_recovery(event_levels, restful_source):
+    restful_source.config["event_fields_mapping"]["action"] = "action"
+    adapter = RestFulAdapter(alert_source=restful_source)
+    result = adapter.mapping_fields_to_event({"title": "CPU高", "action": "recovered"})
+    assert result["action"] == "recovery"
+
+
+@pytest.mark.django_db
 def test_mapping_fields_missing_unique_field_returns_empty(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     # 缺少 title（唯一字段）→ 返回空 dict

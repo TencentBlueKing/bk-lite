@@ -94,7 +94,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
     try {
       setRoleLoading(true);
       const roleData = await loadRoleList({ client_list: resolvedClientData });
-      setRoleTreeData(processRoleTreeData(roleData, t('common.externalApp')));
+      setRoleTreeData(processRoleTreeData(roleData, t('common.externalApp'), false));
     } catch (error) {
       console.error('Failed to fetch roles:', error);
       message.error(t('common.fetchFailed'));

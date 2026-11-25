@@ -6,9 +6,12 @@ from django.core.management import BaseCommand
 from django.db import transaction
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.module_scope import EXCLUDED_CLIENTS, MODULE_ADMIN_ROLE, MODULE_AUDITOR_ROLE
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
-from apps.system_mgmt.models import App, Group, Menu, Role
+from apps.system_mgmt.models import App, Group, Menu, Role, User
+from apps.system_mgmt.services.cmdb_asset_export_permission import grant_asset_export_from_view, prepare_asset_export_grant
+from apps.system_mgmt.services.platform_roles import is_view_menu
 from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
 
 
@@ -50,11 +53,14 @@ class Command(BaseCommand):
                 )
                 print(f"create {app_obj['client_id']} success")
                 grant_snapshot = snapshot_workflow_menu_grants() if app_obj["client_id"] == "workflow" else None
+                export_grant = prepare_asset_export_grant() if app_obj["client_id"] == "cmdb" else None
                 create_resource(app_inst, app_obj["menus"])
                 if grant_snapshot is not None:
                     apply_workflow_menu_permission_split(grant_snapshot)
                 print(f"create {app_obj['client_id']} resource success")
                 create_default_roles(app_inst, app_obj["roles"])
+                if export_grant is not None:
+                    grant_asset_export_from_view(export_grant)
                 print(f"create {app_obj['client_id']} roles success")
             Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
@@ -178,8 +184,44 @@ def create_default_roles(app_inst: App, roles):
         role_obj.menu_list = [i["id"] for i in menus]
         update_roles.append(role_obj)
 
+    if app_inst.name in EXCLUDED_CLIENTS:
+        Role.objects.bulk_create(add_roles, batch_size=100)
+        Role.objects.bulk_update(update_roles, ["menu_list"], batch_size=100)
+        remove_module_builtin_roles(app_inst.name)
+        return
+
+    menu_rows = list(menus)
+    module_specs = (
+        (MODULE_ADMIN_ROLE, [row["id"] for row in menu_rows]),
+        (MODULE_AUDITOR_ROLE, [row["id"] for row in menu_rows if is_view_menu(row["name"])]),
+    )
+    for role_name, menu_ids in module_specs:
+        if role_name in role_map:
+            role_obj = role_map[role_name]
+            role_obj.menu_list = menu_ids
+            update_roles.append(role_obj)
+        else:
+            add_roles.append(Role(name=role_name, app=app_inst.name, menu_list=menu_ids))
+
     Role.objects.bulk_create(add_roles, batch_size=100)
     Role.objects.bulk_update(update_roles, ["menu_list"], batch_size=100)
+
+
+def remove_module_builtin_roles(app_name: str):
+    """去掉不该存在的模块角色，并把已经配到人身上的 id 摘掉。"""
+    role_ids = set(Role.objects.filter(app=app_name, name__in=(MODULE_ADMIN_ROLE, MODULE_AUDITOR_ROLE)).values_list("id", flat=True))
+    if not role_ids:
+        return
+    changed_users = []
+    for user in User.objects.all().only("id", "role_list"):
+        current = list(user.role_list or [])
+        kept = [item for item in current if item not in role_ids]
+        if kept != current:
+            user.role_list = kept
+            changed_users.append(user)
+    if changed_users:
+        User.objects.bulk_update(changed_users, ["role_list"])
+    Role.objects.filter(id__in=role_ids).delete()
 
 
 def get_all_clients(client):

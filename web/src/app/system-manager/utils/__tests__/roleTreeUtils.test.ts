@@ -196,4 +196,23 @@ describe('resolveRoleTreeLabel', () => {
   it('keeps a role name', () => {
     expect(resolveRoleTreeLabel({ key: 1, title: 'admin', selectable: true }, t)).toBe('admin');
   });
+
+  it('labels the two built-in module roles', () => {
+    expect(resolveRoleTreeLabel({ key: 1, title: 'module_admin', selectable: true }, t)).toBe('模块管理员');
+    expect(resolveRoleTreeLabel({ key: 2, title: 'module_auditor', selectable: true }, t)).toBe('模块审计员');
+  });
+});
+
+describe('module role parent application display name', () => {
+  it('localizes the parent app rather than exposing its internal client ID', () => {
+    const t = (key: string, fallback?: string, values?: { app: string }) => {
+      if (key === 'apps.monitor') return 'Monitor Center';
+      if (key === 'system.role.moduleAdminName') return `${values?.app} Administrator`;
+      if (key === 'system.role.moduleAuditorName') return `${values?.app} Auditor`;
+      return fallback || key;
+    };
+    const app = { name: 'monitor', display_name: '监控中心', is_build_in: true };
+    expect(resolveRoleTreeLabel({ key: 1, title: 'module_admin', app }, t)).toBe('Monitor Center Administrator');
+    expect(resolveRoleTreeLabel({ key: 2, title: 'module_auditor', app }, t)).toBe('Monitor Center Auditor');
+  });
 });

@@ -152,6 +152,14 @@ export interface ValueConfig {
   displayLimit?: number;
   /** 饼图和柱状图按数值降序。只存 true，缺省为关闭。 */
   sortByValue?: boolean;
+  /** 柱状图堆叠。只存 true，缺省为并排。 */
+  stackBars?: true;
+  /** 柱状图和折线图的水平参考线。name 是线上画出的文字。color 缺省时用主题告警色。 */
+  referenceLines?: Array<{ name: string; value: number; color?: string }>;
+  /** 大屏已取行自动滚动。只存 true。 */
+  autoScroll?: true;
+  /** 自动滚动时一行用掉的秒数。缺省 2。 */
+  scrollSeconds?: number;
   dimensionField?: string;
   valueField?: string;
   /** 折线/柱状多选数值。有值时优先于 valueField；只选一个时与 valueField 同时写入。 */

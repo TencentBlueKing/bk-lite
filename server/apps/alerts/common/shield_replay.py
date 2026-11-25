@@ -149,7 +149,7 @@ def _has_later_recovery(event):
         source_id=event.source_id,
         push_source_id=event.push_source_id,
         external_id=event.external_id,
-        action__in=[EventAction.RECOVERY, EventAction.CLOSED],
+        action__in=EventAction.END_ACTIONS,
     ).only("source_id", "push_source_id", "external_id", "team", "end_time", "start_time", "received_at")
     for recovery in recoveries:
         if build_recovery_match_key(recovery) != created_key:

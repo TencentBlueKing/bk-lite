@@ -13,6 +13,11 @@ class LogAlertLifecycleNotifier:
     """将日志告警生命周期转换为告警中心标准 Event 并通过现有渠道发送。"""
 
     ALERT_CENTER_METHOD = "receive_alert_events"
+    ACTION_TO_ALERT_CENTER = {
+        "created": "created",
+        "closed": "closed",
+        "recovered": "recovery",
+    }
     LEVEL_TO_ALERT_CENTER = {
         "critical": "0",
         "error": "1",
@@ -80,7 +85,7 @@ class LogAlertLifecycleNotifier:
             "description": content,
             "level": self._level(event.level),
             "value": None,
-            "action": "created",
+            "action": self.ACTION_TO_ALERT_CENTER["created"],
             "start_time": self._timestamp(event.event_time),
             "end_time": None,
             "item": "",
@@ -106,7 +111,7 @@ class LogAlertLifecycleNotifier:
             "description": content,
             "level": self._level(alert.level),
             "value": None,
-            "action": "closed",
+            "action": self.ACTION_TO_ALERT_CENTER["closed"],
             "start_time": closed_at,
             "end_time": closed_at,
             "item": "",
@@ -120,7 +125,7 @@ class LogAlertLifecycleNotifier:
 
     def build_recovered_event(self, alert) -> dict[str, Any]:
         event = self.build_closed_event(alert)
-        event["action"] = "recovered"
+        event["action"] = self.ACTION_TO_ALERT_CENTER["recovered"]
         return event
 
     @staticmethod

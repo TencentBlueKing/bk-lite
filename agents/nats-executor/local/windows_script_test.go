@@ -1,8 +1,10 @@
 package local
 
 import (
+	"encoding/json"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,7 +27,7 @@ func TestUsesWindowsFileScript(t *testing.T) {
 }
 
 func TestPrepareWindowsLocalScriptSkipsNonWindows(t *testing.T) {
-	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, "Write-Output hi", "linux")
+	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, "Write-Output hi", "linux", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -36,7 +38,7 @@ func TestPrepareWindowsLocalScriptSkipsNonWindows(t *testing.T) {
 
 func TestPrepareWindowsLocalScriptRejectsOversize(t *testing.T) {
 	huge := strings.Repeat("a", windowsScriptMaxBytes+1)
-	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, huge, "windows")
+	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, huge, "windows", nil)
 	if launch != nil {
 		t.Fatal("expected nil launch for oversized script")
 	}
@@ -47,7 +49,7 @@ func TestPrepareWindowsLocalScriptRejectsOversize(t *testing.T) {
 
 func TestPrepareWindowsLocalScriptPowerShellUsesFileArgv(t *testing.T) {
 	script := "Write-Output 'hello-from-file'\n" + strings.Repeat("# pad\n", 2000)
-	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, script, "windows")
+	launch, err := prepareWindowsLocalScript(ShellTypePowerShell, script, "windows", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestPrepareWindowsLocalScriptPowerShellUsesFileArgv(t *testing.T) {
 }
 
 func TestPrepareWindowsLocalScriptBatUsesCmdFile(t *testing.T) {
-	launch, err := prepareWindowsLocalScript(ShellTypeBat, "echo bat-from-file", "windows")
+	launch, err := prepareWindowsLocalScript(ShellTypeBat, "echo bat-from-file", "windows", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,5 +173,78 @@ func TestExecuteWindowsLongPowerShellBypassesCommandLineLimit(t *testing.T) {
 	}
 	if !strings.Contains(resp.Output, marker) {
 		t.Fatalf("expected marker %q in output, got %q", marker, resp.Output)
+	}
+}
+
+func TestBatArgsCannotSilentlyRunUnderAnotherShell(t *testing.T) {
+	var req ExecuteRequest
+	if err := json.Unmarshal([]byte(`{"command":"echo wrong-shell","shell":"sh","execute_timeout":5,"bat_args":["expected"]}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	resp := Execute(req, "test")
+	if resp.Success || resp.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("expected explicit bat_args rejection, got %+v", resp)
+	}
+}
+
+func TestBatchLaunchCarriesValuesOnlyInProcessEnvironment(t *testing.T) {
+	values := []string{"北京", "", `C:\数据 目录\`, "%TEMP% !PATH! & ^", "a=b,c;d"}
+	launch, err := prepareWindowsLocalScript(ShellTypeCmd, "@echo %1", "windows", values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer launch.Cleanup()
+	expected := []string{"BK_JOB_BAT_SCRIPT=" + `"` + launch.Path + `"`, "BK_JOB_BAT_ARGS_READY=1",
+		"BK_JOB_BAT_ARG_1=北京", `BK_JOB_BAT_ARG_2=""`, `BK_JOB_BAT_ARG_3="C:\数据 目录\"`,
+		`BK_JOB_BAT_ARG_4="%TEMP% !PATH! & ^"`, `BK_JOB_BAT_ARG_5="a=b,c;d"`}
+	if !slices.Equal(launch.Env, expected) {
+		t.Errorf("unexpected batch process environment: %v", launch.Env)
+	}
+	line := strings.Join(launch.Args, " ")
+	if line != "/d /q /v:off /s /c %BK_JOB_BAT_SCRIPT% %BK_JOB_BAT_ARG_1% %BK_JOB_BAT_ARG_2% %BK_JOB_BAT_ARG_3% %BK_JOB_BAT_ARG_4% %BK_JOB_BAT_ARG_5%" {
+		t.Fatalf("unexpected cmd line: %q", line)
+	}
+}
+
+func TestInvalidBatchArgsLeaveNoScriptOrValuesInErrors(t *testing.T) {
+	tmp := t.TempDir()
+	for _, k := range []string{"TMP", "TEMP", "TMPDIR"} {
+		t.Setenv(k, tmp)
+	}
+	tests := [][]string{
+		{"sensitive\x00"}, {"sensitive\r"}, {"sensitive\n"}, {"sensitive\t"},
+		{"sensitive\ufffe"}, {"sensitive\uffff"}, {"sensitive\x7f"}, {"sensitive\""}, {"sensitive\xff"}, {strings.Repeat("😀", 4096)},
+		make([]string, 512),
+	}
+	for _, args := range tests {
+		_, err := prepareWindowsLocalScript(ShellTypeBat, "@echo %1", "windows", args)
+		if err == nil || strings.Contains(err.Error(), "sensitive") {
+			t.Fatal("expected a validation error without argument contents")
+		}
+	}
+	if entries, err := os.ReadDir(tmp); err != nil || len(entries) != 0 {
+		t.Fatalf("failed launch left files: %v, %v", entries, err)
+	}
+}
+
+func TestExecuteWindowsNativeBatchArguments(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("requires Windows cmd.exe")
+	}
+	resp := Execute(ExecuteRequest{
+		Command: strings.Join([]string{
+			"@echo off", "echo ready=%BK_JOB_BAT_ARGS_READY%", "echo first=%1",
+			"echo second=%2", "echo third=%3", "echo fourth=%4", "shift", "echo shifted=%1",
+		}, "\r\n"),
+		Shell: ShellTypeCmd, ExecuteTimeout: 10,
+		BatArgs: []string{"北京", "", `C:\上海 目录\`, "%PATH% & ! ^"},
+	}, "batch-test")
+	if !resp.Success {
+		t.Fatalf("failed to run batch script: %+v", resp)
+	}
+	for _, want := range []string{"ready=1", "first=北京", `second=""`, `third="C:\上海 目录\"`, `fourth="%PATH% & ! ^"`, `shifted=""`} {
+		if !strings.Contains(resp.Output, want) {
+			t.Errorf("expected %q in %q", want, resp.Output)
+		}
 	}
 }

@@ -12,6 +12,7 @@ from apps.core.utils.current_team_scope import (
     scope_permission_queryset,
     validate_assignable_organizations,
 )
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
@@ -112,6 +113,7 @@ def _build_actor_context(request):
         "username": scope.username,
         "domain": scope.domain,
         "current_team": scope.current_team,
+        "app": client_id_from_request(request),
         "include_children": scope.include_children,
         "is_superuser": scope.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),

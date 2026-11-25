@@ -7,6 +7,7 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type { DatasourceItem, ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { applyBarLineGuides, withoutReferenceGuideSeries } from '@/app/ops-analysis/utils/barLineGuides';
 import {
   CHART_DISPLAY_I18N,
   presentBar,
@@ -198,7 +199,6 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
         type: 'bar',
         data: item.data,
         barMaxWidth: 40,
-        ...(config?.stack ? { stack: 'total' } : {}),
         itemStyle: {
           borderRadius: [2, 2, 0, 0],
         },
@@ -223,26 +223,14 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
       ];
     }
 
-    const thresholdLines = (config?.thresholdColors || [])
-      .map((threshold) => ({ value: Number(threshold.value), color: threshold.color }))
-      .filter((threshold) => !Number.isNaN(threshold.value) && threshold.value !== 0);
-    if (thresholdLines.length > 0 && built.series.length > 0) {
-      built.series[0].markLine = {
-        symbol: 'none',
-        silent: true,
-        data: thresholdLines.map((threshold) => ({
-          yAxis: threshold.value,
-          lineStyle: { color: threshold.color, type: 'dashed', width: 1.5 },
-          label: {
-            show: true,
-            position: 'insideEndTop',
-            formatter: String(threshold.value),
-            color: threshold.color,
-            fontSize: 10,
-          },
-        })),
-      };
-    }
+    applyBarLineGuides(built, {
+      chart: 'bar',
+      display: readChartDisplay(config),
+      data: chartData,
+      thresholdColors: config?.thresholdColors,
+      scale: (px) => px,
+      scaleFloat: (px) => px,
+    });
 
     return built;
   }, [
@@ -255,7 +243,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
     yAxisName,
   ]);
 
-  const legendData = option.series.map((item: { name?: string }) => ({
+  const legendData = withoutReferenceGuideSeries(option.series).map((item: { id?: string; name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
   }));
 

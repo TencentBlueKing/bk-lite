@@ -196,6 +196,10 @@ class APISecretAuthBackend(ModelBackend):
                 menu_data = Menu.objects.filter(id__in=list(set(menu_ids))).values_list("app", "name")
                 for app, name in menu_data:
                     permission.setdefault(app, set()).add(name)
+                from apps.core.utils.module_scope import module_apps_from_roles, overlay_module_permissions
+
+                admin_apps, auditor_apps = module_apps_from_roles(role_list)
+                permission = {app: set(names) for app, names in overlay_module_permissions(permission, admin_apps, auditor_apps).items()}
 
             # 设置到用户对象
             user.roles = role_names
@@ -515,6 +519,9 @@ class AuthBackend(ModelBackend):
             user.role_ids = user_info.get("role_ids", [])
             user.display_name = user_info.get("display_name", "")
             user.group_tree = user_info.get("group_tree", [])
+            user.module_group_tree = user_info.get("module_group_tree", [])
+            user.module_admin_apps = user_info.get("module_admin_apps", [])
+            user.module_auditor_apps = user_info.get("module_auditor_apps", [])
             user.is_auditor = bool(user_info.get("is_auditor")) and not is_superuser
             return user
 

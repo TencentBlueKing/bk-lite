@@ -327,6 +327,13 @@ class ModelManage(object):
         return True
 
     @staticmethod
+    def _request_display_instance_backfill() -> None:
+        """新的展示字段定义出现后，把存量回填重新打开并投递一次。"""
+        from apps.cmdb.tasks.display_field_backfill import request_display_instance_backfill
+
+        request_display_instance_backfill()
+
+    @staticmethod
     def _remove_display_field_from_attrs(attrs: list, attr_id: str):
         """
         从属性列表中删除指定属性的 _display 字段定义
@@ -892,9 +899,12 @@ class ModelManage(object):
                 raise BaseAppException("model attr repetition")
             attrs.append(attr_info)
 
-            ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
+            added_display = ModelManage._add_display_field_to_attrs(attrs, attr_info, model_id)
 
             result = ag.set_entity_properties(MODEL, [model_info["_id"]], dict(attrs=json.dumps(attrs)), {}, [], False)
+
+        if added_display:
+            ModelManage._request_display_instance_backfill()
 
         # 新字段可能影响全文检索排除项，失效模型与全局字段缓存
         from apps.cmdb.display_field import ExcludeFieldsCache

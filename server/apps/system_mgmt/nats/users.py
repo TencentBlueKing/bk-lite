@@ -1,6 +1,6 @@
 # flake8: noqa
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.core.utils.current_team_scope import _actor_app_id, _normalize_organization_ids
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.services.archived_group_query import ArchivedGroupQuery
 from apps.system_mgmt.services.group_archive_types import ARCHIVED_LIST_MAX_PAGE_SIZE
@@ -37,6 +37,17 @@ def _is_persisted_auditor(user_obj):
 
 def _has_unrestricted_org_scope(user_obj):
     return _is_persisted_superuser(user_obj) or _is_persisted_auditor(user_obj)
+
+
+def _has_module_org_scope(user_obj, app):
+    from apps.core.utils.module_scope import EXCLUDED_CLIENTS, MODULE_ADMIN_ROLE, MODULE_AUDITOR_ROLE
+
+    if not app or app in EXCLUDED_CLIENTS:
+        return False
+    role_ids = get_user_all_roles(user_obj)
+    if not role_ids:
+        return False
+    return Role.objects.filter(id__in=role_ids, app=app, name__in=[MODULE_ADMIN_ROLE, MODULE_AUDITOR_ROLE]).exists()
 
 
 # SECURITY COMPATIBILITY: 仅为已知仓外消费者限时恢复；不得新增消费者。
@@ -89,7 +100,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
         return None, [], None
 
     # 超管 / 审计员身份只能来自持久化用户，RPC 调用方声明不得提升权限。
-    unrestricted_scope = _has_unrestricted_org_scope(user_obj)
+    # 模块角色仅在传入当前应用 ID 时放开该应用的组织范围。
+    unrestricted_scope = _has_unrestricted_org_scope(user_obj) or _has_module_org_scope(user_obj, _actor_app_id(actor_context))
 
     try:
         current_team = next(iter(_normalize_organization_ids([current_team])))
@@ -146,11 +158,15 @@ def get_group_users_scoped(actor_context, group=None, include_children=False, se
             return {"result": True, "data": []}
         if group not in authorized_groups:
             return {"result": True, "data": []}
-        query_groups = GroupUtils.get_user_authorized_child_groups(
-            user_obj.group_list,
-            group,
-            include_children=include_children,
-        )
+        if _has_unrestricted_org_scope(user_obj) or _has_module_org_scope(user_obj, _actor_app_id(actor_context)):
+            candidates = GroupUtils.get_group_with_descendants(group) if include_children else [group]
+            query_groups = [group_id for group_id in candidates if group_id in authorized_groups]
+        else:
+            query_groups = GroupUtils.get_user_authorized_child_groups(
+                user_obj.group_list,
+                group,
+                include_children=include_children,
+            )
     else:
         query_groups = authorized_groups
 
@@ -192,7 +208,7 @@ def get_assignable_groups(actor_context):
     if not user_obj:
         return {"result": True, "data": []}
 
-    if _has_unrestricted_org_scope(user_obj):
+    if _has_unrestricted_org_scope(user_obj) or _has_module_org_scope(user_obj, _actor_app_id(actor_context)):
         return {"result": True, "data": list(GroupUtils.active_queryset().values_list("id", flat=True))}
 
     user_group_list = list(user_obj.group_list or [])
@@ -418,11 +434,7 @@ def get_user_group_tree(username, sync_source_id=None):
         active_ids = set(GroupUtils.active_queryset(id__in=user_group_ids).values_list("id", flat=True))
         user_group_ids = [group_id for group_id in user_group_ids if group_id in active_ids]
         visible_ids = _collect_ancestor_group_ids(user_group_ids)
-        queryset = list(
-            GroupUtils.active_queryset(id__in=visible_ids)
-            .prefetch_related("roles")
-            .order_by("id")
-        )
+        queryset = list(GroupUtils.active_queryset(id__in=visible_ids).prefetch_related("roles").order_by("id"))
         group_tree = GroupUtils.build_group_tree(queryset, is_superuser=False, user_groups=user_group_ids)
         return {
             "result": True,

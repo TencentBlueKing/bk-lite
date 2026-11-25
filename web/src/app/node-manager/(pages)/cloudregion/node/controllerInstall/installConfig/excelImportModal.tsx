@@ -12,6 +12,7 @@ import OperateModal from '@/components/operate-drawer';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import {
   appendOptionSheetsToWorkbook,
   buildOptionSheetDefinitions,
@@ -53,11 +54,12 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
     const { t } = useTranslation();
     const { Dragger } = Upload;
     const userContext = useUserInfoContext();
+    const operableGroupTree = useOperableGroupTree();
 
     // 默认从 userContext 获取组织列表
     const defaultGroupList = useMemo(
-      () => buildOrganizationOptions(userContext?.groupTree || []),
-      [userContext?.groupTree]
+      () => buildOrganizationOptions(operableGroupTree || []),
+      [operableGroupTree]
     );
 
     // 优先使用传入的 groupList,否则使用默认值

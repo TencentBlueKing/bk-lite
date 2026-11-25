@@ -42,9 +42,7 @@ class AlertRecoveryChecker:
             return False
 
         created = related.filter(action=EventAction.CREATED)
-        has_recovery = (
-            related.filter(action__in=[EventAction.RECOVERY, EventAction.CLOSED]).exclude(external_id__isnull=True).exclude(external_id="").exists()
-        )
+        has_recovery = related.filter(action__in=EventAction.END_ACTIONS).exclude(external_id__isnull=True).exclude(external_id="").exists()
         has_created = created.exists()
         if not has_created and not has_recovery:
             logger.debug("[AlertRecovery] Alert %s 没有 CREATED 事件和 恢复事件，无需恢复", alert.alert_id)
@@ -66,7 +64,7 @@ class AlertRecoveryChecker:
                 )
         else:
             latest_recovery = {}
-            linked_recoveries = related.filter(action__in=[EventAction.RECOVERY, EventAction.CLOSED]).order_by("pk")
+            linked_recoveries = related.filter(action__in=EventAction.END_ACTIONS).order_by("pk")
             for batch in iter_queryset_in_pk_batches(linked_recoveries, AGGREGATION_BATCH_SIZE):
                 for recovery_event in batch:
                     recovery_key = build_recovery_match_key(recovery_event)
@@ -158,7 +156,7 @@ class AlertRecoveryChecker:
 
 def attach_visible_recoveries(alert: Alert) -> int:
     """把已经提交、且匹配本告警 CREATED 的恢复事件补挂到告警上。"""
-    if not Event.objects.filter(action__in=[EventAction.RECOVERY, EventAction.CLOSED]).exists():
+    if not Event.objects.filter(action__in=EventAction.END_ACTIONS).exists():
         return 0
     added = _attach_primary_recoveries(alert)
     added += _attach_fallback_recoveries(alert)
@@ -200,7 +198,7 @@ def _attach_primary_recoveries(alert: Alert) -> int:
     external_id_list = list(external_ids)
     for offset in range(0, len(external_id_list), AGGREGATION_BATCH_SIZE):
         candidates = Event.objects.filter(
-            action__in=[EventAction.RECOVERY, EventAction.CLOSED],
+            action__in=EventAction.END_ACTIONS,
             external_id__in=external_id_list[offset : offset + AGGREGATION_BATCH_SIZE],
         ).order_by("pk")
         for batch in iter_queryset_in_pk_batches(candidates, AGGREGATION_BATCH_SIZE):
@@ -251,7 +249,7 @@ def _attach_fallback_recoveries(alert: Alert) -> int:
         if candidate_alert_pks != {alert.pk}:
             continue
         recoveries = Event.objects.filter(
-            action__in=[EventAction.RECOVERY, EventAction.CLOSED],
+            action__in=EventAction.END_ACTIONS,
             source_id=source_pk,
             item=item,
             resource_name=resource_name,

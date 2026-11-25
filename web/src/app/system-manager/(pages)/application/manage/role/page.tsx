@@ -3,6 +3,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Button, Input, Form, Tabs } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useMenus } from '@/context/menus';
 import { localizePermissionMenus } from '@/app/system-manager/utils/permissionMenuTitles';
 import OperateModal from '@/components/operate-modal';
@@ -12,6 +13,12 @@ import RoleList from './roleList';
 import UserTab from './UserTab';
 import OrganizationTab from './OrganizationTab';
 import type { Role } from '@/app/system-manager/types/application';
+import {
+  isModuleBuiltinRole,
+  moduleRoleDescription,
+  moduleRoleLabel,
+} from '@/app/system-manager/utils/moduleRoles';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import {
   useRoleList,
   useUserTab,
@@ -27,6 +34,7 @@ const RoleManagement: React.FC = () => {
   const searchParams = useSearchParams();
   const clientId = searchParams?.get('clientId') || '';
   const { configMenus } = useMenus();
+  const { isSuperUser } = useUserInfoContext();
 
   const [roleForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('1');
@@ -45,6 +53,14 @@ const RoleManagement: React.FC = () => {
     handleUpdateRole,
     handleDeleteRole
   } = useRoleList({ clientId, t });
+
+  const appName = resolveAppDisplayName(
+    { name: clientId, is_build_in: true },
+    t,
+  );
+  const moduleRoleSummary = isModuleBuiltinRole(selectedRole?.name)
+    ? moduleRoleDescription(selectedRole?.name, appName, t)
+    : '';
 
   const localizedMenuData = useMemo(
     () => localizePermissionMenus(menuData, configMenus, clientId),
@@ -79,7 +95,11 @@ const RoleManagement: React.FC = () => {
 
   const onSelectRole = useCallback((role: Role) => {
     setSelectedRole(role);
-    if (activeTab === '2' || role.name === 'admin') {
+    if (
+      isModuleBuiltinRole(role.name) ||
+      activeTab === '2' ||
+      role.name === 'admin'
+    ) {
       setActiveTab('1');
       userTab.fetchUsersByRole(role, 1, userTab.pageSize);
       return;
@@ -115,6 +135,7 @@ const RoleManagement: React.FC = () => {
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 w-full flex-1 overflow-hidden rounded-md bg-[var(--color-bg)]">
         <RoleList
+          appName={appName}
           loadingRoles={loadingRoles}
           roleList={roleList}
           selectedRole={selectedRole}
@@ -124,6 +145,16 @@ const RoleManagement: React.FC = () => {
           t={t}
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4">
+          {moduleRoleSummary && (
+            <div className="mb-2 shrink-0">
+              <div className="text-sm font-medium text-[var(--color-text-1)]">
+                {moduleRoleLabel(selectedRole?.name, t, appName)}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">
+                {moduleRoleSummary}
+              </p>
+            </div>
+          )}
           <Tabs
             className="flex min-h-0 flex-1 flex-col [&>.ant-tabs-nav]:mb-3 [&>.ant-tabs-content-holder]:min-h-0 [&>.ant-tabs-content-holder]:flex-1 [&>.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:m-0 [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:min-h-0 [&_.ant-tabs-tabpane]:overflow-hidden"
             defaultActiveKey="1"
@@ -152,58 +183,71 @@ const RoleManagement: React.FC = () => {
                 onDeleteUser={userTab.handleDeleteUser}
                 onBatchDelete={userTab.handleBatchDeleteUsers}
                 onFetchAllUsers={userTab.fetchAllUsers}
+                hidePlatformIdentities={isModuleBuiltinRole(selectedRole?.name)}
+                canManageUsers={!isModuleBuiltinRole(selectedRole?.name) || isSuperUser}
               />
             </TabPane>
-            {selectedRole?.name !== 'admin' && (
-              <TabPane tab={t('system.role.permissions')} key="2">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="mb-4 flex shrink-0 items-center justify-end">
-                    <PermissionWrapper requiredPermissions={['Edit Permission']}>
-                      <Button
-                        type="primary"
-                        loading={permissionTab.loading}
-                        onClick={permissionTab.handleConfirmPermissions}
+            {selectedRole?.name !== 'admin' &&
+              !isModuleBuiltinRole(selectedRole?.name) && (
+                <TabPane tab={t('system.role.permissions')} key="2">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="mb-4 flex shrink-0 items-center justify-end">
+                      <PermissionWrapper
+                        requiredPermissions={['Edit Permission']}
                       >
-                        {t('common.confirm')}
-                      </Button>
-                    </PermissionWrapper>
+                        <Button
+                          type="primary"
+                          loading={permissionTab.loading}
+                          onClick={permissionTab.handleConfirmPermissions}
+                        >
+                          {t('common.confirm')}
+                        </Button>
+                      </PermissionWrapper>
+                    </div>
+                    <PermissionTable
+                      t={t}
+                      loading={permissionTab.loading}
+                      menuData={localizedMenuData}
+                      permissionsCheckedKeys={
+                        permissionTab.permissionsCheckedKeys
+                      }
+                      setPermissionsCheckedKeys={
+                        permissionTab.setPermissionsCheckedKeys
+                      }
+                    />
                   </div>
-                  <PermissionTable
-                    t={t}
-                    loading={permissionTab.loading}
-                    menuData={localizedMenuData}
-                    permissionsCheckedKeys={permissionTab.permissionsCheckedKeys}
-                    setPermissionsCheckedKeys={permissionTab.setPermissionsCheckedKeys}
-                  />
-                </div>
+                </TabPane>
+            )}
+            {!isModuleBuiltinRole(selectedRole?.name) && (
+              <TabPane tab={t('system.role.organizations')} key="3">
+                <OrganizationTab
+                  groupTableData={organizationTab.groupTableData}
+                  loading={organizationTab.loading}
+                  groupCurrentPage={organizationTab.groupCurrentPage}
+                  groupPageSize={organizationTab.groupPageSize}
+                  groupTotal={organizationTab.groupTotal}
+                  selectedGroupKeys={organizationTab.selectedGroupKeys}
+                  setSelectedGroupKeys={organizationTab.setSelectedGroupKeys}
+                  deleteLoading={organizationTab.deleteLoading}
+                  addGroupModalOpen={addGroupModalOpen}
+                  setAddGroupModalOpen={setAddGroupModalOpen}
+                  modalLoading={groupModalLoading}
+                  t={t}
+                  onSearch={organizationTab.handleGroupSearch}
+                  onTableChange={organizationTab.handleGroupTableChange}
+                  onAddGroups={handleAddGroupsWrapper}
+                  onDeleteGroup={organizationTab.handleDeleteGroup}
+                  onBatchDelete={organizationTab.handleBatchDeleteGroups}
+                />
               </TabPane>
             )}
-            <TabPane tab={t('system.role.organizations')} key="3">
-              <OrganizationTab
-                groupTableData={organizationTab.groupTableData}
-                loading={organizationTab.loading}
-                groupCurrentPage={organizationTab.groupCurrentPage}
-                groupPageSize={organizationTab.groupPageSize}
-                groupTotal={organizationTab.groupTotal}
-                selectedGroupKeys={organizationTab.selectedGroupKeys}
-                setSelectedGroupKeys={organizationTab.setSelectedGroupKeys}
-                deleteLoading={organizationTab.deleteLoading}
-                addGroupModalOpen={addGroupModalOpen}
-                setAddGroupModalOpen={setAddGroupModalOpen}
-                modalLoading={groupModalLoading}
-                t={t}
-                onSearch={organizationTab.handleGroupSearch}
-                onTableChange={organizationTab.handleGroupTableChange}
-                onAddGroups={handleAddGroupsWrapper}
-                onDeleteGroup={organizationTab.handleDeleteGroup}
-                onBatchDelete={organizationTab.handleBatchDeleteGroups}
-              />
-            </TabPane>
           </Tabs>
         </div>
       </div>
       <OperateModal
-        title={isEditingRole ? t('system.role.updateRole') : t('system.role.addRole')}
+        title={
+          isEditingRole ? t('system.role.updateRole') : t('system.role.addRole')
+        }
         closable={false}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
@@ -217,7 +261,12 @@ const RoleManagement: React.FC = () => {
           <Form.Item
             name="roleName"
             label={t('common.name')}
-            rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }]}
+            rules={[
+              {
+                required: true,
+                message: `${t('common.inputMsg')}${t('common.name')}`,
+              },
+            ]}
           >
             <Input placeholder={`${t('common.inputMsg')}${t('common.name')}`} />
           </Form.Item>

@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import RedirectToFirstMenu from '@/components/redirect-menu';
 
 export default function RumIndexPage() {
-  redirect('/rum/applications');
+  return <RedirectToFirstMenu />;
 }

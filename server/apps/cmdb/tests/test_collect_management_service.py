@@ -90,6 +90,10 @@ def _patch_common(monkeypatch, fake, attrs=None):
             return None
 
     monkeypatch.setattr(mod, "get_collect_enterprise_extension", lambda: _Ext())
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.handler.DisplayFieldConverter.convert_organization",
+        lambda org_ids: "组织" if org_ids else "",
+    )
     # 关闭自动关联调度
     import apps.cmdb.services.auto_relation_reconcile as ar
 
@@ -470,6 +474,7 @@ def test_refresh_heartbeat_updates_only_runtime_metadata_without_querying_instan
             "_id": 7,
             "model_id": "host",
             "organization": [1],
+            "organization_display": "组织",
             "collect_task": 1,
             "auto_collect": True,
             "collect_time": "2026-06-24",

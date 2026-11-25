@@ -1,5 +1,6 @@
 """initialize_all 必须把查询失败和实例更新失败记为失败，并继续处理其余数据。"""
 
+import json
 import logging
 
 TRACEBACK_TEXT = "Traceback (most recent call last):"
@@ -193,3 +194,69 @@ def test_instance_pages_advance_cursor(monkeypatch, fake_graph):
     assert len(seen_params) == 2
     assert seen_params[0] == [{"field": "model_id", "type": "str=", "value": "host"}]
     assert seen_params[1][1] == {"field": "id", "type": "id>", "value": 2}
+
+
+def _prepared_models():
+    return [
+        {"model_id": "host", "attrs": json.dumps([{"attr_id": "owner", "attr_type": "user"}])},
+        {"model_id": "empty", "attrs": json.dumps([{"attr_id": "name", "attr_type": "str"}])},
+        {"model_id": "switch", "attrs": json.dumps([{"attr_id": "owner", "attr_type": "user"}])},
+        {"model_id": "sheet", "attrs": json.dumps([{"attr_id": "rows", "attr_type": "table"}])},
+    ]
+
+
+def test_backfill_bounded_scans_display_models_in_one_id_stream(monkeypatch, fake_graph):
+    from apps.cmdb.display_field.initializer import DisplayFieldInitializer
+
+    seen = []
+
+    def query_entity(label, params, **kwargs):
+        seen.append(list(params))
+        assert kwargs["include_count"] is False
+        return (
+            [
+                {"_id": 4, "model_id": "host", "inst_id": "h"},
+                {"_id": 9, "model_id": "sheet", "inst_id": "s"},
+            ],
+            2,
+        )
+
+    fake_graph(
+        "apps.cmdb.display_field.initializer",
+        query_entity=query_entity,
+        batch_update_node_property_values=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("没有展示原值时不写图")),
+    )
+    init = DisplayFieldInitializer()
+    monkeypatch.setattr(init, "_get_all_models", lambda: _prepared_models())
+    monkeypatch.setattr(init, "_preload_mappings", lambda _models: None)
+
+    result = init.backfill_bounded(max_instances=2000, cursor=None)
+
+    assert result["done"] is True
+    assert result["instances_seen"] == 2
+    assert len(seen) == 1
+    assert seen[0][0]["field"] == "model_id"
+    assert seen[0][0]["type"] == "str[]"
+    assert set(seen[0][0]["value"]) == {"host", "switch", "sheet"}
+    assert "empty" not in seen[0][0]["value"]
+
+
+def test_backfill_bounded_keeps_legacy_model_cursor(monkeypatch, fake_graph):
+    from apps.cmdb.display_field.initializer import DisplayFieldInitializer
+
+    seen = []
+
+    def query_entity(label, params, **kwargs):
+        seen.append(list(params))
+        return ([], 0)
+
+    fake_graph("apps.cmdb.display_field.initializer", query_entity=query_entity)
+    init = DisplayFieldInitializer()
+    monkeypatch.setattr(init, "_get_all_models", lambda: _prepared_models())
+    monkeypatch.setattr(init, "_preload_mappings", lambda _models: None)
+
+    result = init.backfill_bounded(max_instances=2000, cursor={"model_id": "switch", "last_id": 3})
+
+    assert result["done"] is True
+    assert seen[0][0] == {"field": "model_id", "type": "str=", "value": "switch"}
+    assert seen[0][1] == {"field": "id", "type": "id>", "value": 3}

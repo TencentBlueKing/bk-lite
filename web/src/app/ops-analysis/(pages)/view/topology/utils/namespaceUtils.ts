@@ -15,7 +15,7 @@ import {
 import {
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
-import { chartDisplayPatch } from '@/app/ops-analysis/utils/chartDisplay';
+import { applyChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export { syncFilterValuesWithDefinitions };
@@ -355,12 +355,6 @@ export const buildValueConfig = (
     if (values.scalarCalc) valueConfig.scalarCalc = values.scalarCalc;
   }
   copySavedChartFields(valueConfig, values);
-  const displayPatch = chartDisplayPatch(values);
-  if (displayPatch.displayLimit !== undefined) {
-    valueConfig.displayLimit = displayPatch.displayLimit;
-  }
-  if (displayPatch.sortByValue !== undefined) {
-    valueConfig.sortByValue = displayPatch.sortByValue;
-  }
+  applyChartDisplay(valueConfig, values);
   return valueConfig;
 };

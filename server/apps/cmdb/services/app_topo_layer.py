@@ -67,6 +67,8 @@ _CLOUD_APP_SERVICE_MODELS = frozenset(
         "qcloud_cmq_topic",
         "hwcloud_rds",
         "hwcloud_dcs",
+        "volcengine_mysql",
+        "volcengine_pgsql",
     }
 )
 

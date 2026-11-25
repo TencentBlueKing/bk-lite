@@ -34,7 +34,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "cleanup_config_file_orphan_temp_task": {
         "task": "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task",
-        "schedule": crontab(minute="*/15"),
+        "schedule": crontab(hour=3, minute=40),
     },
     "reconcile_cmdb_operations_task": {"task": "apps.cmdb.tasks.celery_tasks.reconcile_cmdb_operations_task", "schedule": crontab(minute="*/5")},
     "recover_change_record_mirror_outbox_task": {

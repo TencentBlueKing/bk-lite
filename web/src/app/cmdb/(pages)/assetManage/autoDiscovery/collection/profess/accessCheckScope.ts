@@ -7,6 +7,7 @@ export const ACCESS_CHECK_MODEL_IDS = new Set([
   'aliyun_account',
   'qcloud',
   'hwcloud',
+  'volcengine_account',
   'fusioninsight',
   'vmware_vc',
   'hyperv_host',

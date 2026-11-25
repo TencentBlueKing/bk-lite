@@ -1,6 +1,7 @@
-"""CMDB 实例 UUID 清洗运行期完成判定。
+"""CMDB 实例 UUID 清洗完成判定。
 
-维护命令 migrate_*_uuid_refs 写入各 stage 断点；运行期 Celery 任务据此快速跳过。
+维护命令 migrate_*_uuid_refs 写入各 stage 断点。手工命令
+migrate_cmdb_instance_uuid_runtime 在 apply 且 verify 通过后写汇总标记。
 """
 
 from django.apps import apps as django_apps
@@ -61,7 +62,7 @@ def is_oa_uuid_migration_complete() -> bool:
 
 
 def is_uuid_runtime_migration_complete() -> bool:
-    """全部必需 stage 已完成才算收敛。uuid_runtime_done 只是完成标记，不能单独跳过新增 stage。"""
+    """全部必需 stage 已完成才算收敛。uuid_runtime_done 只是完成标记，不能单独代表新增 stage。"""
     return is_cmdb_uuid_migration_complete() and is_oa_uuid_migration_complete()
 
 

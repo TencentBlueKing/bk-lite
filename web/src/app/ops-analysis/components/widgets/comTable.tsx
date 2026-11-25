@@ -3,6 +3,7 @@ import React, {
   useState,
   useMemo,
   useCallback,
+  useRef,
 } from 'react';
 import { Input, Select, DatePicker, Tooltip } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -41,6 +42,7 @@ import {
   formatVisibleChartValue,
   hasValueFormatConfigured,
 } from '@/app/ops-analysis/utils/chartValueFormat';
+import { rowScrollRead, watchTableAutoScroll } from '@/app/ops-analysis/utils/rowAutoScroll';
 import { getScreenWidgetScale } from './shared/screenMetrics';
 import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 import {
@@ -145,13 +147,27 @@ const ComTable: React.FC<ComTableProps> = ({
   }, [screenTableTheme, usesScreenTheme, widgetScale]);
   
   // 槽位挂上之后才测量。数字 y 用表头和分页的真实高度，不再乘 widgetUiScale。
-  const { slotRef: tableSlotRef, tableScrollY } = useTableBodyScrollY({
+  const tableSlotNodeRef = useRef<HTMLDivElement | null>(null);
+  const { slotRef: setTableSlot, tableScrollY } = useTableBodyScrollY({
     hasPagination: isPaginated,
   });
+  const tableSlotRef = useCallback((node: HTMLDivElement | null) => {
+    tableSlotNodeRef.current = node;
+    setTableSlot(node);
+  }, [setTableSlot]);
   const displayedTableData = useMemo(
     () => applyTableRowFilters(tableData, filters),
     [filters, tableData],
   );
+
+  // 槽位 ref 是回调，函数上没有 current。表体要等 scroll.y 量完才出现，所以按高度重绑。
+  // 暂停挂在整张表上，表头和分页也算在里面。
+  useEffect(() => {
+    return watchTableAutoScroll(
+      tableSlotNodeRef.current,
+      () => rowScrollRead(config, screenRenderContext?.enabled === true),
+    );
+  }, [config, displayedTableData, screenRenderContext?.enabled, tableScrollY]);
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
     return config?.tableConfig?.filterFields || [];

@@ -77,6 +77,7 @@ def _resolve_log_group_scope(user_info):
         "username": username,
         "domain": domain,
         "current_team": current_team,
+        "app": "log",
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(
@@ -318,6 +319,7 @@ def _get_log_actor_scope(user_info: dict):
         "username": username,
         "domain": domain,
         "current_team": current_team,
+        "app": "log",
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(

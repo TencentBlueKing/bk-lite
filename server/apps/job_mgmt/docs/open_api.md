@@ -445,6 +445,8 @@ v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进�
 > | python | `sys.argv[1]` | `sys.argv[2]` |
 > | powershell | `$args[0]` | `$args[1]` |
 > | bat | `%1` | `%2` |
+>
+> Bat 按 `params` 数组顺序取值。含空格的路径或空字符串会带外层引号传递，用 `%~1`、`%~2` 读取去掉外层引号的值。可选参数传 `""` 时仍占一个位置。Bat 参数值内的双引号、ASCII 控制字符及无法通过 Windows 接收的 Unicode 字符会导致作业失败；启动命令还受 `cmd.exe` 的 8191 个 UTF-16 码元长度限制。
 
 **完整调用示例：**
 
@@ -524,7 +526,7 @@ v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进�
     {"node_id": "node-win002", "name": "win-file-01", "ip": "10.0.3.51", "os": "windows", "cloud_region_id": "region-sh"}
   ],
   "script_type": "bat",
-  "script_content": "@echo off\nset src=%1\nset dest=%2\nxcopy \"%src%\" \"%dest%\" /E /I /Y\necho Backup completed from %src% to %dest%",
+  "script_content": "@echo off\nset \"src=%~1\"\nset \"dest=%~2\"\nxcopy \"%src%\" \"%dest%\" /E /I /Y\necho Backup completed from %src% to %dest%",
   "params": [{"name": "src", "value": "D:\\app\\data"}, {"name": "dest", "value": "E:\\backup\\app_data"}],
   "timeout": 600,
   "team": [2],

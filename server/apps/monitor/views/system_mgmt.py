@@ -2,6 +2,7 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
@@ -22,6 +23,7 @@ def _build_actor_context(request):
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": request.user.is_superuser,
         # 与 monitor_instance/node_mgmt 两处保持一致：用户面 scoped 查询（get_group_users_scoped /

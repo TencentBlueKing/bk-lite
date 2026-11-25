@@ -24,7 +24,7 @@ COLLECT_VAULT_BINDINGS = {
     ).split(),
     "storage/cloud": "ibm_ds xsky".split(),
     "storage/snmp": "macrosan tape_library".split(),
-    "cloud/cloud": "aliyun_account qcloud hwcloud aws".split(),
+    "cloud/cloud": "aliyun_account qcloud hwcloud aws volcengine_account".split(),
     "cloud/oauth_client": "azure azurelocal_cmdb".split(),
     "host/ipmi": "physcial_server_ipmi".split(),
     "host/redfish": "physcial_server_redfish server_bmc".split(),
@@ -44,6 +44,7 @@ _BY_OBJECT.update(
         "pgsql": "database/sql",
         "network_topo": "network/snmp",
         "aliyun": "cloud/cloud",
+        "volcengine": "cloud/cloud",
         "keepalived": "middleware/ssh",
     }
 )

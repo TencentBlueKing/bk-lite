@@ -454,7 +454,7 @@ def test_authorization_denials_never_load_asset_data(transfer_owner, authorized,
         "username": transfer_owner.username,
         "domain": transfer_owner.domain,
         "is_superuser": False,
-        "permission": {"cmdb": ["asset_info-View"]},
+        "permission": {"cmdb": ["asset_info-View", "asset_info-Export"]},
         "group_list": [{"id": 1}],
         "roles": [],
     }

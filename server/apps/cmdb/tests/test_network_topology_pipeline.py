@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 # network.py 拓扑关系发现新流水线的单元测试（mock DB 访问）。
+import logging
 from types import SimpleNamespace
 from unittest import mock
 
@@ -190,3 +191,51 @@ def test_snapshot_unresolved_neighbors_are_slimmed():
     unresolved = captured["unresolved_neighbors"]
     assert unresolved  # 确实触发 unresolved 分支
     assert all("raw_remote_fields" not in item for item in unresolved)
+
+
+def test_save_topology_snapshot_writes_normalized_payload(monkeypatch):
+    plugin = _make_plugin()
+    normalized = {"links": [{"_id": 7, "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"}]}
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_snapshot_uuid.normalize_collect_result_payloads",
+        lambda snapshot: (normalized,),
+    )
+    update = mock.Mock()
+    filt = mock.Mock(return_value=update)
+    monkeypatch.setattr("apps.cmdb.collection.collect_plugin.network.CollectModels.objects.filter", filt)
+
+    plugin.save_topology_snapshot({"links": [{"_id": 7}]})
+
+    filt.assert_called_once_with(id=7001)
+    update.update.assert_called_once_with(topology_snapshot=normalized)
+
+
+def test_save_topology_snapshot_skip_log_omits_payload(monkeypatch, caplog):
+    secret = "SENTINEL_TOPOLOGY_SNAPSHOT"
+    plugin = _make_plugin()
+
+    def boom(snapshot):
+        raise RuntimeError(f"lookup leaked {secret} {snapshot}")
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_snapshot_uuid.normalize_collect_result_payloads",
+        boom,
+    )
+    update = mock.Mock()
+    monkeypatch.setattr(
+        "apps.cmdb.collection.collect_plugin.network.CollectModels.objects.filter",
+        mock.Mock(return_value=update),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="cmdb"):
+        plugin.save_topology_snapshot({"links": [{"_id": 7, "payload": secret}]})
+
+    update.update.assert_not_called()
+    records = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == "event=topology_snapshot_save_skipped task_id=%s failed_stage=save error_type=%s"
+    assert record.args == (7001, "RuntimeError")
+    assert record.getMessage() == ("event=topology_snapshot_save_skipped task_id=7001 failed_stage=save error_type=RuntimeError")
+    assert secret not in record.getMessage()
+    assert record.exc_info is None
