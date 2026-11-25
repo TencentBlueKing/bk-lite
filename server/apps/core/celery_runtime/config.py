@@ -12,7 +12,7 @@ DEFAULT_POOL_BOUNDS = {
     "state": (1, 2),
     "background": (1, 4),
 }
-DEFAULT_TOTAL_CONCURRENCY_LIMIT = 15
+DEFAULT_TOTAL_CONCURRENCY_LIMIT = 17
 DEDICATED_QUEUES = {
     "job": ("job",),
     "dashboard-report-render": ("dashboard_report_render",),
@@ -76,6 +76,9 @@ class RuntimeConfig:
         render_capacity = positive_integer(env, "DASHBOARD_REPORT_RENDER_CONCURRENCY", "2")
         dedicated = [PoolConfig("dashboard-report-render", render_capacity, render_capacity), PoolConfig("patch-maintenance", 1, 1)]
         installed = {item.strip() for item in env.get("INSTALL_APPS", "").split(",") if item.strip()}
+        if not installed or "job_mgmt" in installed:
+            job_capacity = positive_integer(env, "JOB_CELERY_CONCURRENCY", "2")
+            dedicated.append(PoolConfig("job", job_capacity, job_capacity))
         if not installed or "opspilot" in installed:
             opspilot_capacity = positive_integer(env, "OPSPILOT_CELERY_CONCURRENCY", "2")
             dedicated.append(PoolConfig("opspilot", opspilot_capacity, opspilot_capacity))
