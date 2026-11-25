@@ -422,6 +422,34 @@ class TestChatServiceUnit:
         chunks = asyncio.run(consume())
         assert chunks  # 至少透传了流式分片
 
+    @pytest.mark.django_db(transaction=True)
+    def test_platform_receipt_identifies_persisted_answer_before_done(self):
+        skill = _skill()
+        conv = SkillConversation.objects.create(session_id="vote-live", skill=skill, channel=_channel(skill), external_user_id="u")
+        previous = conv.messages.create(role="assistant", content="same answer")
+
+        async def stream():
+            yield b'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"same answer"}\n\n'
+            yield b'data: {"type":"RUN_FINISHED"}\n\n'
+            yield b"data: [DONE]\n\n"
+
+        async def consume():
+            wrapped = chat_svc._wrap_stream_persist_assistant(
+                StreamingHttpResponse(stream(), content_type="text/event-stream"),
+                conv.pk,
+                include_message_receipt=True,
+            )
+            return [piece async for piece in wrapped.streaming_content]
+
+        chunks = asyncio.run(consume())
+        assert chunks[-1] == b"data: [DONE]\n\n"
+        assert chunks[-2] == b'data: {"type":"RUN_FINISHED"}\n\n'
+        receipt = chat_svc.parse_sse_json_payloads(chunks[-3].decode())[0]
+        answer = conv.messages.exclude(pk=previous.pk).get()
+        assert receipt == {"type": "CUSTOM", "name": "assistant_message_saved", "value": {"message_id": answer.pk}}
+        assert answer.role == "assistant" and answer.feedback is None
+        assert "assistant_message_saved" not in answer.content
+
     def test_agui_persist_helpers_and_history_uses_visible_text(self):
         events = [
             {"type": "CUSTOM", "name": "planned_execution_status", "value": {"phase": "planning"}},

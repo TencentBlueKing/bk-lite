@@ -140,6 +140,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
         team=context.get("workflow_organization_id", context["organization_id"]),
     )
     manager = _variable_manager(context, inputs)
+    manager.flow_name = context.get("workflow_name", "")
     result = AgentNode(manager).execute(
         str(context.get("task_reference") or "workflow_agent"),
         {

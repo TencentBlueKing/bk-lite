@@ -8,6 +8,19 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate
 
+CHANNEL_LABELS = {
+    "platform": ("平台", "Platform"),
+    "workflow": ("编排中心", "Workflow"),
+    "workbench": ("工作台", "Workbench"),
+    "web_chat": ("Web 对话", "Web Chat"),
+    "embedded_chat": ("嵌入式对话", "Embedded Chat"),
+    "enterprise_wechat": ("企微应用", "Enterprise WeChat"),
+    "enterprise_wechat_aibot": ("企微机器人", "Enterprise WeChat AI Bot"),
+    "dingtalk": ("钉钉", "DingTalk"),
+    "feishu": ("飞书", "Feishu"),
+    "wechat_official": ("微信公众号", "WeChat Official Account"),
+}
+
 
 def render_analysis_pdf(task):
     font = "STSong-Light"
@@ -36,6 +49,9 @@ def render_analysis_pdf(task):
             paragraph(("Channel" if english else "渠道") + f" #{scope['channel_id']}")
     else:
         paragraph("Selected conversations" if english else "指定对话")
+    if scope.get("channel_types"):
+        labels = [CHANNEL_LABELS.get(kind, (kind, kind))[int(english)] for kind in scope["channel_types"]]
+        paragraph(("Channels" if english else "渠道") + " · " + " / ".join(labels))
     paragraph(
         f"{task.conversation_count} conversations · {task.question_count} user questions"
         if english
