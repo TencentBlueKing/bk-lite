@@ -75,7 +75,10 @@ class MonitorPluginUnbindService:
             plugin_configs = [row for row in config_rows if row.monitor_plugin_id == plugin_id]
             if plugin_id not in configured_plugin_ids:
                 raise BaseAppException(_NOT_BOUND_MESSAGE)
-            if len(configured_plugin_ids) <= 1:
+            from apps.monitor.services.script_attach import is_script_plugin
+
+            # 脚本卸载只删这一份配置。即便它是该实例上唯一的采集，也不删除实例。
+            if len(configured_plugin_ids) <= 1 and not is_script_plugin(plugin):
                 raise BaseAppException(_LAST_TEMPLATE_MESSAGE)
 
             remaining_plugin_ids = configured_plugin_ids - {plugin_id}
@@ -150,9 +153,12 @@ class MonitorPluginUnbindService:
             if not _source_contains(policy.source, instance.id):
                 continue
             names = _policy_metric_names(policy, metrics_by_id)
-            if not _explicitly_bound(policy, plugin, pinned_policy_ids, metrics_by_id, producers_by_name):
+            strength = _binding_strength(policy, plugin, pinned_policy_ids, metrics_by_id, producers_by_name)
+            if strength is None:
                 continue
-            if _shared_with_remaining(names, remaining_plugin_ids, producers_by_name):
+            # 按指标 id / 模板 / 策略组规则绑到这个插件时，短名撞上其它插件也要收口。
+            # 只按名字绑上的策略仍避开仍在产出同名指标的插件，避免误关原生告警。
+            if strength == "name" and _shared_with_remaining(names, remaining_plugin_ids, producers_by_name):
                 continue
             trimmed.append(policy.id)
         return trimmed
@@ -223,31 +229,36 @@ def _policy_metric_names(policy, metrics_by_id) -> list[str]:
     return names
 
 
-def _explicitly_bound(policy, plugin, pinned_policy_ids, metrics_by_id, producers_by_name) -> bool:
+def _binding_strength(policy, plugin, pinned_policy_ids, metrics_by_id, producers_by_name) -> str | None:
+    """plugin：按插件身份绑定；name：只按指标名对上。"""
     if policy.id in pinned_policy_ids:
-        return True
+        return "plugin"
     template = policy.source_template
     if template is not None and template.plugin_id == plugin.id:
-        return True
+        return "plugin"
     items = [item for item in query_metric_items(policy.query_condition or {}) if isinstance(item, dict)]
     if not items:
-        return False
+        return None
     metric_ids = [item.get("metric_id") for item in items if item.get("metric_id")]
     if len(metric_ids) == len(items):
         owners = set()
         for metric_id in metric_ids:
             row = metrics_by_id.get(metric_id)
             if row is None:
-                return False
+                return None
             owners.add(row["monitor_plugin_id"])
-        return owners == {plugin.id}
+        if owners == {plugin.id}:
+            return "plugin"
+        return None
     plugin_names = [str(item.get("metric_plugin") or "").strip() for item in items]
     if all(plugin_names) and set(plugin_names) == {plugin.name}:
-        return True
+        return "name"
     names = _policy_metric_names(policy, metrics_by_id)
     if not names:
-        return False
-    return all(producers_by_name.get(name) == {plugin.id} for name in names)
+        return None
+    if all(producers_by_name.get(name) == {plugin.id} for name in names):
+        return "name"
+    return None
 
 
 def _shared_with_remaining(names, remaining_plugin_ids, producers_by_name) -> bool:

@@ -1,6 +1,6 @@
 interface TableChangeHandler {
-  type: 'simple' | 'combine' | 'option_field' | 'option_then_combine';
-  target_field: string;
+  type: 'simple' | 'combine' | 'option_field' | 'option_then_combine' | 'script_attach';
+  target_field?: string;
   source_fields?: string[];
   source_field?: string;
   stash_field?: string;
@@ -28,6 +28,29 @@ export const applyTableChangeHandler = (
   handler?: TableChangeHandler
 ): Record<string, any> => {
   if (!handler) return row;
+
+  if (handler.type === 'script_attach') {
+    const option = options.find((item) => String(item.value) === String(value));
+    if (!option) return row;
+    const storageKey = option.storage_instance_key || option.value;
+    const next: Record<string, any> = {
+      ...row,
+      instance_id: storageKey,
+      storage_instance_key: storageKey,
+      instance_name: option.instance_name || option.label
+    };
+    if (option.node_id) {
+      const nodeId = String(option.node_id);
+      next.node_ids = [nodeId];
+      if (option.node_name) {
+        next.collector_node = { id: nodeId, name: String(option.node_name) };
+      }
+    }
+    if (option.interval != null && option.interval !== '') {
+      next.native_interval = option.interval;
+    }
+    return next;
+  }
 
   if (handler.type === 'simple') {
     const sourceValue = handler.source_fields?.[0]

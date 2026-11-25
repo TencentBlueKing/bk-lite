@@ -1143,6 +1143,16 @@ export const useConfigRenderer = () => {
                     loadNodes={columnExtras.loadMonitorNodes}
                     onNodesLoaded={columnExtras.onMonitorNodesLoaded}
                     excludeValues={excludedValues}
+                    pinnedNodes={
+                      record?.collector_node?.id &&
+                      String(record.collector_node.id) === String(Array.isArray(text) ? text[0] : text)
+                        ? [{
+                          id: String(record.collector_node.id),
+                          value: String(record.collector_node.id),
+                          label: String(record.collector_node.name || record.collector_node.id)
+                        }]
+                        : []
+                    }
                     componentProps={componentProps}
                   />
                 </div>

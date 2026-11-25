@@ -72,12 +72,15 @@ def _build_numeric_display_ordering_map(monitor_object_id, display_fields):
         .select_related("monitor_plugin")
         .all()
     )
+    from apps.monitor.services.script_attach import is_script_plugin
+
     by_plugin = {}
     by_name = {}
     for row in metric_rows:
         plugin_name = row.monitor_plugin.name if row.monitor_plugin_id else ""
         by_plugin[(plugin_name, row.name)] = row
-        by_name.setdefault(row.name, row)
+        if not is_script_plugin(row.monitor_plugin):
+            by_name.setdefault(row.name, row)
 
     allowed = {}
     for col, (plugin, metric_name) in zip(metric_cols, primary_bindings):

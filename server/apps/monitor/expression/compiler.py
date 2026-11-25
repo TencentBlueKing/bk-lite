@@ -66,6 +66,7 @@ class FormulaCompiler:
             metric.query,
             item.get("filter") or [],
             base_filters=self.base_filters_by_ref.get(ref) or [],
+            metric=metric,
         )
         group_by = item.get("group_by") or []
         group_by_clause = ",".join(group_by)

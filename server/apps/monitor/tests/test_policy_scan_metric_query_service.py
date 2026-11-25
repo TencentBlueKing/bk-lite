@@ -76,7 +76,7 @@ class TestFormatPmq:
             {},
         )
         svc.metric = SimpleNamespace(query="cpu{__$labels__}", data_type="Number", unit="")
-        assert svc.format_pmq() == 'cpu{instance_id="h1"}'
+        assert svc.format_pmq() == 'cpu{instance_id="h1", collect_type!="script"}'
 
     def test_metric_type_empty_filter(self):
         svc = MetricQueryService(
@@ -84,7 +84,7 @@ class TestFormatPmq:
             {},
         )
         svc.metric = SimpleNamespace(query="cpu{__$labels__}", data_type="Number", unit="")
-        assert svc.format_pmq() == "cpu{}"
+        assert svc.format_pmq() == 'cpu{collect_type!="script"}'
 
 
 @pytest.mark.django_db
@@ -225,7 +225,7 @@ class TestScopePushdown:
         svc = _metric_policy({"('h-1',)": "主机1", "('h2',)": "主机2"})
         svc.query_comparison_metrics({"type": "min", "value": 5})
         query = query_range.call_args.args[0]
-        assert 'cpu{instance_type="os", instance_id=~"h\\\\-1|h2"}' in query
+        assert 'cpu{instance_type="os", instance_id=~"h\\\\-1|h2", collect_type!="script"}' in query
         assert query.endswith("by (instance_id))[5m:10s])")
 
     def test_metric_query_combines_scope_with_policy_filter(self, mocker):
@@ -246,7 +246,7 @@ class TestScopePushdown:
         query_range = self._patch_vm(mocker)
         svc = _metric_policy({})
         svc.query_comparison_metrics({"type": "min", "value": 5})
-        assert 'cpu{instance_type="os", }' in query_range.call_args.args[0]
+        assert 'cpu{instance_type="os", collect_type!="script"}' in query_range.call_args.args[0]
 
     def test_pmq_query_is_not_rewritten(self, mocker):
         query_range = self._patch_vm(mocker)

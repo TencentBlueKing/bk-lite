@@ -37,9 +37,9 @@ def test_compile_formula_with_group_left():
 
     compiled = FormulaCompiler(condition, metrics).compile()
 
-    assert "avg(disk_read_latency_gauge{}) by (instance_id,config_type)" in compiled.query
+    assert "avg(disk_read_latency_gauge{collect_type!=\"script\"}) by (instance_id,config_type)" in compiled.query
     assert "/ on(instance_id) group_left" in compiled.query
-    assert "avg(disk_total_gauge{}) by (instance_id)" in compiled.query
+    assert "avg(disk_total_gauge{collect_type!=\"script\"}) by (instance_id)" in compiled.query
     assert compiled.result_name == "读延迟占比"
     assert compiled.group_by == ["instance_id", "config_type"]
 
