@@ -22,7 +22,7 @@ from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.returns import return_targets
-from apps.itsm.services.ticket.service import TicketService, _find_node, workflow_schema
+from apps.itsm.services.ticket.service import TicketService, _find_node, applicant_can_submit, workflow_schema
 from apps.itsm.services.ticket.survey import SURVEY_READY, SurveyValidationError, survey_data, survey_snapshot, survey_submission
 from apps.itsm.views.access import api_errors, domain_of, get_ticket, has_permission, json_object, ticket_scope
 from apps.itsm.views.users import search_users
@@ -114,17 +114,24 @@ def tickets(request):
 @csrf_exempt
 @require_POST
 @api_errors
-@HasPermission("ticket-Operate")
+@HasPermission("ticket-View")
 def operate_ticket(request, ticket_id):
-    if not has_permission(request, "ticket-View"):
-        raise PermissionError()
     payload = _body(request)
+    applicant_only = not has_permission(request, "ticket-Operate")
+    if applicant_only and (payload.get("action") != "submit" or not has_permission(request, "ticket-Add")):
+        raise PermissionError()
     ticket = get_ticket(request, ticket_id)
     if payload.get("action") == "reopen" and ticket.process_instance_id and not isinstance(payload.get("reopen_from"), str):
         return WebUtils.response_error("请刷新工单详情后重新打开当前轮次", status_code=409)
     task = TicketTask.objects.get(id=payload["task_id"], ticket=ticket) if payload.get("task_id") else None
     updated = _service(request).operate(
-        ticket, task, payload["action"], payload, _user(request), privileged=bool(getattr(request.user, "is_superuser", False))
+        ticket,
+        task,
+        payload["action"],
+        payload,
+        _user(request),
+        privileged=bool(getattr(request.user, "is_superuser", False)),
+        applicant_submit_only=applicant_only,
     )
     return WebUtils.response_success({"id": updated.id, "status": updated.status.key if updated.status_id else ""})
 
@@ -331,18 +338,20 @@ def select_task(pending, principals, privileged, task_id=None):
 
 
 def editable_task(request, ticket, task_id):
-    if not has_permission(request, "ticket-Operate") or not has_permission(request, "ticket-View"):
+    if not has_permission(request, "ticket-View"):
         raise PermissionError()
     if ticket.status_id and ticket.status.key in {"suspended", "finished", "terminated", "cancelled"}:
         raise PermissionError()
     pending = ticket.tasks.filter(status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED])
     task = select_task(pending, ticket_principals(ticket, _user(request)), getattr(request.user, "is_superuser", False), task_id)
-    if task is None:
+    if task is None or not (
+        has_permission(request, "ticket-Operate") or (has_permission(request, "ticket-Add") and applicant_can_submit(ticket, task, _user(request)))
+    ):
         raise PermissionError()
     return task
 
 
-def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False, task_id=None):
+def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_retry=False, task_id=None, can_apply=False):
     from apps.itsm.services.ticket.history import current_round_start
     from apps.itsm.services.ticket.manual_recovery import active_operations, can_abandon
     from apps.itsm.services.ticket.start_recovery import start_recovery_info
@@ -373,9 +382,12 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
     pending = [task for task in tasks if task.status in {TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED}]
     pending_ids = {task.node_id for task in pending}
     status_key = ticket.status.key if ticket.status_id else ""
-    if task_id is not None and (not can_operate or status_key in {"suspended", "finished", "terminated", "cancelled"}):
-        raise PermissionError()
     own_task = select_task(pending, principals, privileged, task_id)
+    if task_id is not None and (
+        status_key in {"suspended", "finished", "terminated", "cancelled"}
+        or not (can_operate or (can_apply and applicant_can_submit(ticket, own_task, username)))
+    ):
+        raise PermissionError()
     start = start_recovery_info(ticket, can_retry)
     engine_pending = bool(operation or start or ticket.creation_state != "complete")
     can_operate = can_operate and not engine_pending
@@ -445,6 +457,15 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         node = _find_node(design, node_id=task.node_id)
         editable = can_operate and not terminal and status_key != "suspended" and (privileged or task.assignee in principals)
         available = node_actions(node, task) if editable else []
+        if (
+            not editable
+            and can_apply
+            and not engine_pending
+            and not terminal
+            and status_key != "suspended"
+            and applicant_can_submit(ticket, task, username)
+        ):
+            editable, available = True, ["submit"]
         targets = return_targets(ticket, task, tasks, design, round_start) if "return" in available else []
         if "return" in available and not targets:
             available.remove("return")
@@ -554,6 +575,7 @@ def ticket_detail(request, ticket_id):
             can_operate,
             can_operate and has_permission(request, "workflow-Edit"),
             task_id=request.GET.get("task_id"),
+            can_apply=has_permission(request, "ticket-Add"),
         )
     )
 

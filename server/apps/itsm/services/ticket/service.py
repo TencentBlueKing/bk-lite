@@ -280,9 +280,12 @@ class TicketService:
         privileged: bool = False,
         *,
         expected_assignee: str | None = None,
+        applicant_submit_only: bool = False,
         automatic_return: bool = False,
         handover_id: int | None = None,
     ) -> Ticket:
+        if applicant_submit_only and action != "submit":
+            raise PermissionError()
         if (
             action == "reopen"
             and ticket.workflow_version_id
@@ -301,6 +304,8 @@ class TicketService:
             ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
             if task is not None:
                 task = ticket.tasks.select_for_update().get(pk=task.pk)
+            if applicant_submit_only and not applicant_can_submit(ticket, task, operator):
+                raise PermissionError()
             if ticket.creation_state != "complete" or ticket.start_attempts.exclude(state="complete").exists():
                 raise NodeActionValidationError("流程启动结果待核对，请稍后刷新")
             if handover_id:
@@ -674,6 +679,16 @@ def _find_node(design, node_id=None, node_type=None) -> dict:
         if node_type and node.get("type") == node_type:
             return node
     return {}
+
+
+def applicant_can_submit(ticket, task, username):
+    if not task or task.assignee != username or ticket.creator != username or task.status not in {"pending", "claimed"}:
+        return False
+    if task.process_instance_id != ticket.process_instance_id:
+        return False
+    design = ticket.workflow_version.design if ticket.workflow_version_id else {}
+    node = _find_node(design, node_id=task.node_id)
+    return node.get("type") == "submit" and "submit" in node_actions(node, task)
 
 
 def workflow_schema(version) -> dict:

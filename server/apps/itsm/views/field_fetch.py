@@ -100,7 +100,7 @@ def field_fetch(request):
         perm = _find_node(version.design, node_type="submit").get("field_perm")
         context = f"version:{version.id}"
     elif body.get("ticket_id"):
-        require(request, "ticket-Operate")
+        require(request, "ticket-View")
         ticket = get_ticket(request, body["ticket_id"])
         from apps.itsm.views.tickets import editable_task
 
