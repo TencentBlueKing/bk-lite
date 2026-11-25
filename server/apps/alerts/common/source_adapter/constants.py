@@ -121,7 +121,7 @@ DEFAULT_SOURCE_CONFIG = {
         "value": "事件值 | 类型: float | 必填: 否",
         "start_time": "事件开始时间 | 类型: string(时间戳) | 必填: 否(默认当前时间) | 格式: 秒级(10位)或毫秒级(13位)",
         "end_time": "事件结束时间 | 类型: string(时间戳) | 必填: 否 | 格式: 秒级(10位)或毫秒级(13位)",
-        "action": "事件动作 | 类型: string | 必填: 否(默认created) | 可选值: created-创建, closed-关闭, recovery-恢复",
+        "action": "事件动作 | 类型: string | 必填: 否(默认created) | 可选值: created-创建, closed-关闭, recovery-恢复；recovered 作为 recovery 的接入别名",
         "external_id": "外部事件ID(指纹) | 类型: string | 必填: 否(不传则自动生成) | 说明: 用于事件恢复关联",
         "push_source_id": "事件来源 | 类型: string | 必填: 否(默认default) | 说明: 标记事件由哪个上游系统或模块推送, 例如zabbix, prometheus等",
         "service": "所属服务 | 类型: string | 必填: 否",

@@ -2105,7 +2105,7 @@ class TestAggregateRecovery:
         assert recovered_events[0].content == alert.content
         assert recovered_events[0].level == alert.level
         assert send.call_count == 1
-        assert send.call_args.args[2]["events"][0]["action"] == "recovered"
+        assert send.call_args.args[2]["events"][0]["action"] == "recovery"
 
         _run_aggregate(
             policy,
