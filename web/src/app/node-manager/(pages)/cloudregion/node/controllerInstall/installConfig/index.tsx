@@ -81,6 +81,10 @@ interface ControllerPlatformOption {
   description?: string;
 }
 
+const fieldHintTextClass =
+  'text-xs font-normal leading-[18px] text-[var(--color-text-3)]';
+const fieldHintClass = `mt-2 ${fieldHintTextClass}`;
+
 const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
@@ -912,7 +916,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               onChange={changeCollectType}
             />
           </Form.Item>
-          <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
+          <div className={fieldHintClass}>
             {isBulk
               ? t('node-manager.cloudregion.node.bulkInstallDes')
               : isRemote
@@ -966,7 +970,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               }))}
             />
           </Form.Item>
-          <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
+          <div className={fieldHintClass}>
             {isBulk
               ? t('node-manager.cloudregion.node.bulkSidecarVersionDes')
               : t('node-manager.cloudregion.node.sidecarVersionDes', undefined, {
@@ -992,54 +996,72 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           )}
         </Form.Item>
         {soldPushTargets.length > 0 && (
-          <Form.Item
-            name="push_targets"
-            label={t('node-manager.cloudregion.node.pushTargets')}
-            extra={t('node-manager.cloudregion.node.pushTargetsHint')}
-            initialValue={soldPushTargets}
-          >
-            <Checkbox.Group
-              options={soldPushTargets.map((target) => ({
-                label:
-                  target === 'cmdb'
-                    ? t('node-manager.cloudregion.node.pushTargetCmdb')
-                    : t('node-manager.cloudregion.node.pushTargetMonitor'),
-                value: target
-              }))}
-            />
+          <Form.Item label={t('node-manager.cloudregion.node.pushTargets')}>
+            <Form.Item
+              name="push_targets"
+              noStyle
+              initialValue={soldPushTargets}
+            >
+              <Checkbox.Group
+                options={soldPushTargets.map((target) => ({
+                  label:
+                    target === 'cmdb'
+                      ? t('node-manager.cloudregion.node.pushTargetCmdb')
+                      : t('node-manager.cloudregion.node.pushTargetMonitor'),
+                  value: target
+                }))}
+              />
+            </Form.Item>
+            <div className={fieldHintClass}>
+              {t('node-manager.cloudregion.node.pushTargetsHint')}
+            </div>
           </Form.Item>
         )}
         {isBulk && (
           <>
             <Form.Item
-              name="max_success_count"
+              required
               label={t('node-manager.cloudregion.node.bulkMaxSuccessCount')}
-              extra={t('node-manager.cloudregion.node.bulkMaxSuccessCountHint')}
-              initialValue={BULK_DEFAULT_SUCCESS_COUNT}
-              rules={[{ required: true, message: t('common.required') }]}
             >
-              <Select
-                style={{ width: 300 }}
-                options={BULK_SUCCESS_COUNT_OPTIONS.map((count) => ({
-                  value: count,
-                  label: t('node-manager.cloudregion.node.bulkSuccessCountOption', '', { count })
-                }))}
-              />
+              <Form.Item
+                name="max_success_count"
+                noStyle
+                initialValue={BULK_DEFAULT_SUCCESS_COUNT}
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  style={{ width: 300 }}
+                  options={BULK_SUCCESS_COUNT_OPTIONS.map((count) => ({
+                    value: count,
+                    label: t('node-manager.cloudregion.node.bulkSuccessCountOption', '', { count })
+                  }))}
+                />
+              </Form.Item>
+              <div className={fieldHintClass}>
+                {t('node-manager.cloudregion.node.bulkMaxSuccessCountHint')}
+              </div>
             </Form.Item>
             <Form.Item
-              name="expires_in_days"
+              required
               label={t('node-manager.cloudregion.node.bulkExpireDays')}
-              extra={t('node-manager.cloudregion.node.bulkExpireDaysHint')}
-              initialValue={BULK_DEFAULT_EXPIRE_DAYS}
-              rules={[{ required: true, message: t('common.required') }]}
             >
-              <Select
-                style={{ width: 300 }}
-                options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
-                  value: count,
-                  label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
-                }))}
-              />
+              <Form.Item
+                name="expires_in_days"
+                noStyle
+                initialValue={BULK_DEFAULT_EXPIRE_DAYS}
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  style={{ width: 300 }}
+                  options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
+                    value: count,
+                    label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
+                  }))}
+                />
+              </Form.Item>
+              <div className={fieldHintClass}>
+                {t('node-manager.cloudregion.node.bulkExpireDaysHint')}
+              </div>
             </Form.Item>
             {bulkBatch && (
               <div className="mb-[16px]">
@@ -1061,10 +1083,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                 <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded border border-[var(--color-border-1)] bg-[var(--color-bg-7)] p-[12px] text-[12px]">
                   {bulkBatch.command}
                 </pre>
-                <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
+                <div className={fieldHintClass}>
                   {t('node-manager.cloudregion.node.bulkCommandHint')}
                 </div>
-                <div className="mt-[4px] text-[12px] text-[var(--color-text-3)]">
+                <div className={`mt-1 ${fieldHintTextClass}`}>
                   {t('node-manager.cloudregion.node.bulkExpiresAt', '', {
                     time: new Date(bulkBatch.expires_at).toLocaleString()
                   })}
@@ -1088,13 +1110,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             </span>
             <span
               aria-live="polite"
-              className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+              className="text-sm tabular-nums text-[var(--color-text-2)]"
             >
               {t('node-manager.cloudregion.node.installNodeCount', '', {
                 count: installNodeCount
               })}
             </span>
-            <span className="text-[12px] text-[var(--color-text-3)]">
+            <span className={fieldHintTextClass}>
               {t('node-manager.cloudregion.node.installNodeCountHint')}
             </span>
           </div>
@@ -1145,12 +1167,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         </>
         )}
       </Form>
-      <div className="mt-[10px] pl-[20px]">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {isBulk ? (
           <>
             <Button
               type="primary"
-              className="mr-[10px]"
+              autoInsertSpace={false}
               loading={confirmLoading}
               disabled={noVersionAvailable}
               onClick={handleCreate}
@@ -1160,7 +1182,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                 : t('node-manager.cloudregion.node.bulkGenerateCommand')}
             </Button>
             <Button
-              className="mr-[10px]"
+              autoInsertSpace={false}
               disabled={!bulkBatch}
               onClick={openBulkProgress}
             >
@@ -1170,7 +1192,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         ) : (
           <Button
             type="primary"
-            className="mr-[10px]"
+            autoInsertSpace={false}
             loading={confirmLoading}
             disabled={noVersionAvailable}
             onClick={handleCreate}
@@ -1180,7 +1202,9 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             })`}
           </Button>
         )}
-        <Button onClick={cancel}>{t('common.cancel')}</Button>
+        <Button autoInsertSpace={false} onClick={cancel}>
+          {t('common.cancel')}
+        </Button>
       </div>
       <BatchEditModal
         ref={batchEditModalRef}

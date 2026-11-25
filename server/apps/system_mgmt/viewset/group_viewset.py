@@ -1,15 +1,16 @@
+from dataclasses import asdict
+
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
-from dataclasses import asdict
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
-from apps.core.utils.platform_scope import has_unrestricted_org_scope
-from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, User, UserSyncSource
@@ -178,9 +179,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             message = self.loader.get("error.no_permission_create_group")
             return JsonResponse({"result": False, "message": message})
         if parent_id and Group.objects.filter(id=parent_id, is_delete=True).exists():
-            return JsonResponse(
-                {"result": False, "message": self._loader(request).get("error.cannot_create_under_archived_group")}
-            )
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.cannot_create_under_archived_group")})
         if parent_id and Group.objects.filter(id=parent_id, sync_source__isnull=False).exists():
             return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_group_child_creation_forbidden")})
 
@@ -193,7 +192,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
 
         # 记录操作日志
-        log_operation(request, "create", "system-manager", f"新增组织: {group_name}")
+        log_operation(
+            request,
+            "create",
+            "system-manager",
+            f"新增组织: {group_name}",
+            target_type="group",
+            target_id=group.id,
+            target_name=group_name,
+            outcome="success",
+        )
 
         # 返回结果
         return JsonResponse(
@@ -327,7 +335,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "system-manager", f"编辑组织: {group_name}")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"编辑组织: {group_name}",
+            target_type="group",
+            target_id=request.data.get("group_id"),
+            target_name=group_name,
+            outcome="success",
+        )
 
         return JsonResponse({"result": True})
 
@@ -377,9 +394,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group_id, error_response = self._require_group_id(request)
         if error_response is not None:
             return error_response
-        result = GroupArchiveService.restore_archived_root(
-            actor=request.user, group_id=group_id, request=request
-        )
+        result = GroupArchiveService.restore_archived_root(actor=request.user, group_id=group_id, request=request)
         return self._json_archive_result(result)
 
     @action(detail=False, methods=["POST"])
@@ -388,9 +403,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group_id, error_response = self._require_group_id(request)
         if error_response is not None:
             return error_response
-        result = GroupArchiveService.permanently_delete_archived_root(
-            actor=request.user, group_id=group_id, request=request
-        )
+        result = GroupArchiveService.permanently_delete_archived_root(actor=request.user, group_id=group_id, request=request)
         return self._json_archive_result(result)
 
     @action(detail=False, methods=["POST"])
@@ -413,9 +426,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         inherited_role_source_map = {}
         if group.parent_id:
             # 与 NATS 继承链一致：归档父不进入角色继承投影
-            all_groups = {
-                g.id: g for g in GroupUtils.active_queryset().prefetch_related("roles")
-            }
+            all_groups = {g.id: g for g in GroupUtils.active_queryset().prefetch_related("roles")}
             visited = set()
             current_parent_id = group.parent_id
             while current_parent_id and current_parent_id not in visited:

@@ -2545,6 +2545,7 @@ class ToolsNodes(
                 CompletedExecutionStep,
                 ToolExecutionPlan,
                 ToolExecutionPlanner,
+                ToolExecutionStep,
                 ToolPlanningError,
                 attachment_step_produced_file,
                 classify_tool_failure_kind,
@@ -2600,7 +2601,11 @@ class ToolsNodes(
             llm = self.get_llm_client(graph_request)
             enable_nested_token_streaming(llm)
             nested_callbacks = nested_agent_callbacks(config)
+            if request_extra.get("stale_choice"):
+                return {"messages": [AIMessage(content="这张确认卡已失效。请刷新会话并回答最新的确认卡。如果已经过期，请重新发起脚本检查。")]}
             if getattr(graph_request, "max_model_calls", 0) == 1:
+                if (request_extra.get("pending_question") or {}).get("job_confirmation"):
+                    return {"messages": [AIMessage(content="本轮未启用工具执行，待确认脚本未执行。")]}
                 prepared = await self._prepare_messages_for_llm(
                     normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
                     graph_request,
@@ -2657,6 +2662,40 @@ class ToolsNodes(
             resumed_messages: list = []
             extra_config = getattr(graph_request, "extra_config", None) or {}
             pending_question = extra_config.get("pending_question") if isinstance(extra_config, dict) else None
+            job_replay = None
+            revise_job = False
+            if isinstance(pending_question, dict) and pending_question.get("job_confirmation"):
+                from apps.opspilot.metis.llm.middleware.job_confirmation import (
+                    JOB_TOOL,
+                    JobConfirmationReplayMiddleware,
+                    resolve_job_reply,
+                    saved_job_arguments,
+                )
+
+                if not can_ask or not any(getattr(tool, "name", "") == JOB_TOOL for tool in registered_tools):
+                    return {"messages": [AIMessage(content="当前没有使用作业执行工具的权限。")]}
+                marker = pending_question["job_confirmation"]
+                arguments = saved_job_arguments(pending_question)
+                if arguments is None:
+                    return {"messages": [AIMessage(content="无法恢复这张卡上的脚本和目标，请重新生成确认卡。")]}
+                options = pending_question["options"]
+                text = extra_config.get("choice_reply_text", "")
+                if extra_config.get("choice_id"):
+                    selected = next((opt for opt in options if opt["key"] == extra_config.get("choice_option")), None)
+                    if marker["choice_id"] != extra_config["choice_id"] or not selected or selected["label"] != text.strip():
+                        text = ""
+                with isolated_child_callback_context():
+                    decision = await resolve_job_reply(
+                        text, options, arguments, lambda: self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+                    )
+                revise_job = decision == "change"
+                reply = {"id": marker["id"], "decision": "unclear" if revise_job else decision}
+                config = {**config, "configurable": {**config["configurable"], "job_confirmation_reply": reply}}
+                allowed = {JOB_TOOL, "job_mgmt_search_targets", "job_mgmt_list_targets"} if revise_job else {JOB_TOOL}
+                tools = [tool for tool in registered_tools if tool.name in allowed]
+                registered_tools = list(tools)
+                if not revise_job:
+                    job_replay = JobConfirmationReplayMiddleware(arguments)
             if isinstance(pending_question, dict) and pending_question.get("kind") == "k8s_repair_mode":
                 if await self._run_pending_k8s_repair_workflow(original_messages, config, output_messages=resumed_messages):
                     return {"messages": resumed_messages}
@@ -2692,6 +2731,12 @@ class ToolsNodes(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
                 legacy_middleware = self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request)
+                if job_replay or revise_job:
+                    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolVisibilityMiddleware
+
+                    legacy_middleware.append(ToolVisibilityMiddleware(business_tools=tools, active_tools=tools, allow_unregistered_tools=False))
+                if job_replay:
+                    legacy_middleware.append(job_replay)
                 if python_sandbox is not None:
                     from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
@@ -2807,16 +2852,24 @@ class ToolsNodes(
 
             await _emit_planned_execution_status("planning")
             try:
-                plan = await planner.plan(
-                    planning_question,
-                    tools,
-                    skill_packages=skill_packages,
-                    config=config,
-                    agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or "") + auto_instruction,
-                    thread_id=missing_params_thread_id,
-                    conversation_messages=original_messages,
-                    ppt_master_packages=matched_for_ppt,
-                )
+                if job_replay:
+                    objective = "按用户对当前作业确认卡的答复处理原脚本并报告结果"
+                    plan = ToolExecutionPlan(goal=objective, steps=[ToolExecutionStep(objective=objective, tools=[JOB_TOOL])])
+                elif revise_job:
+                    objective = "按用户本轮指定的改动更新脚本或目标，调用作业工具展示完整新提案，等待用户重新确认"
+                    names = [tool.name for tool in registered_tools]
+                    plan = ToolExecutionPlan(goal=objective, steps=[ToolExecutionStep(objective=objective, tools=names)])
+                else:
+                    plan = await planner.plan(
+                        planning_question,
+                        tools,
+                        skill_packages=skill_packages,
+                        config=config,
+                        agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or "") + auto_instruction,
+                        thread_id=missing_params_thread_id,
+                        conversation_messages=original_messages,
+                        ppt_master_packages=matched_for_ppt,
+                    )
             except Exception as planning_exc:
                 # 上游模型不可用时与步骤失败同一收口，禁止落入零工具直答编造「正在获取…」。
                 if is_llm_upstream_error(planning_exc):
@@ -2912,6 +2965,8 @@ class ToolsNodes(
                 token_usage_accumulator=token_usage_accumulator,
                 ppt_authoring=ppt_authoring,
             )
+            if job_replay:
+                runtime_middleware.append(job_replay)
             if python_sandbox is not None:
                 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 

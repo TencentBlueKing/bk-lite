@@ -45,6 +45,10 @@ import {
   persistSingleValueStyle,
   type SingleValueStyleConfig,
 } from '@/app/ops-analysis/utils/singleValueStyle';
+import {
+  scalarCalcFromForm,
+  type ScalarCalcMethod,
+} from '@/app/ops-analysis/utils/scalarReduction';
 
 export interface WidgetConfigFormValues {
   name: string;
@@ -60,6 +64,8 @@ export interface WidgetConfigFormValues {
   dataSource?: string | number;
   compare?: boolean;
   compareMode?: 'percent' | 'value';
+  scalarCalcMethod?: ScalarCalcMethod;
+  scalarCalcTimeField?: string;
   dataSourceParams?: ParamItem[];
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
@@ -397,6 +403,12 @@ const applySingleValueConfig = (
   }
   applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
+  const scalarCalc = scalarCalcFromForm({
+    method: values.scalarCalcMethod,
+    field: selectedFields[0],
+    timeField: values.scalarCalcTimeField,
+  });
+  if (scalarCalc) result.scalarCalc = scalarCalc;
   if (!includeSingleStyle) return;
   // 显式写入，包含 undefined，仪表盘合并时才能清掉已关闭的样式。
   result.singleStyle = persistSingleValueStyle(values.singleStyle);
@@ -494,6 +506,9 @@ export const omitForeignChartTypeFields = <T extends object>(
     delete next.cardList;
   }
   delete next.actions;
+  if (chartType !== 'single' && chartType !== 'gauge') {
+    delete next.scalarCalc;
+  }
   if (chartType !== 'single') {
     delete next.singleStyle;
   } else if (
@@ -514,6 +529,72 @@ export const omitForeignChartTypeFields = <T extends object>(
   }
   return stripUnsetOptionalNumericDisplayFields(next);
 };
+
+export const dashboardWidgetValueConfigPatch = (
+  config: WidgetConfig,
+): ValueConfig => ({
+  dataSource: config.dataSource,
+  chartType: config.chartType,
+  sceneWidgetType: config.sceneWidgetType,
+  networkStatusTopology: config.networkStatusTopology,
+  relatedTopology: config.relatedTopology,
+  applicationTopology: config.applicationTopology,
+  room3D: config.room3D,
+  application3DWall: config.application3DWall,
+  dataSourceParams: config.dataSourceParams,
+  tableConfig: config.tableConfig,
+  filterBindings: config.filterBindings,
+  selectedFields: config.selectedFields,
+  scalarCalc: config.scalarCalc,
+  descriptionField: config.descriptionField,
+  topNLabelField: config.topNLabelField,
+  topNValueField: config.topNValueField,
+  topNScalarFields: config.topNScalarFields,
+  barMode: config.barMode,
+  barMax: config.barMax,
+  ...chartDisplayPatch(config),
+  dimensionField: config.dimensionField,
+  valueField: config.valueField,
+  valueFields: config.valueFields,
+  seriesField: config.seriesField,
+  pieScalarFields: config.pieScalarFields,
+  multiValueLabelField: config.multiValueLabelField,
+  multiValueValueField: config.multiValueValueField,
+  eventTimeline: config.eventTimeline,
+  radar: config.radar,
+  nodeGraphIdentityMode: config.nodeGraphIdentityMode,
+  nodeGraphSourceField: config.nodeGraphSourceField,
+  nodeGraphTargetField: config.nodeGraphTargetField,
+  nodeGraphValueField: config.nodeGraphValueField,
+  nodeGraphTargetPortField: config.nodeGraphTargetPortField,
+  unit: config.unit,
+  unitId: config.unitId,
+  valueMappings: config.valueMappings,
+  chartThemeMode: config.chartThemeMode,
+  appearance: config.appearance,
+  conversionFactor: config.conversionFactor,
+  decimalPlaces: config.decimalPlaces,
+  thresholdColors: config.thresholdColors,
+  gaugeMin: config.gaugeMin,
+  gaugeMax: config.gaugeMax,
+  gaugeShape: config.gaugeShape,
+  cardList: config.cardList,
+  compare: config.compare,
+  compareMode: config.compareMode,
+  singleStyle: config.singleStyle,
+  interaction: config.interaction,
+  actions: config.actions,
+});
+
+export const buildAddedDashboardWidgetValueConfig = (
+  config: WidgetConfig,
+): ValueConfig => omitForeignChartTypeFields(
+  {
+    ...dashboardWidgetValueConfigPatch(config),
+    dataSourceParams: config.dataSourceParams || [],
+  },
+  config.chartType || '',
+);
 
 /**
  * Dashboard 编辑保存边界：调用方会把本次表单字段逐项写入 nextFields，
@@ -537,6 +618,7 @@ export const mergeSanitizedWidgetValueConfig = (
  * 缺键不会覆盖旧值，所以要在这里删掉。
  */
 const SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT = [
+  'scalarCalc',
   'descriptionField',
   'dimensionField',
   'valueField',
@@ -675,6 +757,12 @@ const applyGaugeConfig = (
   if (values.gaugeShape !== undefined) result.gaugeShape = values.gaugeShape;
   result.compare = !!values.compare;
   result.compareMode = values.compareMode || 'percent';
+  const scalarCalc = scalarCalcFromForm({
+    method: values.scalarCalcMethod,
+    field: selectedFields[0],
+    timeField: values.scalarCalcTimeField,
+  });
+  if (scalarCalc) result.scalarCalc = scalarCalc;
 };
 
 export const buildWidgetSubmitConfig = ({

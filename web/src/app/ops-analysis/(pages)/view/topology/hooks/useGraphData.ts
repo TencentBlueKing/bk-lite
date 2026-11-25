@@ -24,6 +24,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { readPlaybackInitialDetail, usePlaybackInitialDetail } from '@/app/ops-analysis/context/playbackInitialDetail';
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
+import { singleValueSourceReady } from '@/app/ops-analysis/utils/scalarReduction';
 import type {
   EdgeConnectionType,
   EdgeCreationData,
@@ -471,7 +472,7 @@ export const useGraphData = (
         };
 
         nodeData = createNodeByType(chartNodeConfig);
-      } else if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length) {
+      } else if (nodeConfig.type === 'single-value' && singleValueSourceReady(valueConfig)) {
         nodeData = createNodeByType(nodeConfig);
         // Mark single-value nodes as loading; actual data fetch deferred to after filters are ready
         graphInstance.addNode(nodeData);

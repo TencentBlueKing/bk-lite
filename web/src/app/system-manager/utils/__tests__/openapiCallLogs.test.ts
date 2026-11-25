@@ -6,9 +6,15 @@ import {
   formatOpenApiCallTokenKind,
   formatOpenApiCallTokenSystemId,
   openApiCallErrorCode,
+  openApiCallResultPositive,
 } from '../openapiCallLogs';
 
-const labels = { success: '成功', failure: '失败' };
+const labels = {
+  success: '成功',
+  authPassed: '鉴权通过',
+  authDenied: '鉴权拒绝',
+  failure: '失败',
+};
 
 describe('formatOpenApiCallRequest', () => {
   it('joins method and path', () => {
@@ -31,16 +37,29 @@ describe('formatOpenApiCallRequest', () => {
 });
 
 describe('formatOpenApiCallResult', () => {
-  it('shows failure without joining the error code', () => {
-    const row = { http_status: 403, error_code: 'SCOPE_DENIED' };
-    expect(formatOpenApiCallResult(row, labels)).toBe('失败');
-    expect(openApiCallErrorCode(row)).toBe('SCOPE_DENIED');
+  it('translates call_result and keeps error code on 200', () => {
+    const denied = { call_result: 'auth_denied' as const, http_status: 403, error_code: 'SCOPE_DENIED' };
+    expect(formatOpenApiCallResult(denied, labels)).toBe('鉴权拒绝');
+    expect(openApiCallErrorCode(denied)).toBe('SCOPE_DENIED');
+    expect(openApiCallResultPositive(denied)).toBe(false);
+
+    const ok = { call_result: 'success' as const, http_status: 200, error_code: 'TRACE' };
+    expect(formatOpenApiCallResult(ok, labels)).toBe('成功');
+    expect(openApiCallErrorCode(ok)).toBe('TRACE');
+    expect(openApiCallResultPositive(ok)).toBe(true);
   });
 
-  it('shows success without a status number or error code', () => {
-    const row = { http_status: 200, error_code: '' };
-    expect(formatOpenApiCallResult(row, labels)).toBe('成功');
+  it('does not treat http_status < 400 as success without call_result', () => {
+    const row = { http_status: 200, error_code: '', call_result: 'failure' as const };
+    expect(formatOpenApiCallResult(row, labels)).toBe('失败');
+    expect(openApiCallResultPositive(row)).toBe(false);
+  });
+
+  it('labels auth_passed separately from success', () => {
+    const row = { call_result: 'auth_passed' as const, http_status: 200, error_code: '' };
+    expect(formatOpenApiCallResult(row, labels)).toBe('鉴权通过');
     expect(openApiCallErrorCode(row)).toBe('');
+    expect(openApiCallResultPositive(row)).toBe(true);
   });
 });
 

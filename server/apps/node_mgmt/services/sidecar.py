@@ -792,6 +792,7 @@ class Sidecar:
 
         if not created:
             if first_sidecar_contact:
+                Sidecar.create_default_config(node, node_types)
                 Sidecar._consume_deferred_module_push(node)
             Sidecar._refresh_existing_sidecar_node(node, node_id, request_data)
 

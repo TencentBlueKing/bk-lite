@@ -5,7 +5,7 @@ import pytest
 from django.contrib.auth.hashers import make_password
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.models import Group, OperationLog, Role, User
 from apps.system_mgmt.viewset.group_data_rule_viewset import GroupDataRuleViewSet
 from apps.system_mgmt.viewset.role_viewset import RoleViewSet
 from apps.system_mgmt.viewset.user_viewset import UserViewSet
@@ -163,9 +163,7 @@ def test_group_data_rule_patch_get_app_data_injects_authorized_team(monkeypatch)
         params.pop("app")
         return FakeClient()
 
-    monkeypatch.setattr(
-        GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client)
-    )
+    monkeypatch.setattr(GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client))
     request = APIRequestFactory().get(
         "/system_mgmt/api/group_data_rule/get_app_data/",
         {
@@ -177,13 +175,9 @@ def test_group_data_rule_patch_get_app_data_injects_authorized_team(monkeypatch)
             "group_id": "7",
         },
     )
-    force_authenticate(
-        request, user=_request_user([7], {"data_permission-View"})
-    )
+    force_authenticate(request, user=_request_user([7], {"data_permission-View"}))
 
-    response = GroupDataRuleViewSet.as_view(
-        {"get": "get_app_data"}
-    )(request)
+    response = GroupDataRuleViewSet.as_view({"get": "get_app_data"})(request)
 
     assert response.status_code == 200
     assert captured["team"] == [7]
@@ -472,8 +466,12 @@ def test_get_user_detail_returns_is_auditor():
 def test_import_users_creates_valid_rows_and_reports_conflicts():
     group = Group.objects.create(name="xlsx-import-group", parent_id=0, is_virtual=False)
     User.objects.create(
-        username="existing-import-user", password="p", display_name="Existing",
-        email="existing@example.com", group_list=[group.id], role_list=[],
+        username="existing-import-user",
+        password="p",
+        display_name="Existing",
+        email="existing@example.com",
+        group_list=[group.id],
+        role_list=[],
     )
     factory = APIRequestFactory()
     view = UserViewSet.as_view({"post": "import_users"})
@@ -484,12 +482,22 @@ def test_import_users_creates_valid_rows_and_reports_conflicts():
             "file_name": "users.xlsx",
             "users": [
                 {
-                    "row_number": 2, "username": "new-import-user", "lastName": "New User",
-                    "email": "new@example.com", "phone": "", "timezone": "", "locale": "",
+                    "row_number": 2,
+                    "username": "new-import-user",
+                    "lastName": "New User",
+                    "email": "new@example.com",
+                    "phone": "",
+                    "timezone": "",
+                    "locale": "",
                 },
                 {
-                    "row_number": 3, "username": "existing-import-user", "lastName": "Existing User",
-                    "email": "existing@example.com", "phone": "", "timezone": "Asia/Shanghai", "locale": "zh-Hans",
+                    "row_number": 3,
+                    "username": "existing-import-user",
+                    "lastName": "Existing User",
+                    "email": "existing@example.com",
+                    "phone": "",
+                    "timezone": "Asia/Shanghai",
+                    "locale": "zh-Hans",
                 },
             ],
         },
@@ -512,6 +520,10 @@ def test_import_users_creates_valid_rows_and_reports_conflicts():
     assert user.role_list == []
     assert user.timezone == "Asia/Shanghai"
     assert user.locale == "zh-Hans"
+    log = OperationLog.objects.get(action_type="create", target_type="organization", target_id=str(group.id))
+    assert log.outcome == "success"
+    assert log.failure_reason == ""
+    assert log.target_name == group.name
 
 
 @pytest.mark.django_db
@@ -526,8 +538,13 @@ def test_import_users_rejects_archived_group():
             "file_name": "users.xlsx",
             "users": [
                 {
-                    "row_number": 2, "username": "archived-import-user", "lastName": "Archived User",
-                    "email": "archived@example.com", "phone": "", "timezone": "", "locale": "",
+                    "row_number": 2,
+                    "username": "archived-import-user",
+                    "lastName": "Archived User",
+                    "email": "archived@example.com",
+                    "phone": "",
+                    "timezone": "",
+                    "locale": "",
                 },
             ],
         },
@@ -541,6 +558,7 @@ def test_import_users_rejects_archived_group():
     assert response.status_code == 400
     assert payload["result"] is False
     assert not User.objects.filter(username="archived-import-user").exists()
+    assert OperationLog.objects.filter(action_type="create", target_type="organization").count() == 0
 
 
 @pytest.mark.django_db
@@ -556,8 +574,13 @@ def test_import_users_rejects_unauthorized_groups():
             "file_name": "users.xlsx",
             "users": [
                 {
-                    "row_number": 2, "username": "scope-import-user", "lastName": "Scope User",
-                    "email": "scope-import@example.com", "phone": "", "timezone": "", "locale": "",
+                    "row_number": 2,
+                    "username": "scope-import-user",
+                    "lastName": "Scope User",
+                    "email": "scope-import@example.com",
+                    "phone": "",
+                    "timezone": "",
+                    "locale": "",
                 },
             ],
         },
@@ -571,6 +594,54 @@ def test_import_users_rejects_unauthorized_groups():
     assert response.status_code == 403
     assert payload["result"] is False
     assert not User.objects.filter(username="scope-import-user").exists()
+    assert OperationLog.objects.filter(action_type="create", target_type="organization").count() == 0
+
+
+@pytest.mark.django_db
+def test_import_users_all_rows_failed_logs_failure():
+    group = Group.objects.create(name="xlsx-import-all-fail", parent_id=0, is_virtual=False)
+    User.objects.create(
+        username="dup-import-user",
+        password="p",
+        display_name="Existing",
+        email="dup@example.com",
+        group_list=[group.id],
+        role_list=[],
+    )
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "import_users"})
+    request = factory.post(
+        "/system_mgmt/api/user/import_users/",
+        {
+            "group_id": group.id,
+            "file_name": "users.xlsx",
+            "users": [
+                {
+                    "row_number": 2,
+                    "username": "dup-import-user",
+                    "lastName": "Dup User",
+                    "email": "dup@example.com",
+                    "phone": "",
+                    "timezone": "",
+                    "locale": "",
+                },
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Add User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload["data"]["success_count"] == 0
+    assert payload["data"]["failed_count"] == 1
+    log = OperationLog.objects.get(action_type="create", target_type="organization", target_id=str(group.id))
+    assert log.outcome == "failure"
+    assert log.failure_reason == "共 1 条，成功 0 条，失败 1 条"
+    assert "dup-import-user" not in log.failure_reason
+    assert log.target_name == group.name
 
 
 @pytest.mark.django_db

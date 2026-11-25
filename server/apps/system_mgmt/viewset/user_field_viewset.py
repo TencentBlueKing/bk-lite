@@ -64,7 +64,16 @@ class UserFieldViewSet(ViewSetUtils):
             )
         except UserFieldError as error:
             return _error(request, error)
-        log_operation(request, "create", "system-manager", f"新增用户字段: {definition.name} ({definition.key})")
+        log_operation(
+            request,
+            "create",
+            "system-manager",
+            f"新增用户字段: {definition.name} ({definition.key})",
+            target_type="user_field",
+            target_id=definition.id,
+            target_name=definition.name,
+            outcome="success",
+        )
         return JsonResponse({"result": True, "data": serialize_definition(definition)})
 
     @action(detail=False, methods=["POST"])
@@ -83,7 +92,16 @@ class UserFieldViewSet(ViewSetUtils):
             )
         except UserFieldError as error:
             return _error(request, error)
-        log_operation(request, "update", "system-manager", f"编辑用户字段: {definition.name} ({definition.key})")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"编辑用户字段: {definition.name} ({definition.key})",
+            target_type="user_field",
+            target_id=definition.id,
+            target_name=definition.name,
+            outcome="success",
+        )
         return JsonResponse({"result": True, "data": serialize_definition(definition)})
 
     @action(detail=False, methods=["POST"])
@@ -96,7 +114,16 @@ class UserFieldViewSet(ViewSetUtils):
             definition = disable_definition(definition)
         except UserFieldError as error:
             return _error(request, error)
-        log_operation(request, "update", "system-manager", f"停用用户字段: {definition.name} ({definition.key})")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"停用用户字段: {definition.name} ({definition.key})",
+            target_type="user_field",
+            target_id=definition.id,
+            target_name=definition.name,
+            outcome="success",
+        )
         return JsonResponse({"result": True, "data": serialize_definition(definition)})
 
     @action(detail=False, methods=["POST"])
@@ -106,7 +133,16 @@ class UserFieldViewSet(ViewSetUtils):
         if definition is None:
             return JsonResponse({"result": False, "message": _loader(request).get("error.field_not_found", "field not found")}, status=404)
         definition = enable_definition(definition)
-        log_operation(request, "update", "system-manager", f"启用用户字段: {definition.name} ({definition.key})")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"启用用户字段: {definition.name} ({definition.key})",
+            target_type="user_field",
+            target_id=definition.id,
+            target_name=definition.name,
+            outcome="success",
+        )
         return JsonResponse({"result": True, "data": serialize_definition(definition)})
 
     @action(detail=False, methods=["POST"])
@@ -120,5 +156,14 @@ class UserFieldViewSet(ViewSetUtils):
             delete_definition(definition)
         except UserFieldError as error:
             return _error(request, error)
-        log_operation(request, "delete", "system-manager", f"删除用户字段: {label}")
+        log_operation(
+            request,
+            "delete",
+            "system-manager",
+            f"删除用户字段: {label}",
+            target_type="user_field",
+            target_id=definition.id,
+            target_name=definition.name,
+            outcome="success",
+        )
         return JsonResponse({"result": True})

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import LLMSkill, SkillChannel
 from apps.opspilot.serializers.skill_channel_serializer import SkillChannelSerializer
@@ -17,10 +18,11 @@ from apps.opspilot.services.skill_channel_chat_service import (
     serialize_skill_session_messages,
 )
 from apps.opspilot.utils.user_message import user_message
+from apps.opspilot.viewsets.history_analysis import HistoryAnalysisActions
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class SkillChannelViewSet(LanguageViewSet):
+class SkillChannelViewSet(HistoryAnalysisActions, LanguageViewSet):
     """智能体渠道发布绑定 CRUD / 启停。权限：有 Skill 管理组即可（skill_setting-Edit）。"""
 
     serializer_class = SkillChannelSerializer
@@ -40,7 +42,7 @@ class SkillChannelViewSet(LanguageViewSet):
             return skill
         helper = AuthViewSet()
         helper.permission_key = "skill"
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         if not helper.get_has_permission(request.user, skill, current_team, include_children=include_children):
             return JsonResponse(
@@ -195,7 +197,11 @@ class SkillChannelViewSet(LanguageViewSet):
         managed = self._get_managed_skill(request, conversation.skill_id)
         if isinstance(managed, JsonResponse):
             return managed
-        messages = serialize_skill_session_messages(conversation)
+        try:
+            anchor = self._parse_optional_int(request.query_params.get("message_id"), "message_id")
+            messages = serialize_skill_session_messages(conversation, from_message_id=anchor)
+        except SkillChannelChatError as exc:
+            return JsonResponse({"result": False, "message": exc.message}, status=exc.status)
         logger.info(
             "event=skill_admin_conversation_messages_read skill_id=%s channel_id=%s session_id=%s",
             conversation.skill_id,

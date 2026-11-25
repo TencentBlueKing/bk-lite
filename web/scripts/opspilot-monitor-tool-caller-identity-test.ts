@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildSkillSaveTools,
   buildStudioRuntimeTools,
+  skillToolUpdate,
   isMonitorToolConfig,
   normalizeMonitorToolConfig,
   normalizeMonitorToolConfigs,
@@ -138,26 +139,11 @@ const toolSelectorSource = readFileSync(
   new URL('../src/app/opspilot/components/skill/toolSelector.tsx', import.meta.url),
   'utf8',
 );
-assert.match(
-  toolSelectorSource,
-  /const normalizedDefaultTools = normalizeMonitorToolConfigs\(defaultTools\)/,
-  'tool selection load/merge must scrub persisted Monitor kwargs',
-);
-assert.match(
-  toolSelectorSource,
-  /const commitSelectedTools = \(nextTools: SelectTool\[\]\) => \{\s*const normalizedTools = normalizeMonitorToolConfigs\(nextTools\);\s*setSelectedTools\(normalizedTools\);\s*onChange\(normalizedTools\);\s*\}/,
-  'the ToolSelector commit boundary must normalize state and output together',
-);
-assert.equal(
-  toolSelectorSource.match(/\bsetSelectedTools\(/g)?.length,
-  1,
-  'ToolSelector must have exactly one selected-tool state write',
-);
-assert.equal(
-  toolSelectorSource.match(/\bonChange\(/g)?.length,
-  1,
-  'ToolSelector must have exactly one selected-tool output call',
-);
+assert.deepEqual(skillToolUpdate(null, [legacyMonitor]), {}, 'unrelated saves must omit tool bindings');
+assert.deepEqual(skillToolUpdate([], [legacyMonitor]), { tools: [] }, 'explicit removal must still clear tools');
+assert.deepEqual(skillToolUpdate([legacyMonitor], [legacyMonitor]).tools?.[0].kwargs, [],
+  'editing a selection must scrub credentials from retained Monitor entries');
+
 assert.match(
   toolSelectorSource,
   /isMonitorToolConfig\(editingTool\) \? \(\s*<Alert/,
@@ -175,12 +161,12 @@ const skillSettingsSource = readFileSync(
 );
 assert.match(
   skillSettingsSource,
-  /setSelectedTools\(normalizeMonitorToolConfigs\(data\.tools as SelectTool\[\]\)\)/,
+  /setSavedTools\(normalizeMonitorToolConfigs\(data\.tools\)\)/,
   'loading Skill details must scrub persisted Monitor kwargs before they enter state',
 );
 assert.match(
   skillSettingsSource,
-  /tools: buildSkillSaveTools\(selectedTools\),/,
+  /skillToolUpdate\(editedTools, savedTools\)/,
   'the final save payload must use the typed Monitor-safe boundary helper',
 );
 assert.match(

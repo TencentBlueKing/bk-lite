@@ -7,6 +7,10 @@ import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUti
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
+import {
+  ScalarCalcMethodItem,
+  ScalarCalcTimeFieldItem,
+} from '@/app/ops-analysis/components/widgetConfig/sections/scalarCalcFields';
 
 interface GaugeSettingsSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -85,6 +89,10 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
       children: node.children ? buildFieldOptions(node.children) : undefined,
     }));
   };
+  const fieldTreeData = buildFieldOptions(singleValueTreeData);
+  const calcMethod = Form.useWatch('scalarCalcMethod');
+  const hideValueField = calcMethod === 'count';
+  const requireValueField = !calcMethod;
 
   const handleFieldSelect = (value: string | undefined) => {
     onSingleValueFieldChange(value ? [value] : []);
@@ -113,12 +121,16 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
         {t('dashboard.dataFields')}
       </ConfigSectionTitle>
 
+      <ScalarCalcMethodItem t={t} />
+
       <Form.Item
+        hidden={hideValueField}
+        preserve
         label={
           <span>
-            {t('topology.nodeConfig.displayField')}
+            {calcMethod ? t('dashboard.calcField') : t('topology.nodeConfig.displayField')}
             <Tooltip
-              title={t('dashboard.displayFieldTip')}
+              title={calcMethod ? t('dashboard.calcFieldTip') : t('dashboard.displayFieldTip')}
               styles={{ body: { maxWidth: 360 } }}
             >
               <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
@@ -134,7 +146,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           if (next === undefined || next === null || next === '') return [];
           return [String(next)];
         }}
-        rules={[
+        rules={requireValueField ? [
           {
             required: true,
             validator: (_, value) => {
@@ -146,11 +158,11 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
               return Promise.resolve();
             },
           },
-        ]}
+        ] : []}
       >
         <TreeSelect
           value={selectedFields[0]}
-          treeData={buildFieldOptions(singleValueTreeData)}
+          treeData={fieldTreeData}
           treeDefaultExpandAll
           allowClear
           showSearch
@@ -162,7 +174,9 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
                 ? t('topology.nodeConfig.fetchingDataFields')
                 : singleValueTreeData.length === 0
                   ? t('topology.nodeConfig.clickRefreshToGetFields')
-                  : t('topology.nodeConfig.selectDisplayField')
+                  : calcMethod
+                    ? t('dashboard.calcFieldPlaceholder')
+                    : t('topology.nodeConfig.selectDisplayField')
           }
           disabled={fieldSelectorDisabled}
           onChange={(value) =>
@@ -173,6 +187,23 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           styles={{ popup: { root: { maxHeight: 360, overflow: 'auto' } } }}
         />
       </Form.Item>
+
+      <ScalarCalcTimeFieldItem
+        t={t}
+        disabled={fieldSelectorDisabled}
+        treeData={fieldTreeData}
+        className={`w-full ${fieldSelectorClassName}`}
+        popupClassName={fieldPopupClassName}
+        placeholder={
+          !selectedDataSource
+            ? t('topology.nodeConfig.selectDataSourceFirst')
+            : loadingSingleValueData
+              ? t('topology.nodeConfig.fetchingDataFields')
+              : singleValueTreeData.length === 0
+                ? t('topology.nodeConfig.clickRefreshToGetFields')
+                : t('dashboard.calcTimeField')
+        }
+      />
 
         <ConfigSectionTitle>{t('dashboard.gaugeSettings')}</ConfigSectionTitle>
 

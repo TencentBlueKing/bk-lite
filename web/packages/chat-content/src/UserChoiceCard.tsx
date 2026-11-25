@@ -11,8 +11,8 @@ import { useImeEnterGuard } from './imeKeyboard';
 interface UserChoiceCardProps {
   request: UserChoiceRequest;
   token: string;
-  onSubmit: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
-  onSendMessage?: (text: string, choice?: { choiceId: string; optionKey: string }) => void;
+  onSubmit?: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
+  onSendMessage?: (text: string, choice?: { choiceId: string; optionKey: string; selectedKeys?: string[] }) => void;
   readOnly?: boolean;
 }
 
@@ -55,7 +55,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSe
     return () => clearInterval(timer);
   }, [request.received_at, request.timeout_seconds, request.status]);
 
-  const handleSubmit = useCallback(async (keys: string[]) => {
+  const handleSubmit = useCallback(async (keys: string[], freeText = false) => {
     if (readOnly) return;
     if (keys.length < request.min_select) {
       antMessage.warning(t('chat.choiceMinSelect', undefined, { min: request.min_select }));
@@ -65,11 +65,16 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSe
     submittingRef.current = true;
     setSubmitting(true);
     const labels = keys.map((key) => choiceOptions.find((option) => option.key === key)?.label || key);
-    onSubmit(request.choice_id, 'submitted', keys);
-    onSendMessage?.(labels.join(', '), {
-      choiceId: request.choice_id,
-      optionKey: keys[0] || '',
-    });
+    onSubmit?.(request.choice_id, 'submitted', keys);
+    if (freeText) {
+      onSendMessage?.(keys[0]);
+    } else {
+      onSendMessage?.(labels.join(', '), {
+        choiceId: request.choice_id,
+        optionKey: keys[0] || '',
+        ...(keys.length > 1 ? { selectedKeys: keys } : {}),
+      });
+    }
     submittingRef.current = false;
     setSubmitting(false);
   }, [choiceOptions, request, onSubmit, onSendMessage, t, readOnly, remainingSeconds]);
@@ -99,7 +104,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSe
 
   const handleTextSubmit = useCallback(() => {
     if (!textInput.trim()) return;
-    handleSubmit([textInput.trim()]);
+    handleSubmit([textInput.trim()], true);
   }, [handleSubmit, textInput]);
 
   const isPending = request.status === 'pending' && (!request.timeout_seconds || remainingSeconds > 0);
@@ -270,7 +275,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSe
       )}
 
       {/* Title */}
-      <div className="mb-2.5 text-[13px] font-semibold text-[var(--color-text-1)]">
+      <div className="mb-2.5 whitespace-pre-wrap break-words text-[13px] font-semibold text-[var(--color-text-1)]">
         {request.title}
       </div>
 

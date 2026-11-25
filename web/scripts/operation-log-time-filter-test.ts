@@ -46,7 +46,7 @@ run('no time range -> no time params', () => {
 
 run('other filters pass through unchanged', () => {
   const params = buildOperationLogParams(
-    { username: 'admin', app: 'cmdb', actionType: 'create' },
+    { username: 'admin', app: 'cmdb', actionType: 'create', target: 'host-1', outcome: 'unrecorded' },
     [],
     2,
     50
@@ -54,6 +54,8 @@ run('other filters pass through unchanged', () => {
   assert.equal(params.username, 'admin');
   assert.equal(params.app, 'cmdb');
   assert.equal(params.action_type, 'create');
+  assert.equal(params.target, 'host-1');
+  assert.equal(params.outcome, 'unrecorded');
   assert.equal(params.page, 2);
   assert.equal(params.page_size, 50);
 });

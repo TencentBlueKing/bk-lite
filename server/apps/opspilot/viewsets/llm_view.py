@@ -366,14 +366,18 @@ class LLMViewSet(PinMixin, AuthViewSet):
         # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
         # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
         # domain/is_builtin 等）即便随请求传入也被忽略。
-        for key in self.UPDATABLE_SKILL_FIELDS:
-            if key in params and hasattr(instance, key):
-                setattr(instance, key, params[key])
+        update_fields = set(self.UPDATABLE_SKILL_FIELDS.intersection(params))
+        for key in update_fields:
+            setattr(instance, key, params[key])
         # 使用组织不变式：显式传 usage_team，或仅改 team 时重新并入。
         if "usage_team" in params or "team" in params:
             instance.usage_team = merge_usage_team(instance.team, instance.usage_team)
+            update_fields.add("usage_team")
+        if not instance.instance_id:
+            update_fields.add("instance_id")  # LLMSkill.save initializes legacy rows.
         instance.updated_by = request.user.username
-        instance.save()
+        update_fields.add("updated_by")
+        instance.save(update_fields=update_fields)
         sync_skill_channel_usage_teams(instance)
         # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
         # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
@@ -575,6 +579,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
 
             params.pop(ATTACHMENT_GRANT_KEY, None)
+            user_reply = params.get("user_message") or ""
             raw_attachment_ids = params.pop("attachment_ids", None)
             if raw_attachment_ids:
                 llm_model = LLMModel.objects.filter(id=params.get("llm_model")).first()
@@ -605,7 +610,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 skill_obj.name,
                 {},
                 current_ip,
-                params["user_message"],
+                user_reply,
                 skill_id=skill_obj.id,
             )
         except LLMSkill.DoesNotExist:

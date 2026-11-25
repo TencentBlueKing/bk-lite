@@ -454,16 +454,15 @@ class WorkflowViewSet(AuthViewSet):
 
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
-        scoped = self._scoped_object(request, require_operate=True)
-        if scoped.is_builtin:
-            return Response(
-                {"detail": render_known_message(request, "内置流程不可保存草稿，请复制后再编辑"), "code": "BUILTIN_WORKFLOW_READONLY"},
-                status=status.HTTP_409_CONFLICT,
-            )
         supplied_revision = request.data.get("draft_revision")
         try:
             with transaction.atomic():
-                workflow = Workflow.objects.select_for_update().get(pk=scoped.pk)
+                workflow = get_object_or_404(self._scoped_queryset(request, require_operate=True).select_for_update(), pk=self.kwargs["pk"])
+                if workflow.is_builtin:
+                    return Response(
+                        {"detail": render_known_message(request, "内置流程不可保存草稿，请复制后再编辑"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 if supplied_revision is not None and supplied_revision != workflow.draft_revision:
                     return Response(
                         {
@@ -479,11 +478,9 @@ class WorkflowViewSet(AuthViewSet):
                     team_ids, error = self._team_ids_from_payload(request, payload.get("team"))
                     if error is not None:
                         return error
-                    if workflow.current_version and team_ids != self._sorted_team(workflow.team):
-                        return Response(
-                            {"detail": render_known_message(request, "已发布流程不可修改组织"), "code": "PUBLISHED_TEAM_LOCKED"},
-                            status=status.HTTP_409_CONFLICT,
-                        )
+                team_changed = team_ids is not None and team_ids != self._sorted_team(workflow.team)
+                if team_changed:
+                    payload.setdefault("name", workflow.name)
                 serializer = self.get_serializer(
                     workflow,
                     data=payload,
@@ -503,6 +500,10 @@ class WorkflowViewSet(AuthViewSet):
                 if team_ids is not None:
                     save_kwargs["team"] = team_ids
                 serializer.save(**save_kwargs)
+                if team_changed and workflow.current_version:
+                    workflow.triggers.update(team=team_ids)
+                    if workflow.triggers.filter(trigger_type=WorkflowTrigger.Type.NATS).exists():
+                        transaction.on_commit(lambda workflow_id=workflow.pk: sync_workflow_nats_channels(workflow_id))
                 renew_workflow_file_distribute_assets(definition=workflow.definition, team=workflow.team)
         except IntegrityError as error:
             if _is_workflow_name_conflict(error):

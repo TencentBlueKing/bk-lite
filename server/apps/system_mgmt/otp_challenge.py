@@ -22,7 +22,12 @@ RATE_LIMIT_PREFIX = "otp_rate_limit:"
 OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX = "otp_login_account_rate_limit:"
 
 
-def create_challenge(user_id: int, username: str, pending_otp_secret: str | None = None) -> str:
+def create_challenge(
+    user_id: int,
+    username: str,
+    pending_otp_secret: str | None = None,
+    login_method: str = "",
+) -> str:
     """
     Create a new OTP challenge for a user.
 
@@ -49,6 +54,8 @@ def create_challenge(user_id: int, username: str, pending_otp_secret: str | None
     }
     if pending_otp_secret:
         challenge_data["pending_otp_secret"] = pending_otp_secret
+    if login_method:
+        challenge_data["login_method"] = login_method
 
     cache.set(cache_key, challenge_data, timeout=CHALLENGE_TTL)
     cache.set(f"{ACTIVE_CHALLENGE_PREFIX}{user_id}", challenge_id, timeout=CHALLENGE_TTL)
@@ -72,6 +79,21 @@ def verify_challenge(challenge_id: str) -> dict | None:
     challenge_data = cache.get(cache_key)
 
     return challenge_data
+
+
+def set_challenge_login_method(challenge_id: str, login_method: str) -> bool:
+    """Attach the originating login_method to an existing OTP challenge."""
+    if not challenge_id or not login_method:
+        return False
+
+    cache_key = f"{CHALLENGE_PREFIX}{challenge_id}"
+    challenge_data = cache.get(cache_key)
+    if not challenge_data:
+        return False
+
+    challenge_data["login_method"] = login_method
+    cache.set(cache_key, challenge_data, timeout=CHALLENGE_TTL)
+    return True
 
 
 def invalidate_challenge(challenge_id: str) -> bool:

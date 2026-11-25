@@ -70,10 +70,10 @@ export interface FormValues {
 }
 
 export interface SelectTool {
-  id: number;
+  id?: number;
   name: string;
   rawName?: string;
-  icon: string;
+  icon?: string;
   description?: string;
   systemTags?: string[];
   userTags?: string[];

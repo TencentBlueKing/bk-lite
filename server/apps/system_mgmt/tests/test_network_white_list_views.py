@@ -44,6 +44,10 @@ def test_create_normalizes_and_invalidates_cache(mocker):
     inval.assert_called_once()
     log = OperationLog.objects.get(app="system-manager", action_type="create")
     assert log.summary == "新增网络白名单: 10.11.73.15/32"
+    assert log.target_type == "network_white_list"
+    assert log.target_id == str(response.data["id"])
+    assert log.target_name == "10.11.73.15/32"
+    assert log.outcome == "success"
 
 
 @pytest.mark.django_db
@@ -114,6 +118,10 @@ def test_partial_update_invalidates_cache(mocker):
     inval.assert_called_once()
     log = OperationLog.objects.get(app="system-manager", action_type="update")
     assert log.summary == "编辑网络白名单: 10.11.73.0/24"
+    assert log.target_type == "network_white_list"
+    assert log.target_id == str(obj.id)
+    assert log.target_name == "10.11.73.0/24"
+    assert log.outcome == "success"
 
 
 @pytest.mark.django_db
@@ -131,3 +139,7 @@ def test_destroy_invalidates_cache_and_deletes(mocker):
     assert not NetworkWhiteList.objects.filter(id=obj.id).exists()
     log = OperationLog.objects.get(app="system-manager", action_type="delete")
     assert log.summary == "删除网络白名单: 10.11.73.0/24"
+    assert log.target_type == "network_white_list"
+    assert log.target_id == str(obj.id)
+    assert log.target_name == "10.11.73.0/24"
+    assert log.outcome == "success"
