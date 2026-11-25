@@ -2888,11 +2888,21 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                         {
                           title: t('apm.policies.dryRunVerdict', '结论'),
                           dataIndex: 'verdict',
-                          render: (verdict: ApmPolicyDryRunResult['items'][number]['verdict']) => (
-                            <Tag color={verdict === 'would_trigger' || verdict === 'would_escalate' ? 'red' : verdict === 'would_recover' ? 'green' : verdict === 'ok' ? 'blue' : 'gold'}>
-                              {t(VERDICT_KEY[verdict])}
-                            </Tag>
-                          ),
+                          render: (verdict: ApmPolicyDryRunResult['items'][number]['verdict'], row) => {
+                            const stillBreached = verdict === 'ok' && Boolean(row.matched_threshold);
+                            const color = verdict === 'would_trigger' || verdict === 'would_escalate' || stillBreached
+                              ? 'red'
+                              : verdict === 'would_recover'
+                                ? 'green'
+                                : verdict === 'ok'
+                                  ? 'blue'
+                                  : 'gold';
+                            return (
+                              <Tag color={color}>
+                                {t(stillBreached ? 'apm.policies.verdictStillBreached' : VERDICT_KEY[verdict])}
+                              </Tag>
+                            );
+                          },
                         },
                         ...(dryRun.items.some((item) => item.conditions?.length)
                           ? [{

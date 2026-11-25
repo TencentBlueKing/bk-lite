@@ -402,10 +402,10 @@ tools:
   conversation_skill_package:
     name: Generate Skill Package
     description: |
-      Draft a skill package from the current conversation. Only a confirm click writes it. Do not call this tool unless the user explicitly asked.
+      Organize the conversation, extract the operating steps, and generate a skill package.
     tools:
       prepare_conversation_skill_package:
-        description: Draft a skill package from the current conversation and send a confirm card.
+        description: Organize the conversation, extract the operating steps, and generate a skill package.
   kubernetes:
     name: Kubernetes Tools
     description: |

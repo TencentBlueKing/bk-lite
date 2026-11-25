@@ -205,7 +205,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     renderWithApmIntl(<ApmPolicyEditor />);
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /邮件.*电子邮件/ }));
     const recipientSearch = await screen.findByLabelText('系统用户 ID');
     await user.click(recipientSearch);
     await user.type(recipientSearch, 'late');
@@ -215,10 +215,10 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     ]);
     await user.click(await screen.findByText('Late User (late-user)'));
 
-    await user.click(screen.getByRole('button', { name: /Webhook.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /Webhook.*自定义Webhook/ }));
     expect(screen.getByLabelText('通知对象')).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: /告警中心.*告警中心副本/ }));
-    expect(screen.getByText('该渠道接收告警事件副本，无需配置接收人。')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: /告警中心.*NATS通道/ }));
+    expect(screen.getByText('告警将进入告警中心，无需选择通知者。')).not.toBeNull();
   });
 
   it('编辑时按 system_user、free_text、none 分别回显并提交原始接收人', async () => {
@@ -484,7 +484,7 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     );
 
     await user.click(await screen.findByRole('switch', { name: '启用通知' }));
-    await user.click(screen.getByRole('button', { name: /邮件.*普通通知/ }));
+    await user.click(screen.getByRole('button', { name: /邮件.*电子邮件/ }));
     const recipients = await screen.findByLabelText('系统用户 ID');
     expect(recipients.closest('.ant-select')?.textContent).not.toContain('7');
   });
@@ -699,6 +699,48 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(screen.getByText('本轮命中 1/3，现网不会建告警')).not.toBeNull();
     expect(screen.getByText('POST /checkout v2')).not.toBeNull();
     expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
+  });
+
+  it('活动告警再次命中同级时结论显示已命中，未越线仍显示未命中', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'absolute',
+      compare_value_kind: '',
+      result_unit: 'ms',
+      total_targets: 2,
+      truncated: false,
+      items: [
+        {
+          service: 'cct-upp-gateway',
+          endpoint: 'POST cct upp pay',
+          version: '',
+          verdict: 'ok',
+          current_value: '119.996114',
+          baseline_value: null,
+          compared_value: '119.996114',
+          request_count: 4,
+          matched_threshold: { severity: 'warning', comparator: 'gt', value: '2' },
+          reason: '',
+        },
+        {
+          endpoint: 'GET /quiet',
+          version: '',
+          verdict: 'ok',
+          current_value: '1',
+          baseline_value: null,
+          compared_value: '1',
+          request_count: 4,
+          matched_threshold: null,
+          reason: '',
+        },
+      ],
+    });
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '试算' }));
+    expect(await screen.findByText('已命中')).not.toBeNull();
+    expect(screen.getByText('未命中')).not.toBeNull();
+    expect(screen.getAllByText('未命中')).toHaveLength(1);
   });
 
   it('分组指标下拉出现慢阈值和 Apdex T，计数类不显示汇聚方法', async () => {

@@ -12,6 +12,7 @@ import { foldUnassignedTools, type PlannedExecutionStepData } from '../plannedEx
 import { attachmentDownloadsFromToolCalls } from '../sessionFiles';
 import { ThinkingPanel } from './ThinkingPanel';
 import { stripWebchatChoiceDump, type WebchatChoiceValue } from '../choiceDisplay';
+import { WikiMaterialWriteCards } from './WikiMaterialWriteCards';
 import { WC } from '../chrome';
 import { useTranslator } from '../useTranslator';
 
@@ -136,6 +137,7 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   onCopy?: (content: string) => void;
   onDelete?: (messageId: string) => void;
+  showWikiMaterialWrites?: boolean;
 }
 
 type ContentChunk = 
@@ -189,7 +191,7 @@ function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, onFeedback, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
+  ({ message, onFeedback, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment, showWikiMaterialWrites }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
     const persistedId = message.persistedMessageId;
@@ -279,6 +281,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     };
 
     const choiceValue = message.metadata?.userChoice as WebchatChoiceValue | undefined;
+    const wikiWrites = Array.isArray(message.metadata?.wikiMaterialWrites)
+      ? message.metadata.wikiMaterialWrites.filter((item): item is { material_id: number; phase: string; summary: string } => {
+        if (!item || typeof item !== 'object') return false;
+        const record = item as { material_id?: unknown; phase?: unknown; summary?: unknown };
+        return typeof record.material_id === 'number' && typeof record.phase === 'string' && typeof record.summary === 'string';
+      })
+      : [];
     const visibleText = (source: string) => stripWebchatChoiceDump(source, choiceValue);
     const columnClass = isBot
       ? 'min-w-0 flex-1'
@@ -339,6 +348,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             ? renderBotAnswer(renderMarkdown(visibleText(message.content as string)))
             : null}
         <ContentCards state={message.metadata || {}} content={typeof message.content === 'string' ? message.content : ''} readOnly={contentReadOnly} activeChoiceId={activeChoiceId} onApproval={onApproval} onChoice={onChoice} onSendMessage={onSendMessage} />
+        {showWikiMaterialWrites ? <WikiMaterialWriteCards writes={wikiWrites} /> : null}
         <AttachmentDownloadCards files={downloads} />
         {choiceValue?.answered ? <AnsweredChoice value={choiceValue} /> : null}
       </div>

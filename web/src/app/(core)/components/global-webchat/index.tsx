@@ -87,12 +87,15 @@ const ensureStylesheet = () => {
 };
 
 const getOrCreateScript = () => {
+  const expected = new URL(WEBCHAT_SCRIPT_URL, window.location.origin).href;
   const existing = document.querySelector<HTMLScriptElement>(
     'script[data-bk-global-webchat="script"]',
   );
-  if (existing) {
+  if (existing?.src === expected) {
     return existing;
   }
+  existing?.remove();
+  delete window.WebChat;
 
   const script = document.createElement('script');
   script.src = WEBCHAT_SCRIPT_URL;
@@ -155,9 +158,9 @@ const GlobalWebchat = () => {
     let active = true;
     let hasFailed = false;
     const stylesheet = ensureStylesheet();
-    const script = getOrCreateScript();
     let stylesheetReady =
       stylesheet.dataset.loadState === 'loaded' || Boolean(stylesheet.sheet);
+    const script = getOrCreateScript();
     let scriptReady = Boolean(window.WebChat);
 
     const initialize = () => {
