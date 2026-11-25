@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
+import { applyBarLineGuides, withoutReferenceGuideSeries } from '@/app/ops-analysis/utils/barLineGuides';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { withChartLinkPoints } from '@/app/ops-analysis/utils/interactionLink';
 import {
   resolveDataLinkTooltipTheme,
@@ -600,32 +602,17 @@ const TrendLine: React.FC<TrendLineProps> = ({
       ];
     }
 
-    // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
-    // 跳过基线 0 以免杂乱。只挂在第一条系列上，避免重复绘制。
-    const thresholdLines = (config?.thresholdColors || [])
-      .map((th) => ({ value: Number(th.value), color: th.color }))
-      .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
-    if (thresholdLines.length > 0 && built.series.length > 0) {
-      built.series[0].markLine = {
-        symbol: 'none',
-        silent: true,
-        data: thresholdLines.map((th) => ({
-          yAxis: th.value,
-          lineStyle: {
-            color: th.color,
-            type: 'dashed',
-            width: scaleScreenMetricFloat(1.5, screenRenderContext),
-          },
-          label: {
-            show: true,
-            position: 'insideEndTop',
-            formatter: String(th.value),
-            color: th.color,
-            fontSize: scaleScreenMetric(10, screenRenderContext),
-          },
-        })),
-      };
-    }
+    applyBarLineGuides({
+      series: built.series,
+      yAxis: Array.isArray(built.yAxis) ? built.yAxis[0] : built.yAxis,
+    }, {
+      chart: 'line',
+      display: readChartDisplay(config),
+      data: chartData,
+      thresholdColors: config?.thresholdColors,
+      scale: (px) => scaleScreenMetric(px, screenRenderContext),
+      scaleFloat: (px) => scaleScreenMetricFloat(px, screenRenderContext),
+    });
 
     return built;
   }, [
@@ -648,7 +635,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
     zoomRange,
   ]);
 
-  const legendData = option.series.map((item: { name?: string }) => ({
+  const legendData = withoutReferenceGuideSeries(option.series).map((item: { id?: string; name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
   }));
 

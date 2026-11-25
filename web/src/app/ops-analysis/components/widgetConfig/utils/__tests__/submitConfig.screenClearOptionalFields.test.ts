@@ -461,3 +461,108 @@ test('screen save replaces event timeline and card list objects, so cleared slot
   assert.equal(radarSaved.radar?.arrayNameField, undefined);
   assert.equal(radarSaved.radar?.arrayValueField, undefined);
 });
+
+test('screen save keeps a zero reference line and deletes a stack switch that is off', () => {
+  const submitted = buildWidgetSubmitConfig({
+    ...baseInput,
+    selectedFields: [],
+    chartType: 'bar',
+    values: {
+      name: '柱状',
+      chartType: 'bar',
+      dimensionField: 'host',
+      valueField: 'count',
+      stackBars: false,
+      sortByValue: false,
+      referenceLines: [{ name: 'baseline', value: 0 }],
+    },
+  });
+  assert.equal(submitted.error, undefined);
+
+  const saved = persisted(mergeLikeScreen(
+    {
+      chartType: 'bar',
+      displayLimit: 4,
+      sortByValue: true,
+      stackBars: true,
+      referenceLines: [{ name: 'old', value: 9 }],
+      thresholdColors: [{ value: '1', color: '#fff' }],
+    },
+    submitted.config!,
+    'bar',
+  ));
+
+  assert.equal('displayLimit' in saved, false);
+  assert.equal('sortByValue' in saved, false);
+  assert.equal('stackBars' in saved, false);
+  assert.deepEqual(saved.referenceLines, [{ name: 'baseline', value: 0 }]);
+  assert.deepEqual(saved.thresholdColors, [{ value: '1', color: '#fff' }]);
+});
+
+test('screen save deletes reference lines when the name is blank or the list is empty', () => {
+  const blank = buildWidgetSubmitConfig({
+    ...baseInput,
+    selectedFields: [],
+    chartType: 'line',
+    values: {
+      name: '折线',
+      chartType: 'line',
+      dimensionField: 'time',
+      valueField: 'cpu',
+      referenceLines: [{ name: '  ', value: 0 }],
+    },
+  });
+  const blankSaved = persisted(mergeLikeScreen(
+    {
+      chartType: 'line',
+      referenceLines: [{ name: 'baseline', value: 0 }],
+      thresholdColors: [{ value: '2', color: '#abc' }],
+    },
+    blank.config!,
+    'line',
+  ));
+  assert.equal('referenceLines' in blankSaved, false);
+  assert.deepEqual(blankSaved.thresholdColors, [{ value: '2', color: '#abc' }]);
+
+  const empty = buildWidgetSubmitConfig({
+    ...baseInput,
+    selectedFields: [],
+    chartType: 'line',
+    values: {
+      name: '折线',
+      chartType: 'line',
+      dimensionField: 'time',
+      valueField: 'cpu',
+      referenceLines: [],
+    },
+  });
+  const emptySaved = persisted(mergeLikeScreen(
+    {
+      chartType: 'line',
+      referenceLines: [{ name: 'baseline', value: 0 }],
+    },
+    empty.config!,
+    'line',
+  ));
+  assert.equal('referenceLines' in emptySaved, false);
+});
+
+test('dashboard merge deletes stackBars when the switch is off', () => {
+  const merged = mergeSanitizedWidgetValueConfig(
+    {
+      chartType: 'bar',
+      stackBars: true,
+      referenceLines: [{ name: 'baseline', value: 0 }],
+      thresholdColors: [{ value: '3', color: '#111' }],
+    },
+    {
+      chartType: 'bar',
+      referenceLines: [],
+    },
+    'bar',
+  );
+  const saved = persisted(merged);
+  assert.equal('stackBars' in saved, false);
+  assert.equal('referenceLines' in saved, false);
+  assert.deepEqual(saved.thresholdColors, [{ value: '3', color: '#111' }]);
+});

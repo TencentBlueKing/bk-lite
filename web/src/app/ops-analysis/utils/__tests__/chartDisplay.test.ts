@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  chartDisplayPatch,
+  applyChartDisplay,
+  chartDisplayControls,
+  CHART_DISPLAY_KEYS,
   presentBar,
   presentPie,
   presentRanking,
@@ -210,21 +212,177 @@ test('bar points follow kept categories and a mismatched list is dropped', () =>
   assert.deepEqual(mismatched.categories, ['high', 'low']);
 });
 
-test('chartDisplayPatch clears sort for topN and clears both for line', () => {
-  assert.deepEqual(
-    chartDisplayPatch({ chartType: 'topN', displayLimit: 3, sortByValue: true }),
-    { displayLimit: 3, sortByValue: undefined },
+test('read keeps legacy limit and sort without chartType and hides unowned switches', () => {
+  assert.equal(readChartDisplay({ displayLimit: 2, stackBars: true }).displayLimit, 2);
+  assert.equal(readChartDisplay({ displayLimit: 2, stackBars: true }).stackBars, undefined);
+  assert.equal(
+    readChartDisplay({ chartType: 'line', stackBars: true, displayLimit: 4 }).stackBars,
+    undefined,
   );
-  assert.deepEqual(
-    chartDisplayPatch({ chartType: 'line', displayLimit: 3, sortByValue: true }),
-    { displayLimit: undefined, sortByValue: undefined },
+  assert.equal(
+    readChartDisplay({ chartType: 'line', stackBars: true, displayLimit: 4 }).displayLimit,
+    undefined,
   );
-  assert.deepEqual(
-    chartDisplayPatch({ chartType: 'pie', displayLimit: 2, sortByValue: true }),
-    { displayLimit: 2, sortByValue: true },
+  assert.equal(readChartDisplay({ chartType: 'eventTable', autoScroll: true }).autoScroll, true);
+  assert.equal(readChartDisplay({ chartType: 'cardList', autoScroll: true }).autoScroll, true);
+  assert.equal(readChartDisplay({ chartType: 'multiValue', autoScroll: true }).autoScroll, true);
+  assert.equal(readChartDisplay({ chartType: 'pie', autoScroll: true }).autoScroll, undefined);
+  assert.equal(readChartDisplay({ chartType: 'bar', stackBars: true }).stackBars, true);
+  assert.equal(readChartDisplay({ chartType: 'table', autoScroll: true }).autoScroll, true);
+  assert.equal(readChartDisplay({ chartType: 'table', autoScroll: 'true' }).autoScroll, undefined);
+  assert.equal(readChartDisplay({ chartType: 'table', scrollSeconds: 1.5 }).scrollSeconds, 1.5);
+  assert.equal(readChartDisplay({ chartType: 'eventTable', scrollSeconds: 4 }).scrollSeconds, 4);
+  assert.equal(readChartDisplay({ chartType: 'table', scrollSeconds: 0 }).scrollSeconds, undefined);
+  assert.equal(readChartDisplay({ chartType: 'table', scrollSeconds: '2' }).scrollSeconds, undefined);
+  assert.equal(readChartDisplay({ chartType: 'bar', scrollSeconds: 3 }).scrollSeconds, undefined);
+  assert.equal(readChartDisplay({ chartType: 'bar', sortByValue: 1 }).sortByValue, undefined);
+});
+
+test('reference lines keep finite numbers and drop invalid rows', () => {
+  const display = readChartDisplay({
+    chartType: 'line',
+    referenceLines: [
+      { name: ' baseline ', value: 0 },
+      { name: 'low', value: -2 },
+      { name: 'dup', value: 1 },
+      { name: 'dup', value: 1 },
+      { name: '   ', value: 4 },
+      { name: 'text', value: '0' },
+      { name: 'nan', value: Number.NaN },
+      { name: 3, value: 3 },
+      { value: 8 },
+      null,
+      { name: 'inf', value: Infinity },
+      { name: 'alert', value: 80, color: '#d97706' },
+      { name: 'named', value: 3, color: 'red' },
+    ],
+  });
+  assert.deepEqual(display.referenceLines, [
+    { name: 'baseline', value: 0 },
+    { name: 'low', value: -2 },
+    { name: 'dup', value: 1 },
+    { name: 'dup', value: 1 },
+    { name: 'alert', value: 80, color: '#d97706' },
+    { name: 'named', value: 3 },
+  ]);
+  assert.equal(readChartDisplay({ chartType: 'bar', referenceLines: [] }).referenceLines, undefined);
+  assert.equal(
+    readChartDisplay({ chartType: 'pie', referenceLines: [{ name: 'baseline', value: 0 }] }).referenceLines,
+    undefined,
   );
-  assert.deepEqual(
-    chartDisplayPatch({ chartType: 'bar', displayLimit: '4', sortByValue: false }),
-    { displayLimit: undefined, sortByValue: undefined },
-  );
+});
+
+test('chart display controls come from the slot catalog', () => {
+  assert.deepEqual(CHART_DISPLAY_KEYS, [
+    'displayLimit',
+    'sortByValue',
+    'stackBars',
+    'referenceLines',
+    'autoScroll',
+    'scrollSeconds',
+  ]);
+  assert.deepEqual(chartDisplayControls('topN'), {
+    limit: true,
+    sort: false,
+    stackBars: false,
+    referenceLines: false,
+    autoScroll: true,
+  });
+  assert.deepEqual(chartDisplayControls('pie'), {
+    limit: true,
+    sort: true,
+    stackBars: false,
+    referenceLines: false,
+    autoScroll: false,
+  });
+  assert.deepEqual(chartDisplayControls('line'), {
+    limit: false,
+    sort: false,
+    stackBars: false,
+    referenceLines: true,
+    autoScroll: false,
+  });
+  assert.deepEqual(chartDisplayControls('eventTable'), {
+    limit: false,
+    sort: false,
+    stackBars: false,
+    referenceLines: false,
+    autoScroll: true,
+  });
+  assert.equal(chartDisplayControls('cardList').autoScroll, true);
+  assert.equal(chartDisplayControls('multiValue').autoScroll, true);
+  assert.deepEqual(chartDisplayControls(undefined), chartDisplayControls('gauge'));
+});
+
+test('applyChartDisplay writes owned slots and deletes the rest', () => {
+  const topN: Record<string, unknown> = { sortByValue: true, stackBars: true, thresholdColors: [{ value: '1' }] };
+  applyChartDisplay(topN, { chartType: 'topN', displayLimit: 3, sortByValue: true, stackBars: true });
+  assert.deepEqual(topN, { displayLimit: 3, thresholdColors: [{ value: '1' }] });
+
+  const line: Record<string, unknown> = {
+    displayLimit: 3,
+    sortByValue: true,
+    stackBars: true,
+    thresholdColors: [{ value: '9', color: 'red' }],
+  };
+  applyChartDisplay(line, {
+    chartType: 'line',
+    displayLimit: 3,
+    sortByValue: true,
+    stackBars: true,
+    referenceLines: [{ name: 'baseline', value: 0 }],
+  });
+  assert.deepEqual(line, {
+    referenceLines: [{ name: 'baseline', value: 0 }],
+    thresholdColors: [{ value: '9', color: 'red' }],
+  });
+
+  const pie: Record<string, unknown> = { stackBars: true };
+  applyChartDisplay(pie, { chartType: 'pie', displayLimit: 2, sortByValue: true, stackBars: true });
+  assert.deepEqual(pie, { displayLimit: 2, sortByValue: true });
+
+  const bar: Record<string, unknown> = {
+    displayLimit: 4,
+    sortByValue: true,
+    stackBars: true,
+    referenceLines: [{ name: 'baseline', value: 0 }],
+  };
+  applyChartDisplay(bar, {
+    chartType: 'bar',
+    displayLimit: '4',
+    sortByValue: false,
+    stackBars: false,
+    referenceLines: [],
+  });
+  assert.deepEqual(bar, {});
+
+  const blankName: Record<string, unknown> = {
+    referenceLines: [{ name: 'baseline', value: 0 }],
+    stackBars: true,
+  };
+  applyChartDisplay(blankName, {
+    chartType: 'bar',
+    stackBars: false,
+    referenceLines: [{ name: '  ', value: 0 }],
+  });
+  assert.equal('referenceLines' in blankName, false);
+  assert.equal('stackBars' in blankName, false);
+
+  applyChartDisplay(line, {
+    chartType: 'line',
+    referenceLines: [{ name: 'baseline', value: 0 }],
+  });
+  assert.deepEqual(line.referenceLines, [{ name: 'baseline', value: 0 }]);
+
+  const eventTable: Record<string, unknown> = { scrollSeconds: 9 };
+  applyChartDisplay(eventTable, {
+    chartType: 'eventTable',
+    autoScroll: true,
+    scrollSeconds: 1.5,
+  });
+  assert.deepEqual(eventTable, { autoScroll: true, scrollSeconds: 1.5 });
+
+  const barSpeed: Record<string, unknown> = { autoScroll: true, scrollSeconds: 4 };
+  applyChartDisplay(barSpeed, { chartType: 'bar', autoScroll: true, scrollSeconds: 4 });
+  assert.deepEqual(barSpeed, {});
 });
