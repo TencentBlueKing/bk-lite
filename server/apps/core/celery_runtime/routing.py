@@ -8,7 +8,7 @@ from apps.core.celery_runtime.config import DEDICATED_QUEUES, POOL_IMPLEMENTATIO
 from apps.core.celery_runtime.manifest import TASK_ROUTES
 from apps.core.logger import celery_logger as logger
 
-QUEUE_NAMES = ("critical", "notification", "state", "background", "celery", *(q for queues in DEDICATED_QUEUES.values() for q in queues))
+QUEUE_NAMES = ("critical", "notification", "state", "background", "celery", "job", *(q for queues in DEDICATED_QUEUES.values() for q in queues))
 _last_warning = float("-inf")
 
 
