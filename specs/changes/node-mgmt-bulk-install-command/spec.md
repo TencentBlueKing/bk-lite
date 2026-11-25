@@ -32,10 +32,10 @@ curl -fsSLk 'https://<云区域节点服务>/.../bulk_bootstrap?token=<批次令
 ### 入口与页面
 
 - 批量命令和手动安装共用现有三步：安装配置、安装中、安装完成。不另开页面。
-- 安装配置的上半部分三种方式共用：操作系统、控制器版本、同步到 CMDB / 监控。组织用当前组织。
+- 安装配置的上半部分三种方式共用：操作系统、CPU 架构、控制器版本、同步到 CMDB / 监控。组织用当前组织。
 - Linux 的安装方式为三项：远程安装、手动安装、批量命令。Windows 只有现有的远程安装和手动安装。
 - 远程安装和手动安装保留现有主机表、Excel 导入和批量编辑。选中批量命令后，这一块换成最多台数、有效期和一条命令；命令在安装配置这一步复制。
-- 批量命令不提供 CPU 架构选择。x86_64 与 ARM64 共用这条命令。
+- 批量命令保留 CPU 架构选择，用来列出该架构的控制器版本。命令本身不写架构，x86_64 与 ARM64 仍共用这一条命令。
 - 安装中沿用同一步。手动安装仍是事先列出的每一行，并按行复制命令。批量命令开始时没有行，机器执行后才出现 IP、节点名、架构和结果。
 - 装完的节点在节点列表中的安装方式仍显示为手动。
 
@@ -130,4 +130,5 @@ curl -fsSLk 'https://<云区域节点服务>/.../bulk_bootstrap?token=<批次令
 - 受理、重复、失败释放、超时、已心跳节点保留、台数、撤销、过期、停用、组织隔离、架构包、引导脚本和中断上报、结果上报超时、上线标记、失败阶段文案、同一 IP 合并、缓存丢失后按批次推送：`server/apps/node_mgmt/tests/test_bulk_install_command.py`，29 passed。
 - 同一 IP 同时受理时，先写入的安装中占位让后到的请求返回重复。云区域行锁把两次写入排开。sqlite 测试库锁整库，不能再开两个写入连接证明这个结果。
 - 页面入口、复制命令含 `--node_ip`、进度文案区分安装中、重复、已上线和等待上线、默认有效期 1 天：`web/src/app/node-manager/(pages)/cloudregion/node/controllerInstall/installConfig/__tests__/bulkInstall.test.ts`，9 passed。
+- 选择批量命令后 CPU 架构仍在，切换架构会按该架构重新请求控制器版本：`web/src/app/node-manager/(pages)/cloudregion/node/controllerInstall/installConfig/__tests__/bulkArchitectureField.test.tsx`，1 passed。
 - 进度按 IP 合并，最多返回最近 200 个 IP；受理数和失败数仍按整批每一次尝试计数。已上线取决于节点是否已经上报心跳。失败原因只使用阶段对应的固定文案。
