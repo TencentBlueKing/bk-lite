@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Button,
+  Input,
   message,
   Dropdown,
   Popconfirm,
@@ -9,7 +10,7 @@ import {
   Modal
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
-import SearchActionBar from '@/components/search-action-bar';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -18,8 +19,7 @@ import {
   ModalRef,
   Organization,
   Pagination,
-  TableDataItem,
-  TreeItem
+  TableDataItem
 } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 import CustomTable from '@/components/custom-table';
@@ -42,6 +42,8 @@ import {
   consumeExtractorCreateHandoff,
   consumeExtractorCreateSample
 } from './logExtractorLogic';
+import { buildReceiveTree, ReceiveCollectType } from './receiveTree';
+import SyslogSourceDevicePane from './syslogSourceDevicePane';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -56,7 +58,8 @@ const Asset = () => {
     reassignCollectorNode,
     getCollectTypes,
     getDisplayCategoryEnum,
-    getLogExtractors
+    getLogExtractors,
+    getSyslogSourceDevices
   } = useLogApi();
   const { t } = useTranslation();
   const router = useRouter();
@@ -85,7 +88,10 @@ const Asset = () => {
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [treeData, setTreeData] = useState<TreeItem[]>([]);
+  const [collectTypes, setCollectTypes] = useState<ReceiveCollectType[]>([]);
+  const [categoryEnum, setCategoryEnum] = useState<{ id: string; name: string }[]>([]);
+  const [sourceDeviceCount, setSourceDeviceCount] = useState(0);
+  const [collectTypeNameById, setCollectTypeNameById] = useState<Record<string, string>>({});
   const [objectId, setObjectId] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [collectTypeMap, setCollectTypeMap] = useState<Record<number, string>>(
@@ -275,11 +281,30 @@ const Asset = () => {
     return false;
   }, [selectedRowKeys]);
 
+  const showingSourceDevices = collectTypeNameById[String(objectId)] === 'syslog';
+  const showingSourceDevicesRef = useRef(showingSourceDevices);
+  showingSourceDevicesRef.current = showingSourceDevices;
+  const syslogTypeId = collectTypes.find((item) => item.name === 'syslog')?.id;
+  const defaultSelectedKey =
+    searchParams.get('collect_type') === 'syslog' && syslogTypeId
+      ? String(syslogTypeId)
+      : 'all';
+  const treeData = useMemo(
+    () =>
+      buildReceiveTree(collectTypes, categoryEnum, {
+        allTitle: t('common.all'),
+        sourceDeviceCount,
+        sourceNodeTitle: (name) =>
+          t('log.sourceDevice.treeNode', '{name}来源', { name })
+      }),
+    [collectTypes, categoryEnum, sourceDeviceCount, t]
+  );
+
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !showingSourceDevices) {
       getAssetInsts();
     }
-  }, [pagination.current, pagination.pageSize, objectId, unassignedOnly]);
+  }, [pagination.current, pagination.pageSize, objectId, unassignedOnly, showingSourceDevices]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -295,7 +320,7 @@ const Asset = () => {
   }, []);
 
   useEffect(() => {
-    if (!frequence) {
+    if (!frequence || showingSourceDevices) {
       clearTimer();
       return;
     }
@@ -311,7 +336,8 @@ const Asset = () => {
     pagination.pageSize,
     searchText,
     objectId,
-    unassignedOnly
+    unassignedOnly,
+    showingSourceDevices
   ]);
 
   useEffect(() => {
@@ -399,71 +425,50 @@ const Asset = () => {
       ]);
       // 只有最新请求才处理数据
       if (currentRequestId !== treeRequestIdRef.current) return;
-      // 构建 collectType id 到 display_name 的映射
-      const typeMap = (data || []).reduce(
+      const types = (data || []) as ObjectItem[];
+      const typeMap = types.reduce(
         (acc: Record<number, string>, item: ObjectItem) => {
           acc[item.id] = item.display_name || item.name;
           return acc;
         },
         {}
       );
+      const nameMap = types.reduce(
+        (acc: Record<string, string>, item: ObjectItem) => {
+          acc[String(item.id)] = item.name;
+          return acc;
+        },
+        {}
+      );
+      let nextSourceCount = 0;
+      if (types.some((item) => item.name === 'syslog')) {
+        try {
+          const listed = await getSyslogSourceDevices({ page: 1, page_size: 1 });
+          nextSourceCount = listed?.count || 0;
+        } catch {
+          nextSourceCount = 0;
+        }
+      }
+      if (currentRequestId !== treeRequestIdRef.current) return;
       setCollectTypeMap(typeMap);
-      setTreeData(getTreeData(data || [], categoryEnum || []));
+      setCollectTypeNameById(nameMap);
+      setCollectTypes(
+        types.map((item) => ({
+          id: item.id,
+          name: item.name,
+          display_name: item.display_name,
+          display_category: item.display_category,
+          instance_count: typeof item.instance_count === 'number' ? item.instance_count : 0
+        }))
+      );
+      setCategoryEnum(categoryEnum || []);
+      setSourceDeviceCount(nextSourceCount);
     } finally {
       // 只有最新请求才控制 loading
       if (currentRequestId === treeRequestIdRef.current) {
         setTreeLoading(false);
       }
     }
-  };
-
-  const getTreeData = (
-    data: ObjectItem[],
-    categoryEnum: { id: string; name: string }[]
-  ): TreeItem[] => {
-    // Build category id to name map
-    const categoryMap = categoryEnum.reduce(
-      (acc: Record<string, string>, item) => {
-        acc[item.id] = item.name;
-        return acc;
-      },
-      {}
-    );
-
-    const groupedData = data.reduce(
-      (acc, item) => {
-        const category = item.display_category || 'other';
-        if (!acc[category]) {
-          acc[category] = {
-            title: categoryMap[category] || category,
-            key: category,
-            children: []
-          };
-        }
-        acc[category].children.push({
-          title: `${item.display_name || item.name}(${item.instance_count || 0})`,
-          label: item.display_name || item.name || '--',
-          key: item.id,
-          children: []
-        });
-        return acc;
-      },
-      {} as Record<string, TreeItem>
-    );
-
-    // Build tree in the order of categoryEnum
-    const orderedTree: TreeItem[] = categoryEnum
-      .filter((cat) => groupedData[cat.id])
-      .map((cat) => groupedData[cat.id]);
-
-    return [
-      {
-        title: t('common.all'),
-        key: 'all',
-        children: []
-      },
-      ...orderedTree
-    ];
   };
 
   const onRefresh = () => {
@@ -539,6 +544,7 @@ const Asset = () => {
   };
 
   const getAssetInsts = async (type?: string) => {
+    if (showingSourceDevicesRef.current) return;
     // 取消上一次请求
     instanceAbortControllerRef.current?.abort();
     const abortController = new AbortController();
@@ -625,33 +631,39 @@ const Asset = () => {
         data={treeData}
         loading={treeLoading}
         showAllMenu
-        defaultSelectedKey="all"
+        defaultSelectedKey={defaultSelectedKey}
         onNodeSelect={handleObjectChange}
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
-        <SearchActionBar
-          filters={(
-            <CatalogScopeSegmented
-              unassignedOnly={unassignedOnly}
-              onChange={(checked) => {
-                setUnassignedOnly(checked);
-                setSelectedRowKeys([]);
-                setPagination((prev) => ({ ...prev, current: 1 }));
-              }}
+        {showingSourceDevices ? (
+          <SyslogSourceDevicePane onUnfilteredCount={setSourceDeviceCount} />
+        ) : (
+          <>
+        <ToolbarSplitShell
+          leading={(
+            <Input.Search
+              allowClear
+              enterButton
+              className="w-60"
+              placeholder={t('common.searchPlaceHolder')}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              onPressEnter={() => getAssetInsts()}
+              onSearch={() => getAssetInsts()}
+              onClear={clearText}
             />
           )}
-          searchProps={{
-            allowClear: true,
-            placeholder: t('common.searchPlaceHolder'),
-            value: searchText,
-            onChange: (e) => setSearchText(e.target.value),
-            onPressEnter: () => getAssetInsts(),
-            onSearch: () => getAssetInsts(),
-            onClear: clearText,
-          }}
-          actions={(
+          trailing={(
             <>
+              <CatalogScopeSegmented
+                unassignedOnly={unassignedOnly}
+                onChange={(checked) => {
+                  setUnassignedOnly(checked);
+                  setSelectedRowKeys([]);
+                  setPagination((prev) => ({ ...prev, current: 1 }));
+                }}
+              />
               <Dropdown
                 overlayClassName="customMenu"
                 menu={assetMenuProps}
@@ -683,6 +695,8 @@ const Asset = () => {
           onChange={handleTableChange}
           rowSelection={rowSelection}
         ></CustomTable>
+          </>
+        )}
         <ReassignCollectorModal
           open={Boolean(reassignInstanceId)}
           title={t('log.integration.reassignCollectorNode')}

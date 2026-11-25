@@ -210,6 +210,20 @@
       "instanceUnavailable": "The collection instance for this log was not found, or the current team cannot edit its extractors.",
       "unsupportedCollectType": "This collect type does not support type-level extractors."
     },
+    "sourceDevice": {
+      "menuTitle": "Source devices",
+      "treeNode": "{name} sources",
+      "searchPlaceholder": "Search source IP or hostname",
+      "cloudRegion": "Cloud region",
+      "sourceIp": "Source IP",
+      "hostname": "Hostname",
+      "firstSeen": "First seen",
+      "lastSeen": "Last seen",
+      "status": "Status",
+      "active": "Active",
+      "silent": "Silent",
+      "unsupported": "Source devices are available only for the syslog integration."
+    },
     "integration": {
       "connect": "Connect",
       "searchCategory": "Search categories",

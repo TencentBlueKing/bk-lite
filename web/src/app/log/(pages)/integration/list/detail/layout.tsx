@@ -8,6 +8,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import { MenuItem } from '@/types/index';
 import { isTypeScopedCollectType } from '@/app/log/(pages)/integration/receive/logExtractorLogic';
+import { buildPassiveIntegrationDetailMenu } from './integrationDetailMenu';
 
 const IntegrationDetailLayout = ({
   children
@@ -64,29 +65,11 @@ const IntegrationDetailLayout = ({
       ];
     }
     if (!isPassiveCollect) return undefined;
-    return [
-      {
-        title: t('log.integration.configuration'),
-        icon: 'settings-fill',
-        url: '/log/integration/list/detail/configure',
-        name: 'integration_configure',
-        operation: []
-      },
-      {
-        title: t('log.extractor.menuTitle'),
-        icon: 'shujumoxingguanli',
-        url: '/log/integration/list/detail/extractor',
-        name: 'integration_extractor',
-        operation: []
-      },
-      {
-        title: t('log.integration.introduction'),
-        icon: 'mulu',
-        url: '/log/integration/list/detail/output',
-        name: 'integration_output',
-        operation: []
-      }
-    ];
+    return buildPassiveIntegrationDetailMenu({
+      configurationTitle: t('log.integration.configuration'),
+      extractorTitle: t('log.extractor.menuTitle'),
+      introductionTitle: t('log.integration.introduction')
+    });
   }, [isK8s, isPassiveCollect, t]);
 
   return (
