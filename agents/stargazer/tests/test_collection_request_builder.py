@@ -144,6 +144,23 @@ def test_monitor_builder_uses_the_same_request_contract():
     assert "password" not in request.params
 
 
+def test_vmware_monitor_uses_the_same_plugin_directory_as_cmdb():
+    request = build_collection_request(
+        task_id="vmware-monitor",
+        params={
+            "monitor_type": "vmware",
+            "host": "172.31.1.97",
+            "username": "readonly",
+            "password": "secret",
+            "timeout": 300,
+        },
+    )
+
+    assert request.plugin_ref == "vmware_vc.monitor"
+    assert request.params["monitor_type"] == "vmware"
+    assert request.params["timeout"] == 300
+
+
 def test_vmware_legacy_hostname_header_becomes_the_network_target():
     request = build_collection_request(
         task_id="vmware-hostname-header",

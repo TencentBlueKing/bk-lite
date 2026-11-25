@@ -97,7 +97,7 @@ class ExecutionPlanResolver:
                     safe_log_value(executor_type or "protocol"),
                     type(exc).__name__,
                 )
-                return self._default_plan(executor_type or "protocol")
+                return self._default_plan(executor_type or "protocol", request)
             executor = resolved.executor_config
         config = executor.config or {}
         target_policy = config.get("target_policy") or {}
@@ -154,12 +154,15 @@ class ExecutionPlanResolver:
             capacity_group=capacity_group,
         )
 
-    def _default_plan(self, executor_type: str) -> ExecutionPlan:
+    def _default_plan(self, executor_type: str, request: CollectionRequest) -> ExecutionPlan:
         is_remote = executor_type == "job"
         return ExecutionPlan(
             preflight_timeout_seconds=self._defaults.preflight_seconds,
             probe_timeout_seconds=self._defaults.probe_seconds,
-            collection_timeout_seconds=self._defaults.collection_seconds,
+            collection_timeout_seconds=_task_collection_timeout(
+                request.params.get("timeout"),
+                self._defaults.collection_seconds,
+            ),
             publish_timeout_seconds=self._defaults.publish_seconds,
             execution_mode="remote" if is_remote else "sync",
             capacity_group="remote_job" if is_remote else "default",
