@@ -13,6 +13,7 @@ import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
 import type { TabAlertLevel } from './tab-level';
 import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import { flatZeroStrokeSeries } from './flat-zero-stroke';
 import { describeFocusAxis, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
@@ -124,6 +125,16 @@ interface ThinTimeSeriesProps {
   formatReading?: (value: number) => string;
   /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
   plotHeight?: number;
+  /**
+   * 全零彩色笔画中心离开 X 轴的像素。缺省不启用，原有贴轴和影子偏移保持不变。
+   * 只移动绘制，采样仍是 0。
+   */
+  floorStrokeLiftPx?: number;
+  /**
+   * 传了才堆叠。缺省不堆叠，已有折线仍是各自的线。
+   * 全图都是 0 时改走统一上移，不再叠在轴上。
+   */
+  stackId?: string;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -473,7 +484,9 @@ export default function ThinTimeSeries({
   keepSeriesColor = false,
   markZeroCount = false,
   formatReading,
-  plotHeight
+  plotHeight,
+  floorStrokeLiftPx,
+  stackId
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -712,6 +725,24 @@ export default function ThinTimeSeries({
         const dashed = Boolean(legends[index]?.dashed);
         const samples = seriesAxisValues(plotted, key);
         const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
+        const liftPx = floorStrokeLiftPx && floorStrokeLiftPx > 0 ? floorStrokeLiftPx : 0;
+        const flatZero = samples.length > 0 && samples.every((value) => value === 0);
+        const chartAllZero = keys.every((item) => {
+          const itemSamples = seriesAxisValues(plotted, item);
+          return itemSamples.length > 0 && itemSamples.every((value) => value === 0);
+        });
+        if (liftPx > 0 && flatZero && (!stackId || chartAllZero)) {
+          return flatZeroStrokeSeries({
+            name: legends[index]?.title || legends[index]?.label || key,
+            color,
+            dashed,
+            liftPx,
+            points: plotted.map((point) => {
+              const value = point[key];
+              return [Number(point.time), typeof value === 'number' ? value : null] as const;
+            })
+          });
+        }
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
         // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
         const zeroCountLine = markedZeroSeries(markZeroCount, samples);
@@ -724,7 +755,7 @@ export default function ThinTimeSeries({
         // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
         const coloredFloor = sitsOnFloor && keepSeriesColor;
         const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
-        return {
+        const line = {
           type: 'line' as const,
           name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
@@ -767,9 +798,15 @@ export default function ThinTimeSeries({
                 type: dashed ? 'dashed' as const : 'solid' as const
               }
         };
+        if (!stackId) return line;
+        return {
+          ...line,
+          stack: stackId,
+          ...(showArea ? {} : { areaStyle: { color, opacity: 0.18 } })
+        };
       })
     };
-  }, [areaOpacity, axisColor, chartWindow, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, chartWindow, floorStrokeLiftPx, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, stackId, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

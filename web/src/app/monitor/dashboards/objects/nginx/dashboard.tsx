@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
   DashboardShell,
@@ -14,14 +15,33 @@ import {
   RingChartPanel,
   TrendChartPanel
 } from '../../shared/widgets';
+import {
+  dashboardModeOptions,
+  resolveObjectDashboardMode,
+  writeObjectDashboardMode,
+  type ObjectDashboardMode
+} from '../../shared/utils/pro-dashboard';
 import { NGINX_DASHBOARD_CONFIG } from './config';
+import NginxProLayout from './layered/nginx-pro-layout';
 import styles from './index.module.scss';
+
+const isNginxDashboardMode = (mode: string): mode is ObjectDashboardMode => (
+  mode === 'dashboard' || mode === 'metrics' || mode === 'category'
+);
 
 const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率'];
 const CHART_TITLES = ['连接状态趋势', '连接接受/处理速率', '连接占比趋势'];
 const RING_TITLES = ['连接状态分布'];
 export default function NginxDashboardPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const layout = resolveObjectDashboardMode('nginx', new URLSearchParams(searchParams.toString()));
   const dashboard = useSimpleDashboardData(NGINX_DASHBOARD_CONFIG);
+  const onLayoutChange = (mode: string) => {
+    if (!isNginxDashboardMode(mode) || mode === layout) return;
+    const params = writeObjectDashboardMode(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
@@ -33,6 +53,25 @@ export default function NginxDashboardPage() {
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      preserveLayouts
+      unifiedChrome
+      viewSwitcher={{
+        mode: layout,
+        onChange: onLayoutChange,
+        control: 'pill',
+        options: dashboardModeOptions('nginx')
+      }}
+      categoryContent={(
+        <NginxProLayout
+          instanceId={String(dashboard.instanceId || '')}
+          monitorObjectId={dashboard.monitorObjectId}
+          timeValues={dashboard.timeValues}
+          queryTimeRange={dashboard.queryTimeRange}
+          instanceLoading={dashboard.instanceLoading}
+          intervalSeconds={dashboard.currentInstanceInterval}
+          reloadKey={dashboard.loadTick}
+        />
+      )}
       dashboardContent={
         <>
           <DashboardSectionLabel styles={styles}>健康概览</DashboardSectionLabel>

@@ -431,6 +431,13 @@
       "template": "sum by (instance_id) (rate(haproxy_chkfail{svname=\"BACKEND\",__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:0c20a1e6",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_vts_upstream_response_time{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:0c3481c5",
       "object_names": [
         "Host"
@@ -478,6 +485,13 @@
         "Mysql"
       ],
       "template": "mysql_aborted_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:0e30ca6d",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(tlast_over_time(nginx_vts_filter_requests{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_requests\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_in_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_in_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_out_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_out_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_request_time{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_request_time\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_response_1xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_response_1xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_response_2xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_response_2xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_response_3xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_response_3xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_response_4xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_response_4xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_filter_response_5xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_filter_response_5xx_count\", \"__name__\", \".+\")"
     },
     {
       "id": "dashboard:v1:0e4c81d6",
@@ -842,6 +856,13 @@
       "template": "count(prometheus_remote_write_kube_pod_container_status_waiting_reason{instance_type=\"k3s\",reason=\"CrashLoopBackOff\",__$labels__} > 0)"
     },
     {
+      "id": "dashboard:v1:1975ce14",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum by (upstream, code) (label_replace(rate(nginx_vts_upstream_response_4xx_count{__$labels__}[__$window__]), \"code\", \"4xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]), \"code\", \"5xx\", \"__name__\", \".*\"))"
+    },
+    {
       "id": "dashboard:v1:19ad1449",
       "object_names": [
         "RabbitMQ"
@@ -1118,6 +1139,13 @@
       "template": "max by (instance_id) (mysql_variables_log_bin{__$labels__})"
     },
     {
+      "id": "dashboard:v1:20e7136f",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum by (upstream) (label_replace(rate(nginx_vts_upstream_requests{__$labels__}[__$window__]), \"code\", \"total\", \"__name__\", \".*\"))"
+    },
+    {
       "id": "dashboard:v1:20f32b60",
       "object_names": [
         "Cluster"
@@ -1181,6 +1209,13 @@
       "template": "avg(http_response_result_code{__$labels__} == bool 5) * 100"
     },
     {
+      "id": "dashboard:v1:246dff3e",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_upstream_in_bytes{__$labels__}[__$window__]), \"direction\", \"in\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_out_bytes{__$labels__}[__$window__]), \"direction\", \"out\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:24d978b4",
       "object_names": [
         "Host"
@@ -1207,6 +1242,13 @@
         "Cluster"
       ],
       "template": "100 * sum(prometheus_remote_write_kube_statefulset_status_replicas_ready{instance_type=\"k8s\",__$labels__}) / clamp_min(sum(prometheus_remote_write_kube_statefulset_replicas{instance_type=\"k8s\",__$labels__}),1)"
+    },
+    {
+      "id": "dashboard:v1:2567ea38",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_vts_upstream_request_time{__$labels__}"
     },
     {
       "id": "dashboard:v1:2573d10b",
@@ -1291,6 +1333,13 @@
         "SGLang"
       ],
       "template": "clamp_max(100 * avg(sglang:cache_hit_rate_gauge{__$labels__}), 100)"
+    },
+    {
+      "id": "dashboard:v1:28e3a1d0",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_upstream_response_1xx_count{__$labels__}[__$window__]), \"code\", \"1xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_response_2xx_count{__$labels__}[__$window__]), \"code\", \"2xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_response_3xx_count{__$labels__}[__$window__]), \"code\", \"3xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_response_4xx_count{__$labels__}[__$window__]), \"code\", \"4xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]), \"code\", \"5xx\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:2900961d",
@@ -1431,6 +1480,13 @@
         "ElasticSearch"
       ],
       "template": "elasticsearch_cluster_health_active_primary_shards{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2eab9309",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_filter_requests{__$labels__}[__$window__]), \"code\", \"total\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:2eb79f6c",
@@ -1757,6 +1813,13 @@
       "template": "rate(sqlserver_performance_value{counter=\"Checkpoint pages/sec\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:37a445c4",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_response_1xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"1xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_2xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"2xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_3xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"3xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_4xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"4xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_5xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"5xx\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:37b62004",
       "object_names": [
         "Loadbalance"
@@ -1811,6 +1874,13 @@
         "Active Directory"
       ],
       "template": "win_ad_LDAP_Bind_Time{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3971668f",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "last_over_time(nginx_vts_upstream_requests{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_in_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_out_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_request_time{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_time{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_1xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_2xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_3xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_4xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_response_5xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_down{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_backup{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_weight{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_max_fails{__$labels__}[24h]) or last_over_time(nginx_vts_upstream_fail_timeout{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:39a36fd6",
@@ -2962,6 +3032,13 @@
       "template": "nginx_waiting{__$labels__}"
     },
     {
+      "id": "dashboard:v1:5f670622",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_upstream_requests{__$labels__}[__$window__]), \"code\", \"total\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:5f75763c",
       "object_names": [
         "Loadbalance"
@@ -3009,6 +3086,13 @@
         "MSSQL"
       ],
       "template": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:60a92002",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "last_over_time(nginx_vts_server_requests{__$labels__}[24h]) or last_over_time(nginx_vts_server_in_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_server_out_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_server_request_time{__$labels__}[24h]) or last_over_time(nginx_vts_server_response_1xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_server_response_2xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_server_response_3xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_server_response_4xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_server_response_5xx_count{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:60d70282",
@@ -3312,6 +3396,13 @@
         "Postgres"
       ],
       "template": "sum by (instance_id, datname, queryid, query_text) (rate(postgresql_statement_total_time_seconds{__$labels__}[__$window__])) and on (instance_id, datname, queryid) topk(20, max by (instance_id, datname, queryid) (postgresql_statement_total_time_seconds{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:6ba5de0f",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(tlast_over_time(nginx_active{__$labels__}[20m]), \"metric\", \"nginx_active\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_reading{__$labels__}[20m]), \"metric\", \"nginx_reading\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_writing{__$labels__}[20m]), \"metric\", \"nginx_writing\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_waiting{__$labels__}[20m]), \"metric\", \"nginx_waiting\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_requests{__$labels__}[20m]), \"metric\", \"nginx_requests\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_accepts{__$labels__}[20m]), \"metric\", \"nginx_accepts\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_handled{__$labels__}[20m]), \"metric\", \"nginx_handled\", \"__name__\", \".+\")"
     },
     {
       "id": "dashboard:v1:6baa43bf",
@@ -3670,6 +3761,13 @@
         "MSSQL"
       ],
       "template": "sqlserver_performance_value{counter=\"Memory Grants Pending\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:79bf3ec9",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(tlast_over_time(nginx_vts_upstream_requests{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_requests\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_in_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_in_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_out_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_out_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_request_time{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_request_time\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_time{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_time\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_1xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_1xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_2xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_2xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_3xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_3xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_4xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_4xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_response_5xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_response_5xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_down{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_down\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_backup{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_backup\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_weight{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_weight\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_max_fails{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_max_fails\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_upstream_fail_timeout{__$labels__}[20m]), \"metric\", \"nginx_vts_upstream_fail_timeout\", \"__name__\", \".+\")"
     },
     {
       "id": "dashboard:v1:7a11ebe7",
@@ -4097,11 +4195,25 @@
       "template": "100 * sum(any(prometheus_remote_write_disk_used{instance_type=\"k8s\",__$labels__}) by (instance_id, device)) / sum(any(prometheus_remote_write_disk_total{instance_type=\"k8s\",__$labels__}) by (instance_id, device))"
     },
     {
+      "id": "dashboard:v1:87fb2dfe",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_in_bytes{__$labels__,zone!=\"*\"}[__$window__]), \"direction\", \"in\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_out_bytes{__$labels__,zone!=\"*\"}[__$window__]), \"direction\", \"out\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:8841883b",
       "object_names": [
         "Host"
       ],
       "template": "rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:884dc9fc",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_filter_in_bytes{__$labels__}[__$window__]), \"direction\", \"in\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_filter_out_bytes{__$labels__}[__$window__]), \"direction\", \"out\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:8894f1eb",
@@ -4207,6 +4319,13 @@
         "Oracle"
       ],
       "template": "sum by (instance_id) (rate(oracledb_activity_execute_count_gauge{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:8b54c00a",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(nginx_active{__$labels__}, \"status\", \"active\", \"__name__\", \".*\") or label_replace(nginx_reading{__$labels__}, \"status\", \"reading\", \"__name__\", \".*\") or label_replace(nginx_writing{__$labels__}, \"status\", \"writing\", \"__name__\", \".*\") or label_replace(nginx_waiting{__$labels__}, \"status\", \"waiting\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:8b5907bd",
@@ -4417,6 +4536,13 @@
         "Hardware Server"
       ],
       "template": "max by (name) (redfish_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"degrees_c\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:93ce27f9",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_requests{__$labels__}"
     },
     {
       "id": "dashboard:v1:93d0324a",
@@ -4706,6 +4832,13 @@
       "template": "topk(8, sum by (db) (rate(postgresql_temp_files{__$labels__}[__$window__])))"
     },
     {
+      "id": "dashboard:v1:9d82b33e",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_requests{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"total\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:9da847fa",
       "object_names": [
         "Host"
@@ -4811,6 +4944,13 @@
       "template": "any({instance_type='firewall', collect_type='netflow', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:a02f8939",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_requests{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"total\", \"__name__\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:a049174f",
       "object_names": [
         "Website"
@@ -4914,6 +5054,13 @@
         "MongoDB"
       ],
       "template": "mongodb_queued_reads{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a4745465",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "last_over_time(nginx_vts_filter_requests{__$labels__}[24h]) or last_over_time(nginx_vts_filter_in_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_filter_out_bytes{__$labels__}[24h]) or last_over_time(nginx_vts_filter_request_time{__$labels__}[24h]) or last_over_time(nginx_vts_filter_response_1xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_filter_response_2xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_filter_response_3xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_filter_response_4xx_count{__$labels__}[24h]) or last_over_time(nginx_vts_filter_response_5xx_count{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:a488e69e",
@@ -5269,6 +5416,13 @@
       "template": "sum by (instance_id) (max by (instance_id, pxname) (haproxy_bck{svname=\"BACKEND\",__$labels__}))"
     },
     {
+      "id": "dashboard:v1:b3894867",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_vts_server_request_time{__$labels__,zone=\"*\"}"
+    },
+    {
       "id": "dashboard:v1:b44e88a3",
       "object_names": [
         "IIS"
@@ -5453,6 +5607,13 @@
       "template": "max by (instance_id) (mysql_slave_last_sql_errno{__$labels__})"
     },
     {
+      "id": "dashboard:v1:b8a85d02",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum by (upstream, direction) (label_replace(rate(nginx_vts_upstream_in_bytes{__$labels__}[__$window__]), \"direction\", \"in\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_upstream_out_bytes{__$labels__}[__$window__]), \"direction\", \"out\", \"__name__\", \".*\"))"
+    },
+    {
       "id": "dashboard:v1:b8d124d3",
       "object_names": [
         "Process"
@@ -5556,6 +5717,13 @@
         "Hardware Server"
       ],
       "template": "max by (name) (redfish_psu_input_watts_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bc6b3226",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_in_bytes{__$labels__,zone=\"*\"}[__$window__]), \"direction\", \"in\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_out_bytes{__$labels__,zone=\"*\"}[__$window__]), \"direction\", \"out\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:bc9ca465",
@@ -5717,6 +5885,13 @@
         "Ping"
       ],
       "template": "min(ping_minimum_response_ms{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:c2f9010d",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_server_response_1xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"1xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_2xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"2xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_3xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"3xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_4xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"4xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_server_response_5xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"5xx\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:c3434181",
@@ -6029,6 +6204,13 @@
         "Zookeeper"
       ],
       "template": "zookeeper_open_file_descriptor_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cde97a96",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(nginx_vts_upstream_down{__$labels__}, \"field\", \"down\", \"__name__\", \".*\") or label_replace(nginx_vts_upstream_backup{__$labels__}, \"field\", \"backup\", \"__name__\", \".*\") or label_replace(nginx_vts_upstream_weight{__$labels__}, \"field\", \"weight\", \"__name__\", \".*\") or label_replace(nginx_vts_upstream_max_fails{__$labels__}, \"field\", \"maxFails\", \"__name__\", \".*\") or label_replace(nginx_vts_upstream_fail_timeout{__$labels__}, \"field\", \"failTimeout\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:cdf7218a",
@@ -6369,6 +6551,13 @@
       "template": "max by (instance_id) (mysql_process_list_threads_idle{__$labels__})"
     },
     {
+      "id": "dashboard:v1:d87079b3",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_vts_filter_request_time{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:d9291be5",
       "object_names": [
         "Haproxy"
@@ -6453,6 +6642,13 @@
         "Host"
       ],
       "template": "disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:dc4fd4a9",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(tlast_over_time(nginx_vts_server_requests{__$labels__}[20m]), \"metric\", \"nginx_vts_server_requests\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_in_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_server_in_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_out_bytes{__$labels__}[20m]), \"metric\", \"nginx_vts_server_out_bytes\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_request_time{__$labels__}[20m]), \"metric\", \"nginx_vts_server_request_time\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_response_1xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_server_response_1xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_response_2xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_server_response_2xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_response_3xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_server_response_3xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_response_4xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_server_response_4xx_count\", \"__name__\", \".+\") or label_replace(tlast_over_time(nginx_vts_server_response_5xx_count{__$labels__}[20m]), \"metric\", \"nginx_vts_server_response_5xx_count\", \"__name__\", \".+\")"
     },
     {
       "id": "dashboard:v1:dc58ccb7",
@@ -6891,6 +7087,13 @@
       "template": "max by (instance_id) (mysql_rpl_semi_sync_master_status{__$labels__})"
     },
     {
+      "id": "dashboard:v1:eee2cb60",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "nginx_vts_server_request_time{__$labels__,zone!=\"*\"}"
+    },
+    {
       "id": "dashboard:v1:ef765729",
       "object_names": [
         "Host"
@@ -7269,6 +7472,13 @@
         "Tomcat"
       ],
       "template": "tomcat_connector_bytes_received{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:fc1b48bf",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(rate(nginx_vts_filter_response_1xx_count{__$labels__}[__$window__]), \"code\", \"1xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_filter_response_2xx_count{__$labels__}[__$window__]), \"code\", \"2xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_filter_response_3xx_count{__$labels__}[__$window__]), \"code\", \"3xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_filter_response_4xx_count{__$labels__}[__$window__]), \"code\", \"4xx\", \"__name__\", \".*\") or label_replace(rate(nginx_vts_filter_response_5xx_count{__$labels__}[__$window__]), \"code\", \"5xx\", \"__name__\", \".*\")"
     },
     {
       "id": "dashboard:v1:fca7cb80",
