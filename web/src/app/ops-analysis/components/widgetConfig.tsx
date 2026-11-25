@@ -1142,6 +1142,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     // optional slots from the previous edit target cannot survive setFieldsValue merge.
     form.resetFields([
       'cardList',
+      'scalarCalcMethod',
+      'scalarCalcTimeField',
       'dimensionField',
       'valueField',
       'valueFields',

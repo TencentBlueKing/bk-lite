@@ -46,7 +46,7 @@ import {
 } from "@/app/ops-analysis/utils/componentParamSwitch";
 import { isMultipleSelectInputConfig } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
-import { fetchCompareData, validateGaugeData } from "@/app/ops-analysis/utils/compareQuery";
+import { fetchCompareData, validateSingleOrGaugeData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { toLineBarFieldMapping } from "@/app/ops-analysis/utils/lineBarFieldMapping";
@@ -931,20 +931,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         case "topN":
           return localizeStructureMessage(validateTopNData(data, config, errorMessage));
         case "single":
-        case "gauge": {
-          const selected = config?.selectedFields?.[0];
-          const missing = missingConfiguredField(data, [selected]);
-          if (missing) {
-            return localizeStructureMessage({
-              isValid: false,
-              message: chartFieldMissingMessage(missing),
-            });
-          }
-          if (type === "gauge") {
-            return localizeStructureMessage(validateGaugeData(data, config));
-          }
-          return { isValid: true };
-        }
+        case "gauge":
+          return localizeStructureMessage(validateSingleOrGaugeData(data, type, config));
         case "eventTable":
           return localizeStructureMessage(validateEventTableData(data));
         case "eventTimeline":

@@ -19,6 +19,10 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
+import {
+  ScalarCalcMethodItem,
+  ScalarCalcTimeFieldItem,
+} from '@/app/ops-analysis/components/widgetConfig/sections/scalarCalcFields';
 
 /** Switch + Tooltip 包装：透传 Form.Item 注入的 checked/onChange，同时支持 hover 提示 */
 const TooltipSwitch: React.FC<{
@@ -124,6 +128,9 @@ export const SingleValueSettingsSection: React.FC<
   const fieldPopupClassName = hasNestedFieldOptions
     ? ''
     : '[&_.ant-select-tree-switcher]:hidden [&_.ant-select-tree-switcher]:!w-0 [&_.ant-select-tree-indent]:hidden';
+  const calcMethod = Form.useWatch('scalarCalcMethod');
+  const hideValueField = calcMethod === 'count';
+  const requireValueField = !calcMethod;
 
   const getNodeTitleText = (title: any): string => {
     if (typeof title === 'string' || typeof title === 'number') {
@@ -151,6 +158,7 @@ export const SingleValueSettingsSection: React.FC<
       children: node.children ? buildFieldOptions(node.children) : undefined,
     }));
   };
+  const fieldTreeData = buildFieldOptions(singleValueTreeData);
 
   const handleFieldSelect = (value: string | undefined) => {
     onSingleValueFieldChange(value ? [value] : []);
@@ -159,7 +167,7 @@ export const SingleValueSettingsSection: React.FC<
   const displayFieldSelect = (
     <TreeSelect
       value={selectedFields[0]}
-      treeData={buildFieldOptions(singleValueTreeData)}
+      treeData={fieldTreeData}
       treeDefaultExpandAll
       allowClear
       showSearch
@@ -171,7 +179,9 @@ export const SingleValueSettingsSection: React.FC<
             ? t('topology.nodeConfig.fetchingDataFields')
             : singleValueTreeData.length === 0
               ? t('topology.nodeConfig.clickRefreshToGetFields')
-              : t('topology.nodeConfig.selectDisplayField')
+              : calcMethod
+                ? t('dashboard.calcFieldPlaceholder')
+                : t('topology.nodeConfig.selectDisplayField')
       }
       disabled={fieldSelectorDisabled}
       onChange={(value) => handleFieldSelect(value as string | undefined)}
@@ -204,12 +214,16 @@ export const SingleValueSettingsSection: React.FC<
         {t('dashboard.dataFields')}
       </ConfigSectionTitle>
 
+      <ScalarCalcMethodItem t={t} disabled={readonly} />
+
       <Form.Item
+        hidden={hideValueField}
+        preserve
         label={
           <span>
-            {t('topology.nodeConfig.displayField')}
+            {calcMethod ? t('dashboard.calcField') : t('topology.nodeConfig.displayField')}
             <Tooltip
-              title={t('dashboard.displayFieldTip')}
+              title={calcMethod ? t('dashboard.calcFieldTip') : t('dashboard.displayFieldTip')}
               styles={{ body: { maxWidth: 360 } }}
             >
               <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
@@ -225,7 +239,7 @@ export const SingleValueSettingsSection: React.FC<
           if (next === undefined || next === null || next === '') return [];
           return [String(next)];
         }}
-        rules={[
+        rules={requireValueField ? [
           {
             required: true,
             validator: (_, value) => {
@@ -237,10 +251,27 @@ export const SingleValueSettingsSection: React.FC<
               return Promise.resolve();
             },
           },
-        ]}
+        ] : []}
       >
         {displayFieldSelect}
       </Form.Item>
+
+      <ScalarCalcTimeFieldItem
+        t={t}
+        disabled={fieldSelectorDisabled}
+        treeData={fieldTreeData}
+        className={fieldSelectorClassName}
+        popupClassName={fieldPopupClassName}
+        placeholder={
+          !selectedDataSource
+            ? t('topology.nodeConfig.selectDataSourceFirst')
+            : loadingSingleValueData
+              ? t('topology.nodeConfig.fetchingDataFields')
+              : singleValueTreeData.length === 0
+                ? t('topology.nodeConfig.clickRefreshToGetFields')
+                : t('dashboard.calcTimeField')
+        }
+      />
 
         {showDescriptionField ? (
           <Form.Item
@@ -255,7 +286,7 @@ export const SingleValueSettingsSection: React.FC<
             name="descriptionField"
           >
             <TreeSelect
-              treeData={buildFieldOptions(singleValueTreeData)}
+              treeData={fieldTreeData}
               treeDefaultExpandAll
               allowClear
               showSearch

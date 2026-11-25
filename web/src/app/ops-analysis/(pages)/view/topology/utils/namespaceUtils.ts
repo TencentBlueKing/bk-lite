@@ -351,6 +351,9 @@ export const buildValueConfig = (
   if (values.interaction) {
     valueConfig.interaction = values.interaction;
   }
+  if (values.chartType === 'single' || values.chartType === 'gauge') {
+    if (values.scalarCalc) valueConfig.scalarCalc = values.scalarCalc;
+  }
   copySavedChartFields(valueConfig, values);
   const displayPatch = chartDisplayPatch(values);
   if (displayPatch.displayLimit !== undefined) {
