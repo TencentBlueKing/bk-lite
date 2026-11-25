@@ -10,6 +10,7 @@ from apps.core.utils.module_scope import EXCLUDED_CLIENTS, MODULE_ADMIN_ROLE, MO
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role, User
+from apps.system_mgmt.services.cmdb_asset_export_permission import grant_asset_export_from_view, prepare_asset_export_grant
 from apps.system_mgmt.services.platform_roles import is_view_menu
 from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
 
@@ -52,11 +53,14 @@ class Command(BaseCommand):
                 )
                 print(f"create {app_obj['client_id']} success")
                 grant_snapshot = snapshot_workflow_menu_grants() if app_obj["client_id"] == "workflow" else None
+                export_grant = prepare_asset_export_grant() if app_obj["client_id"] == "cmdb" else None
                 create_resource(app_inst, app_obj["menus"])
                 if grant_snapshot is not None:
                     apply_workflow_menu_permission_split(grant_snapshot)
                 print(f"create {app_obj['client_id']} resource success")
                 create_default_roles(app_inst, app_obj["roles"])
+                if export_grant is not None:
+                    grant_asset_export_from_view(export_grant)
                 print(f"create {app_obj['client_id']} roles success")
             Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})

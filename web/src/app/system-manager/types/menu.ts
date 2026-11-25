@@ -1,3 +1,10 @@
+export interface LandableMenuNode {
+  url?: string;
+  isNotMenuItem?: boolean;
+  isDirectory?: boolean;
+  children?: LandableMenuNode[];
+}
+
 export interface CustomMenu {
   id: number;
   app: string;
@@ -6,6 +13,7 @@ export interface CustomMenu {
   is_enabled: boolean;
   is_build_in: boolean;
   menu_count: number;
+  menus?: LandableMenuNode[];
   created_at: string;
   updated_at: string;
   created_by: string;

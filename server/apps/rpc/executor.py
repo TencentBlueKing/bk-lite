@@ -53,7 +53,7 @@ class Executor(object):
         return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def execute_local_stream(self, command, timeout=60, shell=None, execution_id=None, stream_log_topic=None, env=None):
+    def execute_local_stream(self, command, timeout=60, shell=None, execution_id=None, stream_log_topic=None, env=None, bat_args=None):
         """
         执行本地命令（流式）：在阻塞返回全量结果的同时，agent 按行 publish stdout/stderr
         到 stream_log_topic。返回值与 execute_local 一致。
@@ -70,6 +70,8 @@ class Executor(object):
             request_data["shell"] = shell
         if env:
             request_data["env"] = env
+        if bat_args:
+            request_data["bat_args"] = bat_args
         if execution_id:
             request_data["execution_id"] = execution_id
         if stream_log_topic:

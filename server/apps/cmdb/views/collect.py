@@ -587,7 +587,7 @@ class CollectModelViewSet(AuthViewSet):
         credential = self._build_region_query_credential(requests, params, task_id=task_id)
         model_id = credential.get("model_id")
         if (
-            model_id in {"qcloud", "aliyun", "hwcloud"}
+            model_id in {"qcloud", "aliyun", "hwcloud", "volcengine"}
             and self._blank_cloud_secret(credential.get("secret_id"))
             and self._blank_cloud_secret(credential.get("accessKey") or credential.get("access_key"))
         ):

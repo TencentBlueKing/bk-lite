@@ -44,4 +44,86 @@ describe('builtinMenusForCopy', () => {
       },
     ]);
   });
+
+  it('keeps hasDetail, hidden flags, and children below the first level', () => {
+    const source = [
+      menu({
+        name: 'application_list',
+        url: '/system-manager/application',
+        title: '应用管理',
+        hasDetail: true,
+        children: [
+          menu({
+            name: 'custom_menu',
+            url: '/system-manager/application/manage/menu',
+            title: '自定义菜单',
+            children: [
+              {
+                title: '菜单配置',
+                url: '/system-manager/application/manage/menu/config',
+                icon: 'icon',
+                operation: [],
+                name: '',
+                isNotMenuItem: true,
+              },
+            ],
+          }),
+        ],
+      }),
+      menu({
+        name: 'channel_list',
+        url: '/system-manager/channel',
+        title: '通知渠道',
+        children: [
+          menu({
+            name: 'channel_setting',
+            url: '/system-manager/channel/detail/settings',
+            title: '设置',
+            isNotMenuItem: true,
+          }),
+        ],
+      }),
+    ];
+
+    expect(builtinMenusForCopy(source, 'system-manager')).toEqual([
+      {
+        name: 'application_list',
+        title: '应用管理',
+        url: '/system-manager/application',
+        icon: 'icon',
+        hasDetail: true,
+        children: [
+          {
+            name: 'custom_menu',
+            title: '自定义菜单',
+            url: '/system-manager/application/manage/menu',
+            icon: 'icon',
+            children: [
+              {
+                title: '菜单配置',
+                url: '/system-manager/application/manage/menu/config',
+                icon: 'icon',
+                isNotMenuItem: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'channel_list',
+        title: '通知渠道',
+        url: '/system-manager/channel',
+        icon: 'icon',
+        children: [
+          {
+            name: 'channel_setting',
+            title: '设置',
+            url: '/system-manager/channel/detail/settings',
+            icon: 'icon',
+            isNotMenuItem: true,
+          },
+        ],
+      },
+    ]);
+  });
 });

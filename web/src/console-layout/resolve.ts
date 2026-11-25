@@ -243,8 +243,9 @@ const findFirstMenuHrefUnderPrefix = (menus: MenuItem[], prefix: string): string
 
 /**
  * Open the registered page when this app's menu already contains it.
- * A click from another app opens the root; that app then picks the registered
- * page, or the first page still in its menu, so a removed default does not 403.
+ * A click from another app, or a click before any menu is loaded, opens the
+ * root. That app then picks the registered page, or the first page still in
+ * its menu, so a removed default does not 403.
  */
 export const resolveAppLandingHref = (
   app: { url: string; is_build_in?: boolean },
@@ -252,12 +253,15 @@ export const resolveAppLandingHref = (
   menus: MenuItem[] = [],
 ): AppNavTarget => {
   const target = resolveAppNavigation(app, currentOrigin);
-  if (target.mode !== 'same-tab' || menus.length === 0) {
+  if (target.mode !== 'same-tab') {
     return target;
   }
   const prefix = appRoutePrefix(app.url, currentOrigin);
   if (!prefix) {
     return target;
+  }
+  if (menus.length === 0) {
+    return { mode: 'same-tab', href: prefix };
   }
   let landingPath = target.href;
   try {

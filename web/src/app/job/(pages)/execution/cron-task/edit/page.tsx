@@ -20,6 +20,7 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { describeCron } from '@/app/job/utils/scheduleDescription';
 import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook, ScriptParam } from '@/app/job/types';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -277,46 +278,6 @@ const EditCronTaskContent = () => {
       return () => clearTimeout(timer);
     }
   }, [cronMinute, cronHour, cronDay, cronMonth, cronWeek, scheduleStrategy, pageLoading]);
-
-  const describeCron = (): string => {
-    if (cronMinute === '*' && cronHour === '*' && cronDay === '*' && cronMonth === '*' && cronWeek === '*') {
-      return t('job.cronEveryMinute');
-    }
-
-    const parts: string[] = [];
-
-    if (cronMonth !== '*') {
-      parts.push(t('job.cronDescMonth').replace('{month}', cronMonth));
-    }
-    if (cronDay !== '*') {
-      if (cronMonth === '*') {
-        parts.push(t('job.cronDescEveryMonthDay').replace('{day}', cronDay));
-      } else {
-        parts.push(t('job.cronDescDay').replace('{day}', cronDay));
-      }
-    }
-    if (cronWeek !== '*') {
-      parts.push(t('job.cronDescWeek').replace('{week}', cronWeek));
-    }
-    if (cronHour !== '*') {
-      if (cronHour.includes('/')) {
-        parts.push(t('job.cronDescHourInterval').replace('{interval}', cronHour.replace('*/', '')));
-      } else {
-        parts.push(t('job.cronDescHour').replace('{hour}', cronHour));
-      }
-    } else if (cronDay !== '*' || cronWeek !== '*') {
-      parts.push(t('job.cronDescEveryHour'));
-    }
-    if (cronMinute !== '*') {
-      if (cronMinute.includes('/')) {
-        parts.push(t('job.cronDescMinuteInterval').replace('{interval}', cronMinute.replace('*/', '')));
-      } else {
-        parts.push(t('job.cronDescMinute').replace('{minute}', cronMinute.padStart(2, '0')));
-      }
-    }
-
-    return parts.join(' ') || getCronExpression();
-  };
 
   const getSimpleCronExpression = (): { cron_expression?: string; scheduled_time?: string; schedule_type: ScheduleType } => {
     const dailyTime = form.getFieldValue('dailyTime');
@@ -683,7 +644,7 @@ const EditCronTaskContent = () => {
                   ))}
                 </div>
                 <div className="w-[27rem] text-center text-sm text-(--color-text-2)">
-                  {describeCron()}
+                  {describeCron(getCronExpression(), t)}
                 </div>
                 <div className="w-[27rem] text-center text-sm">
                   {previewLoading ? (

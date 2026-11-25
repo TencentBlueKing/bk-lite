@@ -25,6 +25,30 @@ def test_revalidation_fails_closed_if_authorization_changes():
     assert error.value.code == "schema_changed"
 
 
+def test_asset_view_does_not_grant_export(monkeypatch):
+    owner = SimpleNamespace(disabled=False, group_list=[])
+    monkeypatch.setattr(
+        "apps.cmdb.services.transfer_authorization.build_user_authorization_context",
+        lambda _owner: {"is_superuser": False, "permission": {"cmdb": ["asset_info-View", "asset_info-Add"]}},
+    )
+    with pytest.raises(TransferError) as error:
+        TransferAuthorization.resolve(owner, 1, False, "host", "export")
+    assert error.value.status_code == 403
+    assert str(error.value) == "没有导出权限"
+
+
+def test_asset_export_does_not_grant_import(monkeypatch):
+    owner = SimpleNamespace(disabled=False, group_list=[])
+    monkeypatch.setattr(
+        "apps.cmdb.services.transfer_authorization.build_user_authorization_context",
+        lambda _owner: {"is_superuser": False, "permission": {"cmdb": ["asset_info-View", "asset_info-Export"]}},
+    )
+    with pytest.raises(TransferError) as error:
+        TransferAuthorization.resolve(owner, 1, False, "host", "import")
+    assert error.value.status_code == 403
+    assert str(error.value) == "没有导入权限"
+
+
 def test_add_permission_does_not_implicitly_allow_updating_existing_instances():
     context = SimpleNamespace(can_update=False, permission_map={1: {"permission_instances_map": {}, "inst_names": []}})
     instance = {"inst_name": "one", "model_id": "host", "organization": [1]}

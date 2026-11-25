@@ -9,6 +9,7 @@ CLASSIFICATION:
   vmware: VMware
   hyperv: Hyper-V
   aliyun: Alibaba Cloud
+  volcengine: Volcengine
   qcloud: Tencent Cloud
   hwcloud: Huawei Cloud
   azure: Azure
@@ -89,6 +90,13 @@ MODEL:
   hyperv_vm: Hyper-V VM
   aliyun_account: Alibaba Cloud
   aliyun_ecs: Alibabacloud ECS
+  volcengine_account: Volcengine
+  volcengine_ecs: Volcengine ECS
+  volcengine_eip: Volcengine EIP
+  volcengine_clb: Volcengine CLB
+  volcengine_mysql: Volcengine MySQL
+  volcengine_pgsql: Volcengine PostgreSQL
+  volcengine_tos: Volcengine TOS
   qcloud: Tencent Cloud
   qcloud_cvm: Tencentcloud CVM
   hwcloud: Huawei Cloud

@@ -1,6 +1,7 @@
 from django.db import models
 
 DISPLAY_BACKFILL_STAGE = "display_backfill"
+CONFIG_FILE_ORPHAN_TEMP_STAGE = "config_file_orphan_temp"
 
 
 class CmdbRepairState(models.Model):
@@ -19,10 +20,22 @@ class CmdbRepairState(models.Model):
 
 
 def mark_display_backfill_dirty() -> None:
-    CmdbRepairState.objects.update_or_create(
+    """清掉完成标记和游标，并推进代数。进行中的回填见到代数变化后放弃旧游标。"""
+    row, created = CmdbRepairState.objects.get_or_create(
         stage=DISPLAY_BACKFILL_STAGE,
-        defaults={"completed": False, "cursor": "", "outcome": ""},
+        defaults={"completed": False, "cursor": "", "outcome": "", "fingerprint": "1"},
     )
+    if created:
+        return
+    try:
+        generation = int(row.fingerprint or "0")
+    except ValueError:
+        generation = 0
+    row.completed = False
+    row.cursor = ""
+    row.outcome = ""
+    row.fingerprint = str(generation + 1)
+    row.save(update_fields=["completed", "cursor", "outcome", "fingerprint", "updated_at"])
 
 
 def mark_display_backfill_complete() -> None:

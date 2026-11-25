@@ -11,6 +11,22 @@ from apps.system_mgmt.serializers.custom_menu_group_serializer import CustomMenu
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
+def menu_tree_has_landable_page(menus):
+    """A landable page has a URL and is not a directory or a hidden item."""
+    if not isinstance(menus, list):
+        return False
+    for node in menus:
+        if not isinstance(node, dict):
+            continue
+        url = node.get("url")
+        url = url.strip() if isinstance(url, str) else ""
+        if url and not node.get("isNotMenuItem") and not node.get("isDirectory"):
+            return True
+        if menu_tree_has_landable_page(node.get("children")):
+            return True
+    return False
+
+
 class CustomMenuGroupFilter(FilterSet):
     """自定义菜单组筛选器"""
 
@@ -47,8 +63,8 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         )
 
     def _reject_empty_menus(self, request, menus):
-        """A custom menu with no items cannot be stored or turned on."""
-        if isinstance(menus, list) and len(menus) == 0:
+        """A custom menu with no landable page cannot be stored or turned on."""
+        if isinstance(menus, list) and not menu_tree_has_landable_page(menus):
             return JsonResponse(
                 {"result": False, "message": self._loader(request).get("error.empty_custom_menu_not_allowed")},
                 status=400,

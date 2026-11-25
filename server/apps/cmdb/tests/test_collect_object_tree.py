@@ -97,12 +97,12 @@ def test_tree_returns_actual_builtin_credential_key_and_category(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_all_118_tree_entries_publish_their_credential_binding():
+def test_all_tree_entries_publish_their_credential_binding():
     tree = get_collect_obj_tree(with_credential_types=True)
     entries = [child for group in tree for child in group.get("children", [])]
-    assert len(entries) == 118
-    assert sum(bool(child["credential_binding"]) for child in entries) == 116
-    assert {child["id"] for child in entries if not child["credential_binding"]} == {"k8s_cluster", "ip_discovery"}
+    assert len(entries) == 120
+    assert {child["id"] for child in entries if not child["credential_binding"]} == {"k8s_cluster", "ip_discovery", "ssl_cer"}
+    assert sum(bool(child["credential_binding"]) for child in entries) == 117
 
 
 def test_get_collect_obj_tree_host_group_uses_logical_host_name(monkeypatch):
@@ -215,6 +215,10 @@ def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
         objects["aliyun_account"]["credential_protocol"],
         objects["aliyun_account"]["credential_kind"],
     ) == ("aliyun_openapi", "access_key")
+    assert (
+        objects["volcengine_account"]["credential_protocol"],
+        objects["volcengine_account"]["credential_kind"],
+    ) == ("volcengine_openapi", "access_key")
     assert (
         objects["qcloud"]["credential_protocol"],
         objects["qcloud"]["credential_kind"],

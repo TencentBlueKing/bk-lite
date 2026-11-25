@@ -9,35 +9,36 @@ import type { CustomMenu, CustomMenuListParams } from '@/app/system-manager/type
 import type { MenuItem } from '@/types/index';
 
 export interface CopiedMenuNode {
-  name: string;
+  name?: string;
   title?: string;
   url?: string;
   icon?: string;
+  hasDetail?: boolean;
+  isNotMenuItem?: boolean;
   children?: CopiedMenuNode[];
 }
 
-/** Builtin copy keeps every visible top-level page, including ones with no children. */
+const copyMenuNode = (menu: MenuItem): CopiedMenuNode => {
+  const children = (menu.children ?? []).map(copyMenuNode);
+  return {
+    ...(menu.name ? { name: menu.name } : {}),
+    title: menu.title,
+    url: menu.url,
+    icon: menu.icon,
+    ...(menu.hasDetail ? { hasDetail: true } : {}),
+    ...(menu.isNotMenuItem ? { isNotMenuItem: true } : {}),
+    ...(children.length > 0 ? { children } : {}),
+  };
+};
+
+/** Builtin copy keeps visible top-level pages, including pages with no children. */
 export function builtinMenusForCopy(configMenus: MenuItem[], clientId: string): CopiedMenuNode[] {
   return configMenus
     .filter((menu) => {
       if (!menu.url || !clientId || menu.isNotMenuItem) return false;
       return menu.url.split('/').filter(Boolean)[0] === clientId;
     })
-    .map((menu) => {
-      const children = (menu.children ?? []).map((child) => ({
-        name: child.name,
-        title: child.title,
-        url: child.url,
-        icon: child.icon,
-      }));
-      return {
-        name: menu.name,
-        title: menu.title,
-        url: menu.url,
-        icon: menu.icon,
-        ...(children.length > 0 ? { children } : {}),
-      };
-    });
+    .map(copyMenuNode);
 }
 
 interface UseCustomMenuListReturn {

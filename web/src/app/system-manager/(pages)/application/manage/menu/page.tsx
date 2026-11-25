@@ -20,6 +20,7 @@ import {
   useCustomMenuActions,
   useCustomMenuModal,
 } from '@/app/system-manager/hooks/useCustomMenuPage';
+import { customMenuLacksLandablePage } from '@/app/system-manager/utils/landableMenu';
 
 const CustomMenuPage = () => {
   const { t } = useTranslation();
@@ -117,7 +118,7 @@ const CustomMenuPage = () => {
               key: 'toggle',
               label: record.is_enabled ? t('system.menu.disable') : t('system.menu.enable'),
               onClick: () => {
-                if (!record.is_enabled && !record.is_build_in && record.menu_count === 0) {
+                if (!record.is_enabled && !record.is_build_in && customMenuLacksLandablePage(record)) {
                   message.error(t('system.menu.menuItemsRequired'));
                   return;
                 }

@@ -1,12 +1,13 @@
-"""ScriptExecutionRunner 单测（merge_script_with_params 纯函数 + 执行分支）"""
+"""ScriptExecutionRunner 单测（prepare_script_with_params 纯函数 + 执行分支）"""
 
+import shlex
 from unittest.mock import patch
 
 import pytest
 
 from apps.job_mgmt.constants import DangerousLevel, ExecutionStatus, JobType, ScriptType, TargetSource
 from apps.job_mgmt.models import DangerousRule, JobExecution
-from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
+from apps.job_mgmt.services.script_execution_runner import BatArgumentError, ScriptExecutionRunner
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -19,22 +20,19 @@ class TestMergeScriptWithParams:
         return ScriptExecutionRunner(1)
 
     def test_empty_params_returns_content(self):
-        assert self._runner().merge_script_with_params("echo", "", ScriptType.SHELL) == "echo"
+        assert self._runner().prepare_script_with_params("echo", "", ScriptType.SHELL) == ("echo", None)
 
     def test_shell_injects_positional(self):
-        out = self._runner().merge_script_with_params("echo $1", "'a' 'b'", ScriptType.SHELL)
+        out, _ = self._runner().prepare_script_with_params("echo $1", "'a' 'b'", ScriptType.SHELL)
         assert out.startswith("set -- ") and "echo $1" in out
 
     def test_python_injects_argv(self):
-        out = self._runner().merge_script_with_params("print(1)", "'a'", ScriptType.PYTHON)
+        out, _ = self._runner().prepare_script_with_params("print(1)", "'a'", ScriptType.PYTHON)
         assert "_sys.argv" in out
 
     def test_powershell_injects_args(self):
-        out = self._runner().merge_script_with_params("echo", "'a'", ScriptType.POWERSHELL)
+        out, _ = self._runner().prepare_script_with_params("echo", "'a'", ScriptType.POWERSHELL)
         assert "$args = @(" in out
-
-    def test_bat_unchanged(self):
-        assert self._runner().merge_script_with_params("echo", "'a'", ScriptType.BAT) == "echo"
 
 
 def _execution(**over):
@@ -50,6 +48,40 @@ def _execution(**over):
     }
     defaults.update(over)
     return JobExecution.objects.create(**defaults)
+
+
+@pytest.mark.parametrize("invalid", ['"', "\r", "\n", "\x00", "\t", "\x7f", "\ud800", "\ufffe", "\uffff"])
+def test_invalid_bat_parameter_does_not_expose_its_value(invalid):
+    with pytest.raises(BatArgumentError) as raised:
+        ScriptExecutionRunner.prepare_script_with_params("echo %1", shlex.join(["first", "secret-sentinel" + invalid]), ScriptType.BAT)
+    assert "2" in str(raised.value)
+    assert "secret-sentinel" not in str(raised.value)
+
+
+def test_bat_parameter_length_measured_as_utf16():
+    with pytest.raises(BatArgumentError, match="cmd.exe"):
+        ScriptExecutionRunner.prepare_script_with_params("echo %1", shlex.join(["📦" * 4096]), ScriptType.BAT)
+
+
+def test_invalid_bat_parameter_marks_job_failed_before_dispatch():
+    execution = _execution(script_type=ScriptType.BAT, status=ExecutionStatus.PENDING, params=shlex.join(['secret-sentinel"']))
+    runner = ScriptExecutionRunner(execution.id)
+    with (
+        patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"),
+        patch.object(runner, "_run_via_ansible_if_needed") as ansible,
+        patch.object(runner, "_run_via_sidecar") as sidecar,
+        patch(PUB_PATH) as done,
+    ):
+        runner.run()
+    ansible.assert_not_called()
+    sidecar.assert_not_called()
+    execution.refresh_from_db()
+    assert execution.status == ExecutionStatus.FAILED
+    assert execution.failed_count == 1
+    assert execution.execution_results[0]["status"] == ExecutionStatus.FAILED
+    assert "1" in execution.execution_results[0]["error_message"]
+    assert "secret-sentinel" not in str(execution.execution_results)
+    done.assert_called_once_with(execution.id, "n1", ExecutionStatus.FAILED)
 
 
 class TestDangerousCommand:

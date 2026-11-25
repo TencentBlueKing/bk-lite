@@ -16,6 +16,7 @@ export interface SelectionActionBarProps {
   count: number;
   canBatchEdit: boolean;
   showMonitorLink: boolean;
+  canExport: boolean;
   onBatchEdit: () => void;
   onExport: () => void;
   onSubscribe: () => void;
@@ -59,6 +60,7 @@ const SelectionActionBar = ({
   count,
   canBatchEdit,
   showMonitorLink,
+  canExport,
   onBatchEdit,
   onExport,
   onSubscribe,
@@ -87,7 +89,7 @@ const SelectionActionBar = ({
           onClick={onBatchEdit}
         />
       </PermissionWrapper>
-      <ActionButton label={t('export')} icon={<ExportOutlined />} onClick={onExport} />
+      {canExport ? <ActionButton label={t('export')} icon={<ExportOutlined />} onClick={onExport} /> : null}
       <ActionButton label={t('subscription.subscribe')} icon={<BellOutlined />} onClick={onSubscribe} />
       {showMonitorLink ? (
         <PermissionWrapper requiredPermissions={['Edit']}>

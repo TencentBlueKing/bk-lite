@@ -5,6 +5,7 @@ import { message } from 'antd';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import { invalidateAppMenus } from '@/context/permissions';
 import type { FunctionMenuItem, SourceMenuNode } from '@/app/system-manager/types/menu';
+import { hasLandableMenuPage } from '@/app/system-manager/utils/landableMenu';
 import type { MixedItem, MenuGroup } from './useMenuConfig';
 
 interface MenuDetailData {
@@ -263,11 +264,6 @@ export function useMenuSave(
       return;
     }
 
-    if (mixedItems.length === 0) {
-      message.error(t('system.menu.menuItemsRequired'));
-      return;
-    }
-
     const menus = mixedItems.map((item) => {
       if (item.type === 'group') {
         const group = item.data as MenuGroup;
@@ -281,6 +277,11 @@ export function useMenuSave(
         return serializeMenuPage(item.data as FunctionMenuItem);
       }
     });
+
+    if (!hasLandableMenuPage(menus)) {
+      message.error(t('system.menu.menuItemsRequired'));
+      return;
+    }
 
     setSaveLoading(true);
     try {

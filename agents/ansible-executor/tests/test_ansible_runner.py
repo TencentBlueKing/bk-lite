@@ -25,6 +25,7 @@ from service.ansible_runner import (
     run_command,
     to_adhoc_request,
 )
+from service.failure_summary import classify_task_failure
 
 
 def test_redact_cli_command_hides_extra_vars_values():
@@ -618,6 +619,128 @@ def test_host_credentials_inventory_sets_winrm_timeouts_and_disables_pipelining(
     assert "ansible_winrm_read_timeout_sec=70" in inventory
     assert "ansible_winrm_connection_timeout=60" in inventory
     assert "ansible_pipelining=False" in inventory
+
+
+SOLARIS_LEGACY_SSH_EXTRA_ARGS = (
+    "-o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1 "
+    "-o HostKeyAlgorithms=+ssh-rsa,ssh-dss "
+    "-o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss "
+    "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"
+)
+
+
+def _password_ssh_host(**extra):
+    item = {
+        "host": "10.0.0.8",
+        "user": "root",
+        "password": "credential",
+        "connection": "ssh",
+        "port": 22,
+    }
+    item.update(extra)
+    return item
+
+
+def test_host_credentials_inventory_without_ssh_extra_args_is_unchanged(tmp_path, monkeypatch):
+    monkeypatch.delenv("SSH_KNOWN_HOSTS_FILE", raising=False)
+
+    inventory = _build_host_credentials_inventory(tmp_path, [_password_ssh_host()])
+
+    assert inventory == (
+        "[all]\n"
+        "10.0.0.8 ansible_user=root ansible_port=22 ansible_connection=ssh "
+        "ansible_password=credential "
+        'ansible_ssh_common_args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"\n'
+    )
+    assert "ansible_ssh_extra_args" not in inventory
+
+
+def test_host_credentials_inventory_writes_ssh_extra_args_for_password_and_key(tmp_path, monkeypatch):
+    import shlex
+
+    monkeypatch.delenv("SSH_KNOWN_HOSTS_FILE", raising=False)
+    password_inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [_password_ssh_host(ssh_extra_args=SOLARIS_LEGACY_SSH_EXTRA_ARGS)],
+    )
+    key_inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.0.0.8",
+                "user": "root",
+                "connection": "ssh",
+                "port": 22,
+                "private_key_file": str(tmp_path / "id_rsa"),
+                "ssh_extra_args": SOLARIS_LEGACY_SSH_EXTRA_ARGS,
+            }
+        ],
+    )
+
+    password_tokens = shlex.split(password_inventory.strip().splitlines()[-1], comments=True)
+    key_tokens = shlex.split(key_inventory.strip().splitlines()[-1], comments=True)
+    expected = f"ansible_ssh_extra_args={SOLARIS_LEGACY_SSH_EXTRA_ARGS}"
+    assert expected in password_tokens
+    assert expected in key_tokens
+    assert "ansible_password=credential" in password_tokens
+    assert f"ansible_ssh_private_key_file={tmp_path / 'id_rsa'}" in key_tokens
+    assert "ansible_ssh_common_args" not in key_inventory
+    assert "PubkeyAcceptedKeyTypes" not in password_inventory
+
+
+def test_host_credentials_inventory_accepts_pubkey_accepted_key_types_alias(tmp_path, monkeypatch):
+    monkeypatch.delenv("SSH_KNOWN_HOSTS_FILE", raising=False)
+    legacy_alias = "-o PubkeyAcceptedKeyTypes=+ssh-rsa -o kexalgorithms=+diffie-hellman-group14-sha1"
+
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [_password_ssh_host(ssh_extra_args=legacy_alias)],
+    )
+
+    assert "PubkeyAcceptedKeyTypes=+ssh-rsa" in inventory
+    assert "KexAlgorithms=+diffie-hellman-group14-sha1" in inventory
+
+
+@pytest.mark.parametrize(
+    "ssh_extra_args",
+    [
+        "-o ProxyCommand=nc attacker 22",
+        "-o proxycommand=nc attacker 22",
+        "-o KexAlgorithms=+diffie-hellman-group14-sha1 -o ProxyCommand=nc attacker 22",
+        "-o LocalCommand=id",
+        "-o KexAlgorithms=foo;id",
+        "-o KexAlgorithms=+ok\n-o ProxyCommand=id",
+        "rm -rf /",
+        "-o UserKnownHostsFile=/tmp/known_hosts",
+    ],
+)
+def test_host_credentials_inventory_rejects_ssh_extra_args_outside_allowlist(tmp_path, ssh_extra_args):
+    with pytest.raises(ValueError, match="ssh_extra_args"):
+        _build_host_credentials_inventory(
+            tmp_path,
+            [_password_ssh_host(ssh_extra_args=ssh_extra_args)],
+        )
+
+
+@pytest.mark.parametrize(
+    ("stderr", "expected"),
+    [
+        (
+            "Unable to negotiate with the host port 22: no matching key exchange method found. "
+            "Their offer: gss-group1-sha1-toWM5Slw5",
+            "ssh_algorithm_mismatch",
+        ),
+        ("no matching host key type found. Their offer: ssh-rsa", "ssh_algorithm_mismatch"),
+        ("no matching cipher found. Their offer: aes128-cbc", "ssh_algorithm_mismatch"),
+        ("no matching MAC found. Their offer: hmac-sha1", "ssh_algorithm_mismatch"),
+        ("Failed to connect to the host via ssh: Connection timed out", "target_unreachable"),
+        ("Failed to connect to the host via ssh: No route to host", "target_unreachable"),
+    ],
+)
+def test_classify_task_failure_maps_algorithm_mismatch_before_unreachable(stderr, expected):
+    summary = {"failure_status": "UNREACHABLE!", "failure_stderr": stderr}
+
+    assert classify_task_failure(summary, "ansible adhoc failed with exit code 4") == expected
 
 
 def test_prepare_adhoc_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):

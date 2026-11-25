@@ -37,6 +37,7 @@ CMDB_MENUS = [
     "asset_info-Add",
     "asset_info-Edit",
     "asset_info-Delete",
+    "asset_info-Export",
     "asset_info-Add Associate",
     "asset_info-Delete Associate",
     "auto_collection-View",

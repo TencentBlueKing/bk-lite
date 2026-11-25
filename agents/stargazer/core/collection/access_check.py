@@ -10,7 +10,7 @@ from core.collection.enums import AccessProbeStatus
 from core.collection.runtime import CollectionRequest
 from core.logger import logger, safe_log_value
 
-_CLOUD_MODELS = frozenset({"aliyun", "aliyun_account", "qcloud", "hwcloud", "fusioninsight"})
+_CLOUD_MODELS = frozenset({"aliyun", "aliyun_account", "qcloud", "hwcloud", "fusioninsight", "volcengine", "volcengine_account"})
 _SHARED_PREFLIGHT = frozenset({"tcp", "remote", "https", "tls"})
 _IDENTITY_KEYS = (
     "credential_id",

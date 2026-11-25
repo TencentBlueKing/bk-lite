@@ -226,7 +226,7 @@ def test_batch_init_cmdb_disables_periodic_task_without_enqueue(mocker):
     disable = mocker.patch("apps.cmdb.tasks.uuid_migration.disable_uuid_migration_periodic_task")
     delay = mocker.patch("apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime.delay")
     mocker.patch("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay")
-    mocker.patch("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task")
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.disable_display_field_backfill_periodic_task")
     mocker.patch("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay")
     mocker.patch("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", return_value=SimpleNamespace(pk=1, enabled=True))
     mocker.patch("apps.cmdb.tasks.ci_context.rebuild_ci_context_runtime.delay")
@@ -254,7 +254,7 @@ def test_batch_init_cmdb_continues_when_disable_fails(mocker):
         side_effect=RuntimeError("beat table missing"),
     )
     mocker.patch("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay")
-    mocker.patch("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task")
+    mocker.patch("apps.cmdb.tasks.display_field_backfill.disable_display_field_backfill_periodic_task")
     mocker.patch("apps.cmdb.tasks.instance_shape_repair.repair_cmdb_instance_shape.delay")
     mocker.patch(
         "apps.core.management.commands.batch_init.call_command",
