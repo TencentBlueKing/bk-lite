@@ -118,6 +118,18 @@ test('session history envelope maps bubbles without turning usage into a message
   assert.equal(messages[0].content, 'hello');
 });
 
+test('reopens feedback on its saved answer only', () => {
+  const messages = mapPlatformMessages([
+    { id: 50, conversation_role: 'user', conversation_content: '问题', feedback: 'like' },
+    { id: 51, conversation_role: 'assistant', conversation_content: '回答', feedback: 'dislike', feedback_detail: { reason: 'inaccurate', comment: '阈值不对' } },
+    { id: 52, conversation_role: 'assistant', conversation_content: '回答', feedback: null },
+  ]);
+  assert.deepEqual(messages[1].feedbackDetail, { reasons: ['inaccurate'], comment: '阈值不对' });
+  assert.deepEqual(messages.map(msg => [msg.persistedMessageId, msg.feedback]), [
+    [undefined, undefined], [51, 'dislike'], [52, null],
+  ]);
+});
+
 test('maps published platform skill channels and restores last selection', () => {
   const apps = mapPlatformApplications([
     {

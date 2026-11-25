@@ -49,4 +49,5 @@ class CollectConfig(TimeInfo, MaintainerInfo):
     class Meta:
         verbose_name = "采集配置"
         verbose_name_plural = "采集配置"
-        unique_together = ("monitor_instance", "collector", "collect_type", "config_type")
+        # 脚本采集按插件分开。同一实例可以挂多份脚本，同一插件仍只保留一份。
+        unique_together = ("monitor_instance", "collector", "collect_type", "config_type", "monitor_plugin")

@@ -2,8 +2,7 @@ from apps.core.logger import celery_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models import Metric
-from apps.monitor.models.monitor_object import MonitorObjectOrganizationRule, MonitorInstanceOrganization, MonitorObject, \
-    MonitorInstance
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -15,7 +14,7 @@ class RuleGrouping:
     @staticmethod
     def get_query(rule):
         try:
-            metric = Metric.objects.filter(id=rule["metric_id"]).first()
+            metric = Metric.objects.filter(id=rule["metric_id"]).select_related("monitor_plugin").first()
             if not metric:
                 logger.warning(f"规则中的指标不存在，metric_id: {rule.get('metric_id')}")
                 return None
@@ -28,7 +27,9 @@ class RuleGrouping:
             if vm_filter_str.endswith(","):
                 vm_filter_str = vm_filter_str[:-1]
             query = query.replace("__$labels__", vm_filter_str)
-            return query
+            from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+            return isolate_metric_query(query, metric)
         except Exception as e:
             logger.error(f"构建查询语句失败，metric_id: {rule.get('metric_id')}, 错误: {e}", exc_info=True)
             return None
@@ -55,7 +56,7 @@ class RuleGrouping:
 
             metrics = VictoriaMetricsAPI().query(query, step="10m")
             for metric_info in metrics.get("data", {}).get("result", []):
-                instance_id = str(tuple([metric_info["metric"].get(i) for i in obj_metric_map["instance_id_keys"]]))
+                instance_id = str(tuple(metric_info["metric"].get(i) for i in obj_metric_map["instance_id_keys"]))
                 if instance_id not in obj_instance_id_set:
                     continue
                 if instance_id:
@@ -110,9 +111,9 @@ class RuleGrouping:
             batch_size = DatabaseConstants.BULK_CREATE_BATCH_SIZE
             for offset in range(0, len(instance_ids), batch_size):
                 existing.update(
-                    MonitorInstanceOrganization.objects.filter(
-                        monitor_instance_id__in=instance_ids[offset : offset + batch_size]
-                    ).values_list("monitor_instance_id", "organization")
+                    MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=instance_ids[offset : offset + batch_size]).values_list(
+                        "monitor_instance_id", "organization"
+                    )
                 )
             create_asso_set = monitor_inst_asso_set - existing
             if not create_asso_set:

@@ -8,6 +8,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import type { Message } from '../packages/webchat-core/src/types';
 import { Chat, type ChatProps } from '../packages/webchat-ui/src/Chat';
 import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
+import { saveAnswerFeedback } from '../packages/webchat-ui/src/platform/api';
 
 // Node.js 18 没有全局 File，但该版本的 node:buffer 已提供兼容实现。
 // 仅在测试环境缺失时补齐，避免改变浏览器运行时行为。
@@ -543,6 +544,87 @@ const submitAndWait = async (root: ReactTestInstance, text: string, seen: () => 
     });
   }
 };
+
+test('平台新回答收到落库回执后可点赞、点踩、取消；保存失败保留原评价', async () => {
+  const originalFetch = globalThis.fetch;
+  const events = [
+    { type: 'RUN_STARTED', threadId: 's', runId: 'r' },
+    { type: 'TEXT_MESSAGE_START', messageId: 'temporary', role: 'assistant' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: 'temporary', delta: '回答' },
+    { type: 'TEXT_MESSAGE_END', messageId: 'temporary' },
+    { type: 'CUSTOM', name: 'assistant_message_saved', value: { message_id: 91 } },
+    { type: 'RUN_FINISHED', threadId: 's', runId: 'r' },
+  ];
+  const writes: unknown[] = [];
+  let fail = false;
+  const chatUrl = '/api/proxy/opspilot/skill_channel/12/chat/';
+  const feedbackUrl = '/messages/{messageId}/feedback/?channel_id={channelId}';
+  globalThis.fetch = async (input, init) => {
+    if (String(input) === chatUrl) {
+      return new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(''));
+    }
+    assert.equal(String(input), '/messages/91/feedback/?channel_id=12');
+    assert.equal(init?.method, 'POST');
+    assert.equal(init?.credentials, 'include');
+    const { session_id, feedback, feedback_detail } = JSON.parse(String(init?.body));
+    assert.equal(session_id, 'session-1');
+    writes.push(feedback_detail ?? feedback);
+    return Response.json({ result: !fail, data: { feedback, feedback_detail } }, { status: fail ? 503 : 200 });
+  };
+  const renderer = renderChat({
+    sseUrl: chatUrl,
+    onAnswerFeedback: (id, value, detail) => saveAnswerFeedback(feedbackUrl, '12', 'session-1', id, value, {}, detail),
+  });
+  const buttons = (label: string) => renderer.root.findAll(node => node.type === 'button' && node.props['aria-label'] === label);
+  const click = (label: string) => act(async () => { buttons(label)[0].props.onClick(); });
+  const toggleMenu = () => click('评价回复');
+  const submit = () => act(async () => renderer.root.find(node => node.type === 'form' && node.props['aria-labelledby']).props.onSubmit({ preventDefault() {} }));
+  try {
+    assert.equal(buttons('评价回复').length, 0);
+    await submitAndWait(renderer.root, '测试评价', () => buttons('评价回复').length > 0);
+    assert.equal(buttons('回复优秀').length, 0);
+    await toggleMenu();
+    assert.deepEqual(writes, []);
+    await click('回复优秀');
+    await click('内容不错');
+    await click('生成速度快');
+    await submit();
+    await toggleMenu();
+    assert.equal(buttons('回复优秀')[0].props['aria-checked'], true);
+    fail = true;
+    await click('回复不佳');
+    assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 1);
+    fail = false;
+    await click('回复不佳');
+    await click('关闭');
+    await click('更多操作');
+    const edit = () => renderer.root.find(node => node.type === 'button' && node.children.includes('编辑反馈'));
+    await act(async () => edit().props.onClick());
+    await click('内容有误');
+    await click('文笔差');
+    const comment = () => renderer.root.findByProps({ 'aria-label': '填写详情（选填）' });
+    await act(async () => comment().props.onChange({ target: { value: '阈值不对' } }));
+    fail = true;
+    await submit();
+    assert.equal(comment().props.value, '阈值不对');
+    fail = false;
+    await submit();
+    await click('更多操作');
+    await act(async () => edit().props.onClick());
+    assert.equal(buttons('内容有误')[0].props['aria-pressed'], true);
+    assert.equal(buttons('文笔差')[0].props['aria-pressed'], true);
+    assert.equal(comment().props.value, '阈值不对');
+    await click('关闭');
+    await toggleMenu();
+    await click('回复不佳');
+    const positive = { reasons: ['good_content', 'fast'], comment: '' };
+    const negative = { reasons: ['inaccurate', 'poor_writing'], comment: '阈值不对' };
+    assert.deepEqual(writes, ['like', positive, 'dislike', 'dislike', negative, negative, null]);
+  } finally {
+    act(() => renderer.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('文档上传后按间隔查询解析状态，完成后不再显示解析中', async () => {
   const calls: string[] = [];

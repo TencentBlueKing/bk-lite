@@ -1,7 +1,7 @@
 import { ChatMarkdown, ContentCards, type ContentCardsProps } from '@bk-lite/chat-content/ui';
 import '@bk-lite/chat-content/style.css';
 import React, { useState } from 'react';
-import { Message, type MessageContent } from '@webchat/core';
+import { type Message, type AnswerFeedbackDetail, type AnswerFeedback, type MessageContent } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
@@ -130,6 +130,7 @@ interface MessageBubbleProps {
   onChoice?: ContentCardsProps['onChoice'];
   onSendMessage?: ContentCardsProps['onSendMessage'];
   message: Message;
+  onFeedback?: (messageId: number, value: AnswerFeedback, detail?: AnswerFeedbackDetail) => Promise<void>;
   loadAttachment?: (id: number) => Promise<Blob>;
   isLastBotMessage?: boolean;
   fillWidth?: boolean;
@@ -190,9 +191,10 @@ function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment, showWikiMaterialWrites }) => {
+  ({ message, onFeedback, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment, showWikiMaterialWrites }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
+    const persistedId = message.persistedMessageId;
     const [showActions, setShowActions] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
@@ -389,6 +391,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           <MessageActions
             messageId={message.id}
             messageContent={message.content}
+            feedback={message.feedback}
+            feedbackDetail={message.feedbackDetail}
+            onFeedback={onFeedback && persistedId ? (value, detail) => onFeedback(persistedId, value, detail) : undefined}
             isBot={isBot}
             isLastBotMessage={isLastBotMessage}
             showActions={showActions}

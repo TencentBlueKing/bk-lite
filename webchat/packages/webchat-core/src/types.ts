@@ -13,7 +13,22 @@ export interface MessageContent {
   image_url?: string;
 }
 
+export type AnswerFeedback = 'like' | 'dislike' | null;
+
+export const answerFeedbackReasons = {
+  like: ['good_content', 'well_written', 'good_format', 'followed_instructions', 'fast'],
+  dislike: ['wrong_length', 'poor_writing', 'poor_format', 'off_topic', 'missed_instructions', 'wrong_template', 'inaccurate', 'safety'],
+} as const;
+export type FeedbackTag = typeof answerFeedbackReasons[keyof typeof answerFeedbackReasons][number] | 'incomplete' | 'hard_to_use';
+export interface AnswerFeedbackDetail {
+  reasons: FeedbackTag[];
+  comment: string;
+}
+
 export interface Message {
+  feedbackDetail?: AnswerFeedbackDetail;
+  persistedMessageId?: number;
+  feedback?: AnswerFeedback;
   id: string;
   type: MessageType;
   content: string | MessageContent[];
@@ -130,6 +145,7 @@ export interface PlatformContract {
   webchatWidthUrl?: string;
   sessionsUrl: string;
   messagesUrl: string;
+  feedbackUrl?: string;
   /** POST JSON `{ session_id }` to delete one persisted conversation. */
   deleteSessionUrl?: string;
   chatUrlTemplate: string;

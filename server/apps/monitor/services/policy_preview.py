@@ -6,20 +6,10 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.errors import FormulaError
 from apps.monitor.expression.query import build_formula_query
-from apps.monitor.expression.validators import (
-    validate_formula_condition,
-    validate_multi_condition,
-)
+from apps.monitor.expression.validators import validate_formula_condition, validate_multi_condition
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.services.chart_unit import (
-    convert_vm_result_copy,
-    resolve_chart_unit,
-)
-from apps.monitor.tasks.utils.policy_methods import (
-    compile_policy_query,
-    period_to_seconds,
-    resolve_result_unit,
-)
+from apps.monitor.services.chart_unit import convert_vm_result_copy, resolve_chart_unit
+from apps.monitor.tasks.utils.policy_methods import compile_policy_query, period_to_seconds, resolve_result_unit
 from apps.monitor.tasks.utils.policy_multi import compile_condition_query, condition_policy_like
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -59,18 +49,10 @@ class PolicyPreviewService:
         data = VictoriaMetricsAPI().query_range(query, start, end, step)
         self._raise_for_vm_error(data)
         chart_unit = self._comparison_chart_unit(result_unit)
-        source_unit = (
-            chart_unit
-            if not result_unit.conversion_enabled
-            else self._chart_source_unit(query_condition.get("type"))
-        )
-        data, chart_unit = self._convert_preview_chart(
-            data, source_unit, chart_unit
-        )
+        source_unit = chart_unit if not result_unit.conversion_enabled else self._chart_source_unit(query_condition.get("type"))
+        data, chart_unit = self._convert_preview_chart(data, source_unit, chart_unit)
 
-        data["unit"] = (
-            UnitConverter.get_display_unit(chart_unit) if chart_unit else ""
-        )
+        data["unit"] = UnitConverter.get_display_unit(chart_unit) if chart_unit else ""
 
         return {
             "query": query,
@@ -91,9 +73,7 @@ class PolicyPreviewService:
             raise BaseAppException(str(exc)) from exc
         self.warnings.extend(validated.warnings)
         queries = query_condition.get("queries") or []
-        filters_by_ref, metrics = self._instance_filters_for_queries(
-            [item for item in queries if item.get("source") != "formula"]
-        )
+        filters_by_ref, metrics = self._instance_filters_for_queries([item for item in queries if item.get("source") != "formula"])
         end = int(time.time())
         points = self._preview_points()
         start = end - period_to_seconds(period) * points
@@ -108,6 +88,7 @@ class PolicyPreviewService:
                 metric.query or "",
                 deepcopy(condition.get("filter") or []),
                 base_filters=filters_by_ref.get(condition.get("ref")) or None,
+                metric=metric,
             )
             query = compile_condition_query(self.payload, condition, base_query, step)
             data = api.query_range(query, start, end, step)
@@ -204,12 +185,7 @@ class PolicyPreviewService:
     def _convert_preview_chart(self, data, source_unit, chart_unit):
         source = source_unit or chart_unit or ""
         target = chart_unit or source
-        if (
-            source
-            and target
-            and source != target
-            and not UnitConverter.is_convertible(source, target)
-        ):
+        if source and target and source != target and not UnitConverter.is_convertible(source, target):
             target = source
         return convert_vm_result_copy(data, source, target), target
 
@@ -239,6 +215,7 @@ class PolicyPreviewService:
             self.metric.query or "",
             deepcopy(query_condition.get("filter") or []),
             base_filters=self._build_instance_filters(),
+            metric=self.metric,
         )
 
     def _build_instance_filters(self):
@@ -300,9 +277,7 @@ class PolicyPreviewService:
 
     def _chart_unit(self):
         return resolve_chart_unit(
-            self.payload.get("metric_unit")
-            or getattr(self.metric, "unit", "")
-            or "",
+            self.payload.get("metric_unit") or getattr(self.metric, "unit", "") or "",
             self.payload.get("calculation_unit") or "",
             self.payload.get("threshold_unit") or "",
         )
@@ -310,11 +285,7 @@ class PolicyPreviewService:
     def _chart_source_unit(self, query_type):
         if query_type == "formula":
             return self.payload.get("calculation_unit") or ""
-        return (
-            self.payload.get("metric_unit")
-            or getattr(self.metric, "unit", "")
-            or ""
-        )
+        return self.payload.get("metric_unit") or getattr(self.metric, "unit", "") or ""
 
     def _preview_thresholds(self):
         return deepcopy(self.payload.get("threshold") or [])

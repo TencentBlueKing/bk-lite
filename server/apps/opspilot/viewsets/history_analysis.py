@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.models import SkillHistoryAnalysis
-from apps.opspilot.services.history_analysis import ScopeInput, TaskInput, capture_scope
+from apps.opspilot.services.history_analysis import ChannelScopeInput, ScopeInput, TaskInput, available_channels, capture_scope
 from apps.opspilot.services.history_analysis_pdf import render_analysis_pdf
 from apps.opspilot.tasks.history_analysis import dispatch_analysis
 
@@ -25,10 +25,6 @@ class AnalysisSummary(serializers.ModelSerializer):
 
 def positive_id(params, field):
     return serializers.IntegerField(min_value=1, max_value=2**63 - 1).run_validation(params.get(field))
-
-
-def ok(data, status=200):
-    return Response({"result": True, "data": data}, status=status)
 
 
 class HistoryAnalysisActions:
@@ -46,6 +42,16 @@ class HistoryAnalysisActions:
 
     @HasPermission("skill_setting-View")
     @action(methods=["POST"], detail=False)
+    def analysis_channels(self, request):
+        skill = self._analysis_access(request)
+        if isinstance(skill, JsonResponse):
+            return skill
+        scope = ChannelScopeInput(data=request.data)
+        scope.is_valid(raise_exception=True)
+        return Response({"items": available_channels(skill, scope.validated_data)})
+
+    @HasPermission("skill_setting-View")
+    @action(methods=["POST"], detail=False)
     def analysis_preview(self, request):
         skill = self._analysis_access(request)
         if isinstance(skill, JsonResponse):
@@ -53,7 +59,7 @@ class HistoryAnalysisActions:
         scope = ScopeInput(data=request.data)
         scope.is_valid(raise_exception=True)
         summary, _ = capture_scope(skill, scope.validated_data)
-        return ok(summary)
+        return Response(summary)
 
     @HasPermission("skill_setting-View")
     @action(methods=["GET", "POST"], detail=False)
@@ -65,7 +71,7 @@ class HistoryAnalysisActions:
         if request.method == "GET":
             page = serializers.IntegerField(min_value=1, max_value=1000000).run_validation(request.query_params.get("page", 1))
             rows = jobs.defer("snapshot", "findings").order_by("-pk")[(page - 1) * 10 : page * 10]
-            return ok({"items": AnalysisSummary(rows, many=True).data, "count": jobs.count()})
+            return Response({"items": AnalysisSummary(rows, many=True).data, "count": jobs.count()})
 
         form = TaskInput(data=request.data)
         form.is_valid(raise_exception=True)
@@ -74,21 +80,22 @@ class HistoryAnalysisActions:
         identity = dict(skill=skill, team=get_current_team(request, "0"), creator=creator, request_id=data.pop("request_id"))
         existing = jobs.filter(creator=creator, request_id=identity["request_id"]).first()
         if existing:
-            return ok(AnalysisSummary(existing).data)
+            return Response(AnalysisSummary(existing).data)
         scope = ScopeInput(data=request.data)
         scope.is_valid(raise_exception=True)
         summary, snapshot = capture_scope(skill, scope.validated_data)
         if summary.pop("issue"):
             return Response({"result": False, "message": "范围为空或过大，请重新预览"}, status=400)
+        report_scope = {**scope.data, "channel_types": summary.pop("channel_types")}
         locale = request.headers.get("X-BK-Locale") or getattr(request.user, "locale", "") or "cn"
         with transaction.atomic():
             task, created = SkillHistoryAnalysis.objects.get_or_create(
                 **identity,
-                defaults=dict(**data, **summary, scope=scope.data, snapshot=snapshot, locale="en" if locale.lower().startswith("en") else "cn"),
+                defaults=dict(**data, **summary, scope=report_scope, snapshot=snapshot, locale="en" if locale.lower().startswith("en") else "cn"),
             )
             if created:
                 transaction.on_commit(partial(dispatch_analysis, task.pk, task.attempt))
-        return ok(AnalysisSummary(task).data, 201 if created else 200)
+        return Response(AnalysisSummary(task).data, status=201 if created else 200)
 
     @HasPermission("skill_setting-View")
     @action(methods=["GET"], detail=False)
@@ -104,7 +111,7 @@ class HistoryAnalysisActions:
             response["Content-Disposition"] = f'attachment; filename="analysis-{task.pk}.pdf"'
             response["Cache-Control"] = "private, no-store"
             return response
-        return ok({**AnalysisSummary(task).data, "focus": task.focus, "findings": task.findings})
+        return Response({**AnalysisSummary(task).data, "focus": task.focus, "findings": task.findings})
 
     @HasPermission("skill_setting-View")
     @action(methods=["POST"], detail=False)
@@ -121,4 +128,4 @@ class HistoryAnalysisActions:
             task.failure = ""
             task.save(update_fields=["attempt", "status", "failure", "updated_at"])
             transaction.on_commit(partial(dispatch_analysis, task.pk, task.attempt))
-        return ok(AnalysisSummary(task).data)
+        return Response(AnalysisSummary(task).data)

@@ -74,3 +74,7 @@
 .webchat-send-btn {
   @apply bg-indigo-600 hover:bg-indigo-700 text-white rounded-full px-6 py-2 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors;
 }
+
+#webchat-root .webchat-feedback-dialog::backdrop {
+  background: rgb(0 0 0 / 12%);
+}

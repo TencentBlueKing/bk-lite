@@ -34,6 +34,7 @@ const PLATFORM = {
   applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
   webchatWidthUrl: '/api/proxy/opspilot/skill_channel/platform/width/',
   sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
+  feedbackUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/{messageId}/feedback/?channel_id={channelId}',
   messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
   deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
   chatUrlTemplate: '/api/proxy/opspilot/skill_channel/{channelId}/chat/',

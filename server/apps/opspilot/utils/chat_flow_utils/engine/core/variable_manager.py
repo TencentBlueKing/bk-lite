@@ -24,6 +24,7 @@ class VariableManager:
 
     def __init__(self):
         """初始化变量管理器"""
+        self.flow_name: str = ""  # 来源元数据独立于流程节点可覆盖的输出变量。
         self._variables: Dict[str, Any] = {}
         # 可重入锁：并行分支（ThreadPoolExecutor）共享同一个 VariableManager，
         # 多线程并发读写 _variables 会相互覆盖（如 last_message / memory_context）。
