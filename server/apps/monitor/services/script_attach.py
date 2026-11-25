@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from django.db.models import Exists, OuterRef, Q
-
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, Metric, PolicyGroupRule
@@ -79,13 +77,14 @@ def assert_script_identity_unchanged(old_content, new_content) -> None:
 
 
 def exclude_script_only_instances(queryset):
-    """下拉不列「只有脚本配置」的存量独立脚本实例。没有配置、或还有原生配置的仍可选。"""
-    configs = CollectConfig.objects.filter(monitor_instance_id=OuterRef("pk"))
-    native = configs.exclude(collect_type__iexact="script")
-    return queryset.annotate(
-        _script_attach_has_config=Exists(configs),
-        _script_attach_has_native=Exists(native),
-    ).filter(Q(_script_attach_has_config=False) | Q(_script_attach_has_native=True))
+    """脚本挂接候选保留已有实例，包括仅有脚本、尚无原生采集的实例。
+
+    旧实现会丢掉「只有脚本 CollectConfig」的实例，导致：仅脚本实例从候选消失；
+    以及在无原生采集的实例上挂上第一份脚本后候选被摘空，界面无法再挂第二份。
+    同实例多脚本依赖候选仍列出这些实例（直接调 API 本来就可以挂）。
+    本函数保留调用点，不再按脚本-only 过滤。
+    """
+    return queryset
 
 
 def configured_instance_ids(monitor_object_id, plugin_id) -> set:

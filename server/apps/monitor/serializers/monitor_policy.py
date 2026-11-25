@@ -52,6 +52,16 @@ _LABEL_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 class MonitorPolicySerializer(serializers.ModelSerializer):
+    # 模型 CharField 未设 blank=True，DRF 会拒绝空串。隔离策略 GET 后原样 PUT 会 400。
+    notice_type = serializers.CharField(max_length=50, allow_blank=True, required=False)
+    no_data_level = serializers.CharField(max_length=20, allow_blank=True, required=False)
+    no_data_alert_name = serializers.CharField(max_length=200, allow_blank=True, required=False)
+    # GET 原样 PUT：这四个字段模型默认也是空串，但未设 blank=True，v1 只修了上面三项不够。
+    alert_name = serializers.CharField(max_length=200, allow_blank=True, required=False)
+    collect_type = serializers.CharField(max_length=50, allow_blank=True, required=False)
+    created_by = serializers.CharField(max_length=32, allow_blank=True, required=False)
+    updated_by = serializers.CharField(max_length=32, allow_blank=True, required=False)
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         data_team_ids = self.context.get("data_team_ids")

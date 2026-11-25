@@ -2,7 +2,7 @@ import ipaddress
 
 from django.db import IntegrityError, models, transaction
 
-from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.current_team_scope import scope_permission_queryset
@@ -1183,11 +1183,11 @@ class InstanceConfigService:
             )
 
             if monitor_object is None or not is_single_key_instance_object(monitor_object):
-                raise BaseAppException(SCRIPT_ATTACH_UNSUPPORTED)
+                raise ValidationAppException(SCRIPT_ATTACH_UNSUPPORTED)
             try:
                 bind_script_attach_instance_keys(sanitized_instances)
             except ValueError:
-                raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
+                raise ValidationAppException(SCRIPT_ATTACH_NEED_INSTANCE)
         is_host_monitoring_onboarding = HostDeploymentStatus.applies_to(
             monitor_object_name,
             collector,
@@ -1271,7 +1271,7 @@ class InstanceConfigService:
                     ).exists():
                         raise BaseAppException("监控实例已存在主机监控配置，无法重复接入")
                 if script_attach and (new_instances or reclaimable_ids or not existing_instances):
-                    raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
+                    raise ValidationAppException(SCRIPT_ATTACH_NEED_INSTANCE)
                 if (
                     script_attach
                     and MonitorInstance.objects.filter(
@@ -1279,7 +1279,7 @@ class InstanceConfigService:
                         is_active=False,
                     ).exists()
                 ):
-                    raise BaseAppException(SCRIPT_ATTACH_NEED_INSTANCE)
+                    raise ValidationAppException(SCRIPT_ATTACH_NEED_INSTANCE)
                 if not script_attach and not new_instances and not existing_instances and not reattached_ids:
                     logger.info("没有需要处理的实例")
                     return []
