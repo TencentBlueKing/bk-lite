@@ -16,9 +16,14 @@ class TransferAuthorization:
         owner.group_list = [int(value.get("id") if isinstance(value, dict) else value) for value in owner.group_list]
         actor = SimpleNamespace(**build_user_authorization_context(owner))
         actions = actor.permission.get("cmdb", [])
-        required = "asset_info-Add" if kind == "import" else "asset_info-View"
-        if not actor.is_superuser and required not in actions:
+        if kind == "import":
+            required, denied = "asset_info-Add", "没有导入权限"
+        elif kind == "export":
+            required, denied = "asset_info-Export", "没有导出权限"
+        else:
             raise TransferError("permission_denied", "没有导入导出权限", 403)
+        if not actor.is_superuser and required not in actions:
+            raise TransferError("permission_denied", denied, 403)
         teams = CmdbRulesFormatUtil.get_authorized_team_ids(actor, team_id, include_children)
         if not teams:
             raise TransferError("permission_denied", "没有当前组织的访问权限", 403)
