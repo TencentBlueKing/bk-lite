@@ -1,4 +1,4 @@
-"""内置技能包播种、i18n 展示、跨团队可见与删除保护。"""
+"""内置技能包与内置工具的播种、可见性与删除保护。"""
 
 from __future__ import annotations
 
@@ -496,3 +496,90 @@ class TestSharedSkillPackageCatalog:
         assert "group-one-mcp" not in rendered
         assert "SENTINEL-MCP-TOKEN" not in rendered
         assert "group-one-builtin" in rendered
+
+
+def _listed_tools(user, team_id):
+    factory = APIRequestFactory()
+    request = factory.get("/")
+    force_authenticate(request, user=user)
+    request.COOKIES["current_team"] = str(team_id)
+    resp = SkillToolsViewSet.as_view({"get": "list"})(request)
+    assert resp.status_code == 200
+    payload = _body(resp)
+    return payload if isinstance(payload, list) else payload.get("items") or payload.get("results") or []
+
+
+def _delete_tool(user, team_id, pk):
+    factory = APIRequestFactory()
+    request = factory.delete("/")
+    force_authenticate(request, user=user)
+    request.COOKIES["current_team"] = str(team_id)
+    return SkillToolsViewSet.as_view({"delete": "destroy"})(request, pk=pk)
+
+
+def _tool_names(user, team_id):
+    return {item["name"] for item in _listed_tools(user, team_id)}
+
+
+class TestBuiltinToolDeleteGuard:
+    def test_other_group_delete_builtin_rejected(self, allow_team_instances):
+        tool = SkillTools.objects.create(
+            name="shared-builtin",
+            description="builtin",
+            team=[1],
+            is_build_in=True,
+        )
+        attacker = _user(username="tool_del_other", team_id=2, locale="zh-Hans")
+        resp = _delete_tool(attacker, 2, tool.id)
+        assert resp.status_code == 400
+        body = _body(resp)
+        assert body.get("result") is False
+        assert body.get("message") == "内置工具不可删除"
+        assert SkillTools.objects.filter(id=tool.id).exists()
+        assert "shared-builtin" in _tool_names(attacker, 2)
+        owner = _user(username="tool_del_owner", team_id=1, locale="zh-Hans")
+        assert "shared-builtin" in _tool_names(owner, 1)
+
+    def test_same_group_delete_builtin_rejected(self, allow_team_instances):
+        tool = SkillTools.objects.create(
+            name="owned-builtin",
+            description="builtin",
+            team=[1],
+            is_build_in=True,
+        )
+        user = _user(username="tool_del_same", team_id=1, locale="zh-Hans")
+        resp = _delete_tool(user, 1, tool.id)
+        assert resp.status_code == 400
+        body = _body(resp)
+        assert body.get("result") is False
+        assert body.get("message") == "内置工具不可删除"
+        assert SkillTools.objects.filter(id=tool.id).exists()
+        assert "owned-builtin" in _tool_names(user, 1)
+
+    def test_other_group_cannot_delete_mcp(self, allow_team_instances):
+        tool = SkillTools.objects.create(
+            name="group-one-mcp-kept",
+            description="mcp",
+            team=[1],
+            is_build_in=False,
+        )
+        attacker = _user(username="mcp_del_other", team_id=2)
+        resp = _delete_tool(attacker, 2, tool.id)
+        assert resp.status_code != 204
+        assert SkillTools.objects.filter(id=tool.id).exists()
+        assert "group-one-mcp-kept" not in _tool_names(attacker, 2)
+        owner = _user(username="mcp_del_owner", team_id=1)
+        assert "group-one-mcp-kept" in _tool_names(owner, 1)
+
+    def test_same_group_deletes_non_builtin_mcp(self, allow_team_instances):
+        tool = SkillTools.objects.create(
+            name="group-one-mcp-gone",
+            description="mcp",
+            team=[1],
+            is_build_in=False,
+        )
+        user = _user(username="mcp_del_same", team_id=1)
+        resp = _delete_tool(user, 1, tool.id)
+        assert resp.status_code == 204
+        assert not SkillTools.objects.filter(id=tool.id).exists()
+        assert "group-one-mcp-gone" not in _tool_names(user, 1)
