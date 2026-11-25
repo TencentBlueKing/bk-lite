@@ -124,16 +124,14 @@ def _messages(request_user, session_id, current_team="1"):
 
 
 class TestSkillAdminConversationHistory:
-    def test_workflow_agent_call_is_visible_in_agent_history(self):
+    def test_workbench_agent_call_is_visible_in_agent_history(self):
         skill = _skill()
         admin = _superuser()
         node = AgentNode.__new__(AgentNode)
         node.variable_manager = MagicMock()
         flow_input = {"entry_type": "nats", "bot_id": 6, "execution_id": "exec-1", "user_id": "alice"}
-        node.variable_manager.get_variable.side_effect = lambda name, default=None: {
-            "flow_input": flow_input,
-            "execution_id": "exec-1",
-        }.get(name, default)
+        node.variable_manager.flow_name = "故障分析"
+        node.variable_manager.get_variable.side_effect = {"flow_input": flow_input, "execution_id": "exec-1"}.get
         params = {"user_message": "检查告警", "execution_id": "exec-1"}
         with (
             patch.object(node, "set_llm_params", return_value=(params, skill.name, False)),
@@ -148,16 +146,29 @@ class TestSkillAdminConversationHistory:
         data = _body(response)["data"]
         assert data["count"] == 1
         item = data["items"][0]
-        assert item["channel_type"] == "workbench"
+        assert (item["channel_type"], item["channel_name"]) == ("workbench", "故障分析")
         assert item["external_user_id"] == "alice"
         assert list_skill_conversations_for_user(skill_id=skill.id, external_user_id="alice") == []
         messages = _body(_messages(admin, item["session_id"]))["data"]["messages"]
         assert [item["conversation_content"] for item in messages] == ["检查告警", "正常"]
+        node.variable_manager.flow_name = "已改名的流程"
         node._record_workbench_conversation(node_id="agent-1", skill_id=skill.id, params={"user_message": "再检查"}, content="仍正常")
+        assert _body(_list(admin, skill_id=skill.id))["data"]["items"][0]["channel_name"] == "故障分析"
         messages = _body(_messages(admin, item["session_id"]))["data"]["messages"]
         assert [item["conversation_content"] for item in messages] == ["检查告警", "正常", "再检查", "仍正常"]
         node._record_workbench_conversation(node_id="agent-2", skill_id=skill.id, params={"user_message": "其他节点"}, content="完成")
-        assert _body(_list(admin, skill_id=skill.id))["data"]["count"] == 2
+        items = _body(_list(admin, skill_id=skill.id))["data"]["items"]
+        assert {row["channel_name"] for row in items} == {"故障分析", "已改名的流程"}
+        SkillConversation.objects.filter(session_id=item["session_id"]).update(flow_name="")
+        node._record_workbench_conversation(node_id="agent-1", skill_id=skill.id, params={"user_message": "继续"}, content="完成")
+        assert SkillConversation.objects.get(session_id=item["session_id"]).flow_name == "已改名的流程"
+
+    @pytest.mark.parametrize("source", ["workflow", "workbench"])
+    def test_legacy_flow_history_without_name_keeps_channel_type(self, source):
+        skill = _skill()
+        _conv(skill, None, session_id=f"{source}_legacy", external_user_id="alice")
+        item = _body(_list(_superuser(), skill_id=skill.pk))["data"]["items"][0]
+        assert (item["channel_type"], item["channel_name"]) == (source, "")
 
     def test_history_write_failure_does_not_break_workflow_or_log_message(self, caplog):
         node = AgentNode.__new__(AgentNode)
@@ -182,6 +193,7 @@ class TestSkillAdminConversationHistory:
         skill = _skill()
         node = AgentNode.__new__(AgentNode)
         node.variable_manager = MagicMock()
+        node.variable_manager.flow_name = "流式故障分析"
         node.variable_manager.get_variable.return_value = {"bot_id": 1, "execution_id": "exec-stream", "user_id": "alice"}
         if agui:
             chunks = ['data: {"type":"TEXT_MESSAGE_CONTENT","delta":"正常"}\n\n']
@@ -199,6 +211,7 @@ class TestSkillAdminConversationHistory:
 
         assert async_to_sync(consume)() == chunks
         conversation = SkillConversation.objects.get(skill=skill, channel__isnull=True)
+        assert conversation.flow_name == "流式故障分析"
         messages = list(conversation.messages.values_list("role", "content"))
         assert messages[0] == ("user", "检查")
         assert messages[1][0] == "assistant"

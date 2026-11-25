@@ -653,7 +653,16 @@ class UserViewSet(ViewSetUtils):
                         raise InitialPasswordDeliveryError(email_result.get("message") or loader.get("error.initial_password_email_delivery_failed"))
 
                 # 记录操作日志
-                log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+                log_operation(
+                    request,
+                    "create",
+                    "system-manager",
+                    f"新增用户: {kwargs['username']} ({kwargs['lastName']})",
+                    target_type="user",
+                    target_id=user.id,
+                    target_name=kwargs["username"],
+                    outcome="success",
+                )
         except InitialPasswordDeliveryError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=400)
 
@@ -749,6 +758,11 @@ class UserViewSet(ViewSetUtils):
             "failed_count": len(failures),
             "failures": failures,
         }
+        import_outcome = "success"
+        import_failure_reason = ""
+        if not successful_usernames:
+            import_outcome = "failure"
+            import_failure_reason = f"共 {len(rows)} 条，成功 0 条，失败 {len(failures)} 条"
         log_operation(
             request,
             "create",
@@ -756,7 +770,10 @@ class UserViewSet(ViewSetUtils):
             f"导入用户：组织“{group.name}”，文件“{file_name}”，共 {len(rows)} 条，成功 {len(successful_usernames)} 条，失败 {len(failures)} 条",
             target_type="organization",
             target_id=group.id,
+            target_name=group.name,
             detail={"scenario": "user_xlsx_import", "organization_name": group.name, "file_name": file_name, **result},
+            outcome=import_outcome,
+            failure_reason=import_failure_reason,
         )
         return JsonResponse({"result": True, "data": result})
 
@@ -789,7 +806,16 @@ class UserViewSet(ViewSetUtils):
         user.save()  # 使用save方法自动更新password_last_modified
 
         # 记录操作日志
-        log_operation(request, "update", "system-manager", f"重置用户密码: {user.username}")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"重置用户密码: {user.username}",
+            target_type="user",
+            target_id=user.id,
+            target_name=user.username,
+            outcome="success",
+        )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -806,10 +832,22 @@ class UserViewSet(ViewSetUtils):
 
         synced_users = list(users.filter(sync_source__isnull=False).values_list("id", flat=True))
         if synced_users:
+            usernames = list(users.values_list("username", flat=True))
+            message = self._get_loader(request).get("error.synced_users_delete_forbidden")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)",
+                target_type="user",
+                target_name=", ".join(usernames),
+                outcome="failure",
+                failure_reason=message,
+            )
             return JsonResponse(
                 {
                     "result": False,
-                    "message": self._get_loader(request).get("error.synced_users_delete_forbidden"),
+                    "message": message,
                 }
             )
 
@@ -836,7 +874,15 @@ class UserViewSet(ViewSetUtils):
                 transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
 
         # 记录操作日志
-        log_operation(request, "delete", "system-manager", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
+        log_operation(
+            request,
+            "delete",
+            "system-manager",
+            f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)",
+            target_type="user",
+            target_name=", ".join(usernames),
+            outcome="success",
+        )
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -911,6 +957,9 @@ class UserViewSet(ViewSetUtils):
                 "update",
                 "system-manager",
                 f"批量{action_name}用户: {', '.join(usernames)} (共{len(usernames)}个)",
+                target_type="user",
+                target_name=", ".join(usernames),
+                outcome="success",
             )
 
         return JsonResponse(
@@ -1045,7 +1094,16 @@ class UserViewSet(ViewSetUtils):
             except Exception as e:
                 logger.exception(e)
             # 记录操作日志
-            log_operation(request, "update", "system-manager", f"编辑用户: {params['username']}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑用户: {params['username']}",
+                target_type="user",
+                target_id=pk,
+                target_name=params["username"],
+                outcome="success",
+            )
 
             # 清除权限缓存
             clear_user_permission_cache(target_user.username, target_user.domain)

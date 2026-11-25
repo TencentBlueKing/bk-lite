@@ -42,8 +42,15 @@ def compile_filter_to_query(
     metric_query: str,
     filters: list[dict],
     base_filters: list[dict] | None = None,
+    metric=None,
 ) -> str:
     selectors = compile_filter_to_selectors(metric_query, filters, base_filters)
     if len(selectors) == 1:
-        return selectors[0]
-    return " or ".join(f"({selector})" for selector in selectors)
+        query = selectors[0]
+    else:
+        query = " or ".join(f"({selector})" for selector in selectors)
+    if metric is None:
+        return query
+    from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+    return isolate_metric_query(query, metric)

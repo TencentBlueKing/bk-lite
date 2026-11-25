@@ -181,10 +181,17 @@ export const useSecurityApi = () => {
     username?: string;
     app?: string;
     module?: string;
+    keyword?: string;
     page?: number;
     page_size?: number;
   }): Promise<any> {
     return await get('/system_mgmt/error_log/', { params });
+  }
+
+  async function exportErrorLogs(data?: Record<string, unknown>): Promise<Blob> {
+    return await post('/system_mgmt/error_log/export_excel/', data, {
+      responseType: 'blob',
+    });
   }
 
   async function getOpenApiCallLogs(params?: Record<string, unknown>): Promise<OpenApiCallLogList> {
@@ -210,6 +217,7 @@ export const useSecurityApi = () => {
     getOperationLogs,
     exportOperationLogs,
     getErrorLogs,
+    exportErrorLogs,
     getOpenApiCallLogs,
     exportOpenApiCallLogs,
   };

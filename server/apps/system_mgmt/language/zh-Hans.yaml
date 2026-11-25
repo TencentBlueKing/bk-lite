@@ -292,9 +292,23 @@ action_type:
   delete: 删除
   execute: 执行
   update: 更新
+outcome:
+  success: 成功
+  failure: 失败
+  accepted: 提交成功
+  unrecorded: 未记录
 status:
   success: 成功
   failed: 失败
+login_method:
+  unrecorded: 未记录
+  otp_suffix: (OTP)
+  bk_lite_builtin: 本地密码
+  ad: AD
+  feishu: 飞书
+  wecom: 企业微信
+  wechat: 微信
+  blueking: 蓝鲸
 export:
   too_many_rows: '导出行数超过上限 {limit}（当前 {count} 行）。请缩小筛选条件，或使用 selected_ids 导出已选记录。'
   login_log_sheet: 用户登录日志
@@ -303,6 +317,19 @@ export:
   operation_log_filename: 用户操作日志
   openapi_call_log_sheet: API调用日志
   openapi_call_log_filename: API调用日志
+  error_log_sheet: 错误日志
+  error_log_filename: 错误日志
+  stack_unrecorded: 未记录堆栈
+  column_time: 时间
+  column_related_user: 关联用户
+  column_business_module: 业务模块
+  column_error_reason: 错误原因
+  column_exception_type: 异常类型
+  column_request_method: 请求方法
+  column_path: 路径
+  column_tech_module: 技术模块
+  column_recorded_error_text: 已记录错误文本
+  column_stack: 堆栈
   column_username: 用户名
   column_domain: 域名
   column_login_time: 登录时间
@@ -311,11 +338,20 @@ export:
   column_location: 地理位置
   column_browser: 浏览器
   column_os: 操作系统
+  column_client: 客户端
+  column_login_method: 登录方式
+  column_login_account: 账号
+  column_login_source_ip: 来源 IP
   column_login_status: 登录状态
+  column_login_result: 登录结果
   column_failure_reason: 失败原因
   column_app: 应用
   column_action_type: 操作类型
   column_summary: 概要描述
+  column_target_type: 对象类型
+  column_target_name: 对象名称
+  column_target_id: 对象ID
+  column_outcome: 执行结果
 email:
   password_expiring_subject: 密码即将过期提醒
   password_expiring_body: '<p>尊敬的 {name}：</p><p>您的密码将在 <b>{days}</b> 天后过期，请尽快修改密码。</p>'

@@ -43,13 +43,23 @@ from apps.system_mgmt.models import User as SystemMgmtUser
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.otp_challenge import verify_challenge
 from apps.system_mgmt.services.login_auth_binding_service import (
     build_login_auth_redirect,
     get_active_login_auth_bindings,
     get_ready_blueking_login_auth_binding,
 )
 from apps.system_mgmt.services.login_auth_binding_service import login_with_binding as execute_login_with_binding
-from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
+from apps.system_mgmt.utils.login_log_utils import (
+    LOGIN_METHOD_BUILTIN,
+    log_user_login_from_request,
+    login_data_issued_token,
+    login_data_otp_challenge_id,
+    login_response_issued_token,
+    login_response_otp_challenge_id,
+    remember_otp_challenge_login_method,
+    resolve_binding_login_method,
+)
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 LOGIN_AUTH_BINDINGS_RATE_LIMIT = 60
@@ -358,6 +368,7 @@ def login(request):
                 **login_kwargs,
             )
             log_username = res.get("data", {}).get("username") or username or "unknown"
+            login_method = resolve_binding_login_method(login_auth_binding_id)
             if not res.get("result"):
                 logger.warning(f"Binding login failed for binding: {login_auth_binding_id}")
                 failure_reason = res.get("message", "Login failed")
@@ -367,10 +378,21 @@ def login(request):
                     UserLoginLog.STATUS_FAILED,
                     "domain.com",
                     failure_reason=str(failure_reason),
+                    login_method=login_method,
                 )
             else:
-                logger.info(f"Binding login successful for binding: {login_auth_binding_id}")
-                log_user_login_from_request(request, log_username, UserLoginLog.STATUS_SUCCESS, "domain.com")
+                challenge_id = login_response_otp_challenge_id(res)
+                if challenge_id:
+                    remember_otp_challenge_login_method(challenge_id, login_method)
+                elif login_response_issued_token(res):
+                    logger.info(f"Binding login successful for binding: {login_auth_binding_id}")
+                    log_user_login_from_request(
+                        request,
+                        log_username,
+                        UserLoginLog.STATUS_SUCCESS,
+                        "domain.com",
+                        login_method=login_method,
+                    )
                 if c_url:
                     if "data" not in res:
                         res["data"] = {}
@@ -384,7 +406,15 @@ def login(request):
             # 记录登录失败日志 - 用户名或密码为空
             loader = _get_loader(request)
             msg = loader.get("error.username_password_empty", "Username or password cannot be empty")
-            log_user_login_from_request(request, username or "unknown", UserLoginLog.STATUS_FAILED, domain or "domain.com", failure_reason=msg)
+            empty_method = LOGIN_METHOD_BUILTIN if domain == "domain.com" else ""
+            log_user_login_from_request(
+                request,
+                username or "unknown",
+                UserLoginLog.STATUS_FAILED,
+                domain or "domain.com",
+                failure_reason=msg,
+                login_method=empty_method,
+            )
             return JsonResponse({"result": False, "message": msg})
 
         if domain == "domain.com":
@@ -397,17 +427,34 @@ def login(request):
             # 记录登录失败日志
             logger.warning(f"Login failed for user: {username}")
             failure_reason = res.get("message", "Login failed")
+            log_kwargs = {}
+            if domain == "domain.com":
+                log_kwargs["login_method"] = LOGIN_METHOD_BUILTIN
             log_user_login_from_request(
                 request,
                 username,
                 UserLoginLog.STATUS_FAILED,
                 domain or "domain.com",
                 failure_reason=str(failure_reason),
+                **log_kwargs,
             )
         else:
-            # 记录登录成功日志
-            logger.info(f"Login successful for user: {username}")
-            log_user_login_from_request(request, username, UserLoginLog.STATUS_SUCCESS, domain or "domain.com")
+            if domain == "domain.com":
+                challenge_id = login_response_otp_challenge_id(res)
+                if challenge_id:
+                    remember_otp_challenge_login_method(challenge_id, LOGIN_METHOD_BUILTIN)
+                elif login_response_issued_token(res):
+                    logger.info(f"Login successful for user: {username}")
+                    log_user_login_from_request(
+                        request,
+                        username,
+                        UserLoginLog.STATUS_SUCCESS,
+                        "domain.com",
+                        login_method=LOGIN_METHOD_BUILTIN,
+                    )
+            else:
+                logger.info(f"Login successful for user: {username}")
+                log_user_login_from_request(request, username, UserLoginLog.STATUS_SUCCESS, domain or "domain.com")
 
             # 登录成功时，如果有c_url参数，添加到响应中
             if c_url:
@@ -424,18 +471,30 @@ def login(request):
         return response
     except Exception as e:
         logger.error(f"Login error: {e}")
-        # 记录系统错误导致的登录失败
+        system_message = _get_loader(request).get("error.system_error", "System error occurred")
+        binding_id = locals().get("login_auth_binding_id")
+        domain_value = locals().get("domain", "domain.com")
+        if binding_id:
+            failure_reason = system_message
+            login_method = resolve_binding_login_method(binding_id)
+        elif domain_value == "domain.com":
+            failure_reason = system_message
+            login_method = LOGIN_METHOD_BUILTIN
+        else:
+            failure_reason = f"System error: {str(e)}"
+            login_method = ""
         log_user_login_from_request(
             request,
             username if "username" in locals() else "unknown",
             UserLoginLog.STATUS_FAILED,
-            domain if "domain" in locals() else "domain.com",
-            failure_reason=f"System error: {str(e)}",
+            domain_value or "domain.com",
+            failure_reason=failure_reason,
+            login_method=login_method,
         )
         return JsonResponse(
             {
                 "result": False,
-                "message": _get_loader(request).get("error.system_error", "System error occurred"),
+                "message": system_message,
             }
         )
 
@@ -797,20 +856,47 @@ def verify_otp_login(request):
         data = _parse_request_data(request)
         challenge_id = data.get("challenge_id", "").strip()
         otp_code = data.get("otp_code", "").strip()
+        challenge_data = verify_challenge(challenge_id) if challenge_id else None
+        log_username = (challenge_data or {}).get("username") or "unknown"
+        login_method = (challenge_data or {}).get("login_method") or ""
+        loader = _get_loader(request)
 
         if not challenge_id or not otp_code:
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": _get_loader(request).get("error.otp_challenge_empty", "Challenge ID and OTP code are required"),
-                }
+            msg = loader.get("error.otp_challenge_empty", "Challenge ID and OTP code are required")
+            log_user_login_from_request(
+                request,
+                log_username,
+                UserLoginLog.STATUS_FAILED,
+                failure_reason=msg,
+                login_method=login_method,
+                used_otp=True,
             )
+            return JsonResponse({"result": False, "message": msg})
 
         # Get client IP for rate limiting
         client_ip = _get_client_ip(request)
 
         client = _create_system_mgmt_client()
         res = client.verify_otp_login(challenge_id, otp_code, client_ip)
+        if login_response_issued_token(res):
+            log_username = res.get("data", {}).get("username") or log_username
+            log_user_login_from_request(
+                request,
+                log_username,
+                UserLoginLog.STATUS_SUCCESS,
+                login_method=login_method,
+                used_otp=True,
+            )
+        else:
+            failure_reason = res.get("message", "Login failed")
+            log_user_login_from_request(
+                request,
+                log_username,
+                UserLoginLog.STATUS_FAILED,
+                failure_reason=str(failure_reason),
+                login_method=login_method,
+                used_otp=True,
+            )
 
         response = JsonResponse(res)
 
@@ -824,10 +910,20 @@ def verify_otp_login(request):
         return response
     except Exception as e:
         logger.error(f"OTP login error: {e}")
+        system_message = _get_loader(request).get("error.system_error", "System error occurred")
+        challenge_data = locals().get("challenge_data") or {}
+        log_user_login_from_request(
+            request,
+            challenge_data.get("username") or "unknown",
+            UserLoginLog.STATUS_FAILED,
+            failure_reason=system_message,
+            login_method=challenge_data.get("login_method") or "",
+            used_otp=True,
+        )
         return JsonResponse(
             {
                 "result": False,
-                "message": _get_loader(request).get("error.system_error", "System error occurred"),
+                "message": system_message,
             }
         )
 
@@ -1179,6 +1275,16 @@ def get_login_auth_request_status(request, auth_request_id):
     return JsonResponse({"result": True, "data": payload, "message": ""})
 
 
+def _log_login_auth_callback_result(request, *, username, status, login_method, failure_reason=""):
+    log_user_login_from_request(
+        request,
+        username or "unknown",
+        status,
+        failure_reason=failure_reason,
+        login_method=login_method,
+    )
+
+
 @api_exempt
 def login_auth_callback(request):
     state = request.GET.get("state", "").strip()
@@ -1188,12 +1294,29 @@ def login_auth_callback(request):
 
     state_payload = parse_auth_request_state(state)
     if not state_payload:
-        return _build_login_auth_result_redirect(request, "failed", "认证状态无效或已过期，请返回原页面重试。")
+        failed_message = "认证状态无效或已过期，请返回原页面重试。"
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method="",
+            failure_reason=failed_message,
+        )
+        return _build_login_auth_result_redirect(request, "failed", failed_message)
 
     auth_request_id = state_payload["auth_request_id"]
+    login_method = resolve_binding_login_method(state_payload.get("binding_id"))
     auth_request = get_auth_request(auth_request_id)
     if not auth_request:
-        return _build_login_auth_result_redirect(request, "expired", "认证请求已过期，请返回原页面重新发起认证。")
+        failed_message = "认证请求已过期，请返回原页面重新发起认证。"
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method=login_method,
+            failure_reason=failed_message,
+        )
+        return _build_login_auth_result_redirect(request, "expired", failed_message)
 
     # 集中读一次(后续 6 处 status 分支共用);state 解析失败/auth_request 缺失分支
     # 走相对路径,这里 redirect_origin 自然为 None
@@ -1204,10 +1327,18 @@ def login_auth_callback(request):
         auth_request,
         request.COOKIES.get(get_login_auth_browser_cookie_name(auth_request_id), ""),
     ):
+        failed_message = "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。"
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method=login_method,
+            failure_reason=failed_message,
+        )
         return _build_login_auth_result_redirect(
             request,
             "failed",
-            "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。",
+            failed_message,
             redirect_origin=redirect_origin,
             result_path=result_path,
         )
@@ -1240,11 +1371,19 @@ def login_auth_callback(request):
         )
 
     if not code:
-        update_auth_request_status(auth_request_id, status="failed", error_message="Missing provider code")
+        failed_message = "认证失败，请返回原页面重试。"
+        update_auth_request_status(auth_request_id, status="failed", error_message=failed_message)
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method=login_method,
+            failure_reason=failed_message,
+        )
         return _build_login_auth_result_redirect(
             request,
             "failed",
-            "认证失败，请返回原页面重试。",
+            failed_message,
             redirect_origin=redirect_origin,
             result_path=result_path,
         )
@@ -1254,22 +1393,37 @@ def login_auth_callback(request):
         result = client.login_with_binding(state_payload["binding_id"], code)
     except Exception as e:
         logger.error(f"Login auth callback error: {e}")
-        update_auth_request_status(auth_request_id, status="failed", error_message=str(e))
+        failed_message = _get_loader(request).get("error.system_error", "System error occurred")
+        update_auth_request_status(auth_request_id, status="failed", error_message=failed_message)
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method=login_method,
+            failure_reason=failed_message,
+        )
         return _build_login_auth_result_redirect(
             request,
             "failed",
-            "认证失败，请返回原页面重试。",
+            failed_message,
             redirect_origin=redirect_origin,
             result_path=result_path,
         )
 
     if not result.get("result"):
-        error_message = result.get("message", "Login auth callback failed")
+        error_message = str(result.get("message") or "").strip() or "认证失败，请返回原页面重试。"
         update_auth_request_status(auth_request_id, status="failed", error_message=error_message)
+        _log_login_auth_callback_result(
+            request,
+            username="unknown",
+            status=UserLoginLog.STATUS_FAILED,
+            login_method=login_method,
+            failure_reason=error_message,
+        )
         return _build_login_auth_result_redirect(
             request,
             "failed",
-            "认证失败，请返回原页面重试。",
+            error_message,
             redirect_origin=redirect_origin,
             result_path=result_path,
         )
@@ -1298,6 +1452,17 @@ def login_auth_callback(request):
         status="success",
         login_result=login_result,
     )
+
+    challenge_id = login_data_otp_challenge_id(login_result)
+    if challenge_id:
+        remember_otp_challenge_login_method(challenge_id, login_method)
+    elif login_data_issued_token(login_result):
+        _log_login_auth_callback_result(
+            request,
+            username=login_result.get("username") or "unknown",
+            status=UserLoginLog.STATUS_SUCCESS,
+            login_method=login_method,
+        )
 
     response = _build_login_auth_result_redirect(
         request,

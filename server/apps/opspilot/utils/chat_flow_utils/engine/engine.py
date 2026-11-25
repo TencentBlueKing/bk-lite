@@ -104,6 +104,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             input_data: 输入数据
         """
         self.variable_manager.set_variable("flow_id", str(self.instance.id))
+        self.variable_manager.flow_name = self.instance.bot.name
         self.variable_manager.set_variable("execution_id", self.execution_id)
         self.variable_manager.set_variable("last_message", input_data.get("last_message", ""))
         self.variable_manager.set_variable("flow_input", input_data)

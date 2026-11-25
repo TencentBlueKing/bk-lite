@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Alert, Button, Form, Input, InputNumber, Modal, Segmented, Select, Tabs, Tag } from 'antd';
+import FieldGuideTip from '@/components/field-guide-tip';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
@@ -243,7 +244,18 @@ export const ScriptIntervalField: React.FC<{
         className="mb-0"
         name="interval"
         required
-        label={intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
+        label={
+          <span className="inline-flex items-center">
+            {intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
+            <FieldGuideTip
+              title={t('monitor.integrations.fieldGuideTip', '填写说明')}
+              short={t(
+                'monitor.integrations.scriptTimeoutFollowsInterval',
+                '脚本超时 = 采集间隔 − 1 秒'
+              )}
+            />
+          </span>
+        }
         rules={[
           { required: true, message: t('common.required') },
           {
@@ -278,12 +290,6 @@ export const ScriptIntervalField: React.FC<{
           style={{ width: SCRIPT_INTERVAL_WIDTH }}
         />
       </Form.Item>
-      <div className="mt-1 text-[12px] leading-[18px] text-[var(--color-text-3)]">
-        {t(
-          'monitor.integrations.scriptTimeoutFollowsInterval',
-          '脚本超时 = 采集间隔 − 1 秒'
-        )}
-      </div>
     </div>
   );
 };

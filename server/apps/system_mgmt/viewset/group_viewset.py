@@ -192,7 +192,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
 
         # 记录操作日志
-        log_operation(request, "create", "system-manager", f"新增组织: {group_name}")
+        log_operation(
+            request,
+            "create",
+            "system-manager",
+            f"新增组织: {group_name}",
+            target_type="group",
+            target_id=group.id,
+            target_name=group_name,
+            outcome="success",
+        )
 
         # 返回结果
         return JsonResponse(
@@ -330,7 +339,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "system-manager", f"编辑组织: {group_name}")
+        log_operation(
+            request,
+            "update",
+            "system-manager",
+            f"编辑组织: {group_name}",
+            target_type="group",
+            target_id=request.data.get("group_id"),
+            target_name=group_name,
+            outcome="success",
+        )
 
         return JsonResponse({"result": True})
 

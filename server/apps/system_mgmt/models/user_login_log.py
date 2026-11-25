@@ -36,6 +36,8 @@ class UserLoginLog(TimeInfo):
     os_info = models.CharField("Operating System", max_length=100, blank=True, default="")
     browser_info = models.CharField("Browser", max_length=100, blank=True, default="")
     location = models.CharField("Location", max_length=200, blank=True, default="")
+    login_method = models.CharField("Login Method", max_length=64, blank=True, default="")
+    used_otp = models.BooleanField("Used OTP", default=False)
 
     class Meta:
         verbose_name = "User Login Log"
@@ -61,5 +63,7 @@ class UserLoginLog(TimeInfo):
             "status",
             "domain",
             "failure_reason",
+            "login_method",
+            "used_otp",
             "created_at",
         ]

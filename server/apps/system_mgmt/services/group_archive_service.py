@@ -10,12 +10,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.system_mgmt.models import Group, User
-from apps.system_mgmt.services.group_archive_types import (
-    KIND_LOCAL,
-    ArchiveReject,
-    capabilities_for_kind,
-    classify_archived_kind,
-)
+from apps.system_mgmt.services.group_archive_types import KIND_LOCAL, ArchiveReject, capabilities_for_kind, classify_archived_kind
 from apps.system_mgmt.utils.group_filter_mixin import normalize_group_id_set
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -81,17 +76,11 @@ class GroupArchiveService:
             remaining_by_user.append((user, remaining_ids))
             remaining_all.update(remaining_ids)
         if locked_by_id is not None:
-            active_ids = {
-                group_id
-                for group_id, group in locked_by_id.items()
-                if group_id not in subtree_id_set and not group.is_delete
-            }
+            active_ids = {group_id for group_id, group in locked_by_id.items() if group_id not in subtree_id_set and not group.is_delete}
         else:
             active_ids = set()
             if remaining_all:
-                active_ids = set(
-                    GroupUtils.active_queryset(id__in=remaining_all).values_list("id", flat=True)
-                )
+                active_ids = set(GroupUtils.active_queryset(id__in=remaining_all).values_list("id", flat=True))
         affected = []
         for user, remaining_ids in remaining_by_user:
             if not remaining_ids or not remaining_ids.intersection(active_ids):
@@ -154,9 +143,7 @@ class GroupArchiveService:
 
     @classmethod
     def _lock_root_and_subtree(cls, group_id: int, *, include_remaining: bool = False):
-        locked_groups = cls._lock_stable_group_ids(
-            lambda: cls._collect_subtree_lock_ids(group_id, include_remaining=include_remaining)
-        )
+        locked_groups = cls._lock_stable_group_ids(lambda: cls._collect_subtree_lock_ids(group_id, include_remaining=include_remaining))
         locked_by_id = {group.id: group for group in locked_groups}
         locked_target = locked_by_id.get(group_id)
         if locked_target is None:
@@ -193,16 +180,23 @@ class GroupArchiveService:
         return cache_users
 
     @classmethod
-    def _schedule_cache_and_log(cls, *, cache_users, request, action: str, message: str):
+    def _schedule_cache_and_log(cls, *, cache_users, request, action: str, message: str, target_id="", target_name=""):
         def _on_commit():
             try:
                 if cache_users:
                     clear_users_permission_cache(cache_users)
-                    cache.delete_many(
-                        [f"menus-user:{user['id']}" for user in cache_users if user.get("id") not in (None, "")]
-                    )
+                    cache.delete_many([f"menus-user:{user['id']}" for user in cache_users if user.get("id") not in (None, "")])
                 if request is not None:
-                    log_operation(request, action, "system-manager", message)
+                    log_operation(
+                        request,
+                        action,
+                        "system-manager",
+                        message,
+                        target_type="group",
+                        target_id=target_id,
+                        target_name=target_name,
+                        outcome="success",
+                    )
             except Exception:
                 logger.exception("组织归档副作用失败")
 
@@ -224,11 +218,7 @@ class GroupArchiveService:
 
         remaining = set()
         if group_id_set:
-            preview_users = list(
-                cls._users_overlapping_groups(list(group_id_set)).only(
-                    "id", "username", "domain", "group_list"
-                )
-            )
+            preview_users = list(cls._users_overlapping_groups(list(group_id_set)).only("id", "username", "domain", "group_list"))
             remaining = cls._remaining_group_ids(preview_users, group_id_set)
 
         lock_group_ids = group_id_set | remaining
@@ -236,15 +226,11 @@ class GroupArchiveService:
 
         overlapping_ids = set()
         if group_id_set:
-            overlapping_ids = set(
-                cls._users_overlapping_groups(list(group_id_set)).values_list("id", flat=True)
-            )
+            overlapping_ids = set(cls._users_overlapping_groups(list(group_id_set)).values_list("id", flat=True))
         all_user_ids = overlapping_ids | extra_user_ids
         users: list[User] = []
         if all_user_ids:
-            users = list(
-                User.objects.select_for_update().filter(id__in=sorted(all_user_ids)).order_by("id")
-            )
+            users = list(User.objects.select_for_update().filter(id__in=sorted(all_user_ids)).order_by("id"))
         if group_id_set:
             locked_by_id = cls._refresh_remaining_locks(users, group_id_set, locked_by_id)
         return locked_by_id, users
@@ -265,9 +251,7 @@ class GroupArchiveService:
 
         with transaction.atomic():
             try:
-                locked_target, _parent, subtree_ids, locked_groups, locked_by_id = cls._lock_root_and_subtree(
-                    group_id, include_remaining=True
-                )
+                locked_target, _parent, subtree_ids, locked_groups, locked_by_id = cls._lock_root_and_subtree(group_id, include_remaining=True)
             except Group.DoesNotExist:
                 return cls._reject(loader, ArchiveReject("error.group_not_exist", http_status=404))
 
@@ -303,6 +287,8 @@ class GroupArchiveService:
                 request=request,
                 action="delete",
                 message=f"归档组织: {locked_target.name} (包含{len(subtree_ids)}个子组)",
+                target_id=locked_target.id,
+                target_name=locked_target.name,
             )
 
         return {"result": True, "archived_ids": subtree_ids}
@@ -368,9 +354,7 @@ class GroupArchiveService:
 
         with transaction.atomic():
             try:
-                locked_target, parent, subtree_ids, _locked_groups, locked_by_id = cls._lock_root_and_subtree(
-                    group_id
-                )
+                locked_target, parent, subtree_ids, _locked_groups, locked_by_id = cls._lock_root_and_subtree(group_id)
             except Group.DoesNotExist:
                 return cls._reject(loader, ArchiveReject("error.group_not_exist", http_status=404))
             subtree_id_set = set(subtree_ids)
@@ -393,6 +377,8 @@ class GroupArchiveService:
                 request=request,
                 action="update",
                 message=f"恢复组织: {locked_target.name} (包含{len(subtree_ids)}个子组)",
+                target_id=locked_target.id,
+                target_name=locked_target.name,
             )
 
         return {"result": True, "restored_ids": subtree_ids}
@@ -436,9 +422,7 @@ class GroupArchiveService:
 
         with transaction.atomic():
             try:
-                locked_target, parent, subtree_ids, _locked_groups, locked_by_id = cls._lock_root_and_subtree(
-                    group_id, include_remaining=True
-                )
+                locked_target, parent, subtree_ids, _locked_groups, locked_by_id = cls._lock_root_and_subtree(group_id, include_remaining=True)
             except Group.DoesNotExist:
                 return cls._reject(loader, ArchiveReject("error.group_not_exist", http_status=404))
             subtree_id_set = set(subtree_ids)
@@ -483,6 +467,8 @@ class GroupArchiveService:
                 request=request,
                 action="delete",
                 message=f"永久删除组织: {locked_target.name} (包含{len(subtree_ids)}个子组)",
+                target_id=locked_target.id,
+                target_name=locked_target.name,
             )
 
         return {"result": True, "deleted_ids": subtree_ids}

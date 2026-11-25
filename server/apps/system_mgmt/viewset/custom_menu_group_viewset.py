@@ -69,7 +69,16 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 记录操作日志
         if response.status_code == 201:
             menu_name = response.data.get("display_name", "")
-            log_operation(request, "create", "system-manager", f"新增菜单: {menu_name}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增菜单: {menu_name}",
+                target_type="custom_menu_group",
+                target_id=response.data.get("id"),
+                target_name=menu_name,
+                outcome="success",
+            )
 
         return response
 
@@ -92,7 +101,16 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 记录操作日志
         if response.status_code == 200:
             menu_name = response.data.get("display_name", "")
-            log_operation(request, "update", "system-manager", f"编辑菜单: {menu_name}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑菜单: {menu_name}",
+                target_type="custom_menu_group",
+                target_id=instance.id,
+                target_name=menu_name,
+                outcome="success",
+            )
 
         return response
 
@@ -126,7 +144,16 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除菜单: {menu_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除菜单: {menu_name}",
+                target_type="custom_menu_group",
+                target_id=instance.id,
+                target_name=menu_name,
+                outcome="success",
+            )
 
         return response
 
@@ -168,7 +195,16 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             message = self.loader.get("success.menu_group_enabled")
 
             # 记录操作日志
-            log_operation(request, "execute", "system-manager", f"启用菜单: {instance.display_name}")
+            log_operation(
+                request,
+                "execute",
+                "system-manager",
+                f"启用菜单: {instance.display_name}",
+                target_type="custom_menu_group",
+                target_id=instance.id,
+                target_name=instance.display_name,
+                outcome="success",
+            )
         else:
             # 禁用当前菜单组。同一个应用始终保留一套在用的菜单，没有其它启用组时回到内置组。
             instance.is_enabled = False
@@ -235,7 +271,16 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         )
 
         # 记录操作日志
-        log_operation(request, "create", "system-manager", f"复制菜单: {instance.display_name} -> {new_display_name}")
+        log_operation(
+            request,
+            "create",
+            "system-manager",
+            f"复制菜单: {instance.display_name} -> {new_display_name}",
+            target_type="custom_menu_group",
+            target_id=new_instance.id,
+            target_name=new_display_name,
+            outcome="success",
+        )
 
         return JsonResponse(
             {

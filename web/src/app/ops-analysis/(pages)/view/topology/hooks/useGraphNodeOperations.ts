@@ -20,6 +20,12 @@ import {
   getChangePercent,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+  scalarCalcFromForm,
+  singleValueSourceReady,
+} from '@/app/ops-analysis/utils/scalarReduction';
 import { useTranslation } from '@/utils/i18n';
 import { chartDisplayControls } from '@/app/ops-analysis/utils/chartDisplay';
 import { applyTopNValueConfig, buildValueConfig } from '../utils/namespaceUtils';
@@ -183,11 +189,7 @@ export const useGraphNodeOperations = ({
       const { valueConfig } = nodeConfig || {};
       if (!node) return;
 
-      if (
-        nodeConfig.type !== 'single-value' ||
-        !valueConfig?.dataSource ||
-        !valueConfig?.selectedFields?.length
-      ) {
+      if (nodeConfig.type !== 'single-value' || !singleValueSourceReady(valueConfig)) {
         return;
       }
 
@@ -252,16 +254,46 @@ export const useGraphNodeOperations = ({
         if (!isCurrent()) return;
 
         const dataToExtract = compareResult.currentData;
-        if (!dataToExtract) {
+        const scalarCalc = readScalarCalc(valueConfig.scalarCalc);
+        if (dataToExtract == null || (!scalarCalc && !dataToExtract)) {
           throw new Error(t('topology.noData'));
         }
 
-        const field = valueConfig.selectedFields[0];
-        const value = extractComparableValue(dataToExtract, field);
-        const baselineValue = extractComparableValue(
-          compareResult.baselineData,
-          field,
-        );
+        const field = valueConfig.selectedFields?.[0];
+        const reduction = scalarCalc ? reduceScalarRecords(dataToExtract, scalarCalc) : null;
+        if (reduction?.status === 'empty') {
+          throw new Error(t('topology.noData'));
+        }
+        if (reduction?.status === 'uncomputable') {
+          const uncomputableLabel = t('dashboard.noComputableValue');
+          clearSingleValueFetchError(node as Node);
+          node.setData(
+            {
+              ...node.getData(),
+              isLoading: false,
+              hasError: true,
+              fetchError: false,
+              errorMessage: undefined,
+            },
+            { overwrite: true },
+          );
+          node.setAttrByPath('label/text', uncomputableLabel);
+          node.setAttrByPath('label/display', 'block');
+          node.setAttrByPath('errorIcon/display', 'none');
+          if (node.isNode()) {
+            adjustSingleValueNodeSize(node as Node, uncomputableLabel);
+          }
+          return;
+        }
+        const baselineReduction = scalarCalc
+          ? reduceScalarRecords(compareResult.baselineData, scalarCalc)
+          : null;
+        const value = reduction
+          ? reduction.value
+          : extractComparableValue(dataToExtract, field);
+        const baselineValue = baselineReduction
+          ? (baselineReduction.status === 'value' ? baselineReduction.value : null)
+          : extractComparableValue(compareResult.baselineData, field);
         const changePercent = valueConfig.compare
           ? getChangePercent(
             toComparableNumber(value),
@@ -432,16 +464,14 @@ export const useGraphNodeOperations = ({
       if (
         !skipInitialFetch &&
         nodeConfig.type === 'single-value' &&
-        valueConfig?.dataSource &&
-        valueConfig?.selectedFields?.length
+        singleValueSourceReady(valueConfig)
       ) {
         startLoadingAnimation(addedNode);
         updateSingleNodeData({ ...nodeConfig, id: addedNode.id });
       } else if (
         skipInitialFetch &&
         nodeConfig.type === 'single-value' &&
-        valueConfig?.dataSource &&
-        valueConfig?.selectedFields?.length
+        singleValueSourceReady(valueConfig)
       ) {
         startLoadingAnimation(addedNode);
       }
@@ -462,6 +492,11 @@ export const useGraphNodeOperations = ({
         ? { compareMode: values.compareMode }
         : {}),
       selectedFields: values.selectedFields || valueConfig?.selectedFields,
+      scalarCalc: scalarCalcFromForm({
+        method: values.scalarCalcMethod,
+        field: (values.selectedFields || valueConfig?.selectedFields)?.[0],
+        timeField: values.scalarCalcTimeField,
+      }),
       chartType: values.chartType || valueConfig?.chartType,
       dataSource: values.dataSource || valueConfig?.dataSource,
       dataSourceParams:
@@ -549,8 +584,7 @@ export const useGraphNodeOperations = ({
         updateNodeAttributes(node as Node, updatedConfig);
         if (
           updatedConfig.type === 'single-value' &&
-          updatedConfig.valueConfig?.dataSource &&
-          updatedConfig.valueConfig?.selectedFields?.length
+          singleValueSourceReady(updatedConfig.valueConfig)
         ) {
           node.setData(
             { ...node.getData(), isLoading: true, hasError: false },
@@ -662,8 +696,7 @@ export const useGraphNodeOperations = ({
         const nodeData = node.getData();
         if (
           nodeData.type === 'single-value' &&
-          nodeData.valueConfig?.dataSource &&
-          nodeData.valueConfig?.selectedFields?.length
+          singleValueSourceReady(nodeData.valueConfig)
         ) {
           const dataSource = dataSources?.find(
             (source) => source.id === nodeData.valueConfig.dataSource,

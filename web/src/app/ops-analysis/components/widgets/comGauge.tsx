@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from '@/utils/i18n';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import {
   escapeInteractionTooltipHtml,
@@ -22,6 +23,10 @@ import {
   extractComparableValue,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+} from '@/app/ops-analysis/utils/scalarReduction';
 import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import {
   scaleScreenMetric,
@@ -59,10 +64,13 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   screenRenderContext,
   onReady,
 }) => {
+  const { t } = useTranslation();
   const selectedField = config?.selectedFields?.[0];
-  const numericValue = toComparableNumber(
-    extractComparableValue(rawData, selectedField),
-  );
+  const scalarCalc = readScalarCalc(config?.scalarCalc);
+  const reduction = scalarCalc ? reduceScalarRecords(rawData, scalarCalc) : null;
+  const numericValue = reduction
+    ? (reduction.status === 'value' ? reduction.value : null)
+    : toComparableNumber(extractComparableValue(rawData, selectedField));
   const min = Number(config?.gaugeMin ?? 0);
   const max = Number(config?.gaugeMax ?? 100);
   const safeMin = Number.isFinite(min) ? min : 0;
@@ -298,6 +306,9 @@ const ComGauge: React.FC<ComGaugeProps> = ({
     );
   }
 
+  if (reduction?.status === 'uncomputable') {
+    return <WidgetState description={t('dashboard.noComputableValue')} />;
+  }
   if (!hasData) {
     return <WidgetState />;
   }

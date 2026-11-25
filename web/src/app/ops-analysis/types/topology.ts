@@ -380,6 +380,8 @@ export interface NodeConfigFormValues {
   compare?: boolean;
   compareMode?: 'percent' | 'value';
   selectedFields?: string[];
+  scalarCalcMethod?: import('@/app/ops-analysis/utils/scalarReduction').ScalarCalcMethod;
+  scalarCalcTimeField?: string;
   chartType?: string;
   dataSource?: number | string;
   dataSourceParams?: ParamItem[];

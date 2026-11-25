@@ -255,12 +255,17 @@ def test_login_module_sync_data():
     request = types.SimpleNamespace(user=types.SimpleNamespace(username="a", domain="domain.com", is_superuser=True), META={}, data={})
     with patch("apps.system_mgmt.viewset.login_module_viewset.sync_user_and_group_by_login_module") as m_task, patch(
         "apps.system_mgmt.viewset.login_module_viewset.log_operation"
-    ):
+    ) as mock_log:
         resp = vs.sync_data(request)
     import json
 
     assert json.loads(resp.content)["result"] is True
     m_task.delay.assert_called_once_with(lm.id)
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "accepted"
+    assert mock_log.call_args.kwargs["target_type"] == "login_module"
+    assert mock_log.call_args.kwargs["target_id"] == lm.id
+    assert mock_log.call_args.kwargs["target_name"] == lm.name
 
 
 # ---------------------------------------------------------------------------

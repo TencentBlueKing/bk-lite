@@ -697,6 +697,8 @@ exit "$installer_status"
             token=str(request.data.get("token") or ""),
             node_id=str(request.data.get("node_id") or ""),
             outcome=str(request.data.get("outcome") or ""),
+            stage=request.data.get("stage"),
+            exit_code=request.data.get("exit_code"),
         )
         if not outcome.accepted:
             return HttpResponse(f"{outcome.message}\n", status=400, content_type="text/plain; charset=utf-8")

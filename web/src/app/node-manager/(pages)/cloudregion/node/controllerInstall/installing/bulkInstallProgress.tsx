@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Modal, Popconfirm, Table, Tag, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
-import { BulkInstallBatch } from '@/app/node-manager/types/controller';
 import {
-  bulkAttemptStatusLabelKey,
+  BulkInstallAttempt,
+  BulkInstallBatch
+} from '@/app/node-manager/types/controller';
+import {
+  bulkAttemptDisplay,
   bulkBatchStatusLabelKey
 } from '../installConfig/bulkInstall';
 
@@ -14,14 +17,6 @@ interface BulkInstallProgressProps {
   batchId?: number | string;
   onFinish: () => void;
 }
-
-const ATTEMPT_TAG_COLOR: Record<string, string> = {
-  installing: 'processing',
-  installed: 'success',
-  duplicate: 'warning',
-  failed: 'error',
-  timeout: 'default'
-};
 
 function formatExpiry(value: string) {
   const date = new Date(value);
@@ -79,14 +74,7 @@ const BulkInstallProgress: React.FC<BulkInstallProgressProps> = ({
     };
   }, [batchId]);
 
-  const rows = useMemo(
-    () =>
-      (batch?.items || []).map((item, index) => ({
-        ...item,
-        key: `${item.ip}-${item.status}-${index}`
-      })),
-    [batch]
-  );
+  const rows = batch?.items ?? [];
 
   const handleRevoke = async () => {
     if (!batchId) {
@@ -161,7 +149,7 @@ const BulkInstallProgress: React.FC<BulkInstallProgressProps> = ({
         </Popconfirm>
       </div>
       <Table
-        rowKey="key"
+        rowKey="ip"
         loading={loading}
         dataSource={rows}
         pagination={false}
@@ -172,7 +160,19 @@ const BulkInstallProgress: React.FC<BulkInstallProgressProps> = ({
         columns={[
           {
             title: t('node-manager.cloudregion.node.ip'),
-            dataIndex: 'ip'
+            dataIndex: 'ip',
+            render: (ip: string, item: BulkInstallAttempt) => (
+              <span className="inline-flex max-w-full items-baseline gap-[8px]">
+                <span>{ip}</span>
+                {item.attempt_count > 1 ? (
+                  <span className="text-[13px] text-[var(--color-text-3)]">
+                    {t('node-manager.cloudregion.node.bulkAttemptCount', '', {
+                      count: item.attempt_count
+                    })}
+                  </span>
+                ) : null}
+              </span>
+            )
           },
           {
             title: t('node-manager.cloudregion.node.nodeName'),
@@ -185,11 +185,10 @@ const BulkInstallProgress: React.FC<BulkInstallProgressProps> = ({
           {
             title: t('node-manager.cloudregion.node.status'),
             dataIndex: 'status',
-            render: (status: string) => (
-              <Tag color={ATTEMPT_TAG_COLOR[status] || 'default'}>
-                {t(bulkAttemptStatusLabelKey(status))}
-              </Tag>
-            )
+            render: (_status: string, item: BulkInstallAttempt) => {
+              const display = bulkAttemptDisplay(item);
+              return <Tag color={display.color}>{t(display.labelKey)}</Tag>;
+            }
           },
           {
             title: t('node-manager.cloudregion.node.message'),

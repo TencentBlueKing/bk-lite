@@ -16,6 +16,7 @@ import type {
   BaseNodeData,
   CreatedNodeConfig,
 } from '@/app/ops-analysis/types/topology';
+import { singleValueSourceReady } from '@/app/ops-analysis/utils/scalarReduction';
 
 const NODE_TYPE_MAP = {
   'icon': 'icon-node',
@@ -305,7 +306,7 @@ const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
 
 const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
   const valueConfig = nodeConfig.valueConfig || {};
-  const hasDataSource = !!(valueConfig.dataSource && (valueConfig.selectedFields?.length ?? 0) > 0);
+  const hasDataSource = singleValueSourceReady(valueConfig);
   const hasName = !!(nodeConfig.name && nodeConfig.name.trim());
   const initialText = hasDataSource ? 'loading' : '--';
   const valueRefY = getSingleValueValueRefY(hasName);

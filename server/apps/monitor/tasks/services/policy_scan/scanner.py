@@ -70,7 +70,10 @@ class MonitorPolicyScan:
         for instance in instances:
             instances_map[instance.id] = instance.name
             resource_ip_map[instance.id] = resolve_resource_ip(instance.summary_facts, instance.ip)
-        return instances_map, resource_ip_map
+        from apps.monitor.services.script_attach import restrict_script_policy_instances
+
+        # 脚本策略只扫已启用该插件的实例。实例离开范围时不在这里关闭告警。
+        return restrict_script_policy_instances(self.policy, instances_map, resource_ip_map)
 
     def _build_parent_instances_map(self):
         """构建子对象所属父实例映射，供告警模板展示父对象身份。"""

@@ -227,6 +227,9 @@ def _render_metric_query(metric: Metric, matcher_groups: list[list[str]], aggreg
         )
 
     query = join_label_queries(template, matcher_groups)
+    from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+    query = isolate_metric_query(query, metric)
 
     aggregation_name = str(aggregation or "AVG").upper()
     if aggregation_name not in ALLOWED_AGGREGATIONS:

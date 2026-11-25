@@ -147,7 +147,16 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除数据权限: {rule_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除数据权限: {rule_name}",
+                target_type="group_data_rule",
+                target_id=rule_id,
+                target_name=rule_name,
+                outcome="success",
+            )
 
         return response
 
@@ -165,7 +174,16 @@ class GroupDataRuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 201:
             rule_name = response.data.get("name", "")
-            log_operation(request, "create", "system-manager", f"新增数据权限: {rule_name}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增数据权限: {rule_name}",
+                target_type="group_data_rule",
+                target_id=response.data.get("id"),
+                target_name=rule_name,
+                outcome="success",
+            )
 
         return response
 
@@ -197,7 +215,16 @@ class GroupDataRuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 200:
             rule_name = response.data.get("name", "")
-            log_operation(request, "update", "system-manager", f"编辑数据权限: {rule_name}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑数据权限: {rule_name}",
+                target_type="group_data_rule",
+                target_id=rule_id,
+                target_name=rule_name,
+                outcome="success",
+            )
 
         return response
 

@@ -20,6 +20,7 @@ import type {
 } from '@/app/ops-analysis/types/topology';
 import type { useTopologyState } from './useTopologyState';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
+import { scalarCalcFromForm, singleValueSourceReady } from '@/app/ops-analysis/utils/scalarReduction';
 
 const DEFAULT_DROP_POSITION: DropPosition = { x: 300, y: 200 };
 
@@ -285,6 +286,11 @@ export const useNodeConfigFlow = ({
               : {}),
             unitId: values.unitId || undefined,
             valueMappings: values.valueMappings || undefined,
+            scalarCalc: scalarCalcFromForm({
+              method: values.scalarCalcMethod,
+              field: values.selectedFields?.[0],
+              timeField: values.scalarCalcTimeField,
+            }),
           },
           styleConfig: {
             width: values.width,
@@ -305,8 +311,7 @@ export const useNodeConfigFlow = ({
         };
         const isSingleValue =
           selectedNodeType.id === 'single-value' &&
-          !!nodeConfig.valueConfig?.dataSource &&
-          (nodeConfig.valueConfig?.selectedFields?.length ?? 0) > 0;
+          singleValueSourceReady(nodeConfig.valueConfig);
         const nodeId = addNewNode(nodeConfig, isSingleValue);
         scheduleTopologyPostMutation(
           ({

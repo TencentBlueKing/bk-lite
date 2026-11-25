@@ -98,6 +98,8 @@ def test_auditor_sees_every_org_and_empty_username():
     assert by_id[other.id]["team_name"] == Group.objects.get(id=2).name
     assert by_id[empty.id]["team_name"] is None
     assert "token_id" not in by_id[own.id]
+    assert by_id[empty.id]["username"] == ""
+    assert by_id[own.id]["error_code"] == ""
     detail = client.get(f"{V}/openapi_call_log/{own.id}/")
     assert detail.status_code == 405
 
@@ -151,7 +153,7 @@ def test_export_excel_selected_and_filtered_has_no_payload():
     _ensure_group(1)
     user_a, _ = create_api_tenant(1, username="export-user")
     _bind_system_user(user_a, 1)
-    row = _log(username=user_a.username, team_id=1, token_name="export-key")
+    row = _log(username=user_a.username, team_id=1, token_name="export-key", token_id=99)
     admin = BaseUser.objects.create_user(username="exportadmin", password="pw", domain="domain.com")
     client = _client_for(admin, 1, is_superuser=True)
     resp = client.post(f"{V}/openapi_call_log/export_excel/", {"selected_ids": [row.id]}, format="json")
@@ -162,25 +164,33 @@ def test_export_excel_selected_and_filtered_has_no_payload():
     headers = [cell.value for cell in sheet[1]]
     assert headers == [
         "时间",
+        "调用账号",
+        "组织",
         "源IP",
-        "用户名",
-        "认证时组织",
-        "凭据类型",
-        "钥匙ID",
+        "密钥类型",
         "密钥名称",
         "系统ID",
         "接口类型",
         "方法",
         "路径",
+        "调用结果",
         "HTTP状态码",
         "错误码",
     ]
+    assert "钥匙ID" not in headers
+    assert "team_id" not in headers
     assert "服务名" not in headers
     assert "请求正文" not in "".join(str(h) for h in headers)
     assert "响应正文" not in "".join(str(h) for h in headers)
+    data_row = [cell.value for cell in sheet[2]]
+    assert Group.objects.get(id=1).name in data_row
+    assert 1 not in data_row
+    assert "成功" in data_row
+    assert 99 not in data_row
     body = " ".join(str(cell.value) for row_cells in sheet.iter_rows(min_row=2) for cell in row_cells)
     assert "export-key" in body
     assert user_a.username in body
+    assert "未记录" not in body
 
     filtered = client.post(
         f"{V}/openapi_call_log/export_excel/",
@@ -190,6 +200,136 @@ def test_export_excel_selected_and_filtered_has_no_payload():
     assert filtered.status_code == 200
     filtered_book = load_workbook(BytesIO(filtered.content))
     assert filtered_book.active.max_row >= 2
+
+
+def test_call_result_matrix_and_outcome_buckets():
+    _ensure_group(1)
+    admin = BaseUser.objects.create_user(username="result-admin", password="pw", domain="domain.com")
+    client = _client_for(admin, 1, is_superuser=True)
+    internal_ok = _log(username="matrix", path="/internal-ok")
+    internal_fail = _log(username="matrix", path="/internal-fail", http_status=500, error_code="INTERNAL_ERROR")
+    auth_passed = _log(
+        username="matrix",
+        path="/ext-ok",
+        api_kind=OpenAPICallLog.API_KIND_EXTERNAL,
+        http_status=200,
+        error_code="",
+    )
+    auth_denied = _log(
+        username="matrix",
+        path="/ext-denied",
+        api_kind=OpenAPICallLog.API_KIND_EXTERNAL,
+        http_status=403,
+        error_code="SCOPE_DENIED",
+    )
+    ext_fail = _log(
+        username="matrix",
+        path="/ext-timeout",
+        api_kind=OpenAPICallLog.API_KIND_EXTERNAL,
+        http_status=504,
+        error_code="TIMEOUT",
+    )
+    empty_kind = _log(username="matrix", path="/empty-kind", api_kind="", http_status=200, error_code="")
+    unknown_kind = _log(username="matrix", path="/unknown-kind", api_kind="webhook", http_status=200, error_code="")
+    not_found = _log(
+        username="matrix",
+        path="/ext-404",
+        api_kind=OpenAPICallLog.API_KIND_EXTERNAL,
+        http_status=404,
+        error_code="NOT_FOUND",
+    )
+
+    resp = client.get(f"{V}/openapi_call_log/", {"username": "matrix", "page_size": 50})
+    assert resp.status_code == 200
+    by_id = {item["id"]: item for item in _items(resp)}
+    assert by_id[internal_ok.id]["call_result"] == "success"
+    assert by_id[internal_fail.id]["call_result"] == "failure"
+    assert by_id[auth_passed.id]["call_result"] == "auth_passed"
+    assert by_id[auth_denied.id]["call_result"] == "auth_denied"
+    assert by_id[ext_fail.id]["call_result"] == "failure"
+    assert by_id[empty_kind.id]["call_result"] == "failure"
+    assert by_id[unknown_kind.id]["call_result"] == "failure"
+    assert by_id[not_found.id]["call_result"] == "failure"
+    assert by_id[auth_passed.id]["error_code"] == ""
+    assert by_id[internal_ok.id]["error_code"] == ""
+
+    success_ids = {item["id"] for item in _items(client.get(f"{V}/openapi_call_log/", {"username": "matrix", "outcome": "success"}))}
+    failure_ids = {item["id"] for item in _items(client.get(f"{V}/openapi_call_log/", {"username": "matrix", "outcome": "failure"}))}
+    assert success_ids == {internal_ok.id, auth_passed.id}
+    assert {auth_denied.id, ext_fail.id, empty_kind.id, unknown_kind.id, not_found.id, internal_fail.id}.issubset(failure_ids)
+    assert internal_ok.id not in failure_ids
+    assert auth_passed.id not in failure_ids
+
+
+def test_new_filters_and_combined_toolbar():
+    _ensure_group(1)
+    admin = BaseUser.objects.create_user(username="newfilter-admin", password="pw", domain="domain.com")
+    client = _client_for(admin, 1, is_superuser=True)
+    target = _log(
+        username="combo",
+        token_name="alpha-secret",
+        source_ip="10.9.8.7",
+        http_status=201,
+        path="/openapi/v1/itsm/tickets",
+        credential_type="api_token",
+        api_kind=OpenAPICallLog.API_KIND_INTERNAL,
+    )
+    _log(
+        username="combo",
+        token_name="beta-secret",
+        source_ip="10.1.1.1",
+        http_status=200,
+        path="/openapi/v1/itsm/tickets",
+    )
+    by_token = client.get(f"{V}/openapi_call_log/", {"token_name": "alpha"})
+    assert [item["id"] for item in _items(by_token)] == [target.id]
+    by_ip = client.get(f"{V}/openapi_call_log/", {"source_ip": "10.9.8"})
+    assert [item["id"] for item in _items(by_ip)] == [target.id]
+    by_status = client.get(f"{V}/openapi_call_log/", {"http_status": 201})
+    assert [item["id"] for item in _items(by_status)] == [target.id]
+
+    combined = client.get(
+        f"{V}/openapi_call_log/",
+        {
+            "username": "combo",
+            "path": "tickets",
+            "credential_type": "api_token",
+            "api_kind": "internal",
+            "token_name": "alpha",
+            "source_ip": "10.9.8",
+            "http_status": 201,
+            "outcome": "success",
+        },
+    )
+    assert [item["id"] for item in _items(combined)] == [target.id]
+
+
+def test_export_over_limit_returns_400(monkeypatch):
+    from apps.system_mgmt.utils import audit_log_export
+
+    _ensure_group(1)
+    admin = BaseUser.objects.create_user(username="cap-admin", password="pw", domain="domain.com")
+    client = _client_for(admin, 1, is_superuser=True)
+    _log(username="cap-one", path="/one")
+    _log(username="cap-two", path="/two")
+    monkeypatch.setattr(audit_log_export, "EXPORT_MAX_ROWS", 1)
+    resp = client.post(f"{V}/openapi_call_log/export_excel/", {}, format="json")
+    assert resp.status_code == 400
+    assert "spreadsheetml" not in (resp.get("Content-Type") or "")
+
+
+def test_export_empty_username_and_error_code_are_blank():
+    _ensure_group(1)
+    admin = BaseUser.objects.create_user(username="blank-admin", password="pw", domain="domain.com")
+    client = _client_for(admin, 1, is_superuser=True)
+    row = _log(username="", path="/blank", error_code="", credential_type="", token_name="")
+    resp = client.post(f"{V}/openapi_call_log/export_excel/", {"selected_ids": [row.id]}, format="json")
+    assert resp.status_code == 200
+    workbook = load_workbook(BytesIO(resp.content))
+    data_row = [cell.value for cell in workbook.active[2]]
+    assert data_row[1] in ("", None)
+    assert data_row[-1] in ("", None)
+    assert "未记录" not in [str(v) for v in data_row if v is not None]
 
 
 def test_system_id_is_required_only_for_system_token():

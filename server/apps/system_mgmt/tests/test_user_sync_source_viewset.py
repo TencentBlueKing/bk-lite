@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.db import connection
@@ -62,12 +62,46 @@ def test_sync_now_rejects_disabled_source(api_client, authenticated_user, user_s
     user_sync_source.enabled = False
     user_sync_source.save(update_fields=["enabled"])
 
-    with patch("apps.system_mgmt.viewset.user_sync_source_viewset.sync_source_now") as mock_sync_now:
+    with (
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.sync_source_now") as mock_sync_now,
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log,
+    ):
         response = api_client.post(f"/api/v1/system_mgmt/user_sync_source/{user_sync_source.id}/sync_now/")
 
     assert response.status_code == 400
     assert response.json()["result"] is False
+    assert response.json()["message"] == "User sync source is disabled"
     mock_sync_now.assert_not_called()
+    mock_log.assert_called_once()
+    assert mock_log.call_args.args[1] == "execute"
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["target_type"] == "user_sync_source"
+    assert mock_log.call_args.kwargs["target_id"] == user_sync_source.id
+    assert mock_log.call_args.kwargs["target_name"] == user_sync_source.name
+    assert mock_log.call_args.kwargs["failure_reason"] == "User sync source is disabled"
+
+
+@pytest.mark.django_db
+def test_sync_now_logs_accepted(api_client, authenticated_user, user_sync_source):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Edit"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    api_client.cookies["current_team"] = "1"
+
+    with (
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.sync_source_now") as mock_sync_now,
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log,
+    ):
+        response = api_client.post(f"/api/v1/system_mgmt/user_sync_source/{user_sync_source.id}/sync_now/")
+
+    assert response.status_code == 200
+    mock_sync_now.assert_called_once_with(user_sync_source.id)
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "accepted"
+    assert mock_log.call_args.kwargs["target_type"] == "user_sync_source"
+    assert mock_log.call_args.kwargs["target_id"] == user_sync_source.id
+    assert mock_log.call_args.kwargs["target_name"] == user_sync_source.name
+    assert not mock_log.call_args.kwargs.get("failure_reason")
 
 
 @pytest.mark.django_db
@@ -251,6 +285,9 @@ def test_create_source_logs_operation(api_client, authenticated_user, ready_inte
     assert response.status_code == 201
     assert UserSyncSource.objects.filter(name="source-b").exists() is True
     mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert mock_log.call_args.kwargs["target_type"] == "user_sync_source"
+    assert mock_log.call_args.kwargs["target_name"] == "source-b"
 
 
 @pytest.mark.django_db
@@ -345,6 +382,9 @@ def test_update_source_logs_operation(api_client, authenticated_user, user_sync_
     user_sync_source.refresh_from_db()
     assert user_sync_source.description == "updated"
     mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "success"
+    assert mock_log.call_args.kwargs["target_id"] == user_sync_source.id
+    assert mock_log.call_args.kwargs["target_name"] == user_sync_source.name
 
 
 @pytest.mark.django_db
@@ -934,9 +974,7 @@ def test_run_detail_returns_403_for_invisible_source(api_client, ready_integrati
 
 
 @pytest.mark.django_db
-def test_destroy_while_running_rejects_without_removing_periodic_task(
-    api_client, authenticated_user, ready_integration_instance
-):
+def test_destroy_while_running_rejects_without_removing_periodic_task(api_client, authenticated_user, ready_integration_instance):
     """同步运行中删除源须拒绝，且不得先停周期任务。"""
     from django_celery_beat.models import PeriodicTask
 
@@ -962,15 +1000,36 @@ def test_destroy_while_running_rejects_without_removing_periodic_task(
 
     UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
 
-    with patch(
-        "apps.system_mgmt.models.user_sync_source.UserSyncSource.delete_sync_periodic_task"
-    ) as mock_delete_task:
+    with (
+        patch("apps.system_mgmt.models.user_sync_source.UserSyncSource.delete_sync_periodic_task") as mock_delete_task,
+        patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log,
+    ):
         response = api_client.delete(f"/api/v1/system_mgmt/user_sync_source/{source.id}/")
 
     assert response.status_code in (400, 409)
     body = response.json()
     assert body["result"] is False
-    assert "running" in body["message"].lower()
+    assert body["message"] == "User sync is already running"
     mock_delete_task.assert_not_called()
     assert PeriodicTask.objects.filter(name=task_name).exists()
     assert UserSyncSource.objects.filter(id=source.id).exists()
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["outcome"] == "failure"
+    assert mock_log.call_args.kwargs["target_type"] == "user_sync_source"
+    assert mock_log.call_args.kwargs["target_id"] == source.id
+    assert mock_log.call_args.kwargs["target_name"] == source.name
+    assert mock_log.call_args.kwargs["failure_reason"] == body["message"]
+
+
+@pytest.mark.django_db
+def test_destroy_missing_source_does_not_log(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Delete"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    api_client.cookies["current_team"] = "1"
+
+    with patch("apps.system_mgmt.viewset.user_sync_source_viewset.log_operation") as mock_log:
+        response = api_client.delete("/api/v1/system_mgmt/user_sync_source/999999/")
+
+    assert response.status_code == 404
+    mock_log.assert_not_called()

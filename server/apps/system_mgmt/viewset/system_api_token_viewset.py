@@ -31,7 +31,9 @@ class SystemAPITokenViewSet(viewsets.ModelViewSet):
             f"{_SECRET_LOG_VERBS[action_type]}系统令牌: {name} ({instance.system_id})",
             target_type="system_api_token",
             target_id=instance.pk,
+            target_name=name,
             detail={"kind": "system", "name": instance.name or "", "system_id": instance.system_id},
+            outcome="success",
         )
 
     @HasPermission("api_secret_key-View", "system-manager")
