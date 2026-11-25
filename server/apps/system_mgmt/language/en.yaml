@@ -38,7 +38,6 @@ error:
   no_permission_delete_group: You do not have permission to delete this group.
   some_roles_not_exist: Role does not exist
   login_module_name_exists: Login module with this name and source type already exists.
-  default_group_cannot_modify: Default group cannot be modified.
   time_range_too_large: Time range cannot exceed 90 days
   cannot_modify_builtin_menu_group: Cannot modify builtin menu group
   cannot_delete_menu_with_children: Cannot delete menu with children

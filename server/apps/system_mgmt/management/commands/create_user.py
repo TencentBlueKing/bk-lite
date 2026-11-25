@@ -1,10 +1,11 @@
 import uuid
 
-from apps.core.logger import system_mgmt_logger as logger
-from apps.system_mgmt.models import Group, Role, User
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.management import BaseCommand, CommandError
 from django.db import IntegrityError, transaction
+
+from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class Command(BaseCommand):
@@ -63,7 +64,13 @@ class Command(BaseCommand):
                     # 根据您的User模型设置其他字段
                 )
 
-                default_group, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+                default_group = GroupUtils.builtin_root()
+                if default_group is None:
+                    default_group, _ = Group.objects.get_or_create(
+                        name="Default",
+                        parent_id=0,
+                        defaults={"is_builtin": True},
+                    )
                 user.group_list.append(default_group.id)
                 if is_superuser:
                     role, _ = Role.objects.get_or_create(name="admin", app="")

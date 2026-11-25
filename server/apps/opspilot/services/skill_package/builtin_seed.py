@@ -11,7 +11,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.asset_tags import system_tags_from_manifest
 from apps.opspilot.services.ppt_master_runtime import overlay_builtin_triggers
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
-from apps.system_mgmt.models.user import Group
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 BUILTIN_ORG_ID = "builtin"
 BUILTIN_DOMAIN = "domain.com"
@@ -27,8 +27,8 @@ class BuiltinSeedResult:
 
 
 def _default_team() -> list[int]:
-    """内置技能包没有分组时归到名为 Default 的根组织。"""
-    group = Group.objects.filter(name="Default", parent_id=0).only("id").first()
+    """内置技能包没有分组时归到内置根组织。"""
+    group = GroupUtils.builtin_root()
     if group is None:
         return [1]
     return [group.id]

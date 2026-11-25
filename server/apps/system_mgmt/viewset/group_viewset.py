@@ -285,9 +285,6 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             return error_response
         role_ids = request.data.get("role_ids", [])
         group_name = request.data.get("group_name")
-        if obj.name == "Default" and obj.parent_id == 0:
-            message = self.loader.get("error.default_group_cannot_modify")
-            return JsonResponse({"result": False, "message": message})
         if obj.sync_source_id and obj.parent_id != 0 and group_name != obj.name:
             return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_child_group_name_immutable")})
         if not request.user.is_superuser:

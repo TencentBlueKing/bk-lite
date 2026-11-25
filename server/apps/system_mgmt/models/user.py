@@ -1,4 +1,5 @@
 from django.db import models, transaction
+from django.db.models import Q
 from django.utils import timezone as django_timezone
 
 
@@ -112,9 +113,17 @@ class Group(models.Model):
     allow_inherit_roles = models.BooleanField(default=False, verbose_name="允许子组织继承角色")
     sync_source = models.ForeignKey("system_mgmt.UserSyncSource", null=True, blank=True, on_delete=models.SET_NULL, related_name="synced_groups")
     is_delete = models.BooleanField(default=False, db_index=True)
+    is_builtin = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("name", "parent_id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_builtin"],
+                condition=Q(is_builtin=True),
+                name="uniq_group_one_builtin",
+            ),
+        ]
 
     @staticmethod
     def display_fields():
@@ -126,4 +135,5 @@ class Group(models.Model):
             "external_id",
             "is_virtual",
             "allow_inherit_roles",
+            "is_builtin",
         ]
