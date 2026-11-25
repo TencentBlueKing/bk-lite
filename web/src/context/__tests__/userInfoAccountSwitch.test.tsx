@@ -7,11 +7,14 @@ import { UserInfoProvider, useUserInfoContext } from '@/context/userInfo';
 
 const mocks = vi.hoisted(() => ({
   getLoginInfo: vi.fn(),
+  pathname: "/cmdb/assetManage",
   sessionUser: {
     id: 'admin',
     username: 'admin',
   },
 }));
+
+vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname }));
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({
@@ -69,6 +72,7 @@ const clearPreferenceCookies = () => {
 
 beforeEach(() => {
   clearPreferenceCookies();
+  mocks.pathname = "/cmdb/assetManage";
   mocks.getLoginInfo.mockReset();
   mocks.sessionUser.id = 'admin';
   mocks.sessionUser.username = 'admin';
@@ -81,6 +85,23 @@ afterEach(() => {
 });
 
 describe('UserInfoProvider account-scoped current team', () => {
+
+  it.each(['/system-manager/user', '/monitor/event'])('does not restore a module-only org on %s', async (pathname) => {
+    mocks.pathname = pathname;
+    Cookies.set('current_team', '9');
+    Cookies.set('current_team_owner', 'admin');
+    mocks.getLoginInfo.mockResolvedValue({
+      ...loginInfo('admin', 'admin', [defaultGroup]),
+      is_superuser: false,
+      roles: ['cmdb--module_admin'],
+      module_group_tree: [{ id: '9', name: 'Foreign', subGroups: [] }],
+    });
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    expect(screen.getByTestId('selected-group').textContent).toBe('Default');
+    expect(Cookies.get('current_team')).toBe('1');
+  });
+
   it('does not restore the previous account team when the new account can also access it', async () => {
     Cookies.set('current_team', kentGroup.id);
     Cookies.set('current_team_owner', 'kent');
@@ -110,6 +131,29 @@ describe('UserInfoProvider account-scoped current team', () => {
     expect(screen.getByTestId('selected-group').textContent).toBe('Kent');
     expect(Cookies.get('current_team')).toBe(kentGroup.id);
     expect(Cookies.get('current_team_owner')).toBe('admin');
+  });
+
+  it('keeps a module-admin team that is outside the membership list', async () => {
+    const guest = { id: '2', name: 'Guest' };
+    Cookies.set('current_team', guest.id);
+    Cookies.set('current_team_owner', 'admin');
+    mocks.getLoginInfo.mockResolvedValue({
+      ...loginInfo('admin', 'admin', [defaultGroup]),
+      is_superuser: false,
+      roles: ['cmdb--module_admin'],
+      module_group_tree: [
+        { id: '1', name: 'Default', subGroups: [] },
+        { id: '2', name: 'Guest', subGroups: [] },
+      ],
+    });
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading').textContent).toBe('false');
+    });
+    expect(screen.getByTestId('selected-group').textContent).toBe('Guest');
+    expect(Cookies.get('current_team')).toBe(guest.id);
   });
 
   it('falls back to the default team when the remembered team is no longer accessible', async () => {

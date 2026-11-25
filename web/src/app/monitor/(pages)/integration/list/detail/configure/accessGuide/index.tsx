@@ -18,6 +18,7 @@ import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { TemplateAccessGuideDoc } from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableFlatGroups } from '@/hooks/useOperableGroupTree';
 import { Group } from '@/types/index';
 import CodeEditor from '@/components/code-editor';
 import { useCopy } from '@/hooks/useCopy';
@@ -156,6 +157,7 @@ const TemplateAccessGuide: React.FC = () => {
   const pluginId = searchParams.get('plugin_id') || '';
   const { getTemplateAccessGuide, getCloudRegionList } = useIntegrationApi();
   const userInfo = useUserInfoContext();
+  const operableFlatGroups = useOperableFlatGroups();
   const [loading, setLoading] = useState(false);
   const [doc, setDoc] = useState<TemplateAccessGuideDoc | null>(null);
   const [sampleFormat, setSampleFormat] = useState<SampleFormat>('curl');
@@ -166,11 +168,11 @@ const TemplateAccessGuide: React.FC = () => {
 
   const organizationOptions = useMemo(
     () =>
-      (userInfo.flatGroups || []).map((item) => ({
+      operableFlatGroups.map((item) => ({
         value: Number(item.id),
-        label: getGroupDisplayPath(item, userInfo.flatGroups || []) || item.name
+        label: getGroupDisplayPath(item, operableFlatGroups) || item.name
       })),
-    [userInfo.flatGroups]
+    [operableFlatGroups]
   );
 
   useEffect(() => {

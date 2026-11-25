@@ -7,11 +7,13 @@ import Icon from '@/components/icon';
 import type { Key } from 'react';
 import type { ChangeUserStatusAction, UserDataType } from '@/app/system-manager/types/user';
 import { getRandomColor } from '@/app/system-manager/utils';
+import { moduleRoleLabel } from '@/app/system-manager/utils/moduleRoles';
 import { canDirectlyDeleteUser } from '@/app/system-manager/utils/userDeleteGuards';
 
 interface TableColumnsProps {
-  t: (key: string) => string;
+  t: (key: string, fallback?: string, values?: { app: string }) => string;
   appIconMap: Map<string, string>;
+  appDisplayNameMap?: Map<string, string>;
   onOpenDetail: (userId: Key) => void;
   onEditUser: (userId: Key) => void;
   onOpenPasswordModal: (userId: Key) => void;
@@ -24,6 +26,7 @@ interface TableColumnsProps {
 export const createUserTableColumns = ({
   t,
   appIconMap,
+  appDisplayNameMap = new Map(),
   onOpenDetail,
   onEditUser,
   onOpenPasswordModal,
@@ -170,6 +173,10 @@ export const createUserTableColumns = ({
           groupRoles: groupRoles[appName] || [],
         }));
 
+        const formatRoles = (names: string[], app: string) => names.map((name) => (
+          moduleRoleLabel(name, t, appDisplayNameMap.get(app))
+        )).join(', ');
+
         const visibleApps = appEntries.slice(0, 2);
         const hiddenApps = appEntries.slice(2);
 
@@ -186,11 +193,11 @@ export const createUserTableColumns = ({
                 )}
                 <span className="text-xs">
                   {gRoles.length > 0 && (
-                    <span className="text-[var(--color-success)]">{gRoles.join(', ')}</span>
+                    <span className="text-[var(--color-success)]">{formatRoles(gRoles, appName)}</span>
                   )}
                   {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
                   {pRoles.length > 0 && (
-                    <span className="text-[var(--color-primary)]">{pRoles.join(', ')}</span>
+                    <span className="text-[var(--color-primary)]">{formatRoles(pRoles, appName)}</span>
                   )}
                 </span>
               </div>
@@ -211,11 +218,11 @@ export const createUserTableColumns = ({
                           )}
                           <span>
                             {gRoles.length > 0 && (
-                              <span className="text-[var(--color-success)]">{gRoles.join(', ')}</span>
+                              <span className="text-[var(--color-success)]">{formatRoles(gRoles, appName)}</span>
                             )}
                             {gRoles.length > 0 && pRoles.length > 0 && <span>, </span>}
                             {pRoles.length > 0 && (
-                              <span className="text-[var(--color-primary)]">{pRoles.join(', ')}</span>
+                              <span className="text-[var(--color-primary)]">{formatRoles(pRoles, appName)}</span>
                             )}
                           </span>
                         </div>

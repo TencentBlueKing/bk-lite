@@ -12,6 +12,7 @@ import ArchivedGroupDrawer from '@/app/system-manager/components/group/ArchivedG
 import UserDetailDrawer from '@/app/system-manager/components/user/UserDetailDrawer';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import { useUserInfoContext } from '@/context/userInfo';
 import CustomTable from '@/components/custom-table';
 import SystemManagerFillTable from '@/app/system-manager/components/system-manager-fill-table';
@@ -130,9 +131,14 @@ const User: React.FC = () => {
       .map((item) => [item.name, item.icon as string])
   ), [clientData]);
 
+  const appDisplayNameMap = useMemo(() => new Map(
+    clientData.map((item) => [item.name, resolveAppDisplayName(item, t)])
+  ), [clientData, t]);
+
   const columns = useMemo(() => createUserTableColumns({
     t,
     appIconMap,
+    appDisplayNameMap,
     convertToLocalizedTime,
     onOpenDetail: (userId: React.Key) => {
       setDetailUserId(normalizeUserId(userId));
@@ -146,7 +152,7 @@ const User: React.FC = () => {
     onDeleteUser: handleDeleteUser,
     onChangeUserStatus: handleChangeUserStatus,
     otpEnabled,
-  }), [t, appIconMap, convertToLocalizedTime, handleDeleteUser, handleChangeUserStatus, otpEnabled]);
+  }), [t, appIconMap, appDisplayNameMap, convertToLocalizedTime, handleDeleteUser, handleChangeUserStatus, otpEnabled]);
 
   const rowSelection: TableRowSelection<any> = useMemo(() => ({
     selectedRowKeys,

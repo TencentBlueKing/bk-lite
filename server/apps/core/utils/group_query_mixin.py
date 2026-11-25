@@ -77,15 +77,16 @@ class GroupQueryMixin:
 
         return query_groups
 
-    @staticmethod
-    def _get_user_group_list(request):
+    def _get_user_group_list(self, request):
         """
         获取用户有权限的组织列表
 
         :param request: Django request对象
         :return: 用户组织ID列表
         """
-        if has_unrestricted_org_scope(request.user):
+        from apps.core.utils.module_scope import client_id_from_module
+
+        if has_unrestricted_org_scope(request.user, client_id_from_module(self.__class__.__module__)):
             return list(GroupUtils.active_queryset().values_list("id", flat=True))
 
         # 普通用户：group_list 可能残留归档 ID，活动投影只保留 is_delete=False

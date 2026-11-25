@@ -1,7 +1,7 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { Tag, Dropdown } from 'antd';
 import { CloseCircleFilled, DownOutlined } from '@ant-design/icons';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { createStrategy } from './strategies';
 import MultiCascadePanel from '@/components/multi-cascade-panel';
@@ -25,7 +25,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   filterByRootId,
   lockedValues = [],
 }) => {
-  const { groupTree } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const { t } = useTranslation();
   const [internalValue, setInternalValue] = useState<number[]>([]);
   const [open, setOpen] = useState(false);

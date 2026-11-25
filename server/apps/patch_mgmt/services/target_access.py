@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.core.logger import logger
 from apps.core.utils import viewset_utils
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.patch_mgmt.models import PatchTarget
@@ -50,7 +51,7 @@ class TargetAccessScope:
             ) from exc
         if current_team <= 0:
             raise PermissionDenied(patch_message(self.request, "error.org_access_denied", "You do not have access to this organization data"))
-        if getattr(self.user, "is_superuser", False):
+        if getattr(self.user, "is_superuser", False) or effective_module_privilege(self.user, "patch"):
             return current_team
         group_ids = {
             int(item["id"]) for item in (getattr(self.user, "group_list", []) or []) if isinstance(item, dict) and str(item.get("id", "")).isdigit()
@@ -91,6 +92,8 @@ class TargetAccessScope:
 
     def queryset(self, operation: str = "View") -> QuerySet:
         queryset = PatchTarget.objects.all()
+        if operation == "Operate" and effective_module_privilege(self.user, "patch") == "auditor" and not getattr(self.user, "is_superuser", False):
+            return queryset.none()
         if getattr(self.user, "is_superuser", False):
             return queryset
         instance_ids = self._rules.operable_instance_ids if operation == "Operate" else self._rules.visible_instance_ids

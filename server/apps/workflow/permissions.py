@@ -8,6 +8,7 @@ from django.db.models import Q, QuerySet
 
 from apps.core.constants import DEFAULT_PERMISSION
 from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules
+from apps.core.utils.platform_scope import has_unrestricted_org_scope, is_readonly_scope
 from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
 
 APP_NAME = "workflow"
@@ -35,10 +36,15 @@ class WorkflowPermissionScope:
 def _scope_for_user(user, current_team: int, *, include_children: bool = False) -> WorkflowPermissionScope:
     organization_ids = {str(current_team)}
     if include_children:
-        child_ids = AuthViewSet.extract_child_group_ids(
-            getattr(user, "group_tree", []),
-            current_team,
-        )
+        if has_unrestricted_org_scope(user, APP_NAME):
+            from apps.system_mgmt.utils.group_utils import GroupUtils
+
+            child_ids = GroupUtils.get_group_with_descendants(current_team)
+        else:
+            child_ids = AuthViewSet.extract_child_group_ids(
+                getattr(user, "group_tree", []),
+                current_team,
+            )
         organization_ids.update(_normalized_ids(child_ids))
 
     rules = get_permission_rules(
@@ -68,13 +74,17 @@ def _scope(request, current_team: int) -> WorkflowPermissionScope:
     return scope
 
 
-def _permissions_from_scope(scope: WorkflowPermissionScope, workflow) -> list[str]:
+def _permissions_from_scope(scope: WorkflowPermissionScope, workflow, user=None) -> list[str]:
     workflow_teams = _normalized_ids(getattr(workflow, "team", []))
     if not (workflow_teams & scope.organization_ids):
         return []
     if workflow_teams & scope.team_rule_ids:
-        return list(DEFAULT_PERMISSION)
-    return list(scope.instance_permissions.get(str(workflow.pk), []))
+        permissions = list(DEFAULT_PERMISSION)
+    else:
+        permissions = list(scope.instance_permissions.get(str(workflow.pk), []))
+    if is_readonly_scope(user, APP_NAME):
+        return [item for item in permissions if item != "Operate"]
+    return permissions
 
 
 def filter_workflow_queryset(
@@ -88,6 +98,8 @@ def filter_workflow_queryset(
 
     if getattr(request.user, "is_superuser", False):
         return queryset.filter(build_json_membership_query(queryset, "team", [current_team]))
+    if require_operate and is_readonly_scope(request.user, APP_NAME):
+        return queryset.none()
 
     scope = _scope(request, current_team)
     organization_query = build_json_membership_query(queryset, "team", scope.organization_ids)
@@ -113,7 +125,7 @@ def workflow_permissions(request, workflow, current_team: int | None = None) -> 
             current_team = int(request.COOKIES.get("current_team"))
         except (TypeError, ValueError):
             return []
-    return _permissions_from_scope(_scope(request, current_team), workflow)
+    return _permissions_from_scope(_scope(request, current_team), workflow, request.user)
 
 
 def resolve_permission_actor(*, username: str, domain: str):
@@ -150,6 +162,7 @@ def user_can_access_workflow(user, *, current_team: int, workflow, require_opera
     permissions = _permissions_from_scope(
         _scope_for_user(user, int(current_team), include_children=include_children),
         workflow,
+        user,
     )
     needed = "Operate" if require_operate else "View"
     return needed in permissions or (not require_operate and "Operate" in permissions)

@@ -30,7 +30,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import selectInstanceStyle from './selectInstance.module.scss';
 import { showInstName } from '@/app/monitor/utils/common';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
@@ -89,7 +89,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const { getViewColumnPreference, getInstanceDisplayMetrics } = useViewApi();
     const { convertToLocalizedTime } = useLocalizedTime();
     const { getEnumValueUnit } = useUnitTransform();
-    const { groupTree } = useUserInfoContext();
+    const groupTree = useOperableGroupTree();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [pagination, setPagination] = useState<Pagination>({
       current: 1,

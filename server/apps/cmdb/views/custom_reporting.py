@@ -1,9 +1,11 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 
 from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.serializers.custom_reporting import CustomReportingCreateSerializer, CustomReportingUpdateSerializer
 from apps.cmdb.views.mixins import CmdbPermissionMixin
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 
@@ -31,6 +33,16 @@ def _build_ingest_message(result: dict) -> str:
 
 
 class CustomReportingTaskViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (
+            self.action
+            in ("create", "update", "destroy", "issue_credential", "rotate_credential", "revoke_credential", "approve_review", "reject_review")
+            and not getattr(request.user, "is_superuser", False)
+            and effective_module_privilege(request.user, "cmdb") == "auditor"
+        ):
+            raise PermissionDenied()
+
     def list(self, request):
         return WebUtils.response_success(get_custom_reporting_extension().list_tasks(request, request.query_params.dict()))
 

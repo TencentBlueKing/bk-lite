@@ -30,6 +30,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { ExportModal, ImportModal, ImportUpdateModal } from './importExport';
 import type { ImportUpdateResponse } from '@/app/ops-analysis/api/importExport';
@@ -115,7 +116,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       | undefined;
     const { t } = useTranslation();
     const searchParams = useSearchParams();
-    const { selectedGroup, groupTree } = useUserInfoContext();
+    const { selectedGroup } = useUserInfoContext();
+    const groupTree = useOperableGroupTree();
     const { hasPermission } = useBtnPermissions();
     const networkTopologyApi = useNetworkTopologyApi();
     const [dirs, setDirs] = useState<DirItem[]>([]);

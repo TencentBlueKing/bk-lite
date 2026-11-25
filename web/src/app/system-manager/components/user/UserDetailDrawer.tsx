@@ -15,6 +15,8 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
+import { moduleRoleLabel } from '@/app/system-manager/utils/moduleRoles';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useUserApi } from '@/app/system-manager/api/user';
 import type { UserStatus } from '@/app/system-manager/types/user';
@@ -698,7 +700,10 @@ const UserDetailDrawer: React.FC<UserDetailDrawerProps> = ({ open, userId, onClo
                               <Fragment key={role.id}>
                                 <div className={`flex min-w-0 items-center border-r border-[var(--color-border-2)] px-2.5 py-1.5 ${isLastRow ? '' : 'border-b'}`}>
                                   <span className={`${PRIMARY_CHIP} inline-block max-w-full truncate`}>
-                                    {role.name}
+                                    {moduleRoleLabel(role.name, t, resolveAppDisplayName(
+                                      clientData.find((item) => item.name === role.app) || { name: role.app },
+                                      t,
+                                    ))}
                                   </span>
                                 </div>
                                 <div className={`flex min-w-0 flex-wrap items-center gap-1 px-2.5 py-1.5 ${isLastRow ? '' : 'border-b border-[var(--color-border-2)]'}`}>

@@ -924,12 +924,13 @@ class SkillRequestLogViewSet(LanguageViewSet):
             message = self.loader.get("error.skill_not_found") if self.loader else "Skill not found"
             return JsonResponse({"result": False, "message": message})
 
-        # 验证 current_team 权限
+        # 验证 current_team 权限。模块角色不必属于该组织，但仍只能看当前组织下的技能日志。
         if not request.user.is_superuser:
             current_team = self._parse_current_team_cookie(request)
-            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
-            if current_team not in user_group_ids:
-                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+            if not has_unrestricted_org_scope(request.user, "opspilot"):
+                user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+                if current_team not in user_group_ids:
+                    raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
             if current_team not in (skill.team or []):
                 raise PermissionDenied(self.loader.get("error.no_permission_access_skill") if self.loader else "无权访问该技能的日志")
 
