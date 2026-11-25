@@ -1,6 +1,7 @@
 'use client';
-import { redirect } from "next/navigation";
+
+import RedirectToFirstMenu from '@/components/redirect-menu';
 
 export default function HomePage() {
-  return redirect('/mlops/anomaly_detection');
+  return <RedirectToFirstMenu />;
 }

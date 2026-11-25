@@ -139,6 +139,7 @@ error:
   account_association_not_found: 账号关联不存在
   account_association_not_ready: 账号关联还不能用于发送，请先完成更新
   account_association_test_receiver_unavailable: 当前登录用户在该账号关联中没有可用的接收标识
+  empty_custom_menu_not_allowed: 自定义菜单至少要有一项
   custom_menu_group_display_name_exists: 应用 {app} 下已存在相同显示名称的菜单组
   custom_menu_group_enabled_exists: 应用 {app} 已有启用的菜单组，每个应用只能启用一个菜单组
   custom_menu_group_name_exists: 应用 {app} 下已存在名称为 {display_name} 的菜单组

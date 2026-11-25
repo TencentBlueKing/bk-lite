@@ -67,12 +67,17 @@ def test_level_list(superuser):
 
 @pytest.mark.django_db
 def test_level_create(superuser):
-    request = _request("post", "/level/", superuser, data={
-        "level_id": 5,
-        "level_name": "Critical",
-        "level_display_name": "严重",
-        "level_type": "alert",
-    })
+    request = _request(
+        "post",
+        "/level/",
+        superuser,
+        data={
+            "level_id": 5,
+            "level_name": "Critical",
+            "level_display_name": "严重",
+            "level_type": "alert",
+        },
+    )
     response = LevelModelViewSet.as_view({"post": "create"})(request)
     _render(response)
     assert response.status_code == status.HTTP_201_CREATED
@@ -82,12 +87,17 @@ def test_level_create(superuser):
 @pytest.mark.django_db
 def test_level_create_duplicate_rejected(superuser):
     _make_level(5)
-    request = _request("post", "/level/", superuser, data={
-        "level_id": 5,
-        "level_name": "Dup",
-        "level_display_name": "重复",
-        "level_type": "alert",
-    })
+    request = _request(
+        "post",
+        "/level/",
+        superuser,
+        data={
+            "level_id": 5,
+            "level_name": "Dup",
+            "level_display_name": "重复",
+            "level_type": "alert",
+        },
+    )
     response = LevelModelViewSet.as_view({"post": "create"})(request)
     _render(response)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -95,12 +105,17 @@ def test_level_create_duplicate_rejected(superuser):
 
 @pytest.mark.django_db
 def test_level_create_negative_id_rejected(superuser):
-    request = _request("post", "/level/", superuser, data={
-        "level_id": -1,
-        "level_name": "Bad",
-        "level_display_name": "坏",
-        "level_type": "alert",
-    })
+    request = _request(
+        "post",
+        "/level/",
+        superuser,
+        data={
+            "level_id": -1,
+            "level_name": "Bad",
+            "level_display_name": "坏",
+            "level_type": "alert",
+        },
+    )
     response = LevelModelViewSet.as_view({"post": "create"})(request)
     _render(response)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -110,12 +125,17 @@ def test_level_create_negative_id_rejected(superuser):
 def test_level_update_cannot_change_level_id(superuser):
     level = _make_level(0)
     _make_level(1)  # keep more than one of type
-    request = _request("put", f"/level/{level.id}/", superuser, data={
-        "level_id": 9,
-        "level_name": "L0",
-        "level_display_name": "等级0",
-        "level_type": "alert",
-    })
+    request = _request(
+        "put",
+        f"/level/{level.id}/",
+        superuser,
+        data={
+            "level_id": 9,
+            "level_name": "L0",
+            "level_display_name": "等级0",
+            "level_type": "alert",
+        },
+    )
     response = LevelModelViewSet.as_view({"put": "update"})(request, pk=str(level.id))
     _render(response)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -186,10 +206,8 @@ def test_get_config_reference_message_assignment_frequency():
 def test_find_match_rules_reference_name():
     from apps.alerts.models.alert_operator import AlertShield
 
-    shield = AlertShield.objects.create(name="屏蔽A", match_rules=[[{"key": "level", "value": "0"}]])
-    name = LevelModelViewSet._find_match_rules_reference_name(
-        AlertShield.objects.all(), "0", "level"
-    )
+    AlertShield.objects.create(name="屏蔽A", match_rules=[[{"key": "level", "value": "0"}]])
+    name = LevelModelViewSet._find_match_rules_reference_name(AlertShield.objects.all(), "0", "level")
     assert name == "屏蔽A"
 
 

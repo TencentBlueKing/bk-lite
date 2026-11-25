@@ -1,9 +1,7 @@
-import { redirectWithQuery } from '@/app/apm/lib/redirect-with-query';
+'use client';
 
-interface PageProps {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
+import RedirectToFirstMenu from '@/components/redirect-menu';
 
-export default async function ApmRootRedirectPage({ searchParams }: PageProps) {
-  redirectWithQuery('/apm/home', await searchParams);
+export default function ApmRootRedirectPage() {
+  return <RedirectToFirstMenu />;
 }
