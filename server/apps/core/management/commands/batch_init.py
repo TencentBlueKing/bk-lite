@@ -10,7 +10,7 @@ from django.apps import apps as django_apps
 from django.core.exceptions import MultipleObjectsReturned
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 
 from apps.core.logger import logger, safe_exception_info
 from apps.core.utils.loader import preload_language_cache
@@ -190,7 +190,12 @@ class Command(BaseCommand):
         user_model = django_apps.get_model("system_mgmt", "User")
         # create_user 历史上对任意域的同名用户均 no-op；这里保持同一存量判定，
         # 避免仅有外域 admin 的合法升级环境被新 Secret 门禁意外阻断。
-        return user_model.objects.select_for_update().filter(username="admin").exists()
+        queryset = user_model.objects.filter(username="admin")
+        if connection.features.has_select_for_update and getattr(
+            connection.features, "supports_select_for_update_with_limit", True
+        ):
+            queryset = queryset.select_for_update()
+        return queryset.exists()
 
     @staticmethod
     def _has_managed_admin_password() -> bool:
