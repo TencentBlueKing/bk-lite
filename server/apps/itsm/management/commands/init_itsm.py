@@ -49,6 +49,15 @@ TEMPLATES = (
 )
 
 
+def ensure_builtin_dictionary(key, actor):
+    name, items = DICTIONARIES[key]
+    dictionary, _ = DataDictionary.objects.get_or_create(domain=actor["domain"], key=key, defaults={"name": name, **actor})
+    for order, label in enumerate(items, start=1):
+        DataDictionaryItem.objects.get_or_create(
+            dictionary=dictionary, key=label, defaults={"label": label, "order": order, "is_enabled": True, **actor}
+        )
+
+
 class Command(BaseCommand):
     help = "写入 ITSM 内置状态、流转、字典和通知模板"
 
@@ -81,14 +90,8 @@ class Command(BaseCommand):
                 name=name,
                 defaults={"is_builtin": True, **actor},
             )
-        for key, (name, items) in DICTIONARIES.items():
-            dictionary, _ = DataDictionary.objects.get_or_create(domain=DEFAULT_MAINTAINER_DOMAIN, key=key, defaults={"name": name, **actor})
-            for order, label in enumerate(items, start=1):
-                DataDictionaryItem.objects.get_or_create(
-                    dictionary=dictionary,
-                    key=label,
-                    defaults={"label": label, "order": order, "is_enabled": True, **actor},
-                )
+        for key in DICTIONARIES:
+            ensure_builtin_dictionary(key, actor)
         for event, title, content in TEMPLATES:
             NotifyTemplate.objects.get_or_create(
                 domain=DEFAULT_MAINTAINER_DOMAIN,

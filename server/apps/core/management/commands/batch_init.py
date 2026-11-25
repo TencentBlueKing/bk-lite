@@ -443,7 +443,7 @@ class Command(BaseCommand):
         try:
             call_command("init_itsm_itil")
         except Exception as error:  # noqa: BLE001 - Flowable 未就绪时不阻断启动
-            logger.warning("ITSM 事件问题预置初始化失败，可运行 init_itsm_itil 重试", exc_info=True)
+            logger.warning("ITSM 预置初始化失败。请在流程管理核对已有草稿及部署结果；重新运行 init_itsm_itil 可补装尚未创建的流程", exc_info=True)
             self.stdout.write(self.style.WARNING(f"ITSM 事件问题预置跳过（{type(error).__name__}）: {error}"))
 
     def _init_workflow(self):
