@@ -7,7 +7,6 @@ import { useTranslation } from '@/utils/i18n';
 import { usePermissions } from '@/context/permissions';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
-import { useMenus } from '@/context/menus';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
 import { findMatchedMenuPath, resolveMenuIcon } from '@/utils/menuHelpers';
 import { APP_TOP_SIDE_RAIL_WIDTH_PX, isScreenModeEnabled, resolveAppLandingHref, useConsoleLayout, withScreenQuery } from '@/console-layout';
@@ -50,7 +49,6 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
   const searchParams = useSearchParams();
   const screenMode = isScreenModeEnabled(searchParams);
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
-  const { configMenus } = useMenus();
   const { userId } = useUserInfoContext();
   const { portalName, logoUrl } = usePortalBranding();
   const { layout: chromeLayout } = useConsoleLayout();
@@ -231,7 +229,7 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu, hideBrand }) => {
         )}
         <div className={showAppTopNav ? `z-10 min-w-0 w-full ${appTopBrandGrid ? 'pl-4' : ''}` : 'z-10'}>
           {showAppTopNav ? (
-            <AppTopNav apps={apps} pathname={pathname} menus={configMenus} />
+            <AppTopNav apps={apps} pathname={pathname} menus={menuItems} />
           ) : !hideMainMenu ? (
           <div
             className="z-10 flex items-center justify-self-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"

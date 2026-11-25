@@ -192,7 +192,7 @@ describe('AppTopNav dashboard homepage console click', () => {
     render(<AppTopNav apps={consoleApps} pathname="/ops-console/home" />);
     const consoleLink = screen.getByRole('link', { name: '控制台' });
     const analysisLink = screen.getByRole('link', { name: '运营分析' });
-    expect(consoleLink.getAttribute('href')).toBe('/ops-console/home');
+    expect(consoleLink.getAttribute('href')).toBe('/ops-console');
     expect(consoleLink.getAttribute('aria-current')).toBeNull();
     expect(analysisLink.getAttribute('aria-current')).toBeNull();
     expect(fireEvent.click(consoleLink)).toBe(true);

@@ -233,6 +233,22 @@ describe('console chrome layout resolve', () => {
       mode: 'same-tab',
       href: '/ops-console',
     });
+    expect(resolveAppLandingHref(
+      { url: '/cmdb/assetSearch', is_build_in: true },
+      origin,
+      [],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb',
+    });
+    expect(resolveAppLandingHref(
+      { url: '/ops-console/home', is_build_in: true },
+      origin,
+      [],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/ops-console',
+    });
     expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(true);
     expect(shouldStayOnCurrentAppPage(false, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(false);
     expect(shouldStayOnCurrentAppPage(true, { mode: 'new-tab', href: 'https://mail.example' })).toBe(false);
