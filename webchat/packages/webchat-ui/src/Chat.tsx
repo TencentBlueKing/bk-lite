@@ -1221,6 +1221,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 onRegenerate={handleRegenerate}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
+                wikiAuthHeaders={platform ? chatAuthHeaders(requestHeaders, apiKey) : undefined}
+                wikiCredentials={credentials ?? 'include'}
                 loadAttachment={sseUrl ? async (id) => {
                   const endpoints = chatAttachmentEndpoints(sseUrl);
                   if (!endpoints) throw new Error('缺少附件下载地址');

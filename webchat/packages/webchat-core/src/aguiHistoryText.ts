@@ -14,6 +14,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'planned_execution_status',
   'skill_view',
   'wiki_citations',
+  'wiki_material_write',
   'user_choice_result',
   'assistant_text_retract',
   'stream_keepalive',
