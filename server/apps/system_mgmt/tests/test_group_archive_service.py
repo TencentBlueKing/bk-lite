@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncSource
 from apps.system_mgmt.services.archived_group_query import ArchivedGroupQuery
@@ -137,12 +137,13 @@ def test_archive_rejects_default_and_virtual_top(monkeypatch):
     assert GroupArchiveService._is_protected_root(named_only) is False
     assert GroupArchiveService._is_protected_root(virtual) is True
 
-    # sqlite 不支持 JSONField contains；空查询集让归档写路径走到保护根判断。
-    monkeypatch.setattr(
-        GroupArchiveService,
-        "_users_overlapping_groups",
-        staticmethod(lambda subtree_ids: User.objects.none()),
-    )
+    # sqlite 不支持 JSONField contains；Postgres 走真实 overlapping 查询。
+    if connection.vendor == "sqlite":
+        monkeypatch.setattr(
+            GroupArchiveService,
+            "_users_overlapping_groups",
+            staticmethod(lambda subtree_ids: User.objects.none()),
+        )
 
     assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=flagged.id)["result"] is False
     assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=named_only.id)["result"] is True
