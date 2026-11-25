@@ -174,7 +174,7 @@ function WriteCard({ seed }: { seed: WikiWriteSeed }) {
       {openChecks.map((check) => (
         <div key={check.id} className="mt-3">
           {check.page_title ? <div className="mb-2 text-sm font-medium">{check.page_title}</div> : null}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {knowledgePane('现有内容', check.current_body || '')}
             {knowledgePane('待确认内容', check.incoming_body || '')}
           </div>
