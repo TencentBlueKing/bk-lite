@@ -18,8 +18,7 @@ class FakeScript:
 
 
 def _merge(params_str, script_type, content="echo hi"):
-    # merge_script_with_params 不使用 self，传 None 即可，避免实例化触发 DB 查询
-    return ScriptExecutionRunner.merge_script_with_params(None, content, params_str, script_type)
+    return ScriptExecutionRunner.prepare_script_with_params(content, params_str, script_type)[0]
 
 
 @pytest.mark.unit
@@ -54,11 +53,6 @@ class TestMergeScriptWithParams:
     def test_powershell_injects_args(self):
         merged = _merge("a '' c", ScriptType.POWERSHELL, "Write-Output $args")
         assert "$args = @('a', '', 'c')" in merged
-
-    def test_bat_ignores_params(self):
-        """bat 当前不支持参数注入，原样返回脚本内容"""
-        merged = _merge("a b", ScriptType.BAT, "echo %1")
-        assert merged == "echo %1"
 
     def test_no_params_returns_content(self):
         assert _merge("", ScriptType.SHELL, "echo hi") == "echo hi"

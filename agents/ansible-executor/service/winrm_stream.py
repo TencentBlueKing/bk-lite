@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -42,7 +44,38 @@ ProtocolFactory = Callable[[dict[str, Any]], Protocol]
 WindowsCopier = Callable[..., None]
 _SUPPORTED_SCRIPT_TYPES = {"bat", "powershell", "python"}
 _SUPPORTED_TRANSPORTS = {"auto", "basic", "certificate", "ntlm", "kerberos", "credssp", "plaintext", "ssl"}
+_INVALID_BAT_ARG = re.compile(r'["\x00-\x1f\x7f\ud800-\udfff\ufffe\uffff]')
+_CMD_MAX_UNITS = 8191
 _UNSAFE_INTERPRETER_CHARS = set('|"&<>^%\r\n\t')
+
+# WinRS can reject literal batch values in open_shell(env_vars) with error 87.
+# Only the fixed launcher is public on the command line. ASCII JSON on stdin
+# preserves Unicode and the distinction between an empty argument and no argument.
+_BAT_LAUNCHER = """
+$ErrorActionPreference = 'Stop'
+try {
+    $data = ConvertFrom-Json -InputObject ([Console]::In.ReadToEnd())
+    if ($data.expandedLength + $env:TEMP.Length - '%TEMP%'.Length -gt 8191) {
+        [Console]::Error.WriteLine('BAT arguments exceed the cmd.exe command-line limit')
+        exit 1
+    }
+    $start = New-Object Diagnostics.ProcessStartInfo
+    $start.FileName = [IO.Path]::Combine([Environment]::SystemDirectory, 'cmd.exe')
+    $start.UseShellExecute = $false
+    $start.Arguments = $data.command
+    foreach ($item in $data.environment.PSObject.Properties) {
+        $start.EnvironmentVariables[$item.Name] = [string]$item.Value
+    }
+    $child = [Diagnostics.Process]::Start($start)
+    $child.WaitForExit()
+    exit $child.ExitCode
+} catch {
+    [Console]::Error.WriteLine('Unable to start the BAT job')
+    exit 1
+}
+"""
+_BAT_LAUNCHER_ARGS = ["-NoProfile", "-NonInteractive", "-EncodedCommand", base64.b64encode(_BAT_LAUNCHER.encode("utf-16-le")).decode("ascii")]
+
 
 # Back-compat names used by older unit tests.
 prepare_script_bytes = prepare_windows_script_bytes
@@ -121,6 +154,38 @@ def build_execute_command(
     return ("cmd.exe", ["/d", "/q", "/c", f'"%TEMP%\\{leaf}"'])
 
 
+def _bat_launch_input(token: str, values: list[str]) -> bytes:
+    """Build the child environment and a command containing only fixed references."""
+    env = {"BK_JOB_BAT_ARGS_READY": "1"}
+    script = f'"%TEMP%\\{remote_script_leaf(token, "bat")}"'
+    command = [script]
+    source_length = expanded_length = len("cmd.exe /d /q /v:off /s /c ") + len(script) + 2
+    for index, value in enumerate(values, 1):
+        if not isinstance(value, str) or len(value) > _CMD_MAX_UNITS:
+            raise ValueError("Invalid BAT argument type or length")
+        if _INVALID_BAT_ARG.search(value):
+            raise ValueError("BAT arguments cannot contain quotes, control characters or invalid Unicode")
+        quoted = not value or any(c.isspace() or c in ",;=&|<>()^%!" for c in value)
+        word = f'"{value}"' if quoted else value
+        key = f"BK_JOB_BAT_ARG_{index}"
+        reference = f"%{key}%"
+        source_length += len(reference) + 1
+        expanded_length += len(word.encode("utf-16-le")) // 2 + 1
+        if max(source_length, expanded_length) > _CMD_MAX_UNITS:
+            raise ValueError("BAT arguments exceed cmd.exe's 8191-character limit")
+        env[key] = word
+        command.append(reference)
+    return json.dumps(
+        {
+            "command": '/d /q /v:off /s /c "' + " ".join(command) + '"',
+            "environment": env,
+            "expandedLength": expanded_length,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+
+
 def build_cleanup_command(token: str, script_type: str) -> tuple[str, list[str]]:
     leaf = remote_script_leaf(token, script_type)
     return ("cmd.exe", ["/d", "/q", "/c", f'del /f /q "%TEMP%\\{leaf}" >nul 2>nul'])
@@ -178,6 +243,7 @@ def _run_host(
     emit: Callable[[_ThreadEvent], None],
     protocol_factory: ProtocolFactory,
     windows_interpreter: str,
+    bat_input: bytes | None,
 ) -> None:
     protocol = None
     shell_id = None
@@ -187,8 +253,12 @@ def _run_host(
     try:
         protocol = protocol_factory(credential)
         shell_id = protocol.open_shell()
-        command, arguments = build_execute_command(token, script_type, windows_interpreter=windows_interpreter)
-        command_id = protocol.run_command(shell_id, command, arguments)
+        if bat_input is None:
+            command, arguments = build_execute_command(token, script_type, windows_interpreter=windows_interpreter)
+            command_id = protocol.run_command(shell_id, command, arguments)
+        else:
+            command_id = protocol.run_command(shell_id, "powershell.exe", _BAT_LAUNCHER_ARGS, skip_cmd_shell=True)
+            protocol.send_command_input(shell_id, command_id, bat_input, end=True)
         while True:
             if time.monotonic() >= deadline:
                 emit(_ThreadEvent(index, "chunk", b"command timed out\n"))
@@ -206,7 +276,8 @@ def _run_host(
                 exit_code = current_exit_code
                 break
     except Exception as error:  # noqa: BLE001 - 转换为单主机执行结果
-        emit(_ThreadEvent(index, "chunk", f"WinRM stream failed: {error}\n".encode("utf-8")))
+        detail = type(error).__name__ if bat_input is not None else str(error)
+        emit(_ThreadEvent(index, "chunk", f"WinRM stream failed: {detail}\n".encode()))
     finally:
         if protocol is not None and shell_id and command_id:
             with contextlib.suppress(Exception):
@@ -282,6 +353,7 @@ async def run_winrm_stream(
     stream_flush_timeout: float = DEFAULT_STREAM_FLUSH_TIMEOUT,
     stream_max_line_bytes: int = DEFAULT_STREAM_MAX_LINE_BYTES,
     windows_interpreter: str = "python",
+    bat_args: list[str] | None = None,
     skip_put_file: bool = False,
     copy_token: str | None = None,
     script_copier: WindowsCopier | None = None,
@@ -295,6 +367,11 @@ async def run_winrm_stream(
 
     script_bytes = prepare_windows_script_bytes(script_content, script_type)
     token = copy_token or uuid.uuid4().hex
+    if bat_args is not None and not isinstance(bat_args, list):
+        raise TypeError("BAT arguments must be a list of strings")
+    if bat_args and script_type != "bat":
+        raise ValueError("BAT arguments require a BAT script")
+    bat_input = _bat_launch_input(token, bat_args) if bat_args else None
     leaf = remote_script_leaf(token, script_type)
     workspace: Path | None = None
 
@@ -371,6 +448,7 @@ async def run_winrm_stream(
                 emit,
                 protocol_factory,
                 windows_interpreter,
+                bat_input,
             )
         )
         for index, credential in enumerate(host_credentials)

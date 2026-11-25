@@ -58,7 +58,7 @@ describe('作业执行脚本本地暂存', () => {
     expect(value).toEqual(expect.objectContaining({ script_type: 'shell', script_content: 'echo hello#edited' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'powershell' }));
-    expect(value).toEqual(expect.objectContaining({ script_type: 'powershell', script_content: '# 在此处编写 PowerShell 脚本\n' }));
+    expect(value).toEqual(expect.objectContaining({ script_type: 'powershell', script_content: expect.stringContaining('$envName = $args[0]') }));
     expect(screen.getByTestId('script-editor-lang').textContent).toBe('powershell');
 
     fireEvent.change(screen.getByLabelText('script-editor-powershell'), { target: { value: 'Write-Host ok' } });
@@ -84,13 +84,14 @@ describe('作业执行脚本本地暂存', () => {
 
     expect(screen.getByLabelText('script-editor-shell')).toHaveProperty('value', expect.stringContaining('在此处编写脚本逻辑'));
     expect(value.script_content).toEqual(expect.stringContaining('job_success() {'));
+    expect(value.script_content).toContain('# env_name="$1"');
 
     fireEvent.click(screen.getByRole('button', { name: 'bat' }));
-    expect(value.script_content).toBe('@echo off\nREM 在此处编写批处理脚本\n');
+    expect(value.script_content).toContain('REM 示例：依次填写 prod 和 7，用 %~1 读取 prod，用 %~2 读取 7。');
     fireEvent.click(screen.getByRole('button', { name: 'python' }));
-    expect(value.script_content).toBe('#!/usr/bin/env python3\n# 在此处编写 Python 脚本\n');
+    expect(value.script_content).toContain('# env_name, days = sys.argv[1], sys.argv[2]');
     fireEvent.click(screen.getByRole('button', { name: 'powershell' }));
-    expect(value.script_content).toBe('# 在此处编写 PowerShell 脚本\n');
+    expect(value.script_content).toContain('# $days = $args[1]');
     fireEvent.click(screen.getByRole('button', { name: 'shell' }));
     expect(value.script_content).toEqual(expect.stringContaining('# ---------- 结束 ----------'));
   });

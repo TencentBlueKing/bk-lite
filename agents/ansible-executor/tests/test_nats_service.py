@@ -1279,8 +1279,15 @@ async def test_run_task_surfaces_linux_script_delivery_error_as_host_result(tmp_
     assert "回调结果格式非法" not in str(result)
 
 
+@pytest.mark.parametrize(
+    ("script_type", "script", "bat_args"),
+    [
+        ("powershell", "Write-Output first", None),
+        ("bat", "@echo %1", ["北京", "", "D:\\app logs"]),
+    ],
+)
 @pytest.mark.asyncio
-async def test_run_task_uses_winrm_file_stream_for_windows_job_script(tmp_path, monkeypatch):
+async def test_run_task_uses_winrm_file_stream_for_windows_job_script(tmp_path, monkeypatch, script_type, script, bat_args):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
     captured = {}
@@ -1291,11 +1298,11 @@ async def test_run_task_uses_winrm_file_stream_for_windows_job_script(tmp_path, 
         {
             "execute_timeout": 90,
             "stream_remote_output": True,
-            "stream_remote_type": "powershell",
+            "stream_remote_type": script_type,
             "module": "win_shell",
-            "module_args": "Write-Output first; Start-Sleep 5; Write-Output second",
+            "module_args": script,
             "host_credentials": [{"host": "10.10.90.120"}],
-            "extra_vars": {},
+            "extra_vars": {"bklite_secret_bat_args": bat_args} if bat_args else {},
             "task_id": "task-windows-stream",
         },
     )()
@@ -1341,11 +1348,12 @@ async def test_run_task_uses_winrm_file_stream_for_windows_job_script(tmp_path, 
 
     assert result["success"] is True
     assert captured["host_credentials"] == [{"host": "10.10.90.120"}]
-    assert captured["script_type"] == "powershell"
+    assert captured["script_type"] == script_type
+    assert captured["bat_args"] == bat_args
     assert captured["timeout"] == 90
     assert captured["stream_log_topic"] == "job.stream.31.ansible"
     assert captured["execution_id"] == "31"
-    assert "Write-Output first" in captured["script_content"]
+    assert captured["script_content"] == script
 
 
 @pytest.mark.asyncio
