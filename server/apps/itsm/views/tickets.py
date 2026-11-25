@@ -567,17 +567,43 @@ def ticket_detail(request, ticket_id):
         .get(id=ticket_id)
     )
     can_operate = has_permission(request, "ticket-Operate")
-    return WebUtils.response_success(
-        _ticket_detail(
-            ticket,
-            _user(request),
-            bool(getattr(request.user, "is_superuser", False)),
-            can_operate,
-            can_operate and has_permission(request, "workflow-Edit"),
-            task_id=request.GET.get("task_id"),
-            can_apply=has_permission(request, "ticket-Add"),
-        )
+    detail = _ticket_detail(
+        ticket, _user(request), bool(getattr(request.user, "is_superuser", False)), can_operate,
+        can_operate and has_permission(request, "workflow-Edit"), task_id=request.GET.get("task_id"),
+        can_apply=has_permission(request, "ticket-Add"),
     )
+    _mark_executing_nodes(request, ticket, detail)
+    return WebUtils.response_success(detail)
+
+
+def _mark_executing_nodes(request, ticket, detail):
+    if detail["status"] in {"finished", "cancelled", "terminated", "suspended"}:
+        return
+    nodes = {node["id"]: node for node in detail["nodes"]}
+    executing = set()
+    for row in detail["history"]:
+        node = nodes.get(row["node_id"])
+        if row.get("action") == "auto" and row["state"] == "current" and node and node["state"] == "current" and "can_retry" in row:
+            row["executing"] = True
+            executing.add(node["id"])
+    # 自动任务尚未入库、或父流程正等待子流程时，从该实例读取实际活动位置。
+    if ticket.process_instance_id and not any(n["state"] in {"current", "failed"} for n in nodes.values()):
+        client = _service(request).client
+        if client:
+            try:
+                activity_ids = client.active_activity_ids(ticket.process_instance_id)
+            except FlowableError:
+                activity_ids = set()
+            for node_id in sorted(activity_ids & nodes.keys()):
+                node = nodes[node_id]
+                executing.add(node_id)
+                detail["history"].append({
+                    "id": f"runtime-{node_id}", "node_id": node_id, "name": node["name"], "action": "runtime",
+                    "action_label": "执行中", "state": "current", "executing": True, "operator": "",
+                    "started_at": "", "finished_at": "", "message": "",
+                })
+    for node_id in executing:
+        nodes[node_id].update(state="current", outcome="current", executing=True)
 
 
 @csrf_exempt

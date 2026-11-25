@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { Button, Input, Popconfirm, Radio, Tag, Timeline } from 'antd';
 import { ItsmModal } from './interaction-surfaces';
-import { UserOutlined } from '@ant-design/icons';
-import { NODE_PALETTE } from '../constants/node-catalog';
+import { LoadingOutlined, UserOutlined } from '@ant-design/icons';
+import { NODE_PALETTE, runningNodeLabel } from '../constants/node-catalog';
 import type { AutoExecutionReview, TicketHistoryItem, TicketProgressNode } from '../types';
 import { NodeGlyph } from './node-glyph';
 import { formatTicketTime } from './ticket-collaboration';
@@ -60,11 +60,11 @@ export function TicketHistory({ items, nodes, retry, reconcile, busy }: TicketHi
       key: item.id,
       dot: <span aria-label={label} className="inline-flex rounded-lg bg-[var(--color-bg)]"><NodeGlyph type={type} compact /></span>,
       children: <div className="ml-2 flex flex-col gap-1 pb-2">
-        <span className="text-xs text-[var(--color-text-3)]">{formatTicketTime(item.finished_at || item.started_at)}</span>
+        {(item.started_at || item.finished_at) && <span className="text-xs text-[var(--color-text-3)]">{formatTicketTime(item.finished_at || item.started_at)}</span>}
         <span className="text-sm font-medium text-[var(--color-text-1)]">{item.name}</span>
         <div className="mt-1 flex flex-wrap gap-1">
-          <Tag icon={<UserOutlined />}>{item.operator || '未分配'}</Tag>
-          {item.state === 'current' ? <Tag color="processing">{item.action === 'auto' ? item.action_label : '待处理'}</Tag> : null}
+          {(item.operator || !item.executing) && <Tag icon={<UserOutlined />}>{item.operator || '未分配'}</Tag>}
+          {item.state === 'current' ? <Tag color="processing" icon={item.executing ? <LoadingOutlined /> : undefined}>{item.executing ? runningNodeLabel(type) : item.action === 'auto' ? item.action_label : '待处理'}</Tag> : null}
           {item.state === 'failed' ? <Tag color={item.action_label === '待核对' ? 'warning' : 'error'}>{item.action_label === '待核对' ? '待核对' : '执行失败'}</Tag> : null}
           {item.action === 'auto_retry' || item.action === 'return' || item.action === 'auto_reconcile' ? <Tag>{item.action_label}</Tag> : null}
         </div>

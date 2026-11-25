@@ -93,7 +93,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
     if (busy || serviceId || !ticket) return;
     const recovering = ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery;
     if (!recovering && ['finished', 'cancelled', 'terminated', 'suspended'].includes(ticket.status)) return;
-    const hasRunningStep = ticket.history?.some(item => item.action === 'auto' && item.state === 'current');
+    const hasRunningStep = ticket.history?.some(item => item.executing || (item.action === 'auto' && item.state === 'current'));
     if (!recovering && ticket.tasks.length && !hasRunningStep) return;
     const timer = window.setInterval(() => { void load(undefined, true); }, 5000);
     return () => window.clearInterval(timer);
@@ -178,7 +178,8 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>
           {!serviceId && <span>提单时间：{formatTicketTime(ticket.created_at)}</span>}
           <span>流程：{ticket.workflow_name || '—'}</span>
-          <span>当前节点：{ticket.nodes.filter((node) => node.state === 'current' || node.state === 'failed').map((node) => node.name).join('、') || '—'}</span>
+          <span>当前节点：{ticket.nodes.filter((node) => node.state === 'current' || node.state === 'failed').map((node) => node.name).join('、') || Array.from(new Set(ticket.tasks.map(task => task.node_name).filter(Boolean))).join('、') || '—'}</span>
+          {selectedTask && !ticket.nodes.some(node => node.id === selectedTask.node_id && node.state === 'current') && <span>当前待办：{selectedTask.node_name}</span>}
           <span>当前处理人：{serviceId ? ticket.creator : Array.from(new Set(ticket.tasks.map((task) => task.assignee).filter(Boolean))).join('、') || '—'}</span>
         </div>
       </header>

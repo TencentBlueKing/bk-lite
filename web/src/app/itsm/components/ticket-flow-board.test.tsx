@@ -28,3 +28,18 @@ it('当前节点有可见定位标识，离开节点后移除', () => {
   rerender(<ProgressNode {...props} data={{ ...props.data, state: 'done', outcome: 'passed' }} />);
   expect(screen.queryByText('当前节点')).toBeNull();
 });
+
+it('系统执行期间标明实际节点，结果返回后移除旋转标识', () => {
+  const props = { data: { label: '发布验收知识', nodeType: 'auto', state: 'current', executing: true, assignees: [] } } as ComponentProps<typeof ProgressNode>;
+  const { rerender } = render(<ProgressNode {...props} />);
+  expect(screen.getByLabelText('发布验收知识，执行中').getAttribute('aria-current')).toBe('step');
+  expect(screen.getByText('执行中')).toBeTruthy();
+  rerender(<ProgressNode {...props} data={{ ...props.data, state: 'done', executing: false }} />);
+  expect(screen.queryByText('执行中')).toBeNull();
+});
+
+it.each(['call', 'subprocess', 'subprocess_submit'])('调用节点 %s 显示正在等待子流程', nodeType => {
+  const props = { data: { label: '调用交付子流程', nodeType, state: 'current', executing: true, assignees: [] } } as ComponentProps<typeof ProgressNode>;
+  render(<ProgressNode {...props} />);
+  expect(screen.getByText('等待子流程办理')).toBeTruthy();
+});

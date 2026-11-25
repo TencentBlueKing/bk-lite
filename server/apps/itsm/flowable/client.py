@@ -108,6 +108,13 @@ class FlowableClient:
             if not batch:
                 raise FlowableError(502, "流程引擎分页提前结束")
 
+    def active_activity_ids(self, process_instance_id: str) -> set[str]:
+        executions = self._all_runtime("executions", {"processInstanceId": process_instance_id})
+        return {
+            row["activityId"] for row in executions
+            if row.get("processInstanceId") == process_instance_id and row.get("activityId") and not row.get("suspended")
+        }
+
     def list_tasks(self, process_instance_id: str) -> dict[str, Any]:
         rows = self._all_runtime("tasks", {"processInstanceId": process_instance_id})
         return {"data": rows, "total": len(rows)}

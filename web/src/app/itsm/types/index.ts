@@ -184,6 +184,7 @@ export interface TicketLogItem {
 }
 
 export interface TicketProgressNode {
+  executing?: boolean;
   outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected' | 'failed';
   id: string;
   name: string;
@@ -227,6 +228,7 @@ export interface AutoExecutionReview {
 }
 
 export interface TicketHistoryItem {
+  executing?: boolean;
   id: string;
   node_id: string;
   name: string;

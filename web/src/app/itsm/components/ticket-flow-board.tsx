@@ -4,9 +4,9 @@ import { Background, Controls, MiniMap, useReactFlow, Handle, Position, ReactFlo
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { Button, Modal, Popover, Select, Tag, Tooltip } from 'antd';
-import { AimOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
+import { AimOutlined, LoadingOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
 import { NodeGlyph } from './node-glyph';
-import { NODE_PALETTE } from '../constants/node-catalog';
+import { NODE_PALETTE, runningNodeLabel } from '../constants/node-catalog';
 import { formatTicketTime } from './ticket-collaboration';
 import { useMemo, useState } from 'react';
 import type { TicketProgressEdge, TicketProgressNode } from '../types';
@@ -18,6 +18,7 @@ const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'bran
 interface FlowNodeData extends Record<string, unknown> {
   label: string;
   nodeType: string;
+  executing?: boolean;
   state: TicketProgressNode['state'];
   outcome?: TicketProgressNode['outcome'];
   assignees: string[];
@@ -40,17 +41,18 @@ const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝
 export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
   const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
   const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
+  const statusLabel = data.executing ? runningNodeLabel(data.nodeType) : STATE_LABEL[outcome];
   return (
     <Popover trigger={['hover', 'focus']} title={data.label} content={
       <div className="flex max-w-xs flex-col gap-2 text-xs">
-        <div className="flex flex-wrap gap-1"><Tag>{typeLabel}</Tag><Tag>{STATE_LABEL[outcome]}</Tag></div>
+        <div className="flex flex-wrap gap-1"><Tag>{typeLabel}</Tag><Tag>{statusLabel}</Tag></div>
         {data.assignees.length ? <div className="flex flex-wrap gap-1">{data.assignees.map((name) => <Tag key={name} icon={<UserOutlined />}>{name}</Tag>)}</div> : null}
         {data.started_at ? <span>到达时间 {formatTicketTime(data.started_at)}</span> : null}
         {data.finished_at ? <span>处理时间 {formatTicketTime(data.finished_at)}</span> : null}
       </div>
     }>
-      <div tabIndex={0} aria-current={data.state === 'current' || data.state === 'failed' ? 'step' : undefined} aria-label={`${data.label}，${STATE_LABEL[outcome]}`} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative rounded-xl p-[2px] shadow-[0_2px_4px_color-mix(in_srgb,var(--color-text-1)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${FRAME_CLASS} ${STATE_CLASS[outcome]}`}>
-        {data.state === 'current' ? <span className="absolute -top-7 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--color-warning)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning)]"><AimOutlined />当前节点</span> : null}
+      <div tabIndex={0} aria-current={data.state === 'current' || data.state === 'failed' ? 'step' : undefined} aria-label={`${data.label}，${statusLabel}`} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className={`relative rounded-xl p-[2px] shadow-[0_2px_4px_color-mix(in_srgb,var(--color-text-1)_8%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${FRAME_CLASS} ${STATE_CLASS[outcome]}`}>
+        {data.state === 'current' ? <span className="absolute -top-7 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--color-warning)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning)]">{data.executing ? <LoadingOutlined /> : <AimOutlined />}{data.executing ? statusLabel : '当前节点'}</span> : null}
         {data.state === 'failed' ? <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[var(--color-fail)] bg-[var(--color-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-fail)]">执行失败</span> : null}
         <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
         <div className="flex h-full flex-col justify-center gap-2 rounded-[10px] bg-[var(--color-bg)] px-3 shadow-[inset_0_1px_2px_color-mix(in_srgb,var(--color-text-1)_4%,transparent)]">
@@ -85,7 +87,7 @@ const layout = (nodes: TicketProgressNode[], edges: TicketProgressEdge[]) => {
       id: node.id,
       type: 'progress',
       position: { x: (position?.x || 0) - NODE_WIDTH / 2, y: (position?.y || 0) - NODE_HEIGHT / 2 },
-      data: { label: node.name, nodeType: node.type, state: node.state, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
+      data: { label: node.name, nodeType: node.type, state: node.state, executing: node.executing, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
     };
   });
 };

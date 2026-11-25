@@ -108,3 +108,7 @@ export function orderedNodeActions(actions: string[], display: NodeActionDisplay
   const enabled = new Set(actions);
   return [...order].filter(action => enabled.has(action)).map(action => presentation.get(action) ?? { action });
 }
+
+export function runningNodeLabel(type: string) {
+  return ['call', 'subprocess', 'subprocess_submit'].includes(type) ? '等待子流程办理' : '执行中';
+}
