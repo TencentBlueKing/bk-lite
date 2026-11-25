@@ -8,16 +8,12 @@ export interface ReceiveCollectType {
   instance_count?: number;
 }
 
-const HIDDEN_RECEIVE_TYPES = new Set(['snmp_trap']);
+const PASSIVE_COLLECT_TYPES = new Set(['syslog', 'snmp_trap']);
 
 export function buildReceiveTree(
   data: ReceiveCollectType[],
   categoryEnum: { id: string; name: string }[],
-  options: {
-    allTitle: string;
-    sourceDeviceCount: number;
-    sourceNodeTitle: (name: string) => string;
-  }
+  allTitle: string
 ): TreeItem[] {
   const categoryMap = categoryEnum.reduce(
     (acc: Record<string, string>, item) => {
@@ -28,7 +24,7 @@ export function buildReceiveTree(
   );
   const groupedData = data.reduce(
     (acc, item) => {
-      if (HIDDEN_RECEIVE_TYPES.has(item.name)) return acc;
+      if (PASSIVE_COLLECT_TYPES.has(item.name)) return acc;
       const category = item.display_category || 'other';
       if (!acc[category]) {
         acc[category] = {
@@ -37,19 +33,8 @@ export function buildReceiveTree(
           children: []
         };
       }
-      if (item.name === 'syslog') {
-        const title = options.sourceNodeTitle(item.display_name || item.name);
-        acc[category].children.push({
-          title: `${title}(${options.sourceDeviceCount})`,
-          label: title,
-          key: String(item.id),
-          children: []
-        });
-        return acc;
-      }
-      const count = Number(item.instance_count || 0);
       acc[category].children.push({
-        title: `${item.display_name || item.name}(${count})`,
+        title: `${item.display_name || item.name}(${Number(item.instance_count || 0)})`,
         label: item.display_name || item.name || '--',
         key: String(item.id),
         children: []
@@ -65,7 +50,7 @@ export function buildReceiveTree(
 
   return [
     {
-      title: options.allTitle,
+      title: allTitle,
       key: 'all',
       children: []
     },

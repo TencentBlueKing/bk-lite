@@ -43,7 +43,6 @@ import {
   consumeExtractorCreateSample
 } from './logExtractorLogic';
 import { buildReceiveTree, ReceiveCollectType } from './receiveTree';
-import SyslogSourceDevicePane from './syslogSourceDevicePane';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -58,8 +57,7 @@ const Asset = () => {
     reassignCollectorNode,
     getCollectTypes,
     getDisplayCategoryEnum,
-    getLogExtractors,
-    getSyslogSourceDevices
+    getLogExtractors
   } = useLogApi();
   const { t } = useTranslation();
   const router = useRouter();
@@ -90,8 +88,6 @@ const Asset = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [collectTypes, setCollectTypes] = useState<ReceiveCollectType[]>([]);
   const [categoryEnum, setCategoryEnum] = useState<{ id: string; name: string }[]>([]);
-  const [sourceDeviceCount, setSourceDeviceCount] = useState(0);
-  const [collectTypeNameById, setCollectTypeNameById] = useState<Record<string, string>>({});
   const [objectId, setObjectId] = useState<React.Key>('');
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [collectTypeMap, setCollectTypeMap] = useState<Record<number, string>>(
@@ -281,30 +277,16 @@ const Asset = () => {
     return false;
   }, [selectedRowKeys]);
 
-  const showingSourceDevices = collectTypeNameById[String(objectId)] === 'syslog';
-  const showingSourceDevicesRef = useRef(showingSourceDevices);
-  showingSourceDevicesRef.current = showingSourceDevices;
-  const syslogTypeId = collectTypes.find((item) => item.name === 'syslog')?.id;
-  const defaultSelectedKey =
-    searchParams.get('collect_type') === 'syslog' && syslogTypeId
-      ? String(syslogTypeId)
-      : 'all';
   const treeData = useMemo(
-    () =>
-      buildReceiveTree(collectTypes, categoryEnum, {
-        allTitle: t('common.all'),
-        sourceDeviceCount,
-        sourceNodeTitle: (name) =>
-          t('log.sourceDevice.treeNode', '{name}来源', { name })
-      }),
-    [collectTypes, categoryEnum, sourceDeviceCount, t]
+    () => buildReceiveTree(collectTypes, categoryEnum, t('common.all')),
+    [collectTypes, categoryEnum, t]
   );
 
   useEffect(() => {
-    if (!isLoading && !showingSourceDevices) {
+    if (!isLoading) {
       getAssetInsts();
     }
-  }, [pagination.current, pagination.pageSize, objectId, unassignedOnly, showingSourceDevices]);
+  }, [pagination.current, pagination.pageSize, objectId, unassignedOnly]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -320,7 +302,7 @@ const Asset = () => {
   }, []);
 
   useEffect(() => {
-    if (!frequence || showingSourceDevices) {
+    if (!frequence) {
       clearTimer();
       return;
     }
@@ -336,8 +318,7 @@ const Asset = () => {
     pagination.pageSize,
     searchText,
     objectId,
-    unassignedOnly,
-    showingSourceDevices
+    unassignedOnly
   ]);
 
   useEffect(() => {
@@ -433,25 +414,7 @@ const Asset = () => {
         },
         {}
       );
-      const nameMap = types.reduce(
-        (acc: Record<string, string>, item: ObjectItem) => {
-          acc[String(item.id)] = item.name;
-          return acc;
-        },
-        {}
-      );
-      let nextSourceCount = 0;
-      if (types.some((item) => item.name === 'syslog')) {
-        try {
-          const listed = await getSyslogSourceDevices({ page: 1, page_size: 1 });
-          nextSourceCount = listed?.count || 0;
-        } catch {
-          nextSourceCount = 0;
-        }
-      }
-      if (currentRequestId !== treeRequestIdRef.current) return;
       setCollectTypeMap(typeMap);
-      setCollectTypeNameById(nameMap);
       setCollectTypes(
         types.map((item) => ({
           id: item.id,
@@ -462,7 +425,6 @@ const Asset = () => {
         }))
       );
       setCategoryEnum(categoryEnum || []);
-      setSourceDeviceCount(nextSourceCount);
     } finally {
       // 只有最新请求才控制 loading
       if (currentRequestId === treeRequestIdRef.current) {
@@ -544,7 +506,6 @@ const Asset = () => {
   };
 
   const getAssetInsts = async (type?: string) => {
-    if (showingSourceDevicesRef.current) return;
     // 取消上一次请求
     instanceAbortControllerRef.current?.abort();
     const abortController = new AbortController();
@@ -631,15 +592,11 @@ const Asset = () => {
         data={treeData}
         loading={treeLoading}
         showAllMenu
-        defaultSelectedKey={defaultSelectedKey}
+        defaultSelectedKey="all"
         onNodeSelect={handleObjectChange}
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
-        {showingSourceDevices ? (
-          <SyslogSourceDevicePane onUnfilteredCount={setSourceDeviceCount} />
-        ) : (
-          <>
         <ToolbarSplitShell
           leading={(
             <Input.Search
@@ -695,8 +652,6 @@ const Asset = () => {
           onChange={handleTableChange}
           rowSelection={rowSelection}
         ></CustomTable>
-          </>
-        )}
         <ReassignCollectorModal
           open={Boolean(reassignInstanceId)}
           title={t('log.integration.reassignCollectorNode')}

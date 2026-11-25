@@ -4,7 +4,8 @@ from apps.core.utils.web_utils import WebUtils
 from apps.log.serializers.syslog_source_device import SyslogSourceDeviceQuerySerializer
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.syslog_source_device import list_syslog_source_devices
-from apps.log.views.extractor import TYPE_SCOPE_VIEW_PERMISSIONS
+
+SOURCE_DEVICE_VIEW_PERMISSION = "source_device-View"
 
 
 def _user_log_permissions(request) -> set[str]:
@@ -23,7 +24,7 @@ def authorize_syslog_source_device_view(request):
         return WebUtils.response_403(str(exc))
     if getattr(request.user, "is_superuser", False):
         return None
-    if _user_log_permissions(request).intersection(TYPE_SCOPE_VIEW_PERMISSIONS):
+    if SOURCE_DEVICE_VIEW_PERMISSION in _user_log_permissions(request):
         return None
     return WebUtils.response_403("当前用户无权限查看来源设备")
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -11,7 +11,7 @@ import SearchActionBar from '@/components/search-action-bar';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ColumnItem } from '@/types';
 import { SyslogSourceDeviceRow } from '@/app/log/types/syslogSourceDevice';
-import { buildSourceDeviceSearchUrl } from '@/app/log/(pages)/integration/list/detail/source-device/sourceDeviceSearch';
+import { buildSourceDeviceSearchUrl } from './sourceDeviceSearch';
 
 interface SourceDeviceQuery {
   keyword: string;
@@ -22,19 +22,11 @@ const EMPTY_QUERY: SourceDeviceQuery = {
   keyword: ''
 };
 
-const SyslogSourceDevicePane = ({
-  refreshKey = 0,
-  onUnfilteredCount
-}: {
-  refreshKey?: number;
-  onUnfilteredCount?: (count: number) => void;
-}) => {
+const SourceDevice = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { getSyslogSourceDevices } = useLogApi();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const onCountRef = useRef(onUnfilteredCount);
-  onCountRef.current = onUnfilteredCount;
   const [keywordDraft, setKeywordDraft] = useState('');
   const [applied, setApplied] = useState<SourceDeviceQuery>(EMPTY_QUERY);
   const [tableData, setTableData] = useState<SyslogSourceDeviceRow[]>([]);
@@ -60,8 +52,6 @@ const SyslogSourceDevicePane = ({
         if (cancelled) return;
         setTableData(data?.items || []);
         setPagination((prev) => ({ ...prev, total: data?.count || 0 }));
-        const unfiltered = !applied.keyword && !applied.status;
-        if (unfiltered) onCountRef.current?.(data?.count || 0);
       } finally {
         if (!cancelled) setTableLoading(false);
       }
@@ -70,7 +60,7 @@ const SyslogSourceDevicePane = ({
     return () => {
       cancelled = true;
     };
-  }, [applied, isLoading, pagination.current, pagination.pageSize, refreshKey]);
+  }, [applied, isLoading, pagination.current, pagination.pageSize]);
 
   const resetPage = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -89,6 +79,12 @@ const SyslogSourceDevicePane = ({
   };
 
   const columns: ColumnItem[] = [
+    {
+      title: t('log.sourceDevice.receiveType'),
+      dataIndex: 'receive_type',
+      key: 'receive_type',
+      render: () => t('log.sourceDevice.syslog')
+    },
     {
       title: t('log.sourceDevice.cloudRegion'),
       dataIndex: 'cloud_region_id',
@@ -165,23 +161,20 @@ const SyslogSourceDevicePane = ({
   ];
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="mb-4">
-        <SearchActionBar
-          spacing="flush"
-          searchProps={{
-            allowClear: true,
-            placeholder: t('log.sourceDevice.searchPlaceholder'),
-            value: keywordDraft,
-            onChange: (event) => {
-              const value = event.target.value;
-              setKeywordDraft(value);
-              if (!value) applyKeyword('');
-            },
-            onSearch: applyKeyword
-          }}
-        />
-      </div>
+    <div className="h-full min-w-0 w-full bg-[var(--color-bg)] p-5">
+      <SearchActionBar
+        searchProps={{
+          allowClear: true,
+          placeholder: t('log.sourceDevice.searchPlaceholder'),
+          value: keywordDraft,
+          onChange: (event) => {
+            const value = event.target.value;
+            setKeywordDraft(value);
+            if (!value) applyKeyword('');
+          },
+          onSearch: applyKeyword
+        }}
+      />
       <CustomTable
         rowKey={(record: SyslogSourceDeviceRow) =>
           `${record.cloud_region_id}\u0000${record.source_ip}\u0000${record.hostname}`
@@ -189,7 +182,7 @@ const SyslogSourceDevicePane = ({
         columns={columns}
         dataSource={tableData}
         loading={tableLoading}
-        scroll={{ y: 'calc(100vh - 340px)', x: 'max-content' }}
+        scroll={{ y: 'calc(100vh - 320px)', x: 'max-content' }}
         pagination={{
           ...pagination,
           showSizeChanger: true,
@@ -224,4 +217,4 @@ const SyslogSourceDevicePane = ({
   );
 };
 
-export default SyslogSourceDevicePane;
+export default SourceDevice;

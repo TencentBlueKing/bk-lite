@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import en from '@/app/log/locales/en.json';
 import zh from '@/app/log/locales/zh.json';
 import menu from '@/app/log/constants/menu.json';
-import { buildPassiveIntegrationDetailMenu } from '../integrationDetailMenu';
-import { buildSourceDeviceSearchUrl } from '../source-device/sourceDeviceSearch';
+import { buildPassiveIntegrationDetailMenu } from '../../list/detail/integrationDetailMenu';
+import { buildSourceDeviceSearchUrl } from '../sourceDeviceSearch';
 
 const titles = {
   configurationTitle: '配置',
@@ -11,19 +11,27 @@ const titles = {
   introductionTitle: '简介'
 };
 
-function menuRoutes(nodes: Array<{ url?: string; isNotMenuItem?: boolean; children?: unknown[] }>, url: string) {
-  const matches = [];
-  const visit = (items: typeof nodes) => {
+interface MenuNode {
+  title?: string;
+  url?: string;
+  name?: string;
+  isNotMenuItem?: boolean;
+  children?: unknown[];
+}
+
+function menuRoutes(nodes: MenuNode[], url: string) {
+  const matches: MenuNode[] = [];
+  const visit = (items: MenuNode[]) => {
     for (const item of items) {
       if (item.url === url) matches.push(item);
-      if (Array.isArray(item.children)) visit(item.children as typeof nodes);
+      if (Array.isArray(item.children)) visit(item.children as MenuNode[]);
     }
   };
   visit(nodes);
   return matches;
 }
 
-describe('syslog source device navigation', () => {
+describe('source device navigation', () => {
   it('keeps passive detail menus on configuration, extractors, and introduction', () => {
     expect(buildPassiveIntegrationDetailMenu(titles).map((item) => item.url)).toEqual([
       '/log/integration/list/detail/configure',
@@ -32,17 +40,26 @@ describe('syslog source device navigation', () => {
     ]);
   });
 
-  it('registers the hidden route and copy in both languages', () => {
-    for (const tree of [menu.zh, menu.en]) {
-      const matches = menuRoutes(tree, '/log/integration/list/detail/source-device');
-      expect(matches).toHaveLength(1);
-      expect(matches[0].isNotMenuItem).toBe(true);
-      expect(matches[0].name).toBe('integration_source_device');
+  it('lists source devices as an integration page right after log receive', () => {
+    for (const [tree, title] of [
+      [menu.zh, '来源设备'],
+      [menu.en, 'Source devices']
+    ] as const) {
+      const integration = (tree as MenuNode[]).find((item) => item.url === '/log/integration');
+      const siblings = (integration?.children || []) as MenuNode[];
+      const index = siblings.findIndex((item) => item.url === '/log/integration/source-device');
+      expect(siblings[index - 1]?.url).toBe('/log/integration/receive');
+      expect(siblings[index]).toMatchObject({ name: 'source_device', title });
+      expect(siblings[index].isNotMenuItem).toBeUndefined();
+
+      const legacy = menuRoutes(tree as MenuNode[], '/log/integration/list/detail/source-device');
+      expect(legacy).toHaveLength(1);
+      expect(legacy[0].isNotMenuItem).toBe(true);
     }
-    expect(zh.log.sourceDevice.menuTitle).toBe('来源设备');
-    expect(en.log.sourceDevice.menuTitle).toBe('Source devices');
-    expect(zh.log.sourceDevice.treeNode).toBe('{name}来源');
-    expect(en.log.sourceDevice.treeNode).toBe('{name} sources');
+    expect(zh.log.sourceDevice.receiveType).toBe('接收类型');
+    expect(en.log.sourceDevice.receiveType).toBe('Receive type');
+    expect(zh.log.sourceDevice.syslog).toBe('系统日志');
+    expect(en.log.sourceDevice.syslog).toBe('Syslog');
     expect(zh.log.sourceDevice.searchPlaceholder).toBe('搜索源 IP 或主机名');
     expect(en.log.sourceDevice.searchPlaceholder).toBe('Search source IP or hostname');
     expect(zh.log.sourceDevice.hostname).toBe('主机名');

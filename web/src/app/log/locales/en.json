@@ -211,9 +211,9 @@
       "unsupportedCollectType": "This collect type does not support type-level extractors."
     },
     "sourceDevice": {
-      "menuTitle": "Source devices",
-      "treeNode": "{name} sources",
       "searchPlaceholder": "Search source IP or hostname",
+      "receiveType": "Receive type",
+      "syslog": "Syslog",
       "cloudRegion": "Cloud region",
       "sourceIp": "Source IP",
       "hostname": "Hostname",
@@ -221,8 +221,7 @@
       "lastSeen": "Last seen",
       "status": "Status",
       "active": "Active",
-      "silent": "Silent",
-      "unsupported": "Source devices are available only for the syslog integration."
+      "silent": "Silent"
     },
     "integration": {
       "connect": "Connect",

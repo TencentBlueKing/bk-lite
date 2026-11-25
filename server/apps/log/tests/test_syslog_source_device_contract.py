@@ -6,6 +6,7 @@ import pytest
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 VECTOR_PATH = SERVER_ROOT / "apps/node_mgmt/support-files/collectors/Vector.json"
 COLLECT_TYPE_PATH = SERVER_ROOT / "apps/log/support-files/plugins/Vector/syslog/collect_type.json"
+LOG_MENU_PATH = SERVER_ROOT / "support-files/system_mgmt/menus/log.json"
 
 SYSLOG_VRL = """.collector = "Vector"
 .collect_type = "syslog"
@@ -52,6 +53,19 @@ def test_syslog_collect_type_attrs_include_cloud_region_without_changing_default
     payload = json.loads(COLLECT_TYPE_PATH.read_text())
     assert payload["default_query"] == "collect_type: syslog | last 1 by (_time) partition by (instance_id)"
     assert payload["attrs"][payload["attrs"].index("instance_id") + 1] == "cloud_region_id"
+
+
+def test_source_device_menu_is_a_view_only_integration_page_granted_to_normal_role():
+    from apps.log.views.syslog_source_device import SOURCE_DEVICE_VIEW_PERMISSION
+
+    payload = json.loads(LOG_MENU_PATH.read_text(encoding="utf-8"))
+    integration = next(menu for menu in payload["menus"] if menu["name"] == "Integration")
+    source_device = next(child for child in integration["children"] if child["id"] == "source_device")
+    normal_role = next(role for role in payload["roles"] if role["name"] == "normal")
+
+    assert source_device["operation"] == ["View"]
+    assert SOURCE_DEVICE_VIEW_PERMISSION == "source_device-View"
+    assert SOURCE_DEVICE_VIEW_PERMISSION in normal_role["menus"]
 
 
 def test_syslog_source_discovery_is_a_five_minute_beat_task():

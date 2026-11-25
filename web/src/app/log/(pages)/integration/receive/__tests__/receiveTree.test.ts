@@ -6,8 +6,8 @@ const categories = [
   { id: 'network', name: '网络' }
 ];
 
-describe('receive tree for passive collect types', () => {
-  it('hides snmp trap and counts syslog by source devices', () => {
+describe('receive tree', () => {
+  it('lists only collect types that have collect instances', () => {
     const tree = buildReceiveTree(
       [
         {
@@ -33,20 +33,13 @@ describe('receive tree for passive collect types', () => {
         }
       ],
       categories,
-      {
-        allTitle: '全部',
-        sourceDeviceCount: 4,
-        sourceNodeTitle: (name) => `${name}来源`
-      }
+      '全部'
     );
 
+    expect(tree[0]).toEqual({ title: '全部', key: 'all', children: [] });
     const general = tree.find((item) => item.key === 'general');
-    expect(general?.children.map((item) => item.title)).toEqual([
-      '系统日志来源(4)',
-      '文件采集(2)'
-    ]);
-    expect(general?.children.find((item) => item.label === '系统日志来源')?.key).toBe('16');
-    expect(general?.children.every((item) => item.children.length === 0)).toBe(true);
+    expect(general?.children.map((item) => item.title)).toEqual(['文件采集(2)']);
     expect(JSON.stringify(tree)).not.toContain('SNMP Trap');
+    expect(JSON.stringify(tree)).not.toContain('系统日志');
   });
 });

@@ -13,12 +13,12 @@ syslog 的 `instance_id` 固定为 `base`，事件上没有云区域。经中转
 
 - Linux Vector 的 syslog 补全段写入字符串 `cloud_region_id`，并只对 `hostname` 做去空白。`instance_id` 保持 `base`。
 - 日志模块新增来源设备表。运行期每 5 分钟按云区域汇总最近 10 分钟的 syslog，只更新已出现的三元组。
-- 来源设备列表放在日志接收。左侧与文件采集同级，节点是「系统日志来源」，括号是来源设备数。右侧是这张只读表。系统日志详情侧栏只留配置、提取器、简介。SNMP Trap 不出现在日志接收左侧。点一行进入日志搜索。旧的详情地址跳到日志接收并选中系统日志来源。
+- 来源设备是观测出来的对象，接入实例是用户配置出来的对象，两者分开放。「集成」下紧挨日志接收新增「来源设备」页，是这张只读表，菜单权限 `source_device-View`。日志接收只列有接入实例的类型，syslog 和 SNMP Trap 都不出现。系统日志详情侧栏只留配置、提取器、简介。点一行进入日志搜索。旧的详情地址跳到来源设备页。
 
 ## User Stories
 
 1. 作为运维，我看到新 syslog 带有接收节点的云区域、源 IP 和 hostname，能在搜索、统计和提取器条件里使用这三个字段。
-2. 作为运维，我从日志接收打开系统日志来源，看到谁在发日志、首次收到、最近收到，以及 24 小时内是否活跃。系统日志详情侧栏不再放这张表。
+2. 作为运维，我从「集成 / 来源设备」看到谁在发系统日志、首次收到、最近收到，以及 24 小时内是否活跃。日志接收的「全部」仍只代表接入实例。
 3. 作为运维，我点一行，日志搜索带上这三个字段，时间范围盖住该行的首次收到到现在。
 4. 作为既有客户，历史日志不回填；非容器节点和 Windows Vector 配置不被这次模板改动改写；自定义配置不改。
 
@@ -98,7 +98,9 @@ collect_type:"syslog" AND cloud_region_id:"<id>" | stats by (cloud_region_id, so
 
 `GET /api/v1/log/syslog_source_devices/`
 
-权限与类型级提取器的查看一致：先 `LogAccessScopeService.get_data_scope`，没有当前团队时拒绝；超管放行；其他人需要 `integration_configure-View` 或 `integration_list-View`。通过后返回全部行，不按团队过滤。
+权限跟来源设备页一致：先 `LogAccessScopeService.get_data_scope`，没有当前团队时拒绝；超管放行；其他人需要 `source_device-View`。只有日志集成或日志接收的查看权限不够。通过后返回全部行，不按团队过滤。
+
+`server/support-files/system_mgmt/menus/log.json` 的 Integration 下新增 `source_device`，操作只有 `View`，`normal` 角色默认授予 `source_device-View`。`manager` 角色由 `init_realm_resource` 自动拿到全部菜单。自定义角色需要管理员手工勾选。
 
 查询参数：`cloud_region_id` 匹配云区域 id 或名称；`source_ip`、`hostname` 为包含匹配；`keyword` 对源 IP 和主机名做或匹配；`status` 为 `active` 或 `silent`；分页。状态不落库：`last_seen` 距现在不超过 24 小时为 `active`，否则为 `silent`。阈值是代码常量。
 
@@ -114,11 +116,11 @@ collect_type:"syslog" AND cloud_region_id:"..." AND source_ip:"..." AND hostname
 
 来源设备不放在 syslog 集成详情侧栏。`buildPassiveIntegrationDetailMenu` 对 syslog 和 snmptrap 都只保留配置、提取器、简介。
 
-列表放在 `web/src/app/log/(pages)/integration/receive/page.tsx`。左侧「系统日志来源(n)」与文件采集同级，选中它时右侧换成来源设备表，不渲染接入实例的搜索、批量操作和操作列。括号是来源设备数，不是接入实例数。不在系统日志下再挂只有一个子节点的分组。`snmp_trap` 不进入这棵树。点「全部」或其他类型仍是接入实例表。
+列表是独立页 `web/src/app/log/(pages)/integration/source-device/page.tsx`，路由 `/log/integration/source-device`，菜单名 `source_device`，在「集成」下排在日志接收之后。日志接收的树只列有接入实例的类型：`syslog`、`snmp_trap` 都不进树，「全部」只代表接入实例。
 
-`/log/integration/list/detail/source-device` 保留为隐藏路由，并重定向到 `/log/integration/receive?collect_type=syslog`。
+`/log/integration/list/detail/source-device` 保留为隐藏路由，并重定向到 `/log/integration/source-device`。
 
-表格用 Ant Design 和现有语义色，不新建 SCSS Module。列是云区域、源 IP、hostname、首次收到、最近收到、状态。工具条靠右只留搜索，匹配源 IP 或主机名。状态用表头筛选，单选活跃或静默。没有操作列。点一行用 `buildSearchJumpUrl` 打开 `/log/search`，query 用接口返回的 `search_query`，时间用 `search_start` / `search_end`。中英文文案都补。
+表格用 Ant Design 和现有语义色，不新建 SCSS Module。列是接收类型（当前只有系统日志）、云区域、源 IP、hostname、首次收到、最近收到、状态。工具条靠右只留搜索，匹配源 IP 或主机名。状态用表头筛选，单选活跃或静默。没有操作列。点一行用 `buildSearchJumpUrl` 打开 `/log/search`，query 用接口返回的 `search_query`，时间用 `search_start` / `search_end`。中英文文案都补。
 
 ## Out of Scope
 
@@ -134,9 +136,9 @@ collect_type:"syslog" AND cloud_region_id:"..." AND source_ip:"..." AND hostname
 1. 两份 Linux 模板的 syslog 补全段含 D1 的 VRL 和 `${node.cloud_region}`；Windows `add_config` 仍为空；`attrs` 含 `cloud_region_id`。
 2. 同一三元组再次出现只把 `last_seen` 推向更晚，`first_seen` 只向更早。空 hostname 占独立行。查询异常或空结果后，原有行还在。
 3. 24 小时边界：恰好 24 小时内为 active，超过为 silent。
-4. 无当前团队时列表拒绝。有查看权限时不按团队过滤。
+4. 无当前团队时列表拒绝。只有日志集成或日志接收查看权限时拒绝。有 `source_device-View` 时不按团队过滤。
 5. `search_query` 带三个字段；空 hostname 仍是空字符串条件。
-6. 日志接收里「系统日志来源」与文件采集同级，选中后显示来源设备表，树计数在这个节点上；系统日志和 snmptrap 详情侧栏都没有「来源设备」；日志接收树不出现 SNMP Trap。点行后的搜索 url 带 query 和起止时间。详情旧地址跳到日志接收并选中系统日志来源。
+6. 「集成」下日志接收之后有「来源设备」页；日志接收树不出现系统日志和 SNMP Trap；系统日志和 snmptrap 详情侧栏都没有「来源设备」。点行后的搜索 url 带 query 和起止时间。详情旧地址跳到来源设备页。
 7. 服务端测试用 sqlite：`cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true uv run pytest <新增测试> --no-cov`。前端跑与改动对应的测试。
 
 ## Completion
@@ -144,3 +146,5 @@ collect_type:"syslog" AND cloud_region_id:"..." AND source_ip:"..." AND hostname
 2026-11-25：服务端 14 passed，前端 3 passed。本机 `server/.env` 的 `INSTALL_APPS` 不含 `cmdb` 且含 `monitor`，未覆盖该变量时 Django 在启动期导入 CMDB 模型失败；用 `pytest_env_setup.py` 的默认 `INSTALL_APPS` 覆盖后，上述服务端测试通过。未调用 `repair_node_config`，未回填历史日志。
 
 同日把列表从「系统日志」叶子改成「系统日志 / 来源设备」，筛选收进筛选框。列表接口测试 3 passed，前端树和文案测试 7 passed。随后去掉筛选按钮，状态改到表头筛选。
+
+同日用户确认来源设备和接入实例不是一类对象，放在日志接收树里会让「全部」和括号计数说不清；普通角色也没有日志接收权限，看不到这张表。列表改为「集成 / 来源设备」独立页，新增菜单权限 `source_device-View`。

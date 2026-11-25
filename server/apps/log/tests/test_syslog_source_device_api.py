@@ -5,7 +5,6 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.log.models import SyslogSourceDevice
-from apps.log.views.extractor import TYPE_SCOPE_VIEW_PERMISSIONS
 from apps.log.views.syslog_source_device import SyslogSourceDeviceViewSet
 from apps.node_mgmt.models.cloud_region import CloudRegion
 
@@ -40,7 +39,7 @@ def _freeze(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_list_requires_current_team_and_type_scoped_view_permission(authenticated_user, monkeypatch):
+def test_list_requires_current_team_and_source_device_view_permission(authenticated_user, monkeypatch):
     _freeze(monkeypatch)
     _device("1", "10.0.0.1", "edge", NOW)
     _device("2", "10.0.0.2", "other-team-label", NOW)
@@ -49,11 +48,12 @@ def test_list_requires_current_team_and_type_scoped_view_permission(authenticate
     assert missing_team.status_code == 403
     assert _body(missing_team)["result"] is False
 
-    authenticated_user.permission = {"log": {"integration_configure-Add"}}
-    denied = _get(authenticated_user)
-    assert denied.status_code == 403
+    for integration_only in ({"integration_list-View"}, {"integration_configure-View"}, {"receive-View"}):
+        authenticated_user.permission = {"log": integration_only}
+        denied = _get(authenticated_user)
+        assert denied.status_code == 403
 
-    authenticated_user.permission = {"log": {"integration_list-View"}}
+    authenticated_user.permission = {"log": {"source_device-View"}}
     allowed = _get(authenticated_user)
     assert allowed.status_code == 200
     payload = _body(allowed)["data"]
@@ -66,13 +66,12 @@ def test_list_requires_current_team_and_type_scoped_view_permission(authenticate
     superuser = _get(authenticated_user)
     assert superuser.status_code == 200
     assert _body(superuser)["data"]["count"] == 2
-    assert TYPE_SCOPE_VIEW_PERMISSIONS == frozenset({"integration_configure-View", "integration_list-View"})
 
 
 @pytest.mark.django_db
 def test_status_boundary_search_query_and_filters(authenticated_user, monkeypatch):
     _freeze(monkeypatch)
-    authenticated_user.permission = {"log": {"integration_configure-View"}}
+    authenticated_user.permission = {"log": {"source_device-View"}}
     region = CloudRegion.objects.create(name="华东")
     boundary = NOW - timedelta(hours=24)
     silent_at = boundary - timedelta(microseconds=1)
@@ -117,7 +116,7 @@ def test_status_boundary_search_query_and_filters(authenticated_user, monkeypatc
 @pytest.mark.django_db
 def test_list_paginates_and_rejects_invalid_query(authenticated_user, monkeypatch):
     _freeze(monkeypatch)
-    authenticated_user.permission = {"log": {"integration_configure-View"}}
+    authenticated_user.permission = {"log": {"source_device-View"}}
     for index in range(3):
         _device("1", f"10.0.0.{index}", f"host-{index}", NOW - timedelta(minutes=index))
 
