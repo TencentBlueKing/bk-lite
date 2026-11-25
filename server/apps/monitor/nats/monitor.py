@@ -1197,11 +1197,16 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
         end_sec = int(end_time) / 1000
         step_seconds = Metrics.parse_step_to_seconds(step)
         for metric, dimensions, instance_id_keys in metric_queries:
-            query = _build_metric_label_query(
-                metric.query,
-                instance_ids=instance_ids,
-                dimensions=dimensions,
-                instance_id_keys=instance_id_keys,
+            from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+            query = isolate_metric_query(
+                _build_metric_label_query(
+                    metric.query,
+                    instance_ids=instance_ids,
+                    dimensions=dimensions,
+                    instance_id_keys=instance_id_keys,
+                ),
+                metric,
             )
             result = Metrics.get_metrics_range(
                 query,
@@ -1455,7 +1460,11 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
     if not instance:
         return {"result": False, "data": [], "message": unresolved_monitor_instance_message([instance_id])}
 
-    metrics = Metric.objects.filter(monitor_object=monitor_obj).select_related("metric_group").order_by("metric_group__sort_order", "sort_order")
+    metrics = (
+        Metric.objects.filter(monitor_object=monitor_obj)
+        .select_related("metric_group", "monitor_plugin")
+        .order_by("metric_group__sort_order", "sort_order")
+    )
     if only_with_data:
         total_count = metrics.count()
         start = (page - 1) * page_size
@@ -1473,9 +1482,14 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
         for metric in metrics:
             if metric.query:
-                query_by_metric_id[metric.id] = _build_metric_label_query(
-                    metric.query,
-                    instance_ids=[instance.id],
+                from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+                query_by_metric_id[metric.id] = isolate_metric_query(
+                    _build_metric_label_query(
+                        metric.query,
+                        instance_ids=[instance.id],
+                    ),
+                    metric,
                 )
         vm_api = VictoriaMetricsAPI()
 

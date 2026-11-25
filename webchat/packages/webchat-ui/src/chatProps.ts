@@ -1,4 +1,4 @@
-import type { ChatState, Message, WebChatConfig, LlmContextUsage, Locale } from '@webchat/core';
+import type { AnswerFeedbackDetail, AnswerFeedback, ChatState, Message, WebChatConfig, LlmContextUsage, Locale } from '@webchat/core';
 import type { SessionAttachmentFile } from './sessionFiles';
 
 export interface CompletedToolResult {
@@ -8,6 +8,7 @@ export interface CompletedToolResult {
 }
 
 export interface ChatProps extends WebChatConfig {
+  onAnswerFeedback?: (messageId: number, feedback: AnswerFeedback, detail?: AnswerFeedbackDetail) => Promise<void>;
   onStateChange?: (state: ChatState) => void;
   onMessageReceived?: (message: Message) => void;
   onError?: (error: Error) => void;

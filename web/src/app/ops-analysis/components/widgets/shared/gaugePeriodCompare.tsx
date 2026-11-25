@@ -5,6 +5,11 @@ import {
   formatPeriodCompare,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+  type ScalarCalcConfig,
+} from '@/app/ops-analysis/utils/scalarReduction';
 
 const TONE_COLOR = {
   up: 'var(--color-fail)',
@@ -17,6 +22,7 @@ interface GaugePeriodCompareProps {
     compare?: boolean;
     compareMode?: 'percent' | 'value';
     selectedFields?: string[];
+    scalarCalc?: ScalarCalcConfig;
     decimalPlaces?: number;
     unit?: string;
   };
@@ -34,8 +40,15 @@ const GaugePeriodCompare: React.FC<GaugePeriodCompareProps> = ({
     return null;
   }
   const selectedField = config.selectedFields?.[0];
-  const current = toComparableNumber(extractComparableValue(rawData, selectedField));
-  const baseline = toComparableNumber(extractComparableValue(baselineData, selectedField));
+  const scalarCalc = readScalarCalc(config.scalarCalc);
+  const currentReduction = scalarCalc ? reduceScalarRecords(rawData, scalarCalc) : null;
+  const current = currentReduction
+    ? (currentReduction.status === 'value' ? currentReduction.value : null)
+    : toComparableNumber(extractComparableValue(rawData, selectedField));
+  const baselineReduction = scalarCalc ? reduceScalarRecords(baselineData, scalarCalc) : null;
+  const baseline = baselineReduction
+    ? (baselineReduction.status === 'value' ? baselineReduction.value : null)
+    : toComparableNumber(extractComparableValue(baselineData, selectedField));
   const compared = formatPeriodCompare({
     current,
     baseline,

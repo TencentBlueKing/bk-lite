@@ -25,6 +25,7 @@ import {
   isSilentCustomEvent,
   normalizeWebChatConfig,
   parseLlmContextUsage,
+  type AnswerFeedbackDetail, type AnswerFeedback,
   type LlmContextUsage,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
@@ -101,6 +102,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     storageScope,
     onStateChange,
     onMessageReceived,
+    onAnswerFeedback,
     onError,
     onClose,
     agui,
@@ -156,6 +158,12 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
+  const handleAnswerFeedback = useCallback(async (messageId: number, feedback: AnswerFeedback, detail?: AnswerFeedbackDetail) => {
+    if (!onAnswerFeedback) return;
+    await onAnswerFeedback(messageId, feedback, detail);
+    setMessages(prev => prev.map(msg => msg.persistedMessageId === messageId
+      ? { ...msg, feedback, feedbackDetail: detail ?? (msg.feedback === feedback ? msg.feedbackDetail : undefined) } : msg));
+  }, [onAnswerFeedback]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -405,11 +413,21 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       timestamp: Date.now(),
       metadata: legacy.metadata,
     };
+    if (onAnswerFeedback) currentMessageIdRef.current = botMsg.id;
     addMessage(botMsg);
   };
 
   const applyCustomEvent = (event: CustomProtocolEvent) => {
     onCustomEvent?.(event);
+    if (event.name === 'assistant_message_saved') {
+      const value = event.value;
+      const id = value && typeof value === 'object' && 'message_id' in value ? value.message_id : null;
+      const localId = currentMessageIdRef.current;
+      if (localId && typeof id === 'number' && Number.isSafeInteger(id) && id > 0) {
+        setMessages(prev => prev.map(msg => msg.id === localId ? { ...msg, persistedMessageId: id, feedback: null } : msg));
+      }
+      return;
+    }
     if (event.name === 'planned_execution_step' && event.value && typeof event.value === 'object') {
       plannedStateRef.current = applyPlannedExecutionStep(
         plannedStateRef.current,
@@ -880,6 +898,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             ...(signal ? { signal } : {}),
           }),
           onAccepted: () => {
+            if (onAnswerFeedback) currentMessageIdRef.current = null;
             if (!answeringChoice) return;
             answerSent = true;
             const selected = choice?.selectedKeys || (choice?.optionKey ? [choice.optionKey] : []);
@@ -978,6 +997,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     reportImageError,
     pendingChoice,
     lastMessage,
+    onAnswerFeedback,
     historyLoading,
     t,
   ]);
@@ -1212,6 +1232,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
               <MessageBubble
                 key={msg.id}
                 message={msg}
+                onFeedback={onAnswerFeedback && handleAnswerFeedback}
                 isLastBotMessage={isPartOfLastQA}
                 fillWidth={wideLayout || panelFullscreen}
                 contentReadOnly={!hitlEvent || msg.id !== currentMessageIdRef.current}

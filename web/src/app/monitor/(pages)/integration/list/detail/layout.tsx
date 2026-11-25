@@ -74,7 +74,10 @@ const IntegrationDetailLayout = ({
   const detailMenuItems: MenuItem[] = [
     {
       name: 'integration_configure',
-      title: t('monitor.integrations.configure'),
+      title:
+        templateType === 'script'
+          ? t('monitor.integrations.scriptAttachTitle', '添加脚本采集')
+          : t('monitor.integrations.configure'),
       url: '/monitor/integration/list/detail/configure',
       icon: 'settings-fill',
       operation: []

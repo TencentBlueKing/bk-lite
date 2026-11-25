@@ -336,6 +336,29 @@ const TrialActionsBlockedNote: React.FC = () => {
   );
 };
 
+export function useTrialRemainingSeconds(
+  active: boolean,
+  startedAt: string | null | undefined,
+  timeoutSeconds: number
+) {
+  const [now, setNow] = useState(() => Date.now());
+  const fallbackStart = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active, startedAt]);
+  if (!active || timeoutSeconds <= 0) {
+    fallbackStart.current = null;
+    return null;
+  }
+  const parsed = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const start = Number.isFinite(parsed)
+    ? parsed
+    : (fallbackStart.current ??= Date.now());
+  return Math.max(0, timeoutSeconds - Math.floor((now - start) / 1000));
+}
+
 const TrialTimeoutHint: React.FC<{ seconds: number }> = ({ seconds }) => {
   const { t } = useTranslation();
   return (
@@ -499,6 +522,11 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
   const runTimeoutSeconds = task?.debug_timeout ?? timeoutSeconds;
+  const remainingSeconds = useTrialRemainingSeconds(
+    isSpinning,
+    task?.started_at,
+    runTimeoutSeconds
+  );
 
   useEffect(() => {
     if (isSpinning || (task?.status && task.status !== 'pending')) {
@@ -817,18 +845,16 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </div>
         {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
-          <Spin
-            tip={
-              <span className="mt-2 text-[13px] text-[var(--color-text-2)] font-medium">
-                {t(
-                  'monitor.integrations.trialRunSpinning',
-                  '调试中，不会写入时序库'
-                )}
-              </span>
-            }
-          >
-            <div className="h-10 w-48" />
-          </Spin>
+          <Spin />
+          <span className="mt-3 whitespace-nowrap text-[13px] font-medium text-[var(--color-text-2)]">
+            {remainingSeconds == null
+              ? t('monitor.integrations.trialRunSpinning', '调试中')
+              : t(
+                'monitor.integrations.trialRunRemaining',
+                '调试中，剩余{n}秒',
+                { n: remainingSeconds }
+              )}
+          </span>
         </div>
       </div>
     );

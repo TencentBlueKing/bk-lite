@@ -7,6 +7,7 @@ import {
   mapPlatformSessions,
   parseLlmContextUsageFromEnvelope,
   type LlmContextUsage,
+  type AnswerFeedbackDetail, type AnswerFeedback,
   type PlatformApplication,
   type PlatformContract,
   type PlatformSession,
@@ -132,6 +133,34 @@ export async function fetchPlatformMessages(
     messages: attachChoiceHistory(mapPlatformMessages(asRecordList(payload))),
     usage: parseLlmContextUsageFromEnvelope(payload),
   };
+}
+
+export async function saveAnswerFeedback(
+  urlTemplate: string,
+  channelId: string,
+  sessionId: string,
+  messageId: number,
+  feedback: AnswerFeedback,
+  init: PlatformRequestInit,
+  detail?: AnswerFeedbackDetail
+): Promise<void> {
+  const url = fillUrlTemplate(urlTemplate, { channelId, messageId });
+  const data = await fetchPlatformJson(url, init, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, feedback, feedback_detail: detail }),
+  });
+  if (!data || typeof data !== 'object' || !('feedback' in data) || data.feedback !== feedback) {
+    throw new Error('Unexpected feedback response');
+  }
+  if (detail) {
+    const saved = 'feedback_detail' in data ? data.feedback_detail : undefined;
+    if (!saved || typeof saved !== 'object' || !('reasons' in saved) || !Array.isArray(saved.reasons) ||
+        saved.reasons.length !== detail.reasons.length || saved.reasons.some((tag, i) => tag !== detail.reasons[i]) ||
+        !('comment' in saved) || saved.comment !== detail.comment) {
+      throw new Error('Unexpected feedback detail response');
+    }
+  }
 }
 
 export async function deletePlatformSession(

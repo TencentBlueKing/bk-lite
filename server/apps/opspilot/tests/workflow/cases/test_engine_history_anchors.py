@@ -13,3 +13,5 @@ def test_initialize_variables_sets_history_anchors(bot_workflow):
 
     assert engine.variable_manager.get_variable("original_user_message") == "广州天气如何"
     assert engine.variable_manager.get_variable("bot_id") == bot_workflow.bot_id
+    engine.variable_manager.set_variable("flow_name", "节点输出")
+    assert engine.variable_manager.flow_name == bot_workflow.bot.name

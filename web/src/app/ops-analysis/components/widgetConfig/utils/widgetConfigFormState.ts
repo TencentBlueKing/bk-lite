@@ -233,6 +233,8 @@ function buildClearedChartDependentFormFields() {
     },
     compare: false,
     compareMode: 'percent' as const,
+    scalarCalcMethod: undefined,
+    scalarCalcTimeField: undefined,
     displayLimit: undefined,
     sortByValue: false,
   };
@@ -360,6 +362,8 @@ export function applyOpenedValueConfigToFormValues(
   } else {
     formValues.descriptionField = undefined;
   }
+  formValues.scalarCalcMethod = valueConfig?.scalarCalc?.method;
+  formValues.scalarCalcTimeField = valueConfig?.scalarCalc?.timeField;
 
   if (valueConfig?.topNLabelField !== undefined) {
     formValues.topNLabelField = valueConfig.topNLabelField;

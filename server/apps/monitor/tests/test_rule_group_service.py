@@ -47,12 +47,12 @@ class TestGetQuery:
             "metric_id": metric.id,
             "filter": [{"name": "instance_id", "method": "=", "value": "h1"}],
         })
-        assert query == 'm{instance_id="h1"}'
+        assert query == 'm{instance_id="h1", collect_type!="script"}'
 
     def test_empty_filter(self):
         obj = _make_obj()
         metric = _make_metric(obj)
-        assert RuleGrouping.get_query({"metric_id": metric.id, "filter": []}) == "m{}"
+        assert RuleGrouping.get_query({"metric_id": metric.id, "filter": []}) == 'm{collect_type!="script"}'
 
 
 class TestGetAssoByConditionRule:

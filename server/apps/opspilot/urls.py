@@ -200,6 +200,11 @@ urlpatterns += [
         name="list_skill_channel_session_messages",
     ),
     path(
+        "skill_channel/conversations/messages/<int:message_id>/feedback/",
+        views.set_platform_answer_feedback,
+        name="set_platform_answer_feedback",
+    ),
+    path(
         r"skill_channel/conversations/delete/",
         views.delete_skill_channel_session,
         name="delete_skill_channel_session",

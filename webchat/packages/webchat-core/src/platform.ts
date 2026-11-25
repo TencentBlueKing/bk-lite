@@ -1,5 +1,6 @@
 import { applyAnsweredUserChoices } from '@bk-lite/chat-content/userChoiceOptions';
-import type { ChatState, Message, PlatformContract, WebChatConfig } from './types';
+import { answerFeedbackReasons } from './types';
+import type { FeedbackTag, AnswerFeedbackDetail, ChatState, Message, PlatformContract, WebChatConfig } from './types';
 import {
   assembleAguiHistoryParts,
   assembleAguiHistoryText,
@@ -276,8 +277,23 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
         ...(contentChunks ? { contentChunks } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
       };
+      const rating: Pick<Message, 'persistedMessageId' | 'feedback'> =
+        item.conversation_role === 'assistant' && typeof item.id === 'number' &&
+        (item.feedback === null || item.feedback === 'like' || item.feedback === 'dislike')
+          ? { persistedMessageId: item.id, feedback: item.feedback }
+          : {};
+      const detail = item.feedback_detail;
+      let feedbackDetail: AnswerFeedbackDetail | undefined;
+      if (rating.feedback && isRecord(detail) && typeof detail.comment === 'string') {
+        const stored = Array.isArray(detail.reasons) ? detail.reasons : [detail.reason];
+        const allowed: readonly FeedbackTag[] = rating.feedback === 'like' ? answerFeedbackReasons.like
+          : [...answerFeedbackReasons.dislike, 'incomplete', 'hard_to_use'];
+        feedbackDetail = { reasons: allowed.filter(tag => stored.includes(tag)), comment: detail.comment };
+      }
       return {
+        ...(feedbackDetail ? { feedbackDetail } : {}),
         id: String(item.id ?? `history_${index}`),
+        ...rating,
         type: 'text' as const,
         content: text,
         sender: role,

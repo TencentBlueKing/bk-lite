@@ -88,7 +88,7 @@ const installDocument = ({ withRoot = true } = {}) => {
   return { webchatRoot, body };
 };
 
-const renderActions = async () => {
+const renderActions = async (props = {}) => {
   let renderer;
   await act(() => {
     renderer = create(
@@ -97,6 +97,7 @@ const renderActions = async () => {
         messageContent: '磁盘使用率 Top',
         isBot: true,
         showActions: true,
+        ...props,
       }),
       {
         createNodeMock: (element) => {
@@ -109,7 +110,7 @@ const renderActions = async () => {
                   : null,
             };
           }
-          return {};
+          return null;
         },
       }
     );
@@ -117,13 +118,27 @@ const renderActions = async () => {
   return renderer;
 };
 
+test('assistant actions group ratings behind one menu without recording a vote on open', async () => {
+  const calls = [];
+  const renderer = await renderActions({ onFeedback: async value => calls.push(value), isLastBotMessage: true, feedback: 'like' });
+  const labels = renderer.root.findAllByType('button').map(button => button.props['aria-label'] ?? button.props.title);
+  assert.deepEqual(labels, ['复制', '评价回复', '更多操作']);
+  await act(async () => renderer.root.findByProps({ 'aria-label': '评价回复' }).props.onClick());
+  const options = renderer.root.findAllByProps({ role: 'menuitemradio' });
+  assert.deepEqual(options.map(option => option.props['aria-label']), ['回复优秀', '回复不佳']);
+  assert.deepEqual(options.map(option => option.props['aria-checked']), [true, false]);
+  assert.deepEqual(calls, []);
+  await act(async () => options[0].props.onClick());
+  assert.deepEqual(calls, [null]);
+  renderer.unmount();
+});
+
 test('copy shows clipboard success label and writes message text', async () => {
   writes.length = 0;
   installDocument();
   const renderer = await renderActions();
 
   const copyBtn = renderer.root.findByProps({ 'aria-label': '复制' });
-  assert.match(String(copyBtn.props.className), /hover:-translate-y-0\.5/);
   await act(async () => {
     copyBtn.props.onClick();
     await Promise.resolve();

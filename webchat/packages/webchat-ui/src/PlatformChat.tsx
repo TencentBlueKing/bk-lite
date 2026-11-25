@@ -55,6 +55,7 @@ import {
   fetchPlatformSessions,
   interruptPlatformChat,
   savePlatformWebchatWidth,
+  saveAnswerFeedback,
 } from './platform/api';
 
 const Chat = React.lazy(async () => {
@@ -94,7 +95,11 @@ function PlatformSessionChat({
   const onFilesChange = useCallback((files: SessionAttachmentFile[]) => {
     onSessionFilesChange(session.id, files);
   }, [onSessionFilesChange, session.id]);
-  const customData = useMemo(() => ({ session_id: session.id }), [session.id]);
+  const includeReceipt = Boolean(props.onAnswerFeedback);
+  const customData = useMemo(() => ({
+    session_id: session.id,
+    ...(includeReceipt ? { include_message_receipt: true } : {}),
+  }), [session.id, includeReceipt]);
   return (
     <Chat
       {...props}
@@ -642,6 +647,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
 
   const currentAppId = currentApp?.id;
   const currentChannelId = currentApp?.channelId;
+  const feedbackUrl = platform.feedbackUrl;
   const mountedChat = mountedChats.find(chat => chat.appId === currentAppId && chat.id === sessionId);
 
   useEffect(() => {
@@ -1242,6 +1248,9 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
                     <PlatformSessionChat
                       {...chatProps}
                       session={chat}
+                      onAnswerFeedback={feedbackUrl
+                        ? (messageId, feedback, detail) => saveAnswerFeedback(feedbackUrl, currentApp.channelId, chat.id, messageId, feedback, requestInit, detail)
+                        : undefined}
                       kickoffMessage={chat.id === sessionId ? chatProps.kickoffMessage : undefined}
                       locale={props.locale}
                       sseUrl={chatUrl}

@@ -82,7 +82,7 @@ def test_range_query_uses_server_metric_template_and_authorized_instances(mocker
 
     assert result == {"status": "success", "data": {"result": []}}
     vm_query.assert_called_once_with(
-        'sum(cpu_usage{instance_id=~"allowed\\\\-host", mode="idle"}) by (instance_id)',
+        'sum(cpu_usage{instance_id=~"allowed\\\\-host", mode="idle", collect_type!="script"}) by (instance_id)',
         1000,
         61000,
         "60s",
@@ -142,7 +142,7 @@ def test_default_avg_aggregates_declared_dimensions_into_the_instance(mocker):
         }
     )
 
-    assert vm_query.call_args.args[0] == ('avg(cpu_usage{instance_id=~"allowed\\\\-host"}) by (instance_id, mode)')
+    assert vm_query.call_args.args[0] == ('avg(cpu_usage{instance_id=~"allowed\\\\-host", collect_type!="script"}) by (instance_id, mode)')
 
 
 def test_host_process_scope_authorizes_parent_host_and_builds_process_matchers(mocker):
@@ -533,7 +533,7 @@ def test_instant_query_uses_server_template_and_range_end_as_eval_time(mocker):
 
     assert result["status"] == "success"
     vm_query.assert_called_once_with(
-        'avg(cpu_usage{instance_id=~"allowed\\\\-host"}) by (instance_id, mode)',
+        'avg(cpu_usage{instance_id=~"allowed\\\\-host", collect_type!="script"}) by (instance_id, mode)',
         time=61.0,
     )
 
@@ -606,4 +606,4 @@ def test_explicit_instance_grouping_overrides_the_global_average(mocker):
         return_value={"status": "success", "data": {"result": []}},
     )
     service.query_range(_range_payload(monitor_object, metric, [allowed.id], grouping="instance"))
-    assert vm_query.call_args.args[0] == ('avg(cpu_usage{instance_id=~"allowed\\\\-host"}) by (instance_id)')
+    assert vm_query.call_args.args[0] == ('avg(cpu_usage{instance_id=~"allowed\\\\-host", collect_type!="script"}) by (instance_id)')

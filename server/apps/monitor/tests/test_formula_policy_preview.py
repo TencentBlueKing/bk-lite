@@ -252,10 +252,10 @@ def test_preview_formula_applies_instance_filter_to_each_or_branch(mocker):
     svc.preview()
 
     assert (
-        '(a_metric{instance_id=~"host\\\\.1",service="checkout"}) '
-        'or (a_metric{instance_id=~"host\\\\.1",status="500"})'
+        '(a_metric{instance_id=~"host\\\\.1",service="checkout", collect_type!="script"}) '
+        'or (a_metric{instance_id=~"host\\\\.1",status="500", collect_type!="script"})'
     ) in captured["query"]
     assert (
-        '(b_metric{node=~"host\\\\.1",service="checkout"}) '
-        'or (b_metric{node=~"host\\\\.1",status="200"})'
+        '(b_metric{node=~"host\\\\.1",service="checkout", collect_type!="script"}) '
+        'or (b_metric{node=~"host\\\\.1",status="200", collect_type!="script"})'
     ) in captured["query"]

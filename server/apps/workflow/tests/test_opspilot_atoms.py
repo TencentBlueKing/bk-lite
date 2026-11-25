@@ -108,6 +108,7 @@ def test_workflow_agent_queries_active_alerts_as_execution_caller(mocker, action
     from apps.alerts.models.models import Alert
     from apps.alerts.nats.nats import list_alerts
     from apps.opspilot.metis.llm.tools.alerts import alerts_list_alerts
+    from apps.opspilot.models import SkillConversation
     from apps.opspilot.services.chat_service import ChatService
     from apps.system_mgmt.models.role import Role
     from apps.system_mgmt.models.user import User
@@ -169,6 +170,9 @@ def test_workflow_agent_queries_active_alerts_as_execution_caller(mocker, action
     execution = WorkflowExecution.objects.get(pk=response.data["id"])
     inputs = {**inputs, "__bklite_context": {"caller_identity": {"username": "untrusted", "team_id": 99}}}
     execute_agent(_build_runtime_inputs(inputs=inputs, atom_execution=None, task_type="bklite_agent", execution=execution))
+    conversation = SkillConversation.objects.get(skill=skill)
+    assert conversation.session_id.startswith("workflow_")
+    assert conversation.flow_name == workflow.name
     assert tool_results[0]["success"], tool_results[0].get("error")
     assert [row["alert_id"] for row in tool_results[0]["data"]["items"]] == ["ALERT-7"]
     assert rpc.call_args.kwargs["user_info"] == {"user": "alice", "domain": "example.com", "team": 7, "include_children": False}

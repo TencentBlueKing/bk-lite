@@ -4,12 +4,13 @@ import useApiClient from '@/utils/request';
 
 const range = z.object({
   scope: z.literal('range'), start: z.string(), end: z.string(),
-  person: z.string().optional(), channel_id: z.number().optional(),
+  person: z.string().optional(), channel_id: z.number().optional(), channel_types: z.array(z.string()).optional(),
 });
-const sessions = z.object({ scope: z.literal('sessions'), session_ids: z.array(z.string()) });
+const sessions = z.object({ scope: z.literal('sessions'), session_ids: z.array(z.string()), channel_types: z.array(z.string()).optional() });
 const scope = z.discriminatedUnion('scope', [range, sessions]);
 const objective = z.enum(['overview', 'needs', 'quality']);
 const coverage = z.object({ conversation_count: z.number(), question_count: z.number() });
+const channelOptions = z.object({ items: z.array(z.object({ channel_type: z.string(), conversation_count: z.number() })) });
 const preview = coverage.extend({ issue: z.string() });
 const task = coverage.extend({
   id: z.number(), name: z.string(), objective, scope,
@@ -25,6 +26,9 @@ const report = task.extend({
 const taskList = z.object({ items: z.array(task), count: z.number() });
 
 export type AnalysisScope = z.infer<typeof scope>;
+export type ChannelQuery = Omit<z.infer<typeof range>, 'channel_types'>
+  | { scope: 'sessions'; channel_id?: number; person?: string; title?: string };
+export type ChannelOption = z.infer<typeof channelOptions>['items'][number];
 export type Objective = z.infer<typeof objective>;
 export type AnalysisTask = z.infer<typeof task>;
 export type AnalysisReport = z.infer<typeof report>;
@@ -44,6 +48,8 @@ export function useHistoryAnalysisApi(skillId: string) {
     const params = { skill_id: skillId };
     return {
       list: async (page: number) => taskList.parse(await get<unknown>(`${base}/analyses/`, { params: { ...params, page } })),
+      channels: async (selection: ChannelQuery) =>
+        channelOptions.parse(await post<unknown>(`${base}/analysis_channels/`, { ...params, ...selection })).items,
       preview: async (selection: AnalysisScope) => preview.parse(await post<unknown>(`${base}/analysis_preview/`, { ...params, ...selection })),
       create: async (selection: AnalysisScope, config: CreateConfig) =>
         task.parse(await post<unknown>(`${base}/analyses/`, { ...params, ...selection, ...config })),

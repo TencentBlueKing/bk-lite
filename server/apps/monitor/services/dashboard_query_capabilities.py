@@ -165,10 +165,12 @@ def build_dashboard_query(
         )
     matcher_groups = build_instance_matcher_groups(instance_ids, instance_keys)
 
+    from apps.monitor.utils.script_series_isolation import exclude_script_series
+
     if capability_id.startswith("dashboard:dynamic:kafka:"):
         if monitor_object.name != "Kafka":
             raise AuthorizedMetricQueryError("查询能力与监控对象不匹配", code="capability_object_mismatch")
-        return _build_kafka_dimension_query(capability_id, params, build_instance_matchers(instance_ids, instance_keys))
+        return exclude_script_series(_build_kafka_dimension_query(capability_id, params, build_instance_matchers(instance_ids, instance_keys)))
 
     capability = load_dashboard_query_capabilities().get(capability_id)
     if not capability:
@@ -183,4 +185,4 @@ def build_dashboard_query(
     query = query.replace("__$window__", window)
     if "__$" in query:
         raise AuthorizedMetricQueryError("查询能力参数不完整", code="capability_template_invalid")
-    return query
+    return exclude_script_series(query)
