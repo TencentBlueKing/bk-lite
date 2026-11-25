@@ -3,17 +3,18 @@
 import json
 import re
 
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
 from django.db.models.functions import Length
 from django.utils import timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 from rest_framework import serializers
 
+from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
 from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import SkillConversationMessage as Message
-from apps.opspilot.services.skill_channel_chat_service import filter_conversations_by_person, visible_assistant_text
+from apps.opspilot.services.skill_channel_chat_service import history_conversations, visible_assistant_text
 
 MAX_SESSIONS = 50
 MAX_QUESTIONS = 200
@@ -28,19 +29,40 @@ OBJECTIVES = {
 }
 
 
-class ScopeInput(serializers.Serializer):
+HISTORY_CHANNEL_TYPES = [*SkillChannelChoices.values, "workflow", "workbench"]
+
+
+def channel_types_field():
+    return serializers.ListField(child=serializers.ChoiceField(choices=HISTORY_CHANNEL_TYPES), required=False, max_length=len(HISTORY_CHANNEL_TYPES))
+
+
+class ChannelScopeInput(serializers.Serializer):
     scope = serializers.ChoiceField(choices=["range", "sessions"])
     start = serializers.DateTimeField(required=False)
     end = serializers.DateTimeField(required=False)
     channel_id = serializers.IntegerField(required=False, min_value=1)
     person = serializers.CharField(required=False, max_length=255, allow_blank=True)
+    title = serializers.CharField(required=False, max_length=255, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs["scope"] == "range":
+            if not attrs.get("start") or not attrs.get("end") or attrs["start"] >= attrs["end"] or "title" in attrs:
+                raise serializers.ValidationError("请选择有效的起止时间")
+        elif "start" in attrs or "end" in attrs:
+            raise serializers.ValidationError("指定对话不使用时间范围")
+        return attrs
+
+
+class ScopeInput(ChannelScopeInput):
+    channel_types = channel_types_field()
     session_ids = serializers.ListField(child=serializers.CharField(max_length=100), required=False, allow_empty=False, max_length=MAX_SESSIONS)
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         if attrs["scope"] == "sessions":
-            if not attrs.get("session_ids") or any(key in attrs for key in ("start", "end", "person", "channel_id")):
+            if not attrs.get("session_ids") or any(key in attrs for key in ("person", "channel_id", "channel_types", "title")):
                 raise serializers.ValidationError("请选择对话")
-        elif "session_ids" in attrs or not attrs.get("start") or not attrs.get("end") or attrs["start"] >= attrs["end"]:
+        elif "session_ids" in attrs:
             raise serializers.ValidationError("请选择有效的起止时间")
         return attrs
 
@@ -56,22 +78,36 @@ class AnalysisFailure(Exception):
     """Stable error code for display. Never persist provider responses."""
 
 
+def _scope_queries(skill, scope, cutoff):
+    conversations = history_conversations(skill.pk, channel_id=scope.get("channel_id"), person=scope.get("person", ""), title=scope.get("title", ""))
+    questions = Message.objects.filter(role=Message.ROLE_USER, created_at__lte=cutoff).order_by()
+    if scope["scope"] == "range":
+        questions = questions.filter(created_at__gte=scope["start"], created_at__lt=scope["end"])
+    return conversations, questions
+
+
+def available_channels(skill, scope):
+    conversations, questions = _scope_queries(skill, scope, timezone.now())
+    return list(
+        conversations.filter(Exists(questions.filter(conversation_id=OuterRef("pk"))))
+        .values(channel_type=F("history_channel_type"))
+        .annotate(conversation_count=Count("pk"))
+        .order_by("channel_type")
+    )
+
+
 def capture_scope(skill, scope):
-    conversations = skill.conversations.all()
-    questions = Message.objects.filter(role=Message.ROLE_USER)
     cutoff = timezone.now()
+    conversations, questions = _scope_queries(skill, scope, cutoff)
     if scope["scope"] == "sessions":
         ids = set(scope["session_ids"])
         conversations = conversations.filter(session_id__in=ids)
         if conversations.count() != len(ids):
             raise serializers.ValidationError("所选对话已删除或不属于该智能体")
     else:
-        if scope.get("channel_id"):
-            conversations = conversations.filter(channel_id=scope["channel_id"])
-        conversations = filter_conversations_by_person(conversations, scope.get("person", ""))
-        questions = questions.filter(created_at__gte=scope["start"], created_at__lt=scope["end"])
+        conversations = conversations.filter(history_channel_type__in=scope.get("channel_types", SkillChannelChoices.values))
 
-    questions = questions.filter(conversation__in=conversations, created_at__lte=cutoff).order_by()
+    questions = questions.filter(conversation__in=conversations)
     selected = dict(questions.values_list("pk", "conversation_id")[: MAX_QUESTIONS + 1])
     conversation_ids = set(selected.values())
     summary = {"conversation_count": len(conversation_ids), "question_count": len(selected), "issue": ""}
@@ -102,6 +138,9 @@ def capture_scope(skill, scope):
             read_snapshot(skill.pk, snapshot)
         except AnalysisFailure as exc:
             return summary | {"issue": str(exc)}, {}
+    summary["channel_types"] = list(
+        conversations.filter(pk__in=conversation_ids).values_list("history_channel_type", flat=True).order_by("history_channel_type").distinct()
+    )
     return summary, snapshot
 
 

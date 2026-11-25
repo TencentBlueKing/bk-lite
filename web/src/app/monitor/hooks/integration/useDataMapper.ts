@@ -500,10 +500,14 @@ export class DataMapper {
           (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
         )
         : undefined;
-      // 生成 instance_id：UUID 策略复用当前行稳定的 UUID key；
-      // 普通模板继续使用既有哈希编码。
+      // 脚本采集必须沿用已选实例的存储键，不能再按模板哈希出新实例。
+      const scriptCollect =
+        String(context.collect_type || '') === 'script' ||
+        String(row.collect_type || '') === 'script';
       let instance_id = row.instance_id;
-      if (!instance_id && context.instance_id) {
+      if (scriptCollect) {
+        instance_id = String(row.storage_instance_key || row.instance_id || '');
+      } else if (!instance_id && context.instance_id) {
         // form_fields（如 qcloud 的 username/region）在顶层表单，不在表格行；
         // 生成 instance_id 时需合并，否则 {{username}}/{{region}} 无法替换。
         const instanceValues = { ...processedFormData, ...row };
@@ -533,6 +537,8 @@ export class DataMapper {
         .filter(
           (fieldKey) =>
             fieldKey !== 'key' &&
+            fieldKey !== 'attach_instance_id' &&
+            fieldKey !== 'native_interval' &&
             !fieldKey.endsWith('_error') &&
             !fieldKey.endsWith('_warning')
         )
@@ -563,6 +569,9 @@ export class DataMapper {
           }
           : {}),
         instance_id,
+        ...(scriptCollect && instance_id
+          ? { storage_instance_key: instance_id }
+          : {}),
         node_ids: nodeIds,
         instance_type: context.instance_type,
         // NodeSerializer.Meta.fields 输出的是 ForeignKey 字段名 cloud_region

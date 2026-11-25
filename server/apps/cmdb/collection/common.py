@@ -65,6 +65,14 @@ class Management:
         self.old_map, self.new_map = self.format_data()
         self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(self.old_map, self.new_map)
 
+    @staticmethod
+    def _attach_organization_display(payload: dict) -> None:
+        if "organization" not in payload:
+            return
+        from apps.cmdb.display_field.handler import DisplayFieldConverter
+
+        payload["organization_display"] = DisplayFieldConverter.convert_organization(payload.get("organization"))
+
     def get_check_attr_map(self):
         from apps.cmdb.services.module_ingest import is_unique_identity_attr
 
@@ -331,6 +339,7 @@ class Management:
                         collect_time=self.collect_time,
                     )
                     instance_info = prepare_new_instance_identity(instance_info)
+                    self._attach_organization_display(instance_info)
                     entity = ag.create_entity(INSTANCE, instance_info, self.check_attr_map, exist_items)
                     # 创建关联
                     assos_result = self.setting_assos(entity, assos)
@@ -376,6 +385,7 @@ class Management:
                             collect_time=self.collect_time,
                         )
                     assos = instance_info.pop("assos", [])
+                    self._attach_organization_display(instance_info)
                     exist_items = [i for i in exist_items if i["_id"] != instance_info["_id"]]
                     suppress = bool(instance_info.get("suppress_change_record"))
                     entity = self._set_collected_properties(ag, instance_info, exist_items)
@@ -448,6 +458,7 @@ class Management:
             COLLECT_SOURCES_ATTR: plan["sources_json"],
         }
         retried.update(plan["properties"])
+        self._attach_organization_display(retried)
         return write(retried, fresh.get(COLLECT_SOURCES_ATTR))
 
     def refresh_heartbeat(self, inst_list):
@@ -466,6 +477,7 @@ class Management:
                 "auto_collect": True,
                 "collect_time": instance_info.get("collect_time", self.collect_time) if self.reconcile else self.collect_time,
             }
+            self._attach_organization_display(payload)
             if self.reconcile and "_collect_sources" in instance_info:
                 payload["_collect_sources"] = instance_info["_collect_sources"]
                 payload["_expected_collect_sources"] = instance_info.get("_expected_collect_sources")

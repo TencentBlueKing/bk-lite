@@ -22,6 +22,68 @@ const isDetailPageMode = (menu: MenuItem): boolean => {
   return menu.hasDetail === true;
 };
 
+const toSourcePage = (menu: MenuItem, isNotMenuItem?: boolean): SourceMenuNode => ({
+  name: menu.name,
+  display_name: menu.display_name || menu.title || menu.name,
+  url: menu.url,
+  icon: menu.icon,
+  type: 'page',
+  tour: menu.tour,
+  ...(isNotMenuItem ? { isNotMenuItem: true } : {}),
+});
+
+const visiblePages = (menu: MenuItem) =>
+  (menu.children || []).filter((child) => !child.isNotMenuItem && child.url);
+
+/**
+ * Pages shown in the custom-menu source picker.
+ * A visible top-level page stays selectable even when it has no visible children.
+ * Hidden entries (isNotMenuItem) stay out.
+ */
+export const buildSourceMenus = (configMenus: MenuItem[], clientId: string): SourceMenuNode[] => {
+  const appMenus = configMenus.filter((menu) => {
+    if (!menu.url || !clientId || menu.isNotMenuItem) return false;
+    const appName = menu.url.split('/').filter(Boolean)[0];
+    return appName === clientId;
+  });
+
+  return appMenus.flatMap((menu): SourceMenuNode[] => {
+    const base = {
+      name: menu.name,
+      display_name: menu.display_name || menu.title || menu.name,
+      url: menu.url,
+      icon: menu.icon,
+      type: 'menu' as const,
+      tour: menu.tour,
+    };
+    if (isDetailPageMode(menu)) {
+      return [{
+        ...base,
+        isDetailMode: true,
+        sourceHasDetail: true,
+        hiddenChildren: visiblePages(menu).map((child) => toSourcePage(child)),
+        children: [],
+      }];
+    }
+    const visible = visiblePages(menu);
+    if (visible.length > 0) {
+      return [{
+        ...base,
+        isDetailMode: false,
+        children: visible.map((child) => toSourcePage(child)),
+      }];
+    }
+    const hidden = (menu.children || []).filter((child) => child.url);
+    return [{
+      ...base,
+      isDetailMode: true,
+      sourceHasDetail: false,
+      hiddenChildren: hidden.map((child) => toSourcePage(child, child.isNotMenuItem)),
+      children: [],
+    }];
+  });
+};
+
 export const useMenuConfig = (
   configMenus: MenuItem[],
   clientId: string,
@@ -40,68 +102,7 @@ export const useMenuConfig = (
   }, [configMenus, clientId]);
 
   const loadSourceMenusFromConfig = () => {
-    const appMenus = configMenus.filter(menu => {
-      if (!menu.url || !clientId) return false;
-      const urlParts = menu.url.split('/').filter(Boolean);
-      const appName = urlParts[0];
-      return appName === clientId;
-    });
-
-    const convertToSourceMenu = (menuItems: MenuItem[]): SourceMenuNode[] => {
-      return menuItems
-        .filter(menu => menu.url && menu.children && menu.children.length > 0)
-        .map(menu => {
-          const isDetail = isDetailPageMode(menu);
-          
-          // Detail mode: hide children in UI but preserve them in hiddenChildren for save
-          if (isDetail) {
-            return {
-              name: menu.name,
-              display_name: menu.display_name || menu.title || menu.name,
-              url: menu.url,
-              icon: menu.icon,
-              type: 'menu' as const,
-              tour: menu.tour,
-              isDetailMode: true,
-              hiddenChildren: menu.children
-                ?.filter((child: MenuItem) => !child.isNotMenuItem && child.url)
-                .map((child: MenuItem) => ({
-                  name: child.name,
-                  display_name: child.display_name || child.title || child.name,
-                  url: child.url,
-                  icon: child.icon,
-                  type: 'page' as const,
-                  tour: child.tour,
-                })),
-              children: []
-            };
-          }
-          
-          return {
-            name: menu.name,
-            display_name: menu.display_name || menu.title || menu.name,
-            url: menu.url,
-            icon: menu.icon,
-            type: 'menu' as const,
-            tour: menu.tour,
-            isDetailMode: false,
-            children: menu.children
-              ?.filter((child: MenuItem) => !child.isNotMenuItem && child.url)
-              .map((child: MenuItem) => ({
-                name: child.name,
-                display_name: child.display_name || child.title || child.name,
-                url: child.url,
-                icon: child.icon,
-                type: 'page' as const,
-                tour: child.tour,
-              }))
-          };
-        })
-        .filter(menu => menu.isDetailMode || (menu.children && menu.children.length > 0));
-    };
-
-    const sourceMenuData = convertToSourceMenu(appMenus);
-    setSourceMenus(sourceMenuData);
+    setSourceMenus(buildSourceMenus(configMenus, clientId));
   };
 
   const handleCheck = (checkedKeys: any) => {
@@ -135,6 +136,7 @@ export const useMenuConfig = (
               originName: menu.display_name,
               tour: menu.tour,
               isDetailMode: true,
+              sourceHasDetail: menu.sourceHasDetail,
               hiddenChildren: menu.hiddenChildren,
             });
           }

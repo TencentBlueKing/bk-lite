@@ -172,6 +172,6 @@ class TestResolveAndDispatch:
 
     def test_params_are_applied_after_builtin_vars(self):
         rendered = _render('echo "$BK_JOB_ID" "$1"', ScriptType.SHELL)
-        merged = ScriptExecutionRunner.merge_script_with_params(None, rendered, "a", ScriptType.SHELL)
+        merged, _ = ScriptExecutionRunner.prepare_script_with_params(rendered, "a", ScriptType.SHELL)
         assert merged.startswith("set -- a\n")
         assert "BK_JOB_ID=" in merged

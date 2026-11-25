@@ -208,6 +208,7 @@ error:
   knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
   knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
   builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  builtin_tool_not_deletable: Built-in tools cannot be deleted
   system_tags_not_removable: System tags cannot be removed
   skill_package_zip_required: Upload a skill package ZIP file
   skill_package_must_be_zip: The skill package must be a ZIP file
@@ -401,10 +402,10 @@ tools:
   conversation_skill_package:
     name: Generate Skill Package
     description: |
-      Draft a skill package from the current conversation. Only a confirm click writes it. Do not call this tool unless the user explicitly asked.
+      Organize the conversation, extract the operating steps, and generate a skill package.
     tools:
       prepare_conversation_skill_package:
-        description: Draft a skill package from the current conversation and send a confirm card.
+        description: Organize the conversation, extract the operating steps, and generate a skill package.
   kubernetes:
     name: Kubernetes Tools
     description: |

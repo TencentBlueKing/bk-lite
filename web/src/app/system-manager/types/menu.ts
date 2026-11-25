@@ -1,3 +1,10 @@
+export interface LandableMenuNode {
+  url?: string;
+  isNotMenuItem?: boolean;
+  isDirectory?: boolean;
+  children?: LandableMenuNode[];
+}
+
 export interface CustomMenu {
   id: number;
   app: string;
@@ -6,6 +13,7 @@ export interface CustomMenu {
   is_enabled: boolean;
   is_build_in: boolean;
   menu_count: number;
+  menus?: LandableMenuNode[];
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -52,6 +60,8 @@ export interface SourceMenuNode {
     order: number;
   };
   isDetailMode?: boolean; // 是否为详情页模式
+  sourceHasDetail?: boolean; // 源菜单本身带 hasDetail，保存时才写回
+  isNotMenuItem?: boolean;
   hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
   children?: SourceMenuNode[];
 }
@@ -74,5 +84,6 @@ export interface FunctionMenuItem {
   isExisting?: boolean;
   originName?: string;
   isDetailMode?: boolean; // 是否为详情页模式
+  sourceHasDetail?: boolean;
   hiddenChildren?: SourceMenuNode[]; // 详情页模式下隐藏的子菜单
 }

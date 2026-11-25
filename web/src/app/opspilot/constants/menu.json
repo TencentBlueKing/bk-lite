@@ -229,6 +229,12 @@
           "name": "bot_statistics"
         },
         {
+          "title": "API",
+          "url": "/opspilot/studio/detail/api",
+          "icon": "api",
+          "name": "bot_api"
+        },
+        {
           "title": "Chat",
           "url": "/opspilot/studio/chat",
           "name": "studio_chat",

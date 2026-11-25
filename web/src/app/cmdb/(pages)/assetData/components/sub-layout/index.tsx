@@ -11,6 +11,7 @@ import { MenuItem } from '@/types/index';
 import { usePermissions } from '@/context/permissions';
 import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
 import { isIpamModel } from '@/app/cmdb/constants/ipam';
+import { findSectionMenuChildren } from '@/utils/menuHelpers';
 
 export interface WithSideMenuLayoutProps {
   intro?: React.ReactNode;
@@ -55,28 +56,10 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const [selectedKey, setSelectedKey] = useState<string>(pathname);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
 
-  const getMenuItemsForPath = (menus: MenuItem[], currentPath: string): MenuItem[] => {
-    const matchedMenu = menus.find(menu => menu.url && menu.url !== currentPath && currentPath.startsWith(menu.url));
-
-    if (matchedMenu) {
-      if (matchedMenu.children?.length) {
-        const validChildren = matchedMenu.children.filter(m => !m.isNotMenuItem);
-
-        if (validChildren.length > 0) {
-          const childResult = getMenuItemsForPath(validChildren, currentPath);
-          if (childResult.length > 0) {
-            return childResult;
-          }
-        }
-      }
-
-      return matchedMenu.children || [];
-    }
-
-    return [];
-  };
-
-  const updateMenuItems = useMemo(() => getMenuItemsForPath(menus, pathname), [pathname]);
+  const updateMenuItems = useMemo(
+    () => findSectionMenuChildren(menus, pathname),
+    [menus, pathname],
+  );
 
   useEffect(() => {
     setMenuItems(updateMenuItems?.filter(menu => (

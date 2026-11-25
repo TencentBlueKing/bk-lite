@@ -185,6 +185,17 @@ def _plugins_by_object(object_ids: list[int]) -> dict[int, list]:
     return grouped
 
 
+def _plugin_status_query(plugin) -> str:
+    """原生插件的状态不算脚本序列。脚本插件的状态查询本身只看自己的模板。"""
+    from apps.monitor.services.script_attach import is_script_plugin
+    from apps.monitor.utils.script_series_isolation import exclude_script_series
+
+    query = (plugin.status_query or "").strip()
+    if query and not is_script_plugin(plugin):
+        return exclude_script_series(query)
+    return query
+
+
 def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> dict[tuple, dict[str, float]]:
     """没人配置的插件不再查询。选择器只含配置了该插件的实例，以及完全没有配置的实例。
 
@@ -207,7 +218,7 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
         keys = keys_by_object.get(object_id, ())
         object_instances = [instance for instance in instances if _instance_object_id(instance) == object_id]
         for plugin in plugins:
-            query = (plugin.status_query or "").strip()
+            query = _plugin_status_query(plugin)
             needed = [instance for instance in object_instances if plugin.id in configured.get(instance.id, set())]
             if not query or not keys or not needed:
                 maps[(object_id, plugin.id)] = {}

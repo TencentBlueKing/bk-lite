@@ -7,10 +7,12 @@ from apps.cmdb.collection.plugins.community.cloud.hwcloud import HwCloudCollecti
 from apps.cmdb.collection.plugins.community.cloud.netapp_ontap import NetAppOntapCollectionPlugin
 from apps.cmdb.collection.plugins.community.cloud.oceanstor import OceanStorCollectionPlugin
 from apps.cmdb.collection.plugins.community.cloud.qcloud import QCloudCollectionPlugin
+from apps.cmdb.collection.plugins.community.cloud.volcengine import VolcengineAccountCollectionPlugin
 
 __all__ = [
     "AliyunAccountCollectionPlugin",
     "QCloudCollectionPlugin",
+    "VolcengineAccountCollectionPlugin",
     "FusionInsightCollectionPlugin",
     "HwCloudCollectionPlugin",
     "DellUnityCollectionPlugin",

@@ -357,3 +357,54 @@ def test_sidecar_invokes_cancelled_sweep_when_cancelled():
     assert args[0] == 99
     assert args[1] == target_list
     assert "5" in args[2]
+
+
+@pytest.mark.parametrize("via_ansible", [True, False])
+@pytest.mark.parametrize("values", [[], ["北京", "", r"C:\Program Files", "100% & more!"]])
+def test_bat_runner_passes_ordered_arguments_to_executor(via_ansible, values):
+    import shlex
+
+    from apps.job_mgmt.constants import OSType
+
+    runner = _runner()
+    source = "echo %1 %2 %3 %4"
+    execution = MagicMock(id=99, script_content=source, script_type=ScriptType.BAT, params=shlex.join(values), timeout=60)
+    execution.target_source = TargetSource.MANUAL if via_ansible else TargetSource.NODE_MGMT
+    target = {"target_id": 5} if via_ansible else {"node_id": "node-1"}
+    with (
+        patch.object(runner, "prepare_execution", return_value=(execution, [target])),
+        patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"),
+        patch("apps.job_mgmt.services.script_execution_runner.resolve_builtin_script_var_values", return_value={}),
+        patch.object(runner, "_handle_dangerous_command", return_value=False),
+        patch.object(runner, "_should_use_ansible", return_value=via_ansible),
+        patch.object(runner, "is_cancelled", return_value=False),
+        patch.object(runner, "finalize_execution"),
+        patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"),
+        patch.object(
+            ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[MagicMock(cloud_region_id=1, os_type=OSType.WINDOWS)]
+        ),
+        patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"),
+        patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value=[{"host": "h"}]),
+        patch("apps.job_mgmt.services.execution_base_service.AnsibleExecutor") as ansible,
+        patch("apps.job_mgmt.services.script_execution_runner.Executor") as node,
+    ):
+        node.return_value.execute_local_stream.return_value = "ok"
+        runner.run()
+    if via_ansible:
+        kwargs = ansible.return_value.adhoc.call_args.kwargs
+        content = kwargs["module_args"]
+        assert kwargs["extra_vars"] == ({"bklite_secret_bat_args": values} if values else None)
+    else:
+        args, kwargs = node.return_value.execute_local_stream.call_args
+        content = args[0]
+        assert kwargs["bat_args"] == (values or None)
+    if values:
+        assert "BK_JOB_BAT_ARGS_READY" in content
+        assert content.endswith(source)
+        guard = content.removesuffix(source)
+        assert '@set "BK_JOB_BAT_ARGS_READY="' in guard
+        for index in range(1, len(values) + 1):
+            assert f'@set "BK_JOB_BAT_ARG_{index}="' in guard
+        assert "北京" not in content
+    else:
+        assert content == source

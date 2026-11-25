@@ -69,6 +69,7 @@ def _display_field_labels(instances) -> dict:
 
     from apps.monitor.models import Metric
     from apps.monitor.services.monitor_object import MonitorObjectService
+    from apps.monitor.services.script_attach import is_script_plugin
 
     labels = {}
     for bucket in grouped.values():
@@ -88,7 +89,8 @@ def _display_field_labels(instances) -> dict:
         ).select_related("monitor_plugin"):
             plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
             metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
-            metric_by_name.setdefault(metric_obj.name, metric_obj)
+            if not is_script_plugin(metric_obj.monitor_plugin):
+                metric_by_name.setdefault(metric_obj.name, metric_obj)
         for binding in bindings:
             plugin_name = binding.get("plugin") or ""
             metric_obj = metric_by_plugin.get((plugin_name, binding["metric"])) if plugin_name else metric_by_name.get(binding["metric"])

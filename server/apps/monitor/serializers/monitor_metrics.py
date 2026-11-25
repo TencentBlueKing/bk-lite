@@ -1,9 +1,10 @@
 from rest_framework import serializers
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
-from apps.monitor.services.custom_script_plugin import RESERVED_SCRIPT_METRIC_NAME_ERROR, is_reserved_script_metric_name, is_script_collect_type
+from apps.monitor.services.custom_script_plugin import RESERVED_SCRIPT_METRIC_NAME_ERROR, is_reserved_script_metric_name, is_script_collect_type, is_script_self_monitor_metric_name
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder
+from apps.monitor.utils.script_metric_query import synced_script_business_metric_query
 
 METRIC_BATCH_UPDATE_FIELDS = ("display_name", "metric_group", "unit", "data_type", "description", "dimensions")
 METRIC_BATCH_UPDATE_MAX_SIZE = 100
@@ -163,6 +164,13 @@ class MetricSerializer(serializers.ModelSerializer):
             queryset = queryset.exclude(id=self.instance.id)
         if queryset.exists():
             raise serializers.ValidationError({"name": "同模板内指标 ID 不能重复"})
+
+        if is_script_collect_type(getattr(monitor_plugin, "collect_type", None)) and not is_script_self_monitor_metric_name(
+            name, getattr(monitor_plugin, "collect_type", None)
+        ):
+            current_query = attrs["query"] if "query" in attrs else (getattr(self.instance, "query", "") if self.instance is not None else "")
+            if self.instance is None or "query" in attrs or "name" in attrs:
+                attrs["query"] = synced_script_business_metric_query(name, current_query)
 
         if "query" in attrs and attrs.get("query") is not None:
             attrs["query"] = ensure_metric_labels_placeholder(attrs.get("query"))

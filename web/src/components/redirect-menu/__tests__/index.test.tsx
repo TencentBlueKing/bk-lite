@@ -14,6 +14,19 @@ vi.mock('@/context/permissions', () => ({
   usePermissions: vi.fn(() => ({ menus: [], loading: false })),
 }));
 
+const clientState = vi.hoisted(() => ({
+  current: undefined as {
+    clientData: Array<{ name: string; url: string }>;
+    appConfigList: Array<{ name: string; url: string }>;
+    loading: boolean;
+    appConfigLoading: boolean;
+  } | undefined,
+}));
+
+vi.mock('@/context/client', () => ({
+  useOptionalClientData: () => clientState.current,
+}));
+
 import { usePathname } from 'next/navigation';
 import { usePermissions } from '@/context/permissions';
 import RedirectToFirstMenu from '../index';
@@ -23,6 +36,7 @@ describe('RedirectToFirstMenu', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     search = '';
+    clientState.current = undefined;
     vi.mocked(usePathname).mockReturnValue('/');
     vi.mocked(usePermissions).mockReturnValue({
       menus: [],
@@ -93,5 +107,48 @@ describe('RedirectToFirstMenu', () => {
     render(<RedirectToFirstMenu />);
 
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('opens the registered page when that page is in the loaded menu', () => {
+    vi.mocked(usePathname).mockReturnValue('/cmdb');
+    clientState.current = {
+      clientData: [{ name: 'cmdb', url: '/cmdb/assetSearch' }],
+      appConfigList: [],
+      loading: false,
+      appConfigLoading: false,
+    };
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [
+        { url: '/cmdb/views/k8s', name: 'k8s' } as any,
+        { url: '/cmdb/assetSearch', name: 'search' } as any,
+      ],
+      loading: false,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    render(<RedirectToFirstMenu />);
+
+    expect(replace).toHaveBeenCalledWith('/cmdb/assetSearch');
+  });
+
+  it('opens the first menu page when the registered page is absent', () => {
+    vi.mocked(usePathname).mockReturnValue('/cmdb');
+    clientState.current = {
+      clientData: [{ name: 'cmdb', url: '/cmdb/assetSearch' }],
+      appConfigList: [],
+      loading: false,
+      appConfigLoading: false,
+    };
+    vi.mocked(usePermissions).mockReturnValue({
+      menus: [{ url: '/cmdb/views/k8s', name: 'k8s' } as any],
+      loading: false,
+      permissions: {},
+      hasPermission: () => true,
+    });
+
+    render(<RedirectToFirstMenu />);
+
+    expect(replace).toHaveBeenCalledWith('/cmdb/views/k8s');
   });
 });

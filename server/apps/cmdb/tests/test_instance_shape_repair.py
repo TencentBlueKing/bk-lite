@@ -279,7 +279,7 @@ def test_startup_enqueues_shape_repair_only_while_a_stage_is_open(monkeypatch):
         calls.append(name)
 
     monkeypatch.setattr("apps.core.management.commands.batch_init.call_command", _call)
-    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.ensure_display_field_backfill_periodic_task", lambda: None)
+    monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.disable_display_field_backfill_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.display_field_backfill.backfill_cmdb_display_fields.delay", lambda **_kwargs: None)
     monkeypatch.setattr("apps.cmdb.tasks.uuid_migration.disable_uuid_migration_periodic_task", lambda: None)
     monkeypatch.setattr("apps.cmdb.tasks.ci_context.ensure_ci_context_rebuild_periodic_task", lambda: None)

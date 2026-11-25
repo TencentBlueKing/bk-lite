@@ -2,6 +2,7 @@
 """私有云采集下发链路（NodeParams）测试：补齐后 5 朵云均可解析并下发，
 不再抛 ValueError；下发参数键对齐各 stargazer 采集器读取的键。"""
 import types
+
 import pytest
 
 from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
@@ -13,6 +14,7 @@ from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 # test_unregistered_cloud_raises_valueerror）。
 CLOUDS = {
     "hwcloud": "huaweicloud_info",
+    "volcengine": "volcengine_info",
 }
 
 # 企业云：社区 worktree 未注册 node_configs，工厂应抛 ValueError。

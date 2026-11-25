@@ -34,6 +34,7 @@ const PLATFORM = {
   applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
   webchatWidthUrl: '/api/proxy/opspilot/skill_channel/platform/width/',
   sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
+  feedbackUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/{messageId}/feedback/?channel_id={channelId}',
   messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
   deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
   chatUrlTemplate: '/api/proxy/opspilot/skill_channel/{channelId}/chat/',
@@ -86,12 +87,15 @@ const ensureStylesheet = () => {
 };
 
 const getOrCreateScript = () => {
+  const expected = new URL(WEBCHAT_SCRIPT_URL, window.location.origin).href;
   const existing = document.querySelector<HTMLScriptElement>(
     'script[data-bk-global-webchat="script"]',
   );
-  if (existing) {
+  if (existing?.src === expected) {
     return existing;
   }
+  existing?.remove();
+  delete window.WebChat;
 
   const script = document.createElement('script');
   script.src = WEBCHAT_SCRIPT_URL;
@@ -154,9 +158,9 @@ const GlobalWebchat = () => {
     let active = true;
     let hasFailed = false;
     const stylesheet = ensureStylesheet();
-    const script = getOrCreateScript();
     let stylesheetReady =
       stylesheet.dataset.loadState === 'loaded' || Boolean(stylesheet.sheet);
+    const script = getOrCreateScript();
     let scriptReady = Boolean(window.WebChat);
 
     const initialize = () => {

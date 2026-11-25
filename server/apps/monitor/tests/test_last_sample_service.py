@@ -66,7 +66,7 @@ def test_instance_list_time_and_status_follow_last_raw_sample(monkeypatch):
     assert row["status"] == "normal"
     assert row["agent_id"] == "agent-1"
     assert "any({instance_type='os'})" not in fake_vm.queries[0]
-    assert "max(tlast_over_time(({instance_type='os'})[20m])) by (instance_id)" in fake_vm.queries[0]
+    assert "max(tlast_over_time(({instance_type='os', collect_type!=\"script\"})[20m])) by (instance_id)" in fake_vm.queries[0]
 
 
 def test_instance_list_marks_stale_last_sample_unavailable(monkeypatch):
@@ -99,7 +99,6 @@ def test_instance_list_marks_stale_last_sample_unavailable(monkeypatch):
     row = data["results"][0]
     assert row["time"] == SAMPLE_TS
     assert row["status"] == "unavailable"
-
 
 
 def test_plugin_status_map_uses_last_sample_iso_time(monkeypatch):

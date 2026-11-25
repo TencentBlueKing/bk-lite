@@ -55,6 +55,7 @@ from apps.opspilot.views.skill_channel import (
     list_skill_channel_session_messages,
     list_web_chat_skill_channels,
     save_platform_webchat_width,
+    set_platform_answer_feedback,
 )
 
 __all__ = [
@@ -100,6 +101,7 @@ __all__ = [
     "interrupt_chat_flow_execution",
     "list_platform_skill_channels",
     "save_platform_webchat_width",
+    "set_platform_answer_feedback",
     "list_published_web_skills",
     "list_skill_channel_conversations",
     "list_skill_channel_session_messages",

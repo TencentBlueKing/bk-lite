@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import type { FormInstance } from 'antd';
 import { useRoleApi } from '@/app/system-manager/api/application';
+import { invalidateAppMenus } from '@/context/permissions';
 import type { Role, User, Menu } from '@/app/system-manager/types/application';
 
 interface Group {
@@ -267,6 +268,7 @@ export function usePermissionTab({ selectedRole, t }: UsePermissionTabParams) {
         role_name: selectedRole.name,
         menus
       });
+      invalidateAppMenus();
       message.success(t('common.updateSuccess'));
     } catch (error) {
       console.error('Failed:', error);

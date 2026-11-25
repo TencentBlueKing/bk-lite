@@ -499,11 +499,12 @@ def test_builtin_descriptor_is_opt_in_catalog_tool():
     assert descriptor["params"]["url"] == "langchain:conversation_skill_package"
     assert descriptor["params"]["kwargs"] == []
     assert descriptor["display_name"] == "生成技能包"
-    assert "确认" in descriptor["description"]
-    assert "明确要求" in descriptor["description"]
-    assert "确认卡" in subtool["description"]
+    assert descriptor["description"].strip() == "整理对话提炼操作步骤生成技能包。"
+    assert "确认" not in descriptor["description"]
+    assert subtool["description"] == "整理对话提炼操作步骤生成技能包。"
     assert english["display_name"] == "Generate Skill Package"
-    assert "confirm click" in english["description"]
+    assert english["description"].strip() == "Organize the conversation, extract the operating steps, and generate a skill package."
+    assert "confirm" not in english["description"].lower()
     assert fallback["description"] == (package.__doc__ or "").strip()
     assert runtime["url"] == "langchain:conversation_skill_package"
     assert builtin_ids.count(-13) == 1

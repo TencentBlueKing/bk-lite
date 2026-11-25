@@ -83,11 +83,14 @@ class AgentNode(BaseNodeExecutor):
             message = params.get("user_message", "")
             if not isinstance(message, str):
                 message = json.dumps(message, ensure_ascii=False, default=str)
+            flow_name = self.variable_manager.flow_name
             with transaction.atomic():
                 conversation, _ = SkillConversation.objects.get_or_create(
                     session_id=session_id,
-                    defaults={"skill_id": skill_id, "channel": None, "external_user_id": user_id},
+                    defaults={"skill_id": skill_id, "channel": None, "external_user_id": user_id, "flow_name": flow_name},
                 )
+                if flow_name and not conversation.flow_name:
+                    SkillConversation.objects.filter(pk=conversation.pk, flow_name="").update(flow_name=flow_name)
                 append_message(conversation, SkillConversationMessage.ROLE_USER, message)
                 if content:
                     append_message(conversation, SkillConversationMessage.ROLE_ASSISTANT, content)

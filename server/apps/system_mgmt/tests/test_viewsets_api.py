@@ -132,8 +132,9 @@ def test_custom_menu_group_destroy_builtin_forbidden(super_client):
 
 
 def test_custom_menu_group_change_enable(super_client):
-    other = CustomMenuGroup.objects.create(display_name="老的", app="cmdb", is_enabled=True, is_build_in=False, menus=[])
-    grp = CustomMenuGroup.objects.create(display_name="新的", app="cmdb", is_enabled=False, is_build_in=False, menus=[])
+    page = [{"name": "search", "url": "/cmdb/search"}]
+    other = CustomMenuGroup.objects.create(display_name="老的", app="cmdb", is_enabled=True, is_build_in=False, menus=page)
+    grp = CustomMenuGroup.objects.create(display_name="新的", app="cmdb", is_enabled=False, is_build_in=False, menus=page)
     with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
         resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
     assert resp.status_code == 200
@@ -144,6 +145,134 @@ def test_custom_menu_group_change_enable(super_client):
     assert other.is_enabled is False
 
 
+def test_custom_menu_group_disable_last_returns_to_builtin(super_client):
+    builtin = CustomMenuGroup.objects.create(display_name="内置", app="cmdb", is_enabled=False, is_build_in=True, menus=[])
+    custom = CustomMenuGroup.objects.create(display_name="自定义", app="cmdb", is_enabled=True, is_build_in=False, menus=[])
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        resp = super_client.post(f"{V}/custom_menu_group/{custom.id}/change_enable/", {"is_enabled": False}, format="json")
+    assert resp.status_code == 200
+    builtin.refresh_from_db()
+    custom.refresh_from_db()
+    assert custom.is_enabled is False
+    assert builtin.is_enabled is True
+
+
+def test_custom_menu_group_copy_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=[{"name": "search"}])
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        resp = super_client.post(
+            f"{V}/custom_menu_group/{grp.id}/copy/",
+            {"menus": []},
+            format="json",
+        )
+    assert resp.status_code == 400
+    assert not CustomMenuGroup.objects.filter(app="cmdb", display_name="有菜单_copy").exists()
+
+
+def test_custom_menu_group_update_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=[{"name": "search"}])
+    resp = super_client.put(
+        f"{V}/custom_menu_group/{grp.id}/",
+        {"display_name": "有菜单", "app": "cmdb", "menus": []},
+        format="json",
+    )
+    assert resp.status_code == 400
+    grp.refresh_from_db()
+    assert grp.menus == [{"name": "search"}]
+
+
+def test_custom_menu_group_enable_rejects_empty_menus(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="空的", app="cmdb", is_enabled=False, is_build_in=False, menus=[])
+    resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
+    assert resp.status_code == 400
+    grp.refresh_from_db()
+    assert grp.is_enabled is False
+
+
+EMPTY_DIRECTORY = [{"title": "目录", "name": "folder", "children": [{"title": "子目录", "name": "nested", "children": []}]}]
+SEARCH_PAGE = [{"name": "search", "url": "/cmdb/search"}]
+
+
+def test_custom_menu_group_create_allows_empty_directory_then_edit(super_client):
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        create = super_client.post(
+            f"{V}/custom_menu_group/",
+            {"display_name": "先建组", "app": "cmdb", "menus": EMPTY_DIRECTORY},
+            format="json",
+        )
+    assert create.status_code in (200, 201)
+    grp = CustomMenuGroup.objects.get(display_name="先建组", app="cmdb")
+    assert grp.menus == EMPTY_DIRECTORY
+
+    rejected = super_client.put(
+        f"{V}/custom_menu_group/{grp.id}/",
+        {"display_name": "先建组", "app": "cmdb", "menus": EMPTY_DIRECTORY},
+        format="json",
+    )
+    assert rejected.status_code == 400
+
+    saved = super_client.put(
+        f"{V}/custom_menu_group/{grp.id}/",
+        {"display_name": "先建组", "app": "cmdb", "menus": SEARCH_PAGE},
+        format="json",
+    )
+    assert saved.status_code == 200
+    grp.refresh_from_db()
+    assert grp.menus == SEARCH_PAGE
+
+
+def test_custom_menu_group_partial_update_rejects_empty_list_and_directory(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=SEARCH_PAGE)
+    empty = super_client.patch(f"{V}/custom_menu_group/{grp.id}/", {"menus": []}, format="json")
+    assert empty.status_code == 400
+    directory = super_client.patch(f"{V}/custom_menu_group/{grp.id}/", {"menus": EMPTY_DIRECTORY}, format="json")
+    assert directory.status_code == 400
+    grp.refresh_from_db()
+    assert grp.menus == SEARCH_PAGE
+
+
+def test_custom_menu_group_copy_rejects_empty_directory(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="有菜单", app="cmdb", is_build_in=False, menus=SEARCH_PAGE)
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        sent = super_client.post(
+            f"{V}/custom_menu_group/{grp.id}/copy/",
+            {"menus": EMPTY_DIRECTORY},
+            format="json",
+        )
+    assert sent.status_code == 400
+
+    stored = CustomMenuGroup.objects.create(display_name="只有目录", app="cmdb", is_build_in=False, menus=EMPTY_DIRECTORY)
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        copied = super_client.post(f"{V}/custom_menu_group/{stored.id}/copy/", {}, format="json")
+    assert copied.status_code == 400
+    assert not CustomMenuGroup.objects.filter(app="cmdb", display_name__endswith="_copy").exists()
+
+
+def test_custom_menu_group_enable_rejects_empty_directory(super_client):
+    grp = CustomMenuGroup.objects.create(display_name="只有目录", app="cmdb", is_enabled=False, is_build_in=False, menus=EMPTY_DIRECTORY)
+    resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
+    assert resp.status_code == 400
+    grp.refresh_from_db()
+    assert grp.is_enabled is False
+
+
+def test_custom_menu_group_directory_with_page_can_be_saved_and_enabled(super_client):
+    tree = [{"title": "目录", "name": "folder", "children": [{"name": "search", "url": "/cmdb/search"}]}]
+    grp = CustomMenuGroup.objects.create(display_name="有页面", app="cmdb", is_enabled=False, is_build_in=False, menus=[])
+    saved = super_client.put(
+        f"{V}/custom_menu_group/{grp.id}/",
+        {"display_name": "有页面", "app": "cmdb", "menus": tree},
+        format="json",
+    )
+    assert saved.status_code == 200
+    with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
+        enabled = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {"is_enabled": True}, format="json")
+    assert enabled.status_code == 200
+    grp.refresh_from_db()
+    assert grp.is_enabled is True
+    assert grp.menus == tree
+
+
 def test_custom_menu_group_change_enable_missing_param(super_client):
     grp = CustomMenuGroup.objects.create(display_name="g", app="cmdb", is_build_in=False, menus=[])
     resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/change_enable/", {}, format="json")
@@ -151,7 +280,12 @@ def test_custom_menu_group_change_enable_missing_param(super_client):
 
 
 def test_custom_menu_group_copy(super_client):
-    grp = CustomMenuGroup.objects.create(display_name="原始", app="cmdb", is_build_in=False, menus=[{"id": 1}])
+    grp = CustomMenuGroup.objects.create(
+        display_name="原始",
+        app="cmdb",
+        is_build_in=False,
+        menus=[{"id": 1, "name": "search", "url": "/cmdb/search"}],
+    )
     with patch("apps.system_mgmt.viewset.custom_menu_group_viewset.log_operation"):
         resp = super_client.post(f"{V}/custom_menu_group/{grp.id}/copy/", {}, format="json")
     assert resp.status_code == 200

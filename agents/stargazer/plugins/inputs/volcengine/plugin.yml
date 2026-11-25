@@ -1,0 +1,27 @@
+name: volcengine
+version: 1.0.0
+category: cloud
+metadata:
+  display_name: 火山引擎
+  description: 火山引擎账号下 ECS、EIP、传统型 CLB、MySQL、PostgreSQL 和 TOS 清单
+  author: WeOps
+  tags:
+  - cloud
+  - volcengine
+  cloud_protocol: true
+  model_id: volcengine
+executors:
+  protocol:
+    type: protocol
+    execution_mode: sync
+    capacity_group: sync_sdk
+    collector:
+      module: plugins.inputs.volcengine.volcengine_info
+      class: CwVolcengine
+    target_policy:
+      mode: cloud_endpoint
+      tls: true
+      trusted_domains:
+      - volcengineapi.com
+      - volces.com
+default_executor: protocol

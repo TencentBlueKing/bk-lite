@@ -143,6 +143,7 @@ error:
   account_association_not_found: Account association was not found
   account_association_not_ready: This account association cannot be used until a complete update finishes
   account_association_test_receiver_unavailable: The current user has no usable receive identifier in this account association
+  empty_custom_menu_not_allowed: A custom menu must contain at least one item
   custom_menu_group_display_name_exists: A menu group with the same display name already exists under app {app}
   custom_menu_group_enabled_exists: App {app} already has an enabled menu group. Only one menu group can be enabled per app.
   custom_menu_group_name_exists: A menu group named {display_name} already exists under app {app}
