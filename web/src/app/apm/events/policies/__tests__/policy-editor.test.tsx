@@ -701,6 +701,48 @@ describe('APM 四步策略编辑器', { timeout: 15000 }, () => {
     expect(api.dryRunPolicy).toHaveBeenCalledWith(expect.objectContaining({ policy_id: 'p1' }));
   });
 
+  it('活动告警再次命中同级时结论显示已命中，未越线仍显示未命中', async () => {
+    const user = userEvent.setup();
+    api.dryRunPolicy.mockResolvedValue({
+      evaluated_at: '2026-08-14T02:00:00Z',
+      compare_mode: 'absolute',
+      compare_value_kind: '',
+      result_unit: 'ms',
+      total_targets: 2,
+      truncated: false,
+      items: [
+        {
+          service: 'cct-upp-gateway',
+          endpoint: 'POST cct upp pay',
+          version: '',
+          verdict: 'ok',
+          current_value: '119.996114',
+          baseline_value: null,
+          compared_value: '119.996114',
+          request_count: 4,
+          matched_threshold: { severity: 'warning', comparator: 'gt', value: '2' },
+          reason: '',
+        },
+        {
+          endpoint: 'GET /quiet',
+          version: '',
+          verdict: 'ok',
+          current_value: '1',
+          baseline_value: null,
+          compared_value: '1',
+          request_count: 4,
+          matched_threshold: null,
+          reason: '',
+        },
+      ],
+    });
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+    await user.click(await screen.findByRole('button', { name: '试算' }));
+    expect(await screen.findByText('已命中')).not.toBeNull();
+    expect(screen.getByText('未命中')).not.toBeNull();
+    expect(screen.getAllByText('未命中')).toHaveLength(1);
+  });
+
   it('分组指标下拉出现慢阈值和 Apdex T，计数类不显示汇聚方法', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);

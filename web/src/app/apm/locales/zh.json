@@ -763,6 +763,7 @@
       "dryRunTruncated": "共 {count} 个目标，只试算前 20 个，请在端点里缩小范围",
       "verdictWouldTrigger": "将触发",
       "verdictOk": "未命中",
+      "verdictStillBreached": "已命中",
       "verdictWouldRecover": "将恢复",
       "verdictWouldEscalate": "将升级",
       "verdictNoData": "无数据",

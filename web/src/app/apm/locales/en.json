@@ -763,6 +763,7 @@
       "dryRunTruncated": "{count} targets in total; only the first 20 are dry-run. Narrow the endpoint scope.",
       "verdictWouldTrigger": "Would trigger",
       "verdictOk": "Not breached",
+      "verdictStillBreached": "Still breached",
       "verdictWouldRecover": "Would recover",
       "verdictWouldEscalate": "Would escalate",
       "verdictNoData": "No data",
