@@ -171,7 +171,7 @@ export function useItsmApi() {
   const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
   const listServices = useCallback(() => get('/itsm/api/services/'), [get]);
   const createService = useCallback(
-    (body: { id?: number; name?: string; catalog_id?: number | null; workflow_id?: number; description?: string; is_hot?: boolean; is_enabled?: boolean; visibility?: string; visible_users?: string[]; visible_groups?: number[] }) => post('/itsm/api/services/', body),
+    (body: { id?: number; name?: string; catalog_id?: number | null; workflow_id?: number; description?: string; is_hot?: boolean; is_enabled?: boolean; handler_group?: number | null; visibility?: string; visible_users?: string[]; visible_groups?: number[] }) => post('/itsm/api/services/', body),
     [post],
   );
   const deleteService = useCallback((id: number) => del(`/itsm/api/services/?id=${id}`), [del]);

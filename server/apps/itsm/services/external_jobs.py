@@ -239,7 +239,7 @@ def execute_node(ticket, node, *, job_id=None):
         article.tickets.add(ticket)
         return {"article_id": article.id}
     if kind == "auto_dispatch":
-        variables = TicketService()._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data)
+        variables = TicketService()._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data, service_id=ticket.service_id)
         return {"variables": variables}
     if kind == "rule_trigger" and not match_when(config.get("when"), ticket.form_data):
         return {"skipped": True, "reason": "未满足触发条件"}

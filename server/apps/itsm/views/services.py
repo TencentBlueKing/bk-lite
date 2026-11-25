@@ -1,14 +1,17 @@
 import json
 
+from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import Service, ServiceCatalog, ServiceFavorite, ServiceRecent
+from apps.itsm.models import Service, ServiceCatalog, ServiceFavorite, ServiceRecent, Workflow
 from apps.itsm.serializers import ServiceCatalogSerializer, ServiceSerializer
+from apps.itsm.serializers.service import PortalServiceSerializer
 from apps.itsm.services.service_access import visible_services
+from apps.itsm.services.service_assignment import eligible_handler_groups, has_open_group_tickets, requires_handler_group
 from apps.itsm.views.access import api_errors, domain_of, has_permission, list_page
 from apps.itsm.views.base import ItsmAPIView
 
@@ -24,7 +27,7 @@ def _user(request):
 
 
 def _service_item(service):
-    return {key: value for key, value in ServiceSerializer(service).data.items() if key not in {"visibility", "visible_users", "visible_groups"}}
+    return PortalServiceSerializer(service).data
 
 
 class CatalogView(ItsmAPIView):
@@ -70,17 +73,37 @@ class ServiceView(ItsmAPIView):
     @api_errors
     @HasPermission("workflow-Edit")
     def get(self, request):
-        items = Service.objects.filter(domain=domain_of(request)).select_related("workflow").order_by("order", "id")
-        return Response({"items": ServiceSerializer(items, many=True).data})
+        domain = domain_of(request)
+        items = Service.objects.filter(domain=domain).select_related("workflow").order_by("order", "id")
+        workflow_nodes = Workflow.objects.filter(domain=domain, current_version__is_published=True).values_list(
+            "pk", "current_version__design__nodes"
+        )
+        group_workflows = {pk for pk, nodes in workflow_nodes if requires_handler_group({"nodes": nodes or []})}
+        return Response(
+            {
+                "items": ServiceSerializer(items, many=True, context={"group_workflows": group_workflows}).data,
+                "eligible_handler_groups": eligible_handler_groups(domain),
+                "requires_handler_group_workflow_ids": sorted(group_workflows),
+            }
+        )
 
     @api_errors
     @HasPermission("workflow-Edit")
+    @transaction.atomic
     def post(self, request):
         payload = request.data
+        domain = domain_of(request)
+        current = Service.objects.filter(domain=domain, id=payload.get("id"))
+        target_workflow_id = payload.get("workflow_id") or current.values_list("workflow_id", flat=True).first()
+        # 发布也先锁流程，再锁服务，避免并发启用沿用旧版本的处理人要求。
+        if target_workflow_id:
+            Workflow.objects.select_for_update().only("pk").filter(pk=target_workflow_id, domain=domain).first()
         if payload.get("id"):
-            item = Service.objects.filter(domain=domain_of(request)).select_related("workflow").filter(id=payload["id"]).first()
+            item = current.select_for_update().first()
             if item is None:
                 return self.fail("服务不存在", 404)
+            if not payload.get("workflow_id") and item.workflow_id != target_workflow_id:
+                return self.fail("服务绑定的流程已变更，请刷新后重试", 409)
             serializer = ServiceSerializer(item, data=payload, partial=True)
         else:
             serializer = ServiceSerializer(data=payload)
@@ -97,10 +120,14 @@ class ServiceView(ItsmAPIView):
 
     @api_errors
     @HasPermission("workflow-Edit")
+    @transaction.atomic
     def delete(self, request):
-        deleted, _rows = Service.objects.filter(domain=domain_of(request)).filter(id=request.GET.get("id")).delete()
-        if not deleted:
+        service = Service.objects.select_for_update().filter(domain=domain_of(request), id=request.GET.get("id")).first()
+        if service is None:
             return self.fail("服务不存在", 404)
+        if has_open_group_tickets(service):
+            return self.fail("服务有依赖处理组的在办工单，暂时无法删除")
+        service.delete()
         return Response({"id": request.GET.get("id")})
 
 

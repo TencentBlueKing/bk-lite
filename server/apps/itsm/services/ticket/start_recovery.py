@@ -24,7 +24,7 @@ def _instance(service, attempt):
     if attempt.state == "ready":
         variables = {
             "initiator": ticket.creator,
-            **service._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data),
+            **service._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data, service_id=ticket.service_id),
             **_form_variables(ticket.form_data),
         }
     sent_at = timezone.now()

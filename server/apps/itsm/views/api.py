@@ -3,6 +3,7 @@ import json
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -390,6 +391,7 @@ def publish_workflow(request, workflow_id):
             "form_schema": schema,
             "settings": {**version.design.get("settings", {}), "fields": field_keys(schema.get("fields", []))},
         }
+    from apps.itsm.services.service_assignment import activate_service_version
     from apps.itsm.services.workflow.dependencies import validate_subprocesses
 
     try:
@@ -421,8 +423,7 @@ def publish_workflow(request, workflow_id):
     version.process_definition_key = workflow.key
     version.is_published = True
     version.save()
-    workflow.current_version = version
-    workflow.save(update_fields=["current_version", "updated_at"])
+    activate_service_version(workflow, version)
     return WebUtils.response_success({"deployment_id": version.flowable_deployment_id})
 
 
@@ -481,7 +482,10 @@ class HandlerGroupView(ItsmAPIView):
     @api_errors
     @HasPermission("org-Edit")
     def delete(self, request):
-        deleted, _rows = HandlerGroup.objects.filter(domain=domain_of(request)).filter(id=request.GET.get("id")).delete()
+        try:
+            deleted, _rows = HandlerGroup.objects.filter(domain=domain_of(request)).filter(id=request.GET.get("id")).delete()
+        except ProtectedError:
+            return self.fail("处理组仍绑定服务，请先更换服务处理组")
         if not deleted:
             return self.fail("处理组不存在", 404)
         return Response({"id": request.GET.get("id")})

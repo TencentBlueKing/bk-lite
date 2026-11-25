@@ -435,13 +435,15 @@ def workflow_variables(request):
 @csrf_exempt
 @api_errors
 @HasPermission("workflow-Publish")
+@transaction.atomic
 def enable_version(request, workflow_id, version_id):
+    from apps.itsm.services.service_assignment import activate_service_version
+
     if request.method != "POST":
         return WebUtils.response_error("不支持的方法", status_code=405)
-    workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
+    workflow = Workflow.objects.select_for_update().filter(domain=domain_of(request)).get(id=workflow_id)
     version = WorkflowVersion.objects.get(id=version_id, workflow=workflow, is_published=True)
-    workflow.current_version = version
-    workflow.save(update_fields=["current_version", "updated_at"])
+    activate_service_version(workflow, version)
     from django.utils import timezone
 
     from apps.itsm.models import ItsmSetting

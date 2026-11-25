@@ -144,3 +144,12 @@ it('只改旧节点名称时保留隐式启用规则，清空名称后恢复默�
   expect(change.mock.calls[0][0].actions).toBeUndefined();
   expect(change.mock.calls[0][0].actionDisplay).toContainEqual({ action: 'approve' });
 });
+
+it('服务处理组来源显示在节点抽屉，由服务配置办理人', async () => {
+  render(<NodeSettings data={{ ...data, assigneeSource: 'service_group' }} fields={fields} onChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '配置节点' }));
+  const drawer = await screen.findByRole('dialog');
+  expect(within(drawer).getByText('使用服务处理组')).toBeTruthy();
+  expect(within(drawer).getByText('办理人来自提单服务在服务管理中绑定的处理组。')).toBeTruthy();
+  expect(within(drawer).queryByText('用户选择器')).toBeNull();
+});

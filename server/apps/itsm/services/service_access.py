@@ -3,6 +3,8 @@ from django.db import connection
 from django.db.models import Q
 
 from apps.itsm.models import HandlerGroup, Service
+from apps.itsm.services.service_assignment import requires_handler_group
+from apps.itsm.services.ticket.actions import NodeActionValidationError
 from apps.itsm.views.access import domain_of
 
 
@@ -50,6 +52,13 @@ def check_service_request(request, version, service_id=None):
     visible = visible_services(request, workflow_id=version.workflow_id, service_id=service_id)
     if service_id:
         return visible.get(id=service_id)
+    if requires_handler_group(version.design):
+        candidates = list(visible[:2])
+        if not candidates:
+            raise PermissionError()
+        if len(candidates) > 1:
+            raise NodeActionValidationError("请选择具体服务以确定办理节点的处理组")
+        return candidates[0]
     if Service.objects.filter(domain=domain_of(request), workflow_id=version.workflow_id).exists() and not visible.exists():
         raise PermissionError()
     return None

@@ -62,7 +62,7 @@ def prepare(service, ticket, task, action, data, operator, node, *, handover_id=
         materialize_subforms(service, ticket, ticket_schema(ticket), operator, operation_key=str(token), defer_children=True)
         payload["form"] = ticket.form_data
         if action in COMPLETIONS and not local_parent:
-            payload["assignees"] = service._assignee_variables(ticket.workflow_version, ticket.creator, payload["form"])
+            payload["assignees"] = service._assignee_variables(ticket.workflow_version, ticket.creator, payload["form"], service_id=ticket.service_id)
     return ManualOperation.objects.create(
         ticket=ticket,
         task=task,

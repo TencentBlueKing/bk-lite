@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
 from apps.itsm.models import Service, ServiceCatalog, Workflow
+from apps.itsm.services.service_assignment import (
+    LEGACY_PRESET_MESSAGE,
+    handler_group_members,
+    has_legacy_preset_handlers,
+    has_open_group_tickets,
+    requires_handler_group,
+)
 
 
 class ServiceCatalogSerializer(serializers.ModelSerializer):
@@ -25,10 +32,19 @@ class ServiceCatalogSerializer(serializers.ModelSerializer):
 
 
 class ServiceSerializer(serializers.ModelSerializer):
+    handler_group = serializers.IntegerField(source="handler_group_id", min_value=1, required=False, allow_null=True)
+    requires_handler_group = serializers.SerializerMethodField()
+
+    def get_requires_handler_group(self, service):
+        if "group_workflows" in self.context:
+            return service.workflow_id in self.context["group_workflows"]
+        version = service.workflow.current_version
+        return bool(version and requires_handler_group(version.design))
+
     workflow_name = serializers.CharField(source="workflow.name", read_only=True)
     version_id = serializers.IntegerField(source="workflow.current_version_id", read_only=True)
     catalog_id = serializers.IntegerField(allow_null=True, required=False)
-    workflow_id = serializers.IntegerField(required=False)
+    workflow_id = serializers.IntegerField(min_value=1, required=False)
 
     class Meta:
         model = Service
@@ -42,6 +58,8 @@ class ServiceSerializer(serializers.ModelSerializer):
             "description",
             "is_hot",
             "is_enabled",
+            "handler_group",
+            "requires_handler_group",
             "visibility",
             "visible_users",
             "visible_groups",
@@ -81,4 +99,23 @@ class ServiceSerializer(serializers.ModelSerializer):
             if creating and workflow.current_version_id is None:
                 raise serializers.ValidationError("流程还没有发布版本")
             attrs["workflow"] = workflow
+        workflow = attrs.get("workflow") or (self.instance.workflow if self.instance else None)
+        version = workflow.current_version if workflow else None
+        enabled = attrs.get("is_enabled", self.instance.is_enabled if self.instance else True)
+        group_id = attrs.get("handler_group_id", self.instance.handler_group_id if self.instance else None)
+        if self.instance and (workflow.pk != self.instance.workflow_id or (self.instance.handler_group_id and group_id is None)):
+            if has_open_group_tickets(self.instance):
+                raise serializers.ValidationError("服务有依赖处理组的在办工单，请保留当前流程和处理组绑定")
+        if enabled and (version is None or not version.is_published):
+            raise serializers.ValidationError("请先发布服务流程，再启用服务")
+        if enabled and version and has_legacy_preset_handlers(version):
+            raise serializers.ValidationError(LEGACY_PRESET_MESSAGE)
+        if (enabled and version and requires_handler_group(version.design)) or attrs.get("handler_group_id") is not None:
+            if not group_id or not handler_group_members(group_id, domain):
+                raise serializers.ValidationError({"handler_group": "请选择本域包含有效成员的处理组"})
         return attrs
+
+
+class PortalServiceSerializer(ServiceSerializer):
+    class Meta(ServiceSerializer.Meta):
+        fields = ["id", "name", "catalog_id", "workflow_id", "workflow_name", "version_id", "description", "is_hot", "is_enabled"]

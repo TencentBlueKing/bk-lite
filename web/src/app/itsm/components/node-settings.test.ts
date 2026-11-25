@@ -48,3 +48,11 @@ it('发布草稿保存按钮顺序及名称，保留隐式启用规则', () => {
     action_display: [{ action: 'reject' }, { action: 'approve', label: '验收通过' }],
   });
 });
+
+it('引用服务处理组的节点能新增并往返保存，无需指定固定组 ID', () => {
+  const graph = canvasFromDesign({ nodes: [{ id: 'approve', type: 'approval', name: '分派' }], edges: [] });
+  graph.nodes[0].data.assigneeSource = 'service_group';
+  const result = designFromCanvas(graph.nodes, []);
+  expect(result.nodes[0].assignee).toEqual({ source: 'service_group', value: [] });
+  expect(designFromCanvas(canvasFromDesign(result).nodes, []).nodes[0].assignee).toEqual(result.nodes[0].assignee);
+});

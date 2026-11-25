@@ -34,6 +34,13 @@ interface ServiceItem {
   visibility: string;
   visible_users: string[];
   visible_groups: number[];
+  handler_group: number | null;
+  requires_handler_group: boolean;
+}
+
+interface GroupOption {
+  id: number;
+  name: string;
 }
 
 export default function ServiceManagePage() {
@@ -59,7 +66,16 @@ export default function ServiceManagePage() {
   const [visibility, setVisibility] = useState('all');
   const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
   const [visibleGroups, setVisibleGroups] = useState<number[]>([]);
-  const [groups, setGroups] = useState<{ id: number; name: string }[]>([]);
+  const [groups, setGroups] = useState<GroupOption[]>([]);
+  const [eligibleGroups, setEligibleGroups] = useState<GroupOption[]>([]);
+  const [groupWorkflowIds, setGroupWorkflowIds] = useState<number[]>([]);
+  const [handlerGroup, setHandlerGroup] = useState<number>();
+  const [isEnabled, setIsEnabled] = useState(false);
+  const requiresGroup = workflowId !== undefined && (
+    groupWorkflowIds.includes(workflowId) ||
+    (workflowId === editingService?.workflow_id && editingService.requires_handler_group)
+  );
+  const missingGroup = requiresGroup && isEnabled && !eligibleGroups.some(group => group.id === handlerGroup);
 
   const load = useCallback(async () => {
     const access = await api.portal() as { can_manage?: boolean };
@@ -67,15 +83,17 @@ export default function ServiceManagePage() {
     if (!access.can_manage) return;
     const [catalogData, serviceData, workflowData, groupData] = await Promise.all([
       api.listCatalogs() as Promise<{ items?: CatalogItem[] }>,
-      api.listServices() as Promise<{ items?: ServiceItem[] }>,
+      api.listServices() as Promise<{ items: ServiceItem[]; eligible_handler_groups: GroupOption[]; requires_handler_group_workflow_ids: number[] }>,
       api.listWorkflows() as Promise<{ items?: WorkflowListItem[] }>,
-      api.listHandlerGroups() as Promise<{ items?: { id: number; name: string }[] }>,
+      api.listWorkflowHandlerGroupOptions(),
     ]);
     setGroups(groupData.items || []);
     setCatalogs(catalogData.items || []);
-    setServices(serviceData.items || []);
+    setServices(serviceData.items);
+    setEligibleGroups(serviceData.eligible_handler_groups);
+    setGroupWorkflowIds(serviceData.requires_handler_group_workflow_ids);
     setWorkflows((workflowData.items || []).filter((item) => item.current_version_id));
-  }, [api.listCatalogs, api.listServices, api.listWorkflows, api.listHandlerGroups, api.portal]);
+  }, [api.listCatalogs, api.listServices, api.listWorkflows, api.listWorkflowHandlerGroupOptions, api.portal]);
 
   useEffect(() => {
     if (!api.ready) {
@@ -101,8 +119,10 @@ export default function ServiceManagePage() {
     await load();
   };
 
-  const startService = (item?: ServiceItem) => {
+  const startService = (item?: ServiceItem, enabled = item?.is_enabled ?? true) => {
     setEditingService(item || null);
+    setHandlerGroup(eligibleGroups.find(group => group.id === item?.handler_group)?.id);
+    setIsEnabled(enabled);
     setServiceName(item?.name || '');
     setServiceCatalogId(item?.catalog_id || catalogId || undefined);
     setWorkflowId(item?.workflow_id);
@@ -119,6 +139,7 @@ export default function ServiceManagePage() {
       message.warning(t('itsm.portal.needService'));
       return;
     }
+    if (missingGroup) return;
     await api.createService({
       id: editingService?.id,
       name: serviceName.trim(),
@@ -129,7 +150,8 @@ export default function ServiceManagePage() {
       visible_users: visibleUsers,
       visible_groups: visibleGroups,
       is_hot: isHot,
-      is_enabled: editingService ? editingService.is_enabled : true,
+      is_enabled: isEnabled,
+      handler_group: requiresGroup ? handlerGroup ?? null : null,
     });
     setServiceOpen(false);
     message.success(editingService ? t('itsm.portal.saved') : t('itsm.portal.created'));
@@ -197,7 +219,14 @@ export default function ServiceManagePage() {
                 dataIndex: 'is_enabled',
                 key: 'is_enabled',
                 render: (value: boolean, item: ServiceItem) => (
-                  <Switch checked={value} onChange={(checked) => { void api.createService({ id: item.id, is_enabled: checked }).then(load); }} />
+                  <Switch aria-label={t('itsm.portal.toggleService', undefined, { name: item.name })} checked={value} onChange={checked => {
+                    if (checked && item.requires_handler_group) {
+                      startService(item, true);
+                      return;
+                    }
+                    void api.createService({ id: item.id, is_enabled: checked }).then(load)
+                      .catch(error => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
+                  }} />
                 ),
               },
               { fixed: 'right' as const, width: 120,
@@ -227,7 +256,7 @@ export default function ServiceManagePage() {
           </FieldRow>
         </div>
       </ItsmModal>
-      <OperateModal formValue={{serviceName,serviceCatalogId,workflowId,description,isHot,visibility,visibleUsers,visibleGroups}} title={editingService ? t('itsm.common.edit') : t('itsm.portal.newService')} open={serviceOpen} onCancel={() => setServiceOpen(false)} onOk={saveService}>
+      <OperateModal formValue={{serviceName,serviceCatalogId,workflowId,description,isHot,isEnabled,handlerGroup,visibility,visibleUsers,visibleGroups}} okButtonProps={{ disabled: missingGroup }} title={editingService ? t('itsm.common.edit') : t('itsm.portal.newService')} open={serviceOpen} onCancel={() => setServiceOpen(false)} onOk={saveService}>
         <div className="flex flex-col gap-3">
           <FieldRow label={t('itsm.portal.name')}>
             <Input placeholder={t('itsm.portal.serviceName')} value={serviceName} onChange={(event) => setServiceName(event.target.value)} />
@@ -245,12 +274,21 @@ export default function ServiceManagePage() {
           <FieldRow label={t('itsm.ticket.flow')}>
             <Select
               className="w-full"
+              aria-label={t('itsm.ticket.flow')}
               placeholder={workflows.length ? t('itsm.portal.bindWorkflow') : t('itsm.portal.noWorkflow')}
               value={workflowId}
               options={workflows.map((item) => ({ value: item.id, label: item.name }))}
-              onChange={setWorkflowId}
+              onChange={id => { setWorkflowId(id); setHandlerGroup(undefined); }}
             />
           </FieldRow>
+          {requiresGroup && <FieldRow label={t('itsm.portal.handlerGroup')} align="start">
+            <Select className="w-full" aria-label={t('itsm.portal.handlerGroup')} showSearch allowClear optionFilterProp="label"
+              placeholder={t('itsm.portal.selectHandlerGroup')} value={handlerGroup} onChange={setHandlerGroup}
+              options={eligibleGroups.map(group => ({ value: group.id, label: group.name }))} />
+            <p className="mt-1 text-xs text-[var(--color-text-3)]">
+              {t(eligibleGroups.length ? 'itsm.portal.handlerGroupHelp' : 'itsm.portal.emptyHandlerGroups')}
+            </p>
+          </FieldRow>}
           <FieldRow label={t('itsm.portal.description')} align="start">
             <Input.TextArea rows={3} placeholder={t('itsm.portal.description')} value={description} onChange={(event) => setDescription(event.target.value)} />
           </FieldRow>
@@ -262,6 +300,9 @@ export default function ServiceManagePage() {
             <FieldRow label="用户组"><Select className="w-full" aria-label="可见用户组" mode="multiple" showSearch optionFilterProp="label" value={visibleGroups} onChange={setVisibleGroups} options={groups.map(item => ({ value: item.id, label: item.name }))} /></FieldRow>
             <p className="text-xs text-[var(--color-text-3)]">用户或组内成员、负责人满足任意一项即可访问。均未选择时，仅超管可见。</p>
           </>}
+          <FieldRow label={t('itsm.portal.enabled')}>
+            <Switch aria-label={t('itsm.portal.enabled')} checked={isEnabled} onChange={setIsEnabled} />
+          </FieldRow>
           <FieldRow label={t('itsm.portal.hot')}>
             <Switch checked={isHot} onChange={setIsHot} />
           </FieldRow>

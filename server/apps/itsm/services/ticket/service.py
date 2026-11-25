@@ -7,6 +7,7 @@ from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import Service, StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
 from apps.itsm.services.form.fetch import task_fetch_context, validate_submission
 from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
+from apps.itsm.services.service_assignment import LEGACY_PRESET_MESSAGE, has_legacy_preset_handlers, requires_handler_group, service_assignees
 from apps.itsm.services.sla import finish as finish_sla
 from apps.itsm.services.sla import open_records, pause, resume
 from apps.itsm.services.ticket.actions import (
@@ -58,6 +59,8 @@ class TicketService:
         ticket = Ticket.objects.filter(**key).first()
         schema = workflow_schema(workflow_version)
         if ticket is None:
+            if has_legacy_preset_handlers(workflow_version):
+                raise NodeActionValidationError(LEGACY_PRESET_MESSAGE)
             submit_node = _find_node(workflow_version.design, node_type="submit")
             if schema.get("fields"):
                 form_data = validate_submission(
@@ -68,6 +71,8 @@ class TicketService:
                     field_perm=_normalize_perm(submit_node.get("field_perm")),
                 )
             with transaction.atomic():
+                if requires_handler_group(workflow_version.design):
+                    service_assignees(workflow_version, service.pk if service else None, starting=True)
                 ticket, created = Ticket.objects.get_or_create(
                     **key,
                     defaults={
@@ -151,7 +156,7 @@ class TicketService:
         schedule_sync(ticket)
         return ticket
 
-    def _assignee_variables(self, workflow_version: WorkflowVersion, creator: str, form_data: dict) -> dict:
+    def _assignee_variables(self, workflow_version: WorkflowVersion, creator: str, form_data: dict, *, service_id=None) -> dict:
         from apps.itsm.models import HandlerGroup
 
         group_ids = [
@@ -166,6 +171,8 @@ class TicketService:
         )
         resolver = AssigneeResolver(groups=groups)
         context = {"initiator": creator, "form": form_data}
+        if requires_handler_group(workflow_version.design):
+            context["service_assignees"] = service_assignees(workflow_version, service_id)
         variables = {}
         for node in (workflow_version.design or {}).get("nodes") or []:
             if node.get("type") not in {"approval", "handle", "manual", "manual_trigger", "subprocess_handle"}:

@@ -22,6 +22,7 @@ class Service(ItsmModel):
     icon = models.CharField(max_length=64, blank=True, default="")
     description = models.CharField(max_length=500, blank=True, default="")
     is_enabled = models.BooleanField(default=True)
+    handler_group = models.ForeignKey("itsm.HandlerGroup", null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_services")
     is_hot = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     visibility = models.CharField(max_length=16, choices=[("all", "全部用户"), ("restricted", "指定用户和组")], default="all")

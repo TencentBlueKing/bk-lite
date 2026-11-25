@@ -137,9 +137,11 @@ export const designFromCanvas = (nodes: CanvasNode[], edges: CanvasEdge[]): Flow
       type: node.data.nodeType,
       name: node.data.label,
     };
-    if (['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(node.data.nodeType) && (node.data.original?.assignee || node.data.assignees.length || node.data.assigneeValue)) {
-      designNode.assignee = { source: node.data.assigneeSource || 'users', value: node.data.assigneeSource && node.data.assigneeSource !== 'users' ? node.data.assigneeValue ?? '' : node.data.assignees };
-      designNode.fallback = node.data.original?.fallback || 'block';
+    if (['approval', 'handle', 'manual', 'submit', 'subprocess_handle'].includes(node.data.nodeType) && (node.data.original?.assignee || node.data.assignees.length || node.data.assigneeValue || node.data.assigneeSource === 'service_group')) {
+      const source = node.data.assigneeSource || 'users';
+      const value = source === 'users' ? node.data.assignees : node.data.assigneeValue ?? '';
+      designNode.assignee = { source, value: source === 'service_group' ? [] : value };
+      designNode.fallback = source === 'service_group' ? 'block' : node.data.original?.fallback || 'block';
     }
     if (node.data.auto) designNode.auto = node.data.auto;
     if (node.data.multiMode) {

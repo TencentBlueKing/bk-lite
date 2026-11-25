@@ -36,6 +36,8 @@ class AssigneeResolver:
     def _from_source(self, kind: str | None, value: Any, ticket_ctx: dict[str, Any]) -> list[str]:
         if kind in {"user", "users"}:
             return list(value or [])
+        if kind == "service_group":
+            return ticket_ctx.get("service_assignees", [])
         if kind == "handler_group":
             group = self.groups.get(int(value), {})
             return list(group.get("members") or [])
