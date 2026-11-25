@@ -4,6 +4,7 @@ import test from 'node:test';
 import React from 'react';
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
+import { PLATFORM_DOCK_CHAT_MIN_WIDTH, PLATFORM_DOCK_CHAT_WIDTH } from '@webchat/core';
 import { ChatContentProvider } from '@bk-lite/chat-content/ui';
 import { WikiMaterialWriteCards } from '../packages/webchat-ui/src/components/WikiMaterialWriteCards';
 
@@ -199,6 +200,9 @@ test('stacks the knowledge comparison below two 16rem tracks', async () => {
     summary: '请确认',
   }]);
 
+  const trackPx = 16 * 16;
+  assert.ok(PLATFORM_DOCK_CHAT_WIDTH < trackPx * 2, `dock ${PLATFORM_DOCK_CHAT_WIDTH}px holds two ${trackPx}px tracks`);
+  assert.ok(PLATFORM_DOCK_CHAT_MIN_WIDTH < trackPx * 2, `min dock ${PLATFORM_DOCK_CHAT_MIN_WIDTH}px holds two ${trackPx}px tracks`);
   const grids = renderer.root.findAll((node) => typeof node.props?.className === 'string' && node.props.className.includes('grid'));
   assert.equal(grids.some((node) => /(^|\s)grid-cols-2(\s|$)/.test(node.props.className)), false);
   const compare = grids.find((node) => node.props.className.includes('auto-fit'));
