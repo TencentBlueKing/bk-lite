@@ -1041,6 +1041,62 @@ def test_build_task_result_logs_and_summarizes_ansible_failure(caplog):
     assert output not in rendered
 
 
+def test_build_task_result_classifies_ssh_algorithm_mismatch_without_changing_unreachable_status(caplog):
+    from service.failure_summary import classify_task_failure
+
+    sentinel_password = "must-not-be-logged-password-xyz"
+    negotiate = (
+        "Failed to connect to the host via ssh: Unable to negotiate with the host port 22: "
+        "no matching key exchange method found. Their offer: gss-group1-sha1-toWM5Slw5"
+    )
+    task = QueuedTask(
+        task_id="task-kex-mismatch",
+        task_type="adhoc",
+        payload={"task_id": "task-kex-mismatch"},
+        callback={},
+        instance_id="default",
+    )
+    output = f"10.233.2.31 | UNREACHABLE! => password={sentinel_password} {negotiate}"
+
+    with caplog.at_level("WARNING", logger="core.config"):
+        result = AnsibleNATSService._build_task_result(
+            task,
+            "owner-a",
+            "2026-06-02T00:00:00+00:00",
+            4,
+            output,
+            {"truncated": False, "output_bytes_total": len(output), "output_bytes_retained": len(output), "output_max_bytes": 0},
+            "",
+        )
+
+    assert result["success"] is False
+    assert result["error"] == "ansible adhoc failed with exit code 4"
+    assert result["result"][0]["raw_status"] == "UNREACHABLE!"
+    assert result["result"][0]["host"] == "10.233.2.31"
+    assert "failure_status" not in result["result_summary"]
+    assert "failure_stderr" not in result["result_summary"]
+    assert classify_task_failure(
+        {"failure_status": "UNREACHABLE!", "failure_stderr": negotiate},
+        result["error"],
+    ) == "ssh_algorithm_mismatch"
+    assert classify_task_failure(
+        {"failure_status": "UNREACHABLE!", "failure_stderr": "Failed to connect to the host via ssh: Connection timed out"},
+        result["error"],
+    ) == "target_unreachable"
+    records = [item for item in caplog.records if item.msg == ANSIBLE_TASK_FAILED_LOG_TEMPLATE]
+    assert len(records) == 1
+    record = records[0]
+    assert record.args[-1] == "ssh_algorithm_mismatch"
+    assert record.args[4] == "UNREACHABLE!"
+    rendered = record.getMessage()
+    assert rendered.startswith("event=ansible_task_failed")
+    assert "host_status=UNREACHABLE!" in rendered
+    assert "error_type=ssh_algorithm_mismatch" in rendered
+    assert "no matching key exchange method found" in rendered
+    assert sentinel_password not in rendered
+    assert sentinel_password not in "".join(map(str, record.args))
+
+
 class RecordingNATSClient(DummyNATSClient):
     def __init__(self):
         super().__init__({"success": True})
