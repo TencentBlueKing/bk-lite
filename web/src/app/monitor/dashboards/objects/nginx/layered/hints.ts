@@ -6,7 +6,7 @@ export interface NginxHintCopy {
 export const NGINX_HINTS = {
   collection: {
     lead: '采集状态',
-    body: '刚才是否成功读到 Nginx 状态页。刚读到读数则显示成功；一段时间没有新的读数，或还没有接入采集，则显示暂无数据或尚未接入采集。这里只说明状态页读数是否新鲜，请求多少和后端是否存活要看对应的卡。'
+    body: '最近一次是否成功读到 Nginx 状态页。一段时间没有新读数时显示暂无数据；未接入采集时显示尚未接入采集。'
   },
   request: {
     lead: '请求速率',
@@ -62,11 +62,11 @@ export const NGINX_HINTS = {
   },
   bytes: {
     lead: '入站 / 出站',
-    body: '窗口内平均每秒进入和离开的字节。汇总带单独列出，不和各站点再加一遍。'
+    body: '窗口内平均每秒进入和离开的字节。'
   },
   upstreamTime: {
     lead: '上游耗时',
-    body: '上游处理请求和返回响应的平均耗时。数字是毫秒起算，整张卡只用一个时间单位。'
+    body: '上游处理请求和返回响应的平均耗时。'
   },
   filter: {
     lead: '过滤器',
