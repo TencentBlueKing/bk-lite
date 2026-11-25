@@ -29,6 +29,14 @@ interface CapabilityEntry {
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const objectsRoot = join(webRoot, 'src/app/monitor/dashboards/objects');
 const outputPath = resolve(webRoot, '../server/apps/monitor/support-files/dashboard_query_capabilities.json');
+const detailMetricOutputPath = resolve(
+  webRoot,
+  '../server/apps/monitor/support-files/network_device_detail_metrics.json',
+);
+const DETAIL_METRIC_NAMES = new Set([
+  'device_cpu_usage',
+  'device_memory_usage',
+]);
 const sourceFiles: string[] = [];
 const directoryRouteKeys = new Map<string, string>();
 
@@ -54,6 +62,31 @@ const walk = (directory: string) => {
 };
 
 const capabilityMap = new Map<string, { template: string; objectNames: Set<string> }>();
+const detailMetricBindings = new Map<string, { object_name: string; metric_name: string; capability_id: string }>();
+
+const collectDetailMetrics = (value: unknown, objectName: string) => {
+  if (!value || typeof value !== 'object' || !('metrics' in value) || !Array.isArray(value.metrics)) return;
+  for (const metric of value.metrics) {
+    if (!metric || typeof metric !== 'object') continue;
+    const name = 'name' in metric ? metric.name : undefined;
+    const query = 'query' in metric ? metric.query : undefined;
+    if (typeof name !== 'string' || !DETAIL_METRIC_NAMES.has(name)) continue;
+    if (typeof query !== 'string' || !query.includes('__$labels__')) {
+      throw new Error(`network device detail metric ${objectName}.${name} has no scoped query`);
+    }
+    const capabilityId = dashboardQueryCapabilityId(query);
+    const key = `${objectName}\0${name}`;
+    const existing = detailMetricBindings.get(key);
+    if (existing && existing.capability_id !== capabilityId) {
+      throw new Error(`conflicting network device detail metric ${objectName}.${name}`);
+    }
+    detailMetricBindings.set(key, {
+      object_name: objectName,
+      metric_name: name,
+      capability_id: capabilityId,
+    });
+  }
+};
 
 const register = (template: string, objectName: string) => {
   if (!template.includes('__$labels__')) return;
@@ -106,6 +139,8 @@ const registerStaticModules = async () => {
       if (typeof candidate.routeKey !== 'string') continue;
       const relative = file.slice(objectsRoot.length + 1);
       directoryRouteKeys.set(relative.split('/')[0], candidate.routeKey);
+      const objectName = objectNameByRoute.get(candidate.routeKey);
+      if (objectName) collectDetailMetrics(value, objectName);
     }
   }
   for (const file of sourceFiles.sort()) {
@@ -167,15 +202,36 @@ const main = async () => {
   });
 
   const content = `${JSON.stringify({ version: 1, capabilities }, null, 2)}\n`;
+  const bindings = Array.from(detailMetricBindings.values()).sort((left, right) => (
+    left.object_name.localeCompare(right.object_name) || left.metric_name.localeCompare(right.metric_name)
+  ));
+  const capabilitiesById = new Map(capabilities.map((item) => [item.id, item]));
+  bindings.forEach((binding) => {
+    const capability = capabilitiesById.get(binding.capability_id);
+    if (!capability || !capability.object_names.includes(binding.object_name)) {
+      throw new Error(
+        `network device detail metric ${binding.object_name}.${binding.metric_name} is not a registered capability`,
+      );
+    }
+  });
+  const detailContent = `${JSON.stringify({ version: 1, bindings }, null, 2)}\n`;
   if (process.argv.includes('--check')) {
     if (!existsSync(outputPath) || readFileSync(outputPath, 'utf8') !== content) {
       throw new Error('monitor dashboard query capability manifest is stale');
     }
-    process.stdout.write(`verified ${capabilities.length} monitor query capabilities\n`);
+    if (!existsSync(detailMetricOutputPath) || readFileSync(detailMetricOutputPath, 'utf8') !== detailContent) {
+      throw new Error('network device detail metric manifest is stale');
+    }
+    process.stdout.write(
+      `verified ${capabilities.length} monitor query capabilities and ${bindings.length} detail metrics\n`,
+    );
     return;
   }
   writeFileSync(outputPath, content, 'utf8');
-  process.stdout.write(`generated ${capabilities.length} monitor query capabilities\n`);
+  writeFileSync(detailMetricOutputPath, detailContent, 'utf8');
+  process.stdout.write(
+    `generated ${capabilities.length} monitor query capabilities and ${bindings.length} detail metrics\n`,
+  );
 };
 
 void main();
