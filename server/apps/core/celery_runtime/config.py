@@ -14,6 +14,7 @@ DEFAULT_POOL_BOUNDS = {
 }
 DEFAULT_TOTAL_CONCURRENCY_LIMIT = 15
 DEDICATED_QUEUES = {
+    "job": ("job",),
     "dashboard-report-render": ("dashboard_report_render",),
     "patch-maintenance": ("patch_maintenance",),
     "opspilot": ("opspilot_channel", "opspilot_wiki", "opspilot_maintenance", "opspilot_chat_parse"),
