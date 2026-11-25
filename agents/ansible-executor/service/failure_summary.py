@@ -31,6 +31,13 @@ _UNREACHABLE_MARKERS = (
     "no route to host",
     "name or service not known",
 )
+# SSH 协商失败的 Ansible 状态是 UNREACHABLE。先匹配算法文案，避免标成 target_unreachable。
+_SSH_ALGORITHM_MISMATCH_MARKERS = (
+    "no matching key exchange method",
+    "no matching host key type",
+    "no matching cipher",
+    "no matching mac found",
+)
 
 
 def sanitize_failure_text(value: Any, *, max_length: int = FAILURE_TEXT_MAX_CHARS) -> str:
@@ -84,6 +91,8 @@ def classify_task_failure(summary: dict[str, Any], error: str = "") -> str:
         str(part or "")
         for part in (error, summary.get("failure_stderr"), summary.get("failure_status"))
     ).lower()
+    if any(marker in text for marker in _SSH_ALGORITHM_MISMATCH_MARKERS):
+        return "ssh_algorithm_mismatch"
     if host_status.startswith("UNREACHABLE"):
         return "target_unreachable"
     if any(marker in text for marker in _AUTH_FAILURE_MARKERS):

@@ -4,6 +4,22 @@ This is remote Solaris OS monitoring on the Host object. A Linux collect node SS
 
 What is collected: CPU, load, memory and swap, disk capacity and inodes, disk read/write and busy, NICs, uptime, and OS version. Hardware inventory, lastlog, lsof, and connection tables are not collected.
 
+## Supported versions
+
+x86 and SPARC share this plugin. There is no version or architecture picker.
+
+| Release | Architecture | Notes |
+| --- | --- | --- |
+| Solaris 10 | x86, SPARC | Supported. The bundled SSH uses older connection algorithms, and collection accepts them. |
+| Solaris 11.0 through 11.3 | x86, SPARC | Supported. Host keys are usually older RSA, and collection accepts them. |
+| Solaris 11.4 and later | x86, SPARC | Supported. Current SSH algorithms work, and older algorithms remain accepted. |
+
+## Older SSH algorithms
+
+A current Linux collect node does not offer the older SSH algorithms still used by Solaris 10 and some Solaris 11 hosts, so a direct connection fails. Solaris collection accepts those older algorithms for both password and key login. The target does not need an SSH upgrade, and the collect node does not need a system SSH configuration change.
+
+If the connection still fails and the error says the two sides have no matching key exchange, host key, cipher, or message authentication algorithm, the target SSH service is not compatible with the collect node. Confirm the target is running the SSH service bundled with Solaris.
+
 ## How to use
 
 1. Pick a Linux collect node that can reach the Solaris host.
