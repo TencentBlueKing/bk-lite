@@ -74,7 +74,7 @@ class ImportExportAuthorizationService:
         if not current_team:
             raise PermissionDenied(oa_message("messages.team_access_denied", "无权访问该团队数据"))
 
-        if effective_module_privilege(request.user, cls.APP_PERMISSION_NAME):
+        if effective_module_privilege(request.user, cls.APP_PERMISSION_NAME) == "admin":
             return current_team
 
         user_group_ids = cls._normalize_ids(getattr(request.user, "group_list", []))
@@ -615,7 +615,7 @@ class ImportExportAuthorizationService:
         if request.COOKIES.get("include_children", "0") != "1":
             return [current_team]
 
-        if effective_module_privilege(request.user, "ops-analysis"):
+        if effective_module_privilege(request.user, "ops-analysis") == "admin":
             from apps.system_mgmt.utils.group_utils import GroupUtils
 
             return GroupUtils.get_group_with_descendants(current_team)
