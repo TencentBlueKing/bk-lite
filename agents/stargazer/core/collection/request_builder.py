@@ -11,6 +11,7 @@ from core.collection.constants import CLOUD_TYPES, CREDENTIAL_KEYS, DEFAULT_PORT
 from core.collection.enums import WorkloadClass
 from core.collection.runtime import CollectionRequest
 from core.logger import logger
+from core.plugin.source_resolver import PLUGIN_DIRECTORY_ALIASES
 
 CREDENTIAL_KEY_ALIASES = {
     "accesskey": "accessKey",
@@ -115,6 +116,9 @@ def build_collection_request(
     plugin_name = collection_plugin_name(source)
     if not plugin_name:
         raise ValueError("monitor_type or model_id is required")
+    # 监控槽位名和 CMDB 插件目录可能不同：vmware → vmware_vc。
+    # 只改 plugin_ref 的查找名，monitor_type 仍给采集器选实现。
+    plugin_ref_name = PLUGIN_DIRECTORY_ALIASES.get(plugin_name, plugin_name) if monitor_type else plugin_name
 
     max_targets = int(os.getenv("MAX_TARGETS_PER_RUN", "10000"))
     raw_targets = source.get("targets", source.get("hosts"))
@@ -154,7 +158,7 @@ def build_collection_request(
 
     return CollectionRequest(
         task_id=normalized_task_id,
-        plugin_ref=f"{plugin_name}.{'monitor' if monitor_type else 'config'}",
+        plugin_ref=f"{plugin_ref_name}.{'monitor' if monitor_type else 'config'}",
         targets=targets,
         credentials=credentials,
         params=public_params,
