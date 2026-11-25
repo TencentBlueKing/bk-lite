@@ -78,6 +78,16 @@ const SourceDevice = () => {
     resetPage();
   };
 
+  const renderStatus = (status: SyslogSourceDeviceRow['status']) => (
+    <Tag className="m-0" color={status === 'active' ? 'success' : 'default'}>
+      {t(
+        status === 'active'
+          ? 'log.sourceDevice.active'
+          : 'log.sourceDevice.silent'
+      )}
+    </Tag>
+  );
+
   const columns: ColumnItem[] = [
     {
       title: t('log.sourceDevice.receiveType'),
@@ -137,26 +147,12 @@ const SourceDevice = () => {
       dataIndex: 'status',
       key: 'status',
       filters: [
-        { text: t('log.sourceDevice.active'), value: 'active' },
-        { text: t('log.sourceDevice.silent'), value: 'silent' }
+        { text: renderStatus('active'), value: 'active' },
+        { text: renderStatus('silent'), value: 'silent' }
       ],
       filterMultiple: false,
       filteredValue: applied.status ? [applied.status] : null,
-      render: (status: SyslogSourceDeviceRow['status']) => (
-        <Tag
-          color={
-            status === 'active'
-              ? 'var(--color-success)'
-              : 'var(--color-text-4)'
-          }
-        >
-          {t(
-            status === 'active'
-              ? 'log.sourceDevice.active'
-              : 'log.sourceDevice.silent'
-          )}
-        </Tag>
-      )
+      render: renderStatus
     }
   ];
 

@@ -114,6 +114,28 @@ def test_status_boundary_search_query_and_filters(authenticated_user, monkeypatc
 
 
 @pytest.mark.django_db
+def test_cloud_region_name_uses_the_same_display_name_as_the_region_list(authenticated_user, monkeypatch):
+    _freeze(monkeypatch)
+    authenticated_user.permission = {"log": {"source_device-View"}}
+    builtin = CloudRegion.objects.create(name="default")
+    custom = CloudRegion.objects.create(name="华东")
+    _device(str(builtin.id), "10.0.0.1", "edge", NOW)
+    _device(str(custom.id), "10.0.0.2", "core", NOW)
+
+    authenticated_user.locale = "zh-Hans"
+    zh_items = _body(_get(authenticated_user))["data"]["items"]
+    zh_names = {item["source_ip"]: item["cloud_region_name"] for item in zh_items}
+    assert zh_names["10.0.0.1"] == "直连区域"
+    assert zh_names["10.0.0.2"] == "华东"
+
+    authenticated_user.locale = "en"
+    en_items = _body(_get(authenticated_user))["data"]["items"]
+    en_names = {item["source_ip"]: item["cloud_region_name"] for item in en_items}
+    assert en_names["10.0.0.1"] == "Direct Connection Zone"
+    assert en_names["10.0.0.2"] == "华东"
+
+
+@pytest.mark.django_db
 def test_list_paginates_and_rejects_invalid_query(authenticated_user, monkeypatch):
     _freeze(monkeypatch)
     authenticated_user.permission = {"log": {"source_device-View"}}

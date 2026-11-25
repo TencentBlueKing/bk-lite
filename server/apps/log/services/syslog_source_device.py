@@ -9,10 +9,12 @@ from django.db.models import Q
 from django.utils import timezone as django_timezone
 
 from apps.core.logger import log_logger as logger
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.models.syslog_source_device import SYSLOG_SOURCE_DEVICE_ACTIVE_WINDOW, SYSLOG_SOURCE_DEVICE_DISCOVER_WINDOW, SyslogSourceDevice
 from apps.log.utils.query_log import VictoriaMetricsAPI
+from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion
 
 DISCOVER_STARTED = "event=syslog_source_device_discover_started"
@@ -112,6 +114,7 @@ def list_syslog_source_devices(
     page: int = 1,
     page_size: int = 20,
     now=None,
+    locale: str = "",
 ) -> dict:
     now = now or django_timezone.now()
     queryset = SyslogSourceDevice.objects.all()
@@ -137,7 +140,7 @@ def list_syslog_source_devices(
     total = queryset.count()
     start = (page - 1) * page_size
     rows = list(queryset[start : start + page_size])
-    names = _cloud_region_names([row.cloud_region_id for row in rows])
+    names = _cloud_region_names([row.cloud_region_id for row in rows], locale)
     search_end = _to_millis(now)
     items = []
     for row in rows:
@@ -349,16 +352,25 @@ def _from_unix_number(value) -> datetime:
     return datetime.fromtimestamp(seconds, tz=timezone.utc)
 
 
-def _cloud_region_names(cloud_region_ids: list[str]) -> dict[str, str]:
+def _cloud_region_names(cloud_region_ids: list[str], locale: str = "") -> dict[str, str]:
     numeric_ids = []
     for cloud_region_id in cloud_region_ids:
         if cloud_region_id.isdigit() and len(cloud_region_id) <= 18:
             numeric_ids.append(int(cloud_region_id))
-    if not numeric_ids:
-        return {}
-    found = CloudRegion.objects.filter(id__in=numeric_ids).values_list("id", "name")
-    names = {str(region_id): name for region_id, name in found}
-    return {cloud_region_id: names.get(cloud_region_id, "") for cloud_region_id in cloud_region_ids}
+    stored_names = {}
+    if numeric_ids:
+        found = CloudRegion.objects.filter(id__in=numeric_ids).values_list("id", "name")
+        stored_names = {str(region_id): name for region_id, name in found}
+    loader = LanguageLoader(app=LanguageConstants.APP, default_lang=locale or "en")
+    names = {}
+    for cloud_region_id in cloud_region_ids:
+        stored_name = stored_names.get(cloud_region_id, "")
+        if not stored_name:
+            names[cloud_region_id] = ""
+            continue
+        display_name = loader.get(f"{LanguageConstants.CLOUD_REGION}.{stored_name}.name")
+        names[cloud_region_id] = display_name or stored_name
+    return names
 
 
 def _to_millis(value: datetime) -> int:

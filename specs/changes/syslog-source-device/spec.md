@@ -104,7 +104,7 @@ collect_type:"syslog" AND cloud_region_id:"<id>" | stats by (cloud_region_id, so
 
 查询参数：`cloud_region_id` 匹配云区域 id 或名称；`source_ip`、`hostname` 为包含匹配；`keyword` 对源 IP 和主机名做或匹配；`status` 为 `active` 或 `silent`；分页。状态不落库：`last_seen` 距现在不超过 24 小时为 `active`，否则为 `silent`。阈值是代码常量。
 
-每行返回：`cloud_region_id`、`cloud_region_name`、`source_ip`、`hostname`、`first_seen`、`last_seen`、`status`、`search_query`、`search_start`、`search_end`。名称用 `CloudRegion` 按 id 查，对不上就返回空名称，由页面显示 id。`search_query` 是：
+每行返回：`cloud_region_id`、`cloud_region_name`、`source_ip`、`hostname`、`first_seen`、`last_seen`、`status`、`search_query`、`search_start`、`search_end`。`cloud_region_name` 用云区域页同一套显示名：按 id 找到 `CloudRegion.name`，再取当前语言的 `cloud_region.<name>.name`；没有语言包时用存储名。对不上区域就返回空名称，由页面显示 id。`search_query` 是：
 
 ```text
 collect_type:"syslog" AND cloud_region_id:"..." AND source_ip:"..." AND hostname:"..."

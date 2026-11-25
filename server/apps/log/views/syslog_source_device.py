@@ -37,4 +37,5 @@ class SyslogSourceDeviceViewSet(ViewSet):
         serializer = SyslogSourceDeviceQuerySerializer(data=request.query_params)
         if not serializer.is_valid():
             return WebUtils.response_error(error_message="invalid query")
-        return WebUtils.response_success(list_syslog_source_devices(**serializer.validated_data))
+        locale = getattr(request.user, "locale", "") or ""
+        return WebUtils.response_success(list_syslog_source_devices(**serializer.validated_data, locale=locale))
