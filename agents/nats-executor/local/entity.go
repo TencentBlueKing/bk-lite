@@ -17,6 +17,7 @@ type ExecuteRequest struct {
 	ExecuteTimeout int               `json:"execute_timeout"`
 	Shell          string            `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
 	Env            map[string]string `json:"env,omitempty"`
+	BatArgs        []string          `json:"bat_args,omitempty"`
 	LogCommand     string            `json:"-"`
 	LogContext     string            `json:"-"`
 	ExecutionID    string            `json:"execution_id,omitempty"`     // 执行 ID（写入流事件）

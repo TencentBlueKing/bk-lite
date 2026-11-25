@@ -26,6 +26,7 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 
 ## 4. 执行机制【已实现/已存在】
 - 脚本：危险命令校验 → Ansible（Windows 手动目标）或 nats-executor（sidecar）；日志发布到 JetStream。
+- Windows Bat 的位置参数按定义顺序送入原生批处理调用，空值保留位置。手动 WinRM 目标和 Windows 纳管节点遵循同一约定。参见[Bat 位置参数变更](../changes/job-bat-positional-args/spec.md)。
 - playbook：上传 ZIP 到 MinIO → 在上传 NATS OS 前按 execution 预留延迟清理 outbox → 提交 `apps.rpc.ansible.AnsibleExecutor` → 异步回调；正常终态刷新并立即投递同一幂等清理意图，worker 硬退出或即时删除失败则由 Beat 重扫。
 - 文件分发：上传 NATS JetStream Object Store（前缀 `job-files/`，经 `node_mgmt.upload_file_to_s3`，非 MinIO）→ nats-executor 或 Ansible 推送。
 - 回调：Server 每次提交 Ansible 前签发新的 `execution_id + attempt_id + token` 上下文，Executor 原样附加到完成回调；`ansible_task_callback` 在执行行锁内校验固定 caller、执行 ID、当前 attempt 和令牌摘要，缺失、伪造或旧 attempt 均不得写终态。回调、`tasks.py:finalize_cancelling_execution` 与 outbox claim 统一按 JobExecution → outbox 顺序加锁，终态和每个 SSE done、Playbook 精确临时文件清理、web/nats 完成通知的 outbox 意图在同一事务写入。取消兜底先提交时，副作用至少暂缓一个协调窗口；所有可变副作用都仍为从未尝试的 PENDING 时，唯一真实回调可纠正占位结果并刷新同一 outbox；任一记录已 claim 或有过投递尝试后，即使本地收到失败也可能是远端已收到、响应丢失，因此保留已可能对外可见的数据库终态。HTTP/NATS 发布调用允许以稳定 `delivery_id` 重放，web 签名覆盖该增量字段；Core NATS 保留既有 fire-and-forget publish 契约，不承诺离线消费者补发，也不要求存量消费者回复。`callback_type=both` 的两个通道使用独立记录，单通道失败不阻塞另一通道。

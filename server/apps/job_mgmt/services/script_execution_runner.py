@@ -1,4 +1,5 @@
 import json
+import re
 import shlex
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -25,6 +26,22 @@ from apps.rpc.executor import Executor
 from nats_client.clients import ensure_stream_sync
 
 
+class BatArgumentError(ValueError):
+    pass
+
+
+def validate_bat_args(args: list[str]) -> None:
+    units = 0
+    for index, arg in enumerate(args, 1):
+        if re.search(r'["\x00-\x1f\x7f\ud800-\udfff\ufffe\uffff]', arg):
+            raise BatArgumentError(
+                job_message(None, "error.bat_argument_invalid", "BAT argument {index} contains an unsupported character", index=index)
+            )
+        units += len(arg.encode("utf-16-le")) // 2 + 1
+        if units > 8191:
+            raise BatArgumentError(job_message(None, "error.bat_arguments_too_long", "BAT arguments exceed the cmd.exe command-line limit"))
+
+
 class ScriptExecutionRunner(ExecutionTaskBaseService):
     def __init__(self, execution_id: int):
         super().__init__(execution_id, "execute_script_task")
@@ -49,11 +66,17 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             execution.script_type,
             resolve_builtin_script_var_values(execution),
         )
-        script_content = self.merge_script_with_params(script_content, execution.params, execution.script_type)
-        if self._run_via_ansible_if_needed(execution, target_list, script_content):
+        try:
+            script_content, bat_args = self.prepare_script_with_params(script_content, execution.params, execution.script_type)
+        except BatArgumentError as exc:
+            results = [self.build_target_failed_result(target, str(exc)) for target in target_list]
+            self.finalize_execution(execution, self.task_name, results)
+            self._publish_done_for_targets(execution.id, target_list, execution.status)
+            return
+        if self._run_via_ansible_if_needed(execution, target_list, script_content, bat_args):
             return
 
-        results = self._run_via_sidecar(execution, target_list, script_content)
+        results = self._run_via_sidecar(execution, target_list, script_content, bat_args)
         self.finalize_execution(execution, self.task_name, results)
 
     def _handle_dangerous_command(self, execution, target_list: list) -> bool:
@@ -82,7 +105,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             tk = t.get("node_id") or str(t.get("target_id", ""))
             publish_done_sentinel(execution_id, tk, status)
 
-    def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
+    def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str, bat_args: list[str] | None = None) -> bool:
         try:
             if not self._should_use_ansible(execution.target_source, target_list):
                 if execution.target_source != TargetSource.MANUAL or not self._contains_windows_manual_target(target_list):
@@ -94,7 +117,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                         "Windows manual targets only support Ansible/WinRM execution; switch the driver to Ansible",
                     )
                 )
-            self._execute_script_via_ansible(execution, target_list, script_content, execution.script_type)
+            self._execute_script_via_ansible(execution, target_list, script_content, execution.script_type, bat_args)
             logger.info(f"[{self.task_name}] Ansible 任务已提交，等待回调: execution_id={self.execution_id}")
             return True
         except Exception as e:
@@ -109,7 +132,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
             return True
 
-    def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:
+    def _run_via_sidecar(self, execution, target_list: list, script_content: str, bat_args: list[str] | None = None) -> list:
         """分批提交目标到线程池执行：每批不超过 MAX_WORKERS。
 
         取消后不再向线程池提交后续批次（不依赖 future.cancel 竞速），保证"取消即止"。
@@ -133,6 +156,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                         execution.timeout,
                         execution.id,
                         execution,
+                        bat_args,
                     ): t
                     for t in batch
                 }
@@ -174,7 +198,8 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
                 sentineled.add(tk)
 
-    def merge_script_with_params(self, script_content: str, params: str, script_type: str) -> str:
+    @staticmethod
+    def prepare_script_with_params(script_content: str, params: str, script_type: str) -> tuple[str, list[str] | None]:
         """将位置参数注入脚本，使脚本内可按顺序获取参数。
 
         params 为 ScriptParamsService.params_to_string 生成的逐值 shell 引用字符串，
@@ -182,34 +207,44 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         - shell：set -- 设置位置参数（$1 $2 ...）
         - python：注入 sys.argv（sys.argv[1] sys.argv[2] ...）
         - powershell：注入 $args（$args[0] $args[1] ...）
-        - bat：当前执行机制下无法在脚本内重设 %1/%2，暂不支持，忽略参数
+        - bat：交给 Windows 执行器启动批处理文件时传递，保留 %1、%*、SHIFT 语义
         """
         if not params:
-            return script_content
+            return script_content, None
 
         try:
             tokens = shlex.split(params)
         except ValueError:
             tokens = params.split()
         if not tokens:
-            return script_content
+            return script_content, None
 
         if script_type == ScriptType.SHELL:
             escaped_params = " ".join(shlex.quote(token) for token in tokens)
-            return f"set -- {escaped_params}\n{script_content}"
+            return f"set -- {escaped_params}\n{script_content}", None
 
         if script_type == ScriptType.PYTHON:
             # json 数组同时是合法的 Python 列表字面量，可安全注入空值/特殊字符
             argv_literal = json.dumps(["script", *tokens], ensure_ascii=False)
-            return f"import sys as _sys\n_sys.argv = {argv_literal}\n{script_content}"
+            return f"import sys as _sys\n_sys.argv = {argv_literal}\n{script_content}", None
 
         if script_type == ScriptType.POWERSHELL:
             # PowerShell 单引号字符串，内部单引号转义为两个单引号
             ps_args = ", ".join("'" + token.replace("'", "''") + "'" for token in tokens)
-            return f"$args = @({ps_args})\n{script_content}"
+            return f"$args = @({ps_args})\n{script_content}", None
 
-        # bat 等其它类型：本次不支持参数注入，原样返回脚本内容
-        return script_content
+        if script_type == ScriptType.BAT:
+            validate_bat_args(tokens)
+            # 老执行器会忽略未知 RPC 字段。此时须在用户脚本执行前失败。
+            guard = (
+                "@if not defined BK_JOB_BAT_ARGS_READY (echo BAT arguments require an updated Job executor. 1>&2 & exit /b 1)\r\n"
+                '@set "BK_JOB_BAT_ARGS_READY="\r\n'
+            )
+            # 参数已进入 cmd 的批处理调用帧，清除环境副本，避免 set 或子进程意外披露。
+            clear_args = "".join(f'@set "BK_JOB_BAT_ARG_{index}="\r\n' for index in range(1, len(tokens) + 1))
+            return guard + clear_args + script_content, tokens
+
+        return script_content, None
 
     def execute_script_on_target(
         self,
@@ -220,6 +255,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         timeout: int,
         execution_id: int,
         execution: JobExecution | None = None,
+        bat_args: list[str] | None = None,
     ) -> dict:
         target_key = target_info.get("node_id") or str(target_info.get("target_id", ""))
         target_name = target_info.get("name", "")
@@ -266,6 +302,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     script_content,
                     timeout=timeout,
                     shell=shell,
+                    bat_args=bat_args,
                     execution_id=str(execution_id),
                     stream_log_topic=build_stream_topic(execution_id, target_key),
                 )

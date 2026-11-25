@@ -125,6 +125,8 @@ error:
   target_path_required_for_distribution: "File distribution requires a target path"
   playbook_required: "Playbook execution requires a playbook"
   some_targets_missing: "Some targets do not exist"
+  bat_argument_invalid: "BAT argument {index} contains an unsupported character (double quote, control character, or invalid Unicode)"
+  bat_arguments_too_long: "BAT arguments exceed the cmd.exe command-line limit"
   params_must_be_list: "Parameters must be a list"
   params_item_must_be_dict: "Parameter {index} must be an object"
   params_item_missing_fields: "Parameter {index} is missing fields: {fields}"
