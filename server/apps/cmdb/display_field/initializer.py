@@ -28,6 +28,7 @@ from apps.cmdb.display_field.constants import (
     DISPLAY_VALUES_SEPARATOR,
     FIELD_TYPE_ENUM,
     FIELD_TYPE_ORGANIZATION,
+    FIELD_TYPE_TABLE,
     FIELD_TYPE_TAG,
     FIELD_TYPE_USER,
     USER_DISPLAY_FORMAT,
@@ -74,6 +75,7 @@ class DisplayFieldInitializer:
             FIELD_TYPE_USER,
             FIELD_TYPE_ENUM,
             FIELD_TYPE_TAG,
+            FIELD_TYPE_TABLE,
         }
     )
 
@@ -110,6 +112,7 @@ class DisplayFieldInitializer:
             "errors": [],
         }
 
+        self._display_def_written = False
         try:
             # 1. 查询所有模型(用于预加载枚举映射)
             models = self._get_all_models()
@@ -153,6 +156,10 @@ class DisplayFieldInitializer:
                 f"  - 实例数: {result['instances_processed']}\n"
                 f"  - 错误数: {len(result['errors'])}"
             )
+            if self._display_def_written and not instances:
+                from apps.cmdb.tasks.display_field_backfill import enqueue_display_instance_backfill
+
+                enqueue_display_instance_backfill()
 
             return result
 
@@ -335,6 +342,7 @@ class DisplayFieldInitializer:
 
             ExcludeFieldsCache.invalidate_model_attrs(model_id)
             mark_display_backfill_dirty()
+            self._display_def_written = True
 
             logger.info(
                 f"[DisplayFieldInitializer] 模型 {model_id} 添加 _display 字段完成, "
@@ -353,9 +361,9 @@ class DisplayFieldInitializer:
         return attrs
 
     def backfill_bounded(self, *, max_instances: int, cursor: dict | None) -> dict:
-        """按模型分页回填，单次最多扫描 max_instances 个实例节点。
+        """单次最多扫描 max_instances 个实例。已有且相同的 _display 不写。
 
-        已有且相同的 _display 不写。查询失败停在当前游标，交给下一次运行重试。
+        新游标按实例 id 一条流扫过带展示字段的模型。游标里还带着模型 id 的旧断点，按模型走完。
         """
         models = self._get_all_models()
         self._preload_mappings(models)
@@ -365,14 +373,73 @@ class DisplayFieldInitializer:
             attrs = self._parse_model_attrs(model)
             if model_id and self._has_instance_display_fields(attrs):
                 prepared.append((model_id, attrs))
+        if cursor and cursor.get("model_id"):
+            return self._backfill_models_in_order(prepared, max_instances, cursor)
+        return self._backfill_instances_in_id_order(prepared, max_instances, cursor)
 
+    def _backfill_instances_in_id_order(self, prepared: list, max_instances: int, cursor: dict | None) -> dict:
+        model_ids = [model_id for model_id, _attrs in prepared]
+        attrs_by_model = {model_id: attrs for model_id, attrs in prepared}
+        last_id = cursor.get("last_id") if cursor else None
+        seen = 0
+        updated = 0
+        errors = []
+
+        def _progress(done: bool, query_failed: bool, next_cursor):
+            return {
+                "done": done,
+                "query_failed": query_failed,
+                "next_cursor": next_cursor,
+                "instances_seen": seen,
+                "instances_updated": updated,
+                "errors": errors,
+            }
+
+        if not model_ids:
+            return _progress(True, False, None)
+
+        with GraphClient() as ag:
+            while seen < max_instances:
+                try:
+                    instances = self._query_display_instance_page(ag, model_ids, last_id)
+                except Exception as exc:
+                    self._log_query_failure("id-stream", exc)
+                    errors.append("查询实例失败，model_id=id-stream")
+                    return _progress(False, True, {"last_id": last_id})
+                if not instances:
+                    return _progress(True, False, None)
+                grouped = defaultdict(list)
+                for instance in instances:
+                    grouped[instance.get("model_id")].append(instance)
+                for model_id, group in grouped.items():
+                    attrs = attrs_by_model.get(model_id)
+                    if not attrs:
+                        continue
+                    page_updated, failure_count, first_inst_id, first_exc = self._apply_instance_page(ag, model_id, attrs, group)
+                    updated += page_updated
+                    if failure_count:
+                        self._log_write_failure(model_id, first_exc, failure_count)
+                        errors.append(f"更新实例失败，model_id={model_id}，inst_id={first_inst_id}，失败{failure_count}次")
+                seen += len(instances)
+                next_id = instances[-1].get("_id")
+                if self._cursor_stuck(last_id, next_id):
+                    errors.append("查询实例失败，model_id=id-stream")
+                    return _progress(False, True, {"last_id": last_id})
+                last_id = next_id
+                page_finished = len(instances) < self.INSTANCE_PAGE_SIZE
+                if seen >= max_instances and not page_finished:
+                    return _progress(False, False, {"last_id": last_id})
+                if page_finished:
+                    return _progress(True, False, None)
+        return _progress(True, False, None)
+
+    def _backfill_models_in_order(self, prepared: list, max_instances: int, cursor: dict) -> dict:
         start_index = 0
         last_id = None
-        if cursor and cursor.get("model_id"):
-            model_ids = [item[0] for item in prepared]
-            if cursor["model_id"] in model_ids:
-                start_index = model_ids.index(cursor["model_id"])
-                last_id = cursor.get("last_id")
+        model_ids = [item[0] for item in prepared]
+        if cursor.get("model_id") in model_ids:
+            start_index = model_ids.index(cursor["model_id"])
+            last_id = cursor.get("last_id")
 
         seen = 0
         updated = 0
@@ -496,6 +563,27 @@ class DisplayFieldInitializer:
                 type(exc).__name__,
             )
             return []
+
+    @staticmethod
+    def _cursor_stuck(previous, nxt) -> bool:
+        if previous is None or nxt is None:
+            return False
+        try:
+            return int(nxt) <= int(previous)
+        except (TypeError, ValueError):
+            return nxt == previous
+
+    def _query_display_instance_page(self, ag, model_ids: list, last_id):
+        params = [{"field": "model_id", "type": "str[]", "value": model_ids}]
+        if last_id is not None:
+            params.append({"field": "id", "type": "id>", "value": last_id})
+        instances, _ = ag.query_entity(
+            label=INSTANCE,
+            params=params,
+            page={"skip": 0, "limit": self.INSTANCE_PAGE_SIZE},
+            include_count=False,
+        )
+        return instances or []
 
     def _query_instance_page(self, ag, model_id: str, last_id):
         params = [{"field": "model_id", "type": "str=", "value": model_id}]
@@ -628,6 +716,10 @@ class DisplayFieldInitializer:
                     display_value = self._convert_enum(model_id, attr_id, original_value)
                 elif attr_type == FIELD_TYPE_TAG:
                     display_value = self._convert_tag(original_value)
+                elif attr_type == FIELD_TYPE_TABLE:
+                    from apps.cmdb.display_field.handler import DisplayFieldConverter
+
+                    display_value = DisplayFieldConverter.convert_table(original_value)
                 else:
                     continue
 

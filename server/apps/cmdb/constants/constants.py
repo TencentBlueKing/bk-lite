@@ -601,6 +601,18 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["accessKey", "accessSecret"],
             },
             {
+                "id": "volcengine_account",
+                "model_id": "volcengine_account",
+                "name": "火山引擎",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "credential_protocol": "volcengine_openapi",
+                "credential_kind": "access_key",
+                "tag": ["SDK"],
+                "desc": "采集火山引擎账号下云服务器、公网 IP、传统型负载均衡、MySQL、PostgreSQL 和对象存储",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
                 "id": "hwcloud",
                 "model_id": "hwcloud",
                 "name": "华为云【beta】",

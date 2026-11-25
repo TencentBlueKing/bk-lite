@@ -34,6 +34,7 @@ const renderBar = (overrides: Partial<React.ComponentProps<typeof SelectionActio
     count: 2,
     canBatchEdit: true,
     showMonitorLink: false,
+    canExport: true,
     onBatchEdit: vi.fn(),
     onExport: vi.fn(),
     onSubscribe: vi.fn(),
@@ -76,6 +77,12 @@ it('shows monitor linking only when the current model supports it', () => {
   expect(props.onMonitorLink).toHaveBeenCalledOnce();
 });
 
+it('hides export when the asset export permission is absent', () => {
+  const props = renderBar({ canExport: false });
+  expect(screen.queryByRole('button', { name: '导出' })).toBeNull();
+  expect(props.onExport).not.toHaveBeenCalled();
+});
+
 it('does not start a batch edit when attributes are unavailable', () => {
   const props = renderBar({ canBatchEdit: false });
   const edit = screen.getByRole('button', { name: '批量编辑' });
@@ -95,6 +102,7 @@ it('keeps the bar as a shortcut into the existing list handlers', () => {
   expect(usage).toContain('onDelete={batchDeleteConfirm}');
   expect(usage).toContain("onBatchEdit={() => showAttrModal('batchEdit')}");
   expect(usage).toContain("handleExport('selected')");
+  expect(usage).toContain('canExport={canExportAssets}');
   expect(usage).toContain("onSubscribe={() => openSubscription('list_selection')}");
   expect(usage).toContain('onMonitorLink={batchSyncMonitorConfirm}');
   expect(pageSource).toContain("onSubscribe={() => openSubscription('list_filter')}");

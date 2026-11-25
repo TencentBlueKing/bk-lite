@@ -53,12 +53,19 @@ class FakeMinioClient:
         self.storage = storage
         self.list_calls = []
 
-    def list_objects(self, bucket_name, prefix="", recursive=False):
-        self.list_calls.append({"bucket_name": bucket_name, "prefix": prefix, "recursive": recursive})
+    def list_objects(self, bucket_name, prefix="", recursive=False, start_after=""):
+        self.list_calls.append(
+            {
+                "bucket_name": bucket_name,
+                "prefix": prefix,
+                "recursive": recursive,
+                "start_after": start_after or "",
+            }
+        )
         marker = prefix or ""
-        for name in list(self.storage.objects):
-            if name.startswith(marker):
-                yield FakeMinioObject(name)
+        names = sorted(name for name in self.storage.objects if name.startswith(marker) and name > (start_after or ""))
+        for name in names:
+            yield FakeMinioObject(name)
 
 
 class FakeMinioBackend:
@@ -430,6 +437,9 @@ def test_periodic_schedule_is_registered():
     assert schedule["task"] == "apps.cmdb.tasks.celery_tasks.reconcile_config_file_content_task"
     cleanup = CELERY_BEAT_SCHEDULE["cleanup_config_file_orphan_temp_task"]
     assert cleanup["task"] == "apps.cmdb.tasks.celery_tasks.cleanup_config_file_orphan_temp_task"
+    assert set(schedule["schedule"].minute) == {0, 15, 30, 45}
+    assert set(cleanup["schedule"].hour) == {3}
+    assert set(cleanup["schedule"].minute) == {40}
 
 
 @pytest.mark.django_db
@@ -464,4 +474,66 @@ def test_cleanup_uses_minio_bucket_and_temp_prefix_not_listdir(monkeypatch):
     assert referenced_key in storage.objects
     assert old_orphan not in storage.objects
     assert nested_orphan not in storage.objects
-    assert storage.client.list_calls == [{"bucket_name": "cmdb-config-file", "prefix": "tmp/config-file/", "recursive": True}]
+    assert storage.client.list_calls == [{"bucket_name": "cmdb-config-file", "prefix": "tmp/config-file/", "recursive": True, "start_after": ""}]
+
+
+@pytest.mark.django_db
+def test_cleanup_orphan_resumes_after_cursor_and_retries_failed_key(fake_storage):
+    from apps.cmdb.models.repair_state import CONFIG_FILE_ORPHAN_TEMP_STAGE, CmdbRepairState
+
+    old_time = now() - timedelta(hours=2)
+    keys = [f"tmp/config-file/{name}.txt" for name in ("a", "m", "z")]
+    for key in keys:
+        fake_storage.objects[key] = b"old"
+        fake_storage.modified_at[key] = old_time
+    fake_storage.delete_error = RuntimeError("delete failed")
+
+    first = ConfigFileContentLifecycle.cleanup_orphan_temp_objects(
+        retention_seconds=3600,
+        batch_size=1,
+        scan_limit=1,
+        now_time=now(),
+    )
+
+    assert first == 0
+    assert CmdbRepairState.objects.get(stage=CONFIG_FILE_ORPHAN_TEMP_STAGE).cursor == ""
+    assert set(fake_storage.objects) == set(keys)
+
+    fake_storage.delete_error = None
+    deleted_keys = []
+    for _ in range(3):
+        deleted_keys.append(
+            ConfigFileContentLifecycle.cleanup_orphan_temp_objects(
+                retention_seconds=3600,
+                batch_size=1,
+                scan_limit=1,
+                now_time=now(),
+            )
+        )
+
+    assert deleted_keys == [1, 1, 1]
+    assert fake_storage.objects == {}
+    assert CmdbRepairState.objects.get(stage=CONFIG_FILE_ORPHAN_TEMP_STAGE).cursor == "tmp/config-file/z.txt"
+
+
+@pytest.mark.django_db
+def test_cleanup_orphan_list_failure_keeps_cursor_and_omits_payload(fake_storage, caplog):
+    from apps.cmdb.models.repair_state import CONFIG_FILE_ORPHAN_TEMP_STAGE, CmdbRepairState
+
+    secret = "SENTINEL_ORPHAN_LIST"
+    CmdbRepairState.objects.create(stage=CONFIG_FILE_ORPHAN_TEMP_STAGE, cursor="tmp/config-file/kept.txt")
+
+    def fail_list(_prefix):
+        raise RuntimeError(secret)
+
+    fake_storage.list_object_keys = fail_list
+    with caplog.at_level("WARNING"):
+        deleted = ConfigFileContentLifecycle.cleanup_orphan_temp_objects(now_time=now())
+
+    assert deleted == 0
+    assert CmdbRepairState.objects.get(stage=CONFIG_FILE_ORPHAN_TEMP_STAGE).cursor == "tmp/config-file/kept.txt"
+    warning = next(record for record in caplog.records if record.message.startswith("event=config_file_orphan_list_failed"))
+    assert warning.args == ("RuntimeError",)
+    assert warning.getMessage() == "event=config_file_orphan_list_failed failed_stage=list error_type=RuntimeError"
+    assert secret not in warning.getMessage()
+    assert warning.exc_info is None

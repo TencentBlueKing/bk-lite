@@ -14,6 +14,11 @@ assert.deepEqual(getCloudCredentialConfig('aliyun_account'), {
   accessSecretLabelKey: 'Collection.cloudTask.aliyunAccessKeySecret',
   requiresProjectId: false,
 });
+assert.deepEqual(getCloudCredentialConfig('volcengine_account'), {
+  accessKeyLabelKey: 'Collection.cloudTask.volcengineAccessKeyId',
+  accessSecretLabelKey: 'Collection.cloudTask.volcengineAccessKeySecret',
+  requiresProjectId: false,
+});
 assert.deepEqual(getCloudCredentialConfig('qcloud'), {
   accessKeyLabelKey: 'Collection.cloudTask.tencentSecretId',
   accessSecretLabelKey: 'Collection.cloudTask.tencentSecretKey',

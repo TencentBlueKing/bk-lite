@@ -65,9 +65,10 @@ PLATFORM_MODEL_IDS = frozenset(
         "qcloud",
         "hwcloud",
         "fusioninsight",
+        "volcengine_account",
     }
 )
-PLATFORM_MODEL_PREFIXES = ("k8s_", "aliyun", "qcloud", "hwcloud", "vmware_", "fusioninsight")
+PLATFORM_MODEL_PREFIXES = ("k8s_", "aliyun", "qcloud", "hwcloud", "vmware_", "fusioninsight", "volcengine")
 
 
 def is_platform_tree_model(model_id: str | None) -> bool:

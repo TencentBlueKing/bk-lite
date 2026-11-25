@@ -36,6 +36,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
+import useBtnPermissions from '@/hooks/usePermissions';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import EmptyModelVisibilityToggle from '@/components/empty-model-visibility-toggle';
 import { useHideEmptyModelPreference } from '@/components/empty-model-visibility-toggle/useHideEmptyModelPreference';
@@ -254,6 +255,8 @@ interface ImportRef {
 
 const AssetDataContent = () => {
   const { t } = useTranslation();
+  const { hasPermission } = useBtnPermissions();
+  const canExportAssets = hasPermission(['Export']);
   const { selectedGroup, userId } = useUserInfoContext();
   const { clientData, loading: clientLoading } = useClientData();
   const { getModelAssociationTypes, getModelAssociations, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
@@ -411,7 +414,7 @@ const AssetDataContent = () => {
       if (frameId) cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [searchAttr, relationSlots.length]);
+  }, [searchAttr, relationSlots.length, canExportAssets]);
 
   useEffect(() => {
     relationFiltersRef.current = [];
@@ -1475,7 +1478,7 @@ const AssetDataContent = () => {
     ...(secondaryActionsCollapsed
       ? [
         subscriptionMoreItem,
-        { key: 'export', label: t('export'), children: exportItems },
+        ...(canExportAssets ? [{ key: 'export', label: t('export'), children: exportItems }] : []),
         { key: 'create', label: t('common.new'), children: addInstItems },
       ]
       : []),
@@ -1655,16 +1658,18 @@ const AssetDataContent = () => {
                   </Dropdown>
                   {secondaryActionsCollapsed ? null : (
                     <>
-                      <div className="shrink-0">
-                        <Dropdown menu={{ items: exportItems }} placement="bottom">
-                          <Button>
-                            <Space>
-                              {t('export')}
-                              <DownOutlined />
-                            </Space>
-                          </Button>
-                        </Dropdown>
-                      </div>
+                      {canExportAssets ? (
+                        <div className="shrink-0">
+                          <Dropdown menu={{ items: exportItems }} placement="bottom">
+                            <Button>
+                              <Space>
+                                {t('export')}
+                                <DownOutlined />
+                              </Space>
+                            </Button>
+                          </Dropdown>
+                        </div>
+                      ) : null}
                       <Button
                         className="shrink-0"
                         icon={<UnorderedListOutlined aria-hidden="true" />}
@@ -1698,12 +1703,14 @@ const AssetDataContent = () => {
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
-              <Button>
-                <Space>
-                  {t('export')}
-                  <DownOutlined aria-hidden="true" />
-                </Space>
-              </Button>
+              {canExportAssets ? (
+                <Button>
+                  <Space>
+                    {t('export')}
+                    <DownOutlined aria-hidden="true" />
+                  </Space>
+                </Button>
+              ) : null}
               <Button type="primary">
                 <Space>
                   {t('common.new')}
@@ -1774,6 +1781,7 @@ const AssetDataContent = () => {
             canBatchEdit={propertyListGroups.length > 0}
             showMonitorLink={showBatchSyncMonitor}
             onBatchEdit={() => showAttrModal('batchEdit')}
+            canExport={canExportAssets}
             onExport={() => {
               void handleExport('selected');
             }}

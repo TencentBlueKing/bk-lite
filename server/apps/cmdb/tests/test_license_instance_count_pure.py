@@ -14,6 +14,7 @@ EXPECTED_CMDB_LICENSE_MODEL_IDS = frozenset(
         "vmware_esxi",
         "vmware_vm",
         "aliyun_ecs",
+        "volcengine_ecs",
         "qcloud_cvm",
         "hwcloud_ecs",
         "aws_ec2",
@@ -52,6 +53,7 @@ EXPECTED_CMDB_LICENSE_VM_MODEL_IDS = frozenset(
     {
         "vmware_vm",
         "aliyun_ecs",
+        "volcengine_ecs",
         "qcloud_cvm",
         "hwcloud_ecs",
         "aws_ec2",
