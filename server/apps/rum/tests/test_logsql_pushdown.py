@@ -11,6 +11,7 @@ import pytest
 from apps.core.logger import SafeLogException
 from apps.rum.services.control import MemoryControl
 from apps.rum.services.evaluator import AlertEvaluator
+from apps.rum.services.health import EnabledApplications
 from apps.rum.services.logsql_stats import (
     ERROR_SORTS,
     SESSION_SORTS,
@@ -205,7 +206,7 @@ def test_replay_scan_chunks_and_stops_at_cap_without_total():
         victoria_project_id=0,
         victoria_timeout_seconds=15,
     )
-    service._resolve_applications = lambda actor, requested: (["checkout"], None)  # noqa: SLF001
+    service._resolve_applications = lambda actor, requested: EnabledApplications(applications=["checkout"])  # noqa: SLF001
     page = service.list_sessions("tester", {"range": "1h", "hasReplay": "1", "limit": "1", "orderBy": "start"})
     assert page["replayScanTruncated"] is True
     assert "summary" not in page
@@ -245,7 +246,7 @@ def test_replay_scan_returns_ready_sessions_before_the_cap():
         victoria_project_id=0,
         victoria_timeout_seconds=15,
     )
-    service._resolve_applications = lambda actor, requested: (["checkout"], None)  # noqa: SLF001
+    service._resolve_applications = lambda actor, requested: EnabledApplications(applications=["checkout"])  # noqa: SLF001
     page = service.list_sessions("tester", {"range": "1h", "hasReplay": "true", "limit": "2"})
     assert [row["sessionId"] for row in page["sessions"]] == ["ready-1", "ready-2"]
     assert page["replayScanTruncated"] is False

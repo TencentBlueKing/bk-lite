@@ -10,7 +10,7 @@ import {
 } from '../defaultNotificationTemplateContents';
 
 describe('通知模板组默认内容', () => {
-  it('告警操作内置模板为七渠道提供待认领操作内容', () => {
+  it('告警操作内置模板为各渠道提供待认领操作内容', () => {
     expect(DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.map((item) => item.channel_type)).toEqual([
       'email',
       'enterprise_wechat',
@@ -44,7 +44,7 @@ describe('通知模板组默认内容', () => {
     expect(insertAlertDetailExample(body, 'https://other.example.com', true)).toBe(body);
   });
 
-  it('新建普通模板时提供评审确认的八渠道默认内容', () => {
+  it('新建普通模板时提供评审确认的默认渠道内容', () => {
     expect(DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS.map((item) => item.channel_type)).toEqual([
       'email',
       'enterprise_wechat',

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Cookies from 'js-cookie';
-import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch, Tooltip } from 'antd';
+import { Alert, Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -36,6 +37,7 @@ import {
   collectionPolicyHabitKey,
   collectionPolicyHabitValue,
   extractCollectInstanceIds,
+  resolveAccessCmdbFollowUp,
   isCollectionPolicyUiField,
   omitCollectionPolicyField,
   parseRememberedPushAlertCenter,
@@ -54,6 +56,8 @@ import {
   IntegrationMonitoredObject
 } from '@/app/monitor/types/integration';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
+import { useModuleLinkApi } from '@/app/module-link/api';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { fillOptionalFormFields, usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
@@ -111,9 +115,14 @@ import {
 import ScriptTrialRunArea, {
   scriptTrialBlocksMetricActions
 } from './scriptTrialRunArea';
-import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
+import { applyScriptCollectSubmit, isScriptCollectConfig, syncScriptRunAsForOs } from './scriptCollectForm';
 import { scriptTimeoutFromInterval, SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS } from './scriptCollectTimeout';
 import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
+import {
+  isSingleKeyInstanceObject,
+  rewriteScriptAttachConfig,
+  scriptAttachInstanceLabel
+} from '@/app/monitor/utils/scriptAttach';
 import {
   collectReservedTagViolations,
   excludeSelfMonitorMetrics,
@@ -240,13 +249,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getSystemChannelList
   } = useEventApi();
   const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
-  const { getMonitorMetrics } = useMonitorApi();
+  const { getMonitorMetrics, getInstanceList, getMonitorObject } = useMonitorApi();
   const getMonitorMetricsRef = useRef(getMonitorMetrics);
   getMonitorMetricsRef.current = getMonitorMetrics;
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
   const userContext = useUserInfoContext();
+  const { clientData, loading: clientLoading } = useClientData();
+  const { createMonitorCmdbTask } = useModuleLinkApi();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
@@ -269,6 +280,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [dataSource, setDataSource] = useState<IntegrationMonitoredObject[]>(
     []
   );
+  const [attachOptions, setAttachOptions] = useState<Record<string, any>[]>([]);
+  const [scriptAttachBlock, setScriptAttachBlock] = useState<null | 'unsupported' | 'empty'>(null);
+  const intervalTouchedRef = useRef(false);
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const saveInFlightRef = useRef(false);
@@ -346,6 +360,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (data.length > 0 && (!activeTrialRowKey || !data.some((r) => r.key === activeTrialRowKey))) {
       setActiveTrialRowKey(data[0].key as string);
     }
+    if (!intervalTouchedRef.current) {
+      const picked = [...data].reverse().find((row) => row.native_interval != null && row.native_interval !== '');
+      const seconds = Number(picked?.native_interval);
+      if (Number.isFinite(seconds) && seconds >= 60) {
+        form.setFieldValue('interval', seconds);
+      }
+    }
   };
 
   const handleApplyNodeToEmptyRows = (nodeIds: unknown) => {
@@ -381,17 +402,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [getPolicyGroups, isLoading, objectId, pluginId, currentConfig?.collect_type]);
 
   useEffect(() => {
-    if (!policyGroups.length) return;
-    const current = form.getFieldValue('policy_group_id');
-    if (policyGroups.some((item) => item.id === current)) return;
-    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
-    form.setFieldsValue({
-      policy_group_join: form.getFieldValue('policy_group_join') !== false,
-      policy_group_id: preferred.id
-    });
-  }, [form, policyGroups]);
-
-  useEffect(() => {
     if (isLoading || !pluginId) return;
     const abortController = new AbortController();
     fetchAllMonitorMetrics(
@@ -415,7 +425,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       jsonConfig
         .getPluginConfig(pluginId)
         .then((data) => {
-          setCurrentConfig(data);
+          setCurrentConfig(isScriptCollectConfig(data) ? rewriteScriptAttachConfig(data) : data);
         })
         .finally(() => {
           setConfigLoading(false);
@@ -609,6 +619,82 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templateType === 'script' ||
     collectType === 'script' ||
     currentConfig?.collect_type === 'script';
+
+  useEffect(() => {
+    if (!policyGroups.length) return;
+    // 策略组规则对着内置指标。脚本采集默认不加入，避免带上对象的默认策略。
+    if (isScriptTemplate) {
+      if (form.getFieldValue('policy_group_join') == null) {
+        form.setFieldsValue({ policy_group_join: false });
+      }
+      return;
+    }
+    const current = form.getFieldValue('policy_group_id');
+    if (policyGroups.some((item) => item.id === current)) return;
+    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
+    form.setFieldsValue({
+      policy_group_join: form.getFieldValue('policy_group_join') !== false,
+      policy_group_id: preferred.id
+    });
+  }, [form, isScriptTemplate, policyGroups]);
+
+  useEffect(() => {
+    if (!isScriptTemplate || configLoading || !objectId) {
+      setScriptAttachBlock(null);
+      setAttachOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const objects = await getMonitorObject();
+        const current = (Array.isArray(objects) ? objects : []).find(
+          (item: { id?: string | number }) => String(item.id) === String(objectId)
+        );
+        if (!isSingleKeyInstanceObject(current)) {
+          if (!cancelled) {
+            setAttachOptions([]);
+            setScriptAttachBlock('unsupported');
+          }
+          return;
+        }
+        const data = await getInstanceList(objectId, {
+          page: 1,
+          page_size: -1,
+          add_metrics: false,
+          script_attach_candidates: 1
+        });
+        const options = (data?.results || []).map((item: {
+          instance_id?: string;
+          instance_name?: string;
+          ip?: string;
+          node_id?: string;
+          node_name?: string;
+          interval?: number;
+        }) => ({
+          value: item.instance_id,
+          label: scriptAttachInstanceLabel(item),
+          storage_instance_key: item.instance_id,
+          instance_name: item.instance_name || item.instance_id,
+          node_id: item.node_id || '',
+          node_name: item.node_name || '',
+          interval: item.interval
+        }));
+        if (!cancelled) {
+          setAttachOptions(options);
+          setScriptAttachBlock(options.length ? null : 'empty');
+        }
+      } catch {
+        if (!cancelled) {
+          setAttachOptions([]);
+          setScriptAttachBlock('empty');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [configLoading, getInstanceList, getMonitorObject, isScriptTemplate, objectId]);
 
   useEffect(() => {
     if (!pluginId || configLoading) return;
@@ -1324,7 +1410,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         dataSource,
         onTableDataChange,
         {
-          node_ids_option: nodeList
+          node_ids_option: nodeList,
+          attach_instance_option: attachOptions
         },
         {
           onApplyNodeToEmptyRows: handleApplyNodeToEmptyRows,
@@ -1406,7 +1493,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           >
             {t('common.add')}
           </Button>
-          {!['host', 'trap'].includes(collectType) && !hasRowFilter && (
+          {!['host', 'trap'].includes(collectType) && !hasRowFilter && !isScriptTemplate && (
             <Button
               type="link"
               className="mr-[10px]"
@@ -1456,6 +1543,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     visibleTableColumns,
     dataSource,
     nodeList,
+    attachOptions,
     pluginId,
     monitorNodeCacheScope,
     renderTableColumn,
@@ -1911,6 +1999,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isScriptTemplate && scriptCatalogBlocking) {
       return;
     }
+    if (isScriptTemplate && scriptAttachBlock === 'unsupported') {
+      message.warning(t('monitor.integrations.scriptAttachUnsupported', '这类对象暂不支持添加脚本采集。'));
+      return;
+    }
+    if (isScriptTemplate && scriptAttachBlock === 'empty') {
+      message.warning(t('monitor.integrations.scriptAttachEmpty', '请先接入该对象的实例，再添加脚本采集。'));
+      return;
+    }
     if (isScriptTemplate && hasReservedScriptError) {
       return;
     }
@@ -1942,6 +2038,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!tableValidation.data) {
       return;
     }
+    if (
+      isScriptTemplate &&
+      tableValidation.data.some((row) => !row.storage_instance_key && !row.instance_id)
+    ) {
+      message.warning(t('monitor.integrations.scriptAttachPickInstance', '请选择实例。'));
+      return;
+    }
     form.validateFields().then(async (values) => {
       try {
         const mutexErrors = getSnmpFilterMutexConflicts(values, t);
@@ -1962,7 +2065,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
         params.policy_group = {
-          join: values.policy_group_join !== false,
+          join: isScriptTemplate
+            ? values.policy_group_join === true
+            : values.policy_group_join !== false,
           group_id: values.policy_group_id
         };
         if (
@@ -2016,6 +2121,18 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     saveInFlightRef.current = true;
     try {
       setConfirmLoading(true);
+      const savedName = String(params.instances?.[0]?.instance_name || '').trim();
+      const notifySaved = () => {
+        if (isScriptTemplate) {
+          message.success(
+            savedName
+              ? t('monitor.integrations.scriptAttachSuccess', '脚本已添加到「{name}」', { name: savedName })
+              : t('monitor.integrations.scriptAttachSuccessPlain', '脚本已添加到所选实例')
+          );
+          return;
+        }
+        message.success(t('common.addSuccess'));
+      };
       const collectResult = await updateNodeChildConfig(params);
       const policyGroupResults = Array.isArray(collectResult?.policy_group_results)
         ? collectResult.policy_group_results
@@ -2075,7 +2192,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           alertCenterChannelIds
         });
         if (!policyPayload) {
-          message.success(t('common.addSuccess'));
+          notifySaved();
           message.error(
             t('monitor.integrations.policyCreateFailed', '', {
               error: t('common.operationFailed')
@@ -2084,14 +2201,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         } else {
           try {
             const result = await bulkCreatePoliciesFromTemplates(policyPayload);
-            message.success(t('common.addSuccess'));
+            notifySaved();
             message.success(
               t('monitor.events.bulkCreateSuccess', '', {
                 count: result?.created_count ?? templatesToApply.length
               })
             );
           } catch (policyError: any) {
-            message.success(t('common.addSuccess'));
+            notifySaved();
             message.error(
               t('monitor.integrations.policyCreateFailed', '', {
                 error:
@@ -2107,13 +2224,53 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           t('monitor.integrations.scriptMetricsPersistSuccess', '指标已保存')
         );
       } else {
-        message.success(t('common.addSuccess'));
+        notifySaved();
       }
-      if (didPersistMetrics) {
-        goPersistedMetrics();
-      } else {
+      const leaveAfterAccess = () => {
+        if (didPersistMetrics) {
+          goPersistedMetrics();
+          return;
+        }
         goIntegrationList();
+      };
+      const offer = resolveAccessCmdbFollowUp({
+        clientData,
+        clientLoading,
+        objectName,
+        collectResult,
+        collectParams: params,
+      });
+      if (offer) {
+        Modal.confirm({
+          title: offer.overflow
+            ? t('monitor.integrations.syncToCmdbFollowUpOverflow', '', {
+              count: offer.ids.length,
+              total: offer.ids.length + offer.overflow,
+            })
+            : t('monitor.integrations.syncToCmdbConfirm', '', {
+              count: offer.ids.length,
+            }),
+          okText: t('common.confirm'),
+          cancelText: t('common.cancel'),
+          centered: true,
+          async onOk() {
+            try {
+              const task = await createMonitorCmdbTask(offer.ids, objectName);
+              const taskId = String(task?.id || '').trim();
+              if (!taskId) {
+                message.error(t('monitor.integrations.syncToCmdbFailed'));
+                return;
+              }
+              router.push(`/module-link/monitor-cmdb/tasks/${taskId}`);
+            } catch {
+              message.error(t('monitor.integrations.syncToCmdbFailed'));
+            }
+          },
+          onCancel: leaveAfterAccess,
+        });
+        return;
       }
+      leaveAfterAccess();
     } catch (error: any) {
       const errorText =
         error?.response?.data?.message ||
@@ -2210,8 +2367,22 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ) {
           setFormSnapshot(nextValues);
         }
+        if (Object.prototype.hasOwnProperty.call(changed, 'interval')) {
+          intervalTouchedRef.current = true;
+        }
         if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
           syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
+        }
+        if (
+          isScriptTemplate &&
+          changed.policy_group_join === true &&
+          !all.policy_group_id
+        ) {
+          const preferred =
+            policyGroups.find((item) => item.is_default) || policyGroups[0];
+          if (preferred) {
+            form.setFieldsValue({ policy_group_id: preferred.id });
+          }
         }
         if (
           Object.prototype.hasOwnProperty.call(
@@ -2238,10 +2409,43 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     >
       <div className="flex items-center justify-between mb-[10px]">
         <b className="text-[14px] ml-[-10px]">
-          {t('monitor.integrations.configuration')}
+          {isScriptTemplate
+            ? t('monitor.integrations.scriptAttachTitle', '添加脚本采集')
+            : t('monitor.integrations.configuration')}
+          {isScriptTemplate && (
+            <Tooltip
+              title={t(
+                'monitor.integrations.scriptAttachTooltip',
+                '脚本挂在已有实例上，作为该实例的一种采集。'
+              )}
+            >
+              <QuestionCircleOutlined className="ml-1 text-[12px] text-[var(--color-text-3)]" />
+            </Tooltip>
+          )}
         </b>
         <GuideEntryButton />
       </div>
+      {isScriptTemplate && scriptAttachBlock === 'unsupported' && (
+        <Alert
+          type="warning"
+          showIcon
+          className="mb-3"
+          message={t('monitor.integrations.scriptAttachUnsupported', '这类对象暂不支持添加脚本采集。')}
+        />
+      )}
+      {isScriptTemplate && scriptAttachBlock === 'empty' && (
+        <Alert
+          type="warning"
+          showIcon
+          className="mb-3"
+          message={t('monitor.integrations.scriptAttachEmpty', '请先接入该对象的实例，再添加脚本采集。')}
+        />
+      )}
+      {isScriptTemplate && !scriptAttachBlock && (
+        <div className="mb-3 text-[12px] leading-[18px] text-[var(--color-text-3)]">
+          {t('monitor.integrations.scriptAttachHelp', '脚本会添加到所选实例上，不会另外新建实例。')}
+        </div>
+      )}
       {visibleFormItems}
       <Form.Item
         name="policy_group_join"
@@ -2263,12 +2467,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }))}
         />
       </Form.Item>
-      <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
-        {t(
-          'monitor.integrations.policyGroupExistingKept',
-          '只作用于本次新建的实例。已经接入的实例保持原策略组。'
-        )}
-      </div>
+      {policyGroupJoin !== false ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.policyGroupExistingKept',
+            '只作用于本次新建的实例。已经接入的实例保持原策略组。'
+          )}
+        </div>
+      ) : null}
       {policyGroupNote?.kind === 'no-plugin-rules' ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
           {t(
@@ -2452,7 +2658,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     isAnyTrialRunning ||
                     hasReservedScriptError ||
                     scriptTrialFailed ||
-                    scriptCatalogBlocking
+                    scriptCatalogBlocking ||
+                    (isScriptTemplate && scriptAttachBlock != null)
                   }
                   onClick={handleSave}
                 >

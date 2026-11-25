@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.test import override_settings
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from apps.opspilot.metis.llm.chain.nested_stream import OWNED_EVENT_QUEUE_KEY
 from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
@@ -85,7 +85,8 @@ def test_guard_rejection_does_not_end_run(monkeypatch):
     assert middleware.after_model(state, _Runtime({})) is None
 
 
-def test_unattended_choice_does_not_create_pending_question():
+@pytest.mark.parametrize("extra", [{"unattended": True}, {"reply_channel": "WECOM_BOT"}])
+def test_one_way_choice_does_not_create_pending_question(extra):
     middleware = TerminalUserChoiceMiddleware()
     state = {
         "messages": [
@@ -101,7 +102,7 @@ def test_unattended_choice_does_not_create_pending_question():
             )
         ]
     }
-    runtime = _Runtime({"thread_id": "unattended", "graph_request": SimpleNamespace(extra_config={"unattended": True})})
+    runtime = _Runtime({"thread_id": "unattended", "graph_request": SimpleNamespace(extra_config=extra)})
     assert middleware.after_model(state, runtime) is None
     assert consume_pending_question("thread:unattended") is None
 
@@ -221,3 +222,76 @@ async def test_limit_continue_ends_turn_without_same_run_grant():
     assert pending["node_id"] == "agent-b"
     middleware = PlannedExecutionLimitMiddleware(run_limit=2, token_budget=0)
     assert not hasattr(middleware, "grant_continue")
+
+
+def test_job_confirmation_ends_turn_with_original_script_and_current_card(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.middleware.terminal_user_choice.emit_choice_request",
+        lambda config, payload: events.append(payload),
+    )
+    proposal = {"id": "proposal-A", "question": "在测试目标上执行只读脚本 echo ok？", "options": ["确认执行", "取消"]}
+    tool_call = {"id": "job-call", "name": "job_mgmt_run_custom", "args": {"script_content": "echo ok"}}
+    result = ToolMessage(content="待确认", name="job_mgmt_run_custom", tool_call_id="job-call", artifact={"job_confirmation": proposal})
+    state = {"messages": [AIMessage(content="", tool_calls=[tool_call]), result]}
+    owner = {"username": "tester", "domain": "test", "team_id": 1}
+    runtime = _Runtime({"thread_id": "job-card", "caller_identity": {**owner, "include_children": True}})
+    answer = TerminalUserChoiceMiddleware().before_model(state, runtime)
+    assert answer["jump_to"] == "end"
+    assert events[0]["title"] == proposal["question"]
+    assert [option["label"] for option in events[0]["options"]] == proposal["options"]
+    stored = consume_pending_question("thread:job-card")
+    assert stored["job_confirmation"] == {"id": "proposal-A", "choice_id": events[0]["choice_id"], "owner": owner}
+    assert "1. 确认执行" in answer["messages"][-1].content == stored["question_text"]
+    assert len(stored["evidence_messages"]) == 2
+
+    # 历史提案、其他工具和之后的新用户消息都不能开出确认卡。
+    assert TerminalUserChoiceMiddleware().before_model({"messages": [result, HumanMessage(content="一")]}, runtime) is None
+    other = result.model_copy(update={"name": "unrelated_tool"})
+    assert TerminalUserChoiceMiddleware().before_model({"messages": [other]}, runtime) is None
+    assert TerminalUserChoiceMiddleware().before_model({"messages": [result, other]}, runtime)["jump_to"] == "end"
+
+
+@pytest.mark.asyncio
+async def test_agent_emits_job_card_even_when_model_never_calls_choice():
+    from langchain.agents import create_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.tools import tool
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    @tool("job_mgmt_run_custom", response_format="content_and_artifact")
+    def propose(script_content: str):
+        """Prepare a test proposal without executing a script."""
+        return "待确认", {"job_confirmation": {"id": "job-A", "question": "在测试目标上运行 echo ok？", "options": ["确认执行", "取消"]}}
+
+    model = Model(
+        responses=[
+            AIMessage(content="", tool_calls=[{"id": "job-call", "name": propose.name, "args": {"script_content": "echo ok"}}]),
+            AIMessage(content="没有生成选择卡"),
+        ]
+    )
+    agent = create_agent(model, tools=[propose], middleware=[TerminalUserChoiceMiddleware()])
+    response = await agent.ainvoke(
+        {"messages": [HumanMessage(content="检查测试目标")]},
+        config={"configurable": {"thread_id": "job-real-loop"}},
+    )
+    pending = consume_pending_question("thread:job-real-loop")
+    assert pending["job_confirmation"]["id"] == "job-A"
+    assert response["messages"][-1].content == pending["question_text"]
+    assert [m.name for m in response["messages"] if isinstance(m, ToolMessage)] == [propose.name]
+
+
+def test_delayed_card_answer_never_consumes_replacement():
+    from apps.opspilot.utils.pending_question import consume_pending_question, peek_pending_question, save_pending_question
+
+    key = "thread:job-reissued"
+    first = save_pending_question(key, {"kind": "user_choice", "job_confirmation": {"id": "first"}})
+    next_card = save_pending_question(key, {"kind": "user_choice", "job_confirmation": {"id": "second"}})
+    assert consume_pending_question(key, expected=first) is None
+    assert peek_pending_question(key) == next_card
+    assert consume_pending_question(key, expected=next_card) == next_card
+    assert consume_pending_question(key, expected=next_card) is None
+    assert peek_pending_question(key) is None

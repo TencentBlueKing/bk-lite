@@ -6,9 +6,11 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import LLMSkill, SkillChannel
 from apps.opspilot.serializers.skill_channel_serializer import SkillChannelSerializer
+from apps.opspilot.services.history_analysis import channel_types_field
 from apps.opspilot.services.skill_channel_account_association import list_account_association_options
 from apps.opspilot.services.skill_channel_chat_service import (
     SkillChannelChatError,
@@ -17,10 +19,11 @@ from apps.opspilot.services.skill_channel_chat_service import (
     serialize_skill_session_messages,
 )
 from apps.opspilot.utils.user_message import user_message
+from apps.opspilot.viewsets.history_analysis import HistoryAnalysisActions
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class SkillChannelViewSet(LanguageViewSet):
+class SkillChannelViewSet(HistoryAnalysisActions, LanguageViewSet):
     """智能体渠道发布绑定 CRUD / 启停。权限：有 Skill 管理组即可（skill_setting-Edit）。"""
 
     serializer_class = SkillChannelSerializer
@@ -40,7 +43,7 @@ class SkillChannelViewSet(LanguageViewSet):
             return skill
         helper = AuthViewSet()
         helper.permission_key = "skill"
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         if not helper.get_has_permission(request.user, skill, current_team, include_children=include_children):
             return JsonResponse(
@@ -155,9 +158,12 @@ class SkillChannelViewSet(LanguageViewSet):
             page_size = int(request.query_params.get("page_size") or 10)
             person = (request.query_params.get("person") or "").strip()
             title = (request.query_params.get("title") or "").strip()
+            raw_types = request.query_params.get("channel_types")
+            channel_types = None if raw_types is None else channel_types_field().run_validation(raw_types.split(",") if raw_types else [])
             data = list_skill_conversations_for_admin(
                 skill_id=skill_id_int,
                 channel_id=channel_id,
+                channel_types=channel_types,
                 person=person,
                 title=title,
                 start_time=request.query_params.get("start_time") or "",
@@ -195,7 +201,11 @@ class SkillChannelViewSet(LanguageViewSet):
         managed = self._get_managed_skill(request, conversation.skill_id)
         if isinstance(managed, JsonResponse):
             return managed
-        messages = serialize_skill_session_messages(conversation)
+        try:
+            anchor = self._parse_optional_int(request.query_params.get("message_id"), "message_id")
+            messages = serialize_skill_session_messages(conversation, from_message_id=anchor)
+        except SkillChannelChatError as exc:
+            return JsonResponse({"result": False, "message": exc.message}, status=exc.status)
         logger.info(
             "event=skill_admin_conversation_messages_read skill_id=%s channel_id=%s session_id=%s",
             conversation.skill_id,

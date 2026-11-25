@@ -1,9 +1,11 @@
 """LLM客户端工厂类,用于创建不同用途的LLM客户端"""
 
 import os
+from functools import cached_property
 from typing import Union
 
 import anthropic
+import httpx
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
@@ -14,6 +16,7 @@ from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities
 from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient, normalize_anthropic_compatible_api_base
+from apps.opspilot.metis.llm.common.vendor_tls import sdk_http_options
 
 # Vendor test uses requests GET /models; chat uses the OpenAI Python SDK
 # (User-Agent OpenAI/Python + X-Stainless-*). Some reverse proxies return
@@ -291,6 +294,18 @@ def _is_unsupported_response_format_error(exc) -> bool:
     return any(needle in text for needle in needles)
 
 
+class _VendorTLSChatAnthropic(ChatAnthropic):
+    """ChatAnthropic builds its own cached SDK clients; customize both transports."""
+
+    @cached_property
+    def _client(self):
+        return anthropic.Client(**self._client_params, **sdk_http_options(True))
+
+    @cached_property
+    def _async_client(self):
+        return anthropic.AsyncClient(**self._client_params, http_client=httpx.AsyncClient(verify=False))
+
+
 class LLMClientFactory:
     """LLM客户端工厂"""
 
@@ -314,7 +329,7 @@ class LLMClientFactory:
         return max(resolved_timeout, 1.0)
 
     @staticmethod
-    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None) -> BaseChatModel:
+    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None, max_retries=None) -> BaseChatModel:
         """
         创建LLM客户端
 
@@ -323,6 +338,7 @@ class LLMClientFactory:
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
             timeout: 可选，单次 LLM 调用超时（秒）；不传时使用 LLM_INVOKE_TIMEOUT，默认 300 秒
+            max_retries: 可选，HTTP 重试次数；不传时沿用各 SDK 默认
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
@@ -335,9 +351,9 @@ class LLMClientFactory:
         if capabilities.use_anthropic_compatible_adapter:
             llm = LLMClientFactory._create_anthropic_compatible_client(request, disable_stream, timeout)
         elif request.protocol_type == "anthropic":
-            llm = LLMClientFactory._create_anthropic_client(request, disable_stream, timeout)
+            llm = LLMClientFactory._create_anthropic_client(request, disable_stream, timeout, max_retries=max_retries)
         else:
-            llm = LLMClientFactory._create_openai_client(request, disable_stream, timeout)
+            llm = LLMClientFactory._create_openai_client(request, disable_stream, timeout, max_retries=max_retries)
 
         # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
         if isolated:
@@ -346,13 +362,14 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatOpenAI:
+    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None, max_retries: int | None = None) -> ChatOpenAI:
         """创建 OpenAI 兼容客户端"""
         # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
         base_url = request.openai_api_base
         if base_url:
             SSRFValidator.validate_llm_endpoint(base_url)
 
+        retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
         llm = ChatOpenAI(
             model=request.model,
             base_url=base_url,
@@ -361,6 +378,9 @@ class LLMClientFactory:
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             default_headers=openai_compat_user_agent_headers(),
+            **sdk_http_options(request.skip_ssl_verify),
+            http_async_client=httpx.AsyncClient(verify=False) if request.skip_ssl_verify else None,
+            **retry_kwargs,
             **_client_temperature_kwargs(request),
         )
         _attach_openai_compat_sdk_headers(llm)
@@ -374,7 +394,9 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_anthropic_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatAnthropic:
+    def _create_anthropic_client(
+        request: BasicLLMRequest, disable_stream: bool, timeout: int = None, max_retries: int | None = None
+    ) -> ChatAnthropic:
         """创建 Anthropic 客户端"""
         # Anthropic API base URL 处理
         base_url = request.openai_api_base
@@ -394,14 +416,17 @@ class LLMClientFactory:
             thinking_type = "enabled" if show_think else "disabled"
             model_kwargs["thinking"] = {"type": thinking_type}
 
-        llm = ChatAnthropic(
+        client_class = _VendorTLSChatAnthropic if request.skip_ssl_verify else ChatAnthropic
+        retry_kwargs = {} if max_retries is None else {"max_retries": max_retries}
+        llm = client_class(
             model=request.model,
             anthropic_api_url=base_url,
             api_key=request.openai_api_key,
             max_tokens=request.max_output_tokens or 4096,
             disable_streaming=disable_stream,
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
-            model_kwargs=model_kwargs if model_kwargs else None,
+            model_kwargs=model_kwargs,
+            **retry_kwargs,
             **_client_temperature_kwargs(request),
         )
 
@@ -436,6 +461,7 @@ class LLMClientFactory:
             timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             vendor_type=getattr(request, "vendor_type", ""),
             thinking_enabled=show_think,
+            skip_ssl_verify=request.skip_ssl_verify,
             **_client_temperature_kwargs(request),
         )
 
@@ -468,7 +494,7 @@ class LLMClientFactory:
             # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
             SSRFValidator.validate_llm_endpoint(request.openai_api_base)
             kwargs["base_url"] = request.openai_api_base
-        return OpenAI(**kwargs)
+        return OpenAI(**kwargs, **sdk_http_options(request.skip_ssl_verify))
 
     @staticmethod
     def _create_isolated_anthropic_client(request: BasicLLMRequest) -> anthropic.Anthropic:
@@ -490,6 +516,7 @@ class LLMClientFactory:
         SSRFValidator.validate_llm_endpoint(base_url)
 
         return anthropic.Anthropic(
+            **sdk_http_options(request.skip_ssl_verify),
             api_key=request.openai_api_key,
             base_url=base_url,
             timeout=LLMClientFactory._resolve_timeout(request),

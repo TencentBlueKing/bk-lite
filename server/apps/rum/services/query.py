@@ -107,5 +107,19 @@ def apply_degradation(page: dict, reason: str | None) -> dict:
     return page
 
 
+def stamp_pipeline_flags(page: dict, *, control: bool = False, analytics: bool = False) -> dict:
+    """Set pipeline flags without clearing the other one.
+
+    Single-reason empty helpers keep using exclusive ``apply_degradation``.
+    List reads that observed both planes call this so neither flag is dropped.
+    """
+
+    if control:
+        page["controlUnavailable"] = True
+    if analytics:
+        page["analyticsUnavailable"] = True
+    return page
+
+
 def _degrade(page: dict, reason: str | None) -> dict:
     return apply_degradation(page, reason)

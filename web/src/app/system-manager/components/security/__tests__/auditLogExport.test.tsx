@@ -6,11 +6,12 @@ import type { TableRowSelection } from 'antd/es/table/interface';
 import OperationLogs from '../operationLogs';
 import UserLoginLogs from '../loginLogs';
 
-const { getOperationLogs, exportOperationLogs, getUserLoginLogs, exportUserLoginLogs } = vi.hoisted(() => ({
+const { getOperationLogs, exportOperationLogs, getUserLoginLogs, exportUserLoginLogs, userInfo } = vi.hoisted(() => ({
   getOperationLogs: vi.fn().mockResolvedValue({ items: [], count: 0 }),
   exportOperationLogs: vi.fn().mockResolvedValue(new Blob(['operation'])),
   getUserLoginLogs: vi.fn().mockResolvedValue({ items: [], count: 0 }),
   exportUserLoginLogs: vi.fn().mockResolvedValue(new Blob(['login'])),
+  userInfo: { selectedGroup: { id: '1', name: 'Default' } as { id: string; name: string } | null },
 }));
 
 let operationSelection: TableRowSelection<unknown> | undefined;
@@ -26,6 +27,10 @@ vi.mock('@/hooks/useLocalizedTime', () => ({
 
 vi.mock('@/context/client', () => ({
   useClientData: () => ({ clientData: [] }),
+}));
+
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => ({ selectedGroup: userInfo.selectedGroup }),
 }));
 
 vi.mock('@/app/system-manager/api/security', () => ({
@@ -45,7 +50,7 @@ vi.mock('@/components/time-selector', () => ({
 
 vi.mock('@/components/custom-table', () => ({
   default: (props: { rowSelection?: TableRowSelection<unknown>; columns?: Array<{ key?: string }> }) => {
-    if (props.columns?.some((column) => column.key === 'detail')) {
+    if (props.columns?.some((column) => column.key === 'outcome')) {
       operationSelection = props.rowSelection;
     } else {
       loginSelection = props.rowSelection;
@@ -59,6 +64,7 @@ vi.mock('react-diff-viewer-continued', () => ({
 }));
 
 beforeEach(() => {
+  userInfo.selectedGroup = { id: '1', name: 'Default' };
   getOperationLogs.mockResolvedValue({ items: [], count: 0 });
   exportOperationLogs.mockResolvedValue(new Blob(['operation']));
   getUserLoginLogs.mockResolvedValue({ items: [], count: 0 });
@@ -78,6 +84,18 @@ afterEach(() => {
 });
 
 describe('OperationLogs export', () => {
+  it('waits for the current organization before listing', async () => {
+    userInfo.selectedGroup = null;
+    const { rerender } = render(<OperationLogs />);
+    expect(getOperationLogs).not.toHaveBeenCalled();
+
+    userInfo.selectedGroup = { id: '1', name: 'Default' };
+    rerender(<OperationLogs />);
+    await waitFor(() => {
+      expect(getOperationLogs).toHaveBeenCalled();
+    });
+  });
+
   it('exports current filters without pagination, and selected ids when rows are chosen', async () => {
     render(<OperationLogs />);
     const exportButton = await screen.findByRole('button', { name: /common\.export/ });
@@ -105,16 +123,59 @@ describe('OperationLogs export', () => {
     });
     expect(window.URL.createObjectURL).toHaveBeenCalled();
   });
+
+  it('reset reloads the list without the filters that were just cleared', async () => {
+    render(<OperationLogs />);
+    await waitFor(() => {
+      expect(getOperationLogs).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('system.security.operatorPlaceholder'), {
+      target: { value: 'alice' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('system.security.targetPlaceholder'), {
+      target: { value: 'host-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /common\.search/ }));
+
+    await waitFor(() => {
+      const params = getOperationLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBe('alice');
+      expect(params.target).toBe('host-1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.reset/ }));
+
+    await waitFor(() => {
+      const params = getOperationLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBeUndefined();
+      expect(params.target).toBeUndefined();
+      expect(params.outcome).toBeUndefined();
+      expect(params.action_type).toBeUndefined();
+    });
+  });
 });
 
 describe('UserLoginLogs export', () => {
+  it('waits for the current organization before listing', async () => {
+    userInfo.selectedGroup = null;
+    const { rerender } = render(<UserLoginLogs />);
+    expect(getUserLoginLogs).not.toHaveBeenCalled();
+
+    userInfo.selectedGroup = { id: '1', name: 'Default' };
+    rerender(<UserLoginLogs />);
+    await waitFor(() => {
+      expect(getUserLoginLogs).toHaveBeenCalled();
+    });
+  });
+
   it('queries username and source_ip directly and exports like the OpenAPI page', async () => {
     render(<UserLoginLogs />);
     const exportButton = await screen.findByRole('button', { name: /common\.export/ });
     expect((exportButton as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText('system.security.exportCsv')).toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText('system.user.table.username'), {
+    fireEvent.change(screen.getByPlaceholderText('system.security.loginAccountPlaceholder'), {
       target: { value: 'bob' },
     });
     fireEvent.change(screen.getByPlaceholderText('system.security.sourceIpPlaceholder'), {
@@ -148,6 +209,38 @@ describe('UserLoginLogs export', () => {
     fireEvent.click(exportButton);
     await waitFor(() => {
       expect(exportUserLoginLogs).toHaveBeenLastCalledWith({ selected_ids: [4] });
+    });
+  });
+
+  it('reset reloads the list without the filters that were just cleared', async () => {
+    render(<UserLoginLogs />);
+    await waitFor(() => {
+      expect(getUserLoginLogs).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('system.security.loginAccountPlaceholder'), {
+      target: { value: 'bob' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('system.security.sourceIpPlaceholder'), {
+      target: { value: '10.1.1.1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /common\.search/ }));
+
+    await waitFor(() => {
+      const params = getUserLoginLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBe('bob');
+      expect(params.source_ip).toBe('10.1.1.1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /common\.reset/ }));
+
+    await waitFor(() => {
+      const params = getUserLoginLogs.mock.calls.at(-1)?.[0];
+      expect(params.username).toBeUndefined();
+      expect(params.source_ip).toBeUndefined();
+      expect(params.status).toBeUndefined();
+      expect(params.login_time_start).toBeUndefined();
+      expect(params.login_time_end).toBeUndefined();
     });
   });
 });

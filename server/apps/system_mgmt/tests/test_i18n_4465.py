@@ -78,12 +78,15 @@ def test_password_validator_uses_requested_locale(locale, expected):
         ("zh-Hans", [{}] * 501, "单次最多导入 500 名用户"),
     ],
 )
-def test_import_users_boundary_messages_use_request_locale(locale, users, expected):
+def test_import_users_boundary_messages_use_request_locale(monkeypatch, locale, users, expected):
+    logged = []
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.log_operation", lambda *args, **kwargs: logged.append(kwargs))
     request = request_with_locale(locale)
     request.data = {"group_id": 1, "users": users, "file_name": "users.xlsx"}
     response = UserViewSet.import_users.__wrapped__(UserViewSet(), request)
     assert response.status_code == 400
     assert response_payload(response) == {"result": False, "message": expected}
+    assert logged == []
 
 
 def _stub_import_users_group_lookup(monkeypatch):
@@ -98,7 +101,9 @@ def _stub_import_users_group_lookup(monkeypatch):
         "apps.system_mgmt.viewset.user_viewset.SystemSettings.objects.filter",
         lambda **kwargs: SimpleNamespace(values_list=lambda *args, **kw: []),
     )
-    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.log_operation", lambda *args, **kwargs: None)
+    logged = []
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.log_operation", lambda *args, **kwargs: logged.append(kwargs))
+    return logged
 
 
 @pytest.mark.parametrize(
@@ -117,7 +122,7 @@ def _stub_import_users_group_lookup(monkeypatch):
     ],
 )
 def test_import_users_row_messages_use_request_locale(monkeypatch, locale, users, expected):
-    _stub_import_users_group_lookup(monkeypatch)
+    logged = _stub_import_users_group_lookup(monkeypatch)
     monkeypatch.setattr(
         "apps.system_mgmt.viewset.user_viewset.User.objects.filter",
         lambda **kwargs: SimpleNamespace(exists=lambda: kwargs.get("username") == "existing"),
@@ -129,6 +134,10 @@ def test_import_users_row_messages_use_request_locale(monkeypatch, locale, users
     assert response.status_code == 200
     assert payload["result"] is True
     assert payload["data"]["failures"][0]["message"] == expected
+    assert len(logged) == 1
+    assert logged[0]["outcome"] == "failure"
+    assert logged[0]["failure_reason"] == f"共 {len(users)} 条，成功 0 条，失败 {payload['data']['failed_count']} 条"
+    assert "failures" not in logged[0]["failure_reason"]
 
 
 @pytest.mark.parametrize(
@@ -146,7 +155,7 @@ def test_import_users_create_failed_uses_request_locale(monkeypatch, locale, exp
         def __exit__(self, *args):
             return False
 
-    _stub_import_users_group_lookup(monkeypatch)
+    logged = _stub_import_users_group_lookup(monkeypatch)
     monkeypatch.setattr(
         "apps.system_mgmt.viewset.user_viewset.User.objects.filter",
         lambda **kwargs: SimpleNamespace(exists=lambda: False),
@@ -170,6 +179,9 @@ def test_import_users_create_failed_uses_request_locale(monkeypatch, locale, exp
     assert payload["data"]["failures"] == [
         {"row_number": 2, "username": "new-import-user", "message": expected},
     ]
+    assert len(logged) == 1
+    assert logged[0]["outcome"] == "failure"
+    assert logged[0]["failure_reason"] == "共 1 条，成功 0 条，失败 1 条"
 
 
 @pytest.mark.parametrize(
@@ -183,11 +195,13 @@ def test_password_policy_description_uses_requested_locale(monkeypatch, locale, 
     monkeypatch.setattr(
         PasswordValidator,
         "get_password_settings",
-        staticmethod(lambda: {
-            "min_length": 8,
-            "max_length": 20,
-            "required_char_types": ["uppercase", "lowercase", "digit", "special"],
-        }),
+        staticmethod(
+            lambda: {
+                "min_length": 8,
+                "max_length": 20,
+                "required_char_types": ["uppercase", "lowercase", "digit", "special"],
+            }
+        ),
     )
     description = PasswordValidator.get_password_policy_description(locale=locale)
     assert expected in description

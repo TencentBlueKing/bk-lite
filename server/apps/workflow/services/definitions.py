@@ -167,19 +167,19 @@ def agent_reply_is_wecom_body(definition: dict[str, Any], reference: str) -> boo
     output = f"{reference}.output"
     body_binding = "${" + output + ".message}"
 
-    def uses_output(value: Any) -> bool:
+    def uses_reply(value: Any) -> bool:
         if isinstance(value, dict):
-            return any(uses_output(item) for item in value.values())
+            return any(uses_reply(item) for item in value.values())
         if isinstance(value, list):
-            return any(uses_output(item) for item in value)
+            return any(uses_reply(item) for item in value)
         if isinstance(value, str):
             return any(
-                (match.start() == 0 or value[match.start() - 1] != "$") and (match[1] == output or match[1].startswith(output + "."))
+                (match.start() == 0 or value[match.start() - 1] != "$") and match[1] in (output, output + ".message")
                 for match in ANY_CONDUCTOR_REFERENCE.finditer(value)
             )
         return False
 
-    if uses_output(definition.get("outputParameters")):
+    if uses_reply(definition.get("outputParameters")):
         return False
     found_body = False
     for task in _walk_tasks(definition.get("tasks") or []):
@@ -190,7 +190,7 @@ def agent_reply_is_wecom_body(definition: dict[str, Any], reference: str) -> boo
         for key, value in inputs.items():
             if wecom and key == "body" and value == body_binding:
                 found_body = True
-            elif uses_output(value):
+            elif uses_reply(value):
                 return False
     return found_body
 

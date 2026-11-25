@@ -35,8 +35,28 @@ const CHANNEL_ICONS: Record<string, string> = {
   custom_webhook: 'webhook',
 };
 
+const CHANNEL_TYPE_LABEL: Record<string, string> = {
+  email: 'apm.policies.channelTypeEmail',
+  enterprise_wechat: 'apm.policies.channelTypeWechatBot',
+  enterprise_wechat_bot: 'apm.policies.channelTypeWechatBot',
+  feishu_bot: 'apm.policies.channelTypeFeishuBot',
+  dingtalk_bot: 'apm.policies.channelTypeDingtalkBot',
+  custom_webhook: 'apm.policies.channelTypeCustomWebhook',
+  nats: 'apm.policies.channelTypeNats',
+  sms: 'apm.policies.channelTypeSms',
+  voice: 'apm.policies.channelTypeVoice',
+};
+
 function channelIcon(channelType?: string) {
   return CHANNEL_ICONS[channelType || ''] || 'jiqiren3';
+}
+
+function channelTypeLabel(
+  channelType: string | undefined,
+  t: (id: string, defaultMessage?: string) => string,
+) {
+  const key = CHANNEL_TYPE_LABEL[channelType || ''];
+  return key ? t(key) : channelType || '';
 }
 
 export default function NotificationTargetFields({
@@ -148,7 +168,6 @@ export default function NotificationTargetFields({
                   {visibleChannels.map((channel) => {
                     const field = fields.find((item) => targets[item.name]?.channel_id === channel.id);
                     const selected = Boolean(field);
-                    const copy = channel.delivery_mode === 'alert_event_copy' || channel.recipient_mode === 'none';
                     const unavailable = (channelState === 'ready' || channelState === 'empty')
                       && channel.availability !== 'available';
                     return (
@@ -180,9 +199,7 @@ export default function NotificationTargetFields({
                           <div className="flex min-w-0 flex-1 flex-col">
                             <span className="truncate text-sm font-bold" title={channel.name}>{channel.name}</span>
                             <span className="mt-1 inline-flex w-fit rounded bg-[var(--color-primary-bg)] px-1.5 py-0.5 text-xs text-[var(--color-primary)]">
-                              {copy
-                                ? t('apm.policies.alertCopyShort', '告警中心副本')
-                                : t('apm.alerts.plainNotice', '普通通知')}
+                              {channelTypeLabel(channel.channel_type, t)}
                             </span>
                             <span className="mt-1 line-clamp-2 flex-1 text-xs text-[var(--color-text-3)]" title={channel.description || '--'}>
                               {channel.description || '--'}
@@ -213,7 +230,7 @@ export default function NotificationTargetFields({
                 if (channel?.recipient_mode !== 'none') return null;
                 return (
                   <span key={field.key} className="mt-3 block text-xs text-[var(--color-text-3)]">
-                    {t('apm.policies.alertCopyNoRecipients', '该渠道接收告警事件副本，无需配置接收人。')}
+                    {t('apm.policies.natsNoNotifierHint', '告警将进入告警中心，无需选择通知者。')}
                   </span>
                 );
               })}

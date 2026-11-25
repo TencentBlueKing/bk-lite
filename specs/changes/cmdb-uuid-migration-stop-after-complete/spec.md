@@ -1,6 +1,10 @@
 # UUID 存量清洗完成后停用周期任务
 
-Status: implemented
+Status: superseded
+
+2026-11-25 同步社区版后，这条「做完再禁用 */5」的实现不再有效。社区版改为维护窗口手工执行 `migrate_cmdb_instance_uuid_runtime`，`batch_init` 只删除历史 Beat 条目 `cmdb_instance_uuid_migration`，不注册、不 `delay`。见 `docs/operations/server-startup-dependencies.md` 与 `docs/operations/cmdb-instance-uuid-cutover.md`。
+
+采集快照查图失败时不落数字图 ID 的决定仍然有效。下面关于周期任务的决定只保留作历史记录。
 
 ## Problem Statement
 

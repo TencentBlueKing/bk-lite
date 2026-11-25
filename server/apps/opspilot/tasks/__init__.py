@@ -15,6 +15,7 @@ from apps.opspilot.tasks.channel import (
 )
 from apps.opspilot.tasks.chat_attachment import cleanup_chat_attachments_task, parse_chat_attachment_task
 from apps.opspilot.tasks.chatflow import chat_flow_celery_task, chat_flow_test_execute_task
+from apps.opspilot.tasks.history_analysis import run_history_analysis
 from apps.opspilot.tasks.job_tool import cleanup_opspilot_job_staged_files, scan_opspilot_job_watches
 from apps.opspilot.tasks.memory import (
     MemoryWriteLlmUnavailable,
@@ -106,6 +107,7 @@ __all__ = [
     "process_memory_write",
     "process_memory_write_cache",
     "scan_opspilot_job_watches",
+    "run_history_analysis",
     "process_skill_channel_aibot_message",
     "process_skill_channel_aibot_reply",
     "process_skill_channel_dingtalk_message",

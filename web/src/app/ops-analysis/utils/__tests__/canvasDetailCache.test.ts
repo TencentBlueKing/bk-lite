@@ -139,4 +139,40 @@ describe('canvas detail cache', () => {
     expect(hit).toBe(saved);
     expect(readCachedCanvasDetail('dashboard', 1)).toEqual({ hit: true, detail: saved });
   });
+
+  it('aborts a normal-page detail only after the last waiter leaves, then allows a new request', async () => {
+    let flightSignal: AbortSignal | undefined;
+    const view = new AbortController();
+    const carousel = new AbortController();
+    const fromView = loadPlaybackCanvasDetail(null, 'dashboard', 11, (signal) => new Promise((_resolve, reject) => {
+      flightSignal = signal;
+      signal.addEventListener('abort', () => {
+        reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      }, { once: true });
+    }), view.signal);
+    await Promise.resolve();
+    const { result } = renderHook(() => useCarouselApi());
+    const fromCarousel = result.current.prefetchCanvasDetail('dashboard', 11, carousel.signal);
+    await Promise.resolve();
+    expect(api.get).not.toHaveBeenCalled();
+
+    view.abort();
+    await expect(fromView).rejects.toMatchObject({ name: 'AbortError' });
+    expect(flightSignal?.aborted).toBe(false);
+
+    carousel.abort();
+    await expect(fromCarousel).rejects.toMatchObject({ name: 'AbortError' });
+    expect(flightSignal?.aborted).toBe(true);
+
+    const next = new AbortController();
+    let secondSignal: AbortSignal | undefined;
+    const again = await loadPlaybackCanvasDetail(null, 'dashboard', 11, (signal) => {
+      secondSignal = signal;
+      return Promise.resolve({ id: 11, name: 'next' });
+    }, next.signal);
+    expect(again).toEqual({ id: 11, name: 'next' });
+    expect(secondSignal).toBeDefined();
+    expect(secondSignal).not.toBe(flightSignal);
+    expect(secondSignal?.aborted).toBe(false);
+  });
 });

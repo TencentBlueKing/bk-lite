@@ -243,7 +243,7 @@ const ToolListPage: React.FC = () => {
         />
       ),
     },
-    {
+    ...(!isBuiltIn ? [{
       name: 'team',
       type: 'custom',
       label: t('common.group'),
@@ -258,7 +258,7 @@ const ToolListPage: React.FC = () => {
         />
       ),
       rules: [{ required: true, message: `${t('common.selectMsg')}${t('common.group')}` }],
-    },
+    }] : []),
     {
       name: 'description',
       type: 'textarea',
@@ -336,7 +336,7 @@ const ToolListPage: React.FC = () => {
             await updateTool(selectedTool.id, {
               name: selectedTool.name,
               description: selectedTool.description,
-              team: values.team,
+              team: selectedTool.team,
               user_tags: normalizedUserTags,
               system_tags: selectedTool.system_tags || [],
             });
@@ -621,7 +621,6 @@ const ToolListPage: React.FC = () => {
                         setEditingSkillAsset(asset);
                         Promise.resolve().then(() => {
                           skillForm.setFieldsValue({
-                            team: asset.team || [],
                             user_tags: asset.user_tags || [],
                           });
                         });
@@ -845,7 +844,6 @@ const ToolListPage: React.FC = () => {
             name: editingSkillAsset.name,
             version: editingSkillAsset.version,
             description: editingSkillAsset.description,
-            team: values.team,
             user_tags: normalizeUserTags(values.user_tags || []),
             system_tags: editingSkillAsset.system_tags || [],
           });
@@ -876,9 +874,6 @@ const ToolListPage: React.FC = () => {
                 label: labelForTag(tag, 'user'),
               }))}
             />
-          </Form.Item>
-          <Form.Item name="team" label={t('common.group')} rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.group')}` }]}>
-            <GroupTreeSelect multiple placeholder={`${t('common.selectMsg')}${t('common.group')}`} />
           </Form.Item>
         </Form>
       </Modal>

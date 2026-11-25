@@ -10,6 +10,7 @@ export const CANVAS_DETAIL_CACHE_TTL_MS = 45_000;
 interface CacheEntry {
   detail: unknown;
   expiresAt: number;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 interface Flight {
@@ -32,6 +33,9 @@ const abortError = (): Error => {
 };
 
 export const clearCanvasDetailCache = (): void => {
+  for (const entry of cache.values()) {
+    clearTimeout(entry.timer);
+  }
   cache.clear();
   for (const flight of flights.values()) {
     flight.controller.abort();
@@ -48,6 +52,7 @@ export const readCachedCanvasDetail = (
   const entry = cache.get(key);
   if (!entry || entry.expiresAt <= now) {
     if (entry) {
+      clearTimeout(entry.timer);
       cache.delete(key);
     }
     return { hit: false };
@@ -61,9 +66,20 @@ const rememberCanvasDetail = (
   detail: unknown,
   now: number,
 ): void => {
-  cache.set(cacheKey(resourceType, canvasId), {
+  const key = cacheKey(resourceType, canvasId);
+  const previous = cache.get(key);
+  if (previous) {
+    clearTimeout(previous.timer);
+  }
+  const timer = setTimeout(() => {
+    if (cache.get(key)?.timer === timer) {
+      cache.delete(key);
+    }
+  }, CANVAS_DETAIL_CACHE_TTL_MS);
+  cache.set(key, {
     detail,
     expiresAt: now + CANVAS_DETAIL_CACHE_TTL_MS,
+    timer,
   });
 };
 

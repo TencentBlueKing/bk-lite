@@ -1,6 +1,8 @@
 import json
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
@@ -9,7 +11,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.memory.identity import resolve_system_user_uuid
-from apps.opspilot.models import SkillChannel, UserWebchatPreference
+from apps.opspilot.models import SkillChannel, SkillConversationMessage, UserWebchatPreference
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
 from apps.opspilot.services.job_tool_service import skill_has_job_mgmt
 from apps.opspilot.services.session_context_usage import summarize_skill_session_usage
@@ -226,6 +228,59 @@ def list_skill_channel_conversations(request):
     return JsonResponse({"result": True, "data": data})
 
 
+@require_POST
+def set_platform_answer_feedback(request, message_id):
+    channel, error = _require_login_and_web_channel(request)
+    if error:
+        return error
+    if channel.channel_type != SkillChannelChoices.PLATFORM:
+        return JsonResponse({"result": False, "message": "渠道类型不匹配"}, status=400)
+    body, error = parse_json_body(request)
+    if error or not isinstance(body, dict) or not isinstance(body.get("session_id"), str) or not body["session_id"]:
+        return JsonResponse({"result": False, "message": "session_id 必填"}, status=400)
+    feedback = body.get("feedback")
+    if "feedback" not in body or (feedback is not None and feedback not in SkillConversationMessage.Feedback.values):
+        return JsonResponse({"result": False, "message": "评价无效"}, status=400)
+    answers = SkillConversationMessage.objects.filter(
+        pk=message_id,
+        role=SkillConversationMessage.ROLE_ASSISTANT,
+        conversation__session_id=body["session_id"],
+        conversation__is_active=True,
+        conversation__channel=channel,
+        conversation__external_user_id=saas_external_user_id(request.user),
+    )
+    result = {"feedback": feedback}
+    if "feedback_detail" in body:
+        detail = body["feedback_detail"]
+        if feedback is None or not isinstance(detail, dict):
+            return JsonResponse({"result": False, "message": "请先评价回复"}, status=400)
+        # 0095 版窗口只发送单个 reason。
+        reasons = detail.get("reasons", [detail["reason"]] if detail.get("reason") else [])
+        allowed = SkillConversationMessage.FEEDBACK_REASONS[feedback]
+        comment = detail.get("comment", "")
+        if (
+            not isinstance(reasons, list)
+            or len(reasons) > len(allowed)
+            or any(reason not in allowed for reason in reasons)
+            or len(set(reasons)) != len(reasons)
+            or not isinstance(comment, str)
+            or len(comment) > 500
+        ):
+            return JsonResponse({"result": False, "message": "评价标签或说明无效"}, status=400)
+        comment = comment.strip()
+        if not answers.filter(feedback=feedback).update(feedback_reasons=reasons, feedback_comment=comment):
+            return JsonResponse({"result": False, "message": "回复不存在或评价已更改"}, status=404)
+        result["feedback_detail"] = {"reasons": reasons, "reason": reasons[0] if reasons else "", "comment": comment}
+    else:
+        with transaction.atomic():
+            answer = answers.select_for_update().only("feedback").first()
+            if answer is None:
+                return JsonResponse({"result": False, "message": "回答不存在"}, status=404)
+            if answer.feedback != feedback:
+                answers.update(feedback=feedback, feedback_reasons=[], feedback_comment="")
+    return JsonResponse({"result": True, "data": result})
+
+
 def list_skill_channel_session_messages(request):
     """当前用户指定会话的消息列表。"""
     _bind_channel_locale(request)
@@ -304,8 +359,10 @@ def execute_skill_channel_chat(request, channel_id):
             page_context=page_context,
             attachment_ids=attachment_ids,
             distribute_file_ids=distribute_file_ids,
+            include_message_receipt=channel.channel_type == SkillChannelChoices.PLATFORM and kwargs.get("include_message_receipt") is True,
             choice_id=str(kwargs.get("choice_id") or "") or None,
             choice_option=str(kwargs.get("choice_option") or "") or None,
+            reply_to_choice_id=str(kwargs.get("reply_to_choice_id") or "") if "reply_to_choice_id" in kwargs else None,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))
@@ -340,6 +397,9 @@ def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=No
             session_id=session_id or None,
             identity_user=user_secret,
             attachment_ids=attachment_ids,
+            choice_id=str(kwargs.get("choice_id") or "") or None,
+            choice_option=str(kwargs.get("choice_option") or "") or None,
+            reply_to_choice_id=str(kwargs.get("reply_to_choice_id") or "") if "reply_to_choice_id" in kwargs else None,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(_shown(request, e.message))

@@ -340,7 +340,7 @@ def test_duplicate_uses_requested_organization_and_description(superuser):
 
 
 @pytest.mark.django_db
-def test_draft_can_change_organization_and_published_workflow_cannot(superuser):
+def test_draft_and_published_workflows_can_change_organization(superuser, mocker, django_capture_on_commit_callbacks):
     draft = Workflow.objects.create(name="草稿", team=[7], description="原说明", definition={})
     published = Workflow.objects.create(
         name="已发布",
@@ -357,27 +357,45 @@ def test_draft_can_change_organization_and_published_workflow_cannot(superuser):
         _request(APIRequestFactory(), "patch", f"/workflows/{draft.id}/", superuser, {"name": "草稿", "description": "新说明", "team": [8]}),
         pk=draft.id,
     )
-    locked = update(
-        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"team": [8]}),
-        pk=published.id,
-    )
-    renamed = update(
-        _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"name": "已发布改名", "description": "只改说明", "team": [7]}),
-        pk=published.id,
-    )
+    trigger = WorkflowTrigger.objects.create(workflow=published, team=[7], name="NATS", trigger_type=WorkflowTrigger.Type.NATS)
+    execution = WorkflowExecution.objects.create(workflow=published, workflow_version=1, team=[7])
+    sync = mocker.patch("apps.workflow.views.sync_workflow_nats_channels")
+    with django_capture_on_commit_callbacks(execute=True):
+        renamed = update(
+            _request(APIRequestFactory(), "patch", f"/workflows/{published.id}/", superuser, {"name": "已发布改名", "description": "新说明", "team": [8]}),
+            pk=published.id,
+        )
 
-    assert moved.status_code == 200
+    assert moved.status_code == renamed.status_code == 200
     draft.refresh_from_db()
-    assert draft.team == [8]
-    assert draft.description == "新说明"
-    assert locked.status_code == 409
-    assert locked.data["detail"] == "已发布流程不可修改组织"
-    assert renamed.status_code == 200
     published.refresh_from_db()
+    trigger.refresh_from_db()
+    assert draft.team == published.team == trigger.team == [8]
     assert published.name == "已发布改名"
-    assert published.description == "只改说明"
-    assert published.team == [7]
-    assert published.has_draft is False
+    assert draft.description == published.description == "新说明"
+    assert published.has_draft is False and published.current_version == 1
+    execution.refresh_from_db()
+    assert execution.team == [7]
+    sync.assert_called_once_with(published.pk)
+    get = WorkflowViewSet.as_view({"get": "retrieve"})
+    request = _request(APIRequestFactory(), "get", "/workflows/", superuser)
+    assert get(request, pk=published.pk).status_code == 404
+    request.COOKIES["current_team"] = "8"
+    assert get(request, pk=published.pk).status_code == 200
+
+
+@pytest.mark.django_db
+def test_team_only_update_checks_name_in_new_organizations(superuser):
+    workflow = Workflow.objects.create(name="每日巡检", team=[7], definition={}, current_version=1)
+    Workflow.objects.create(name=workflow.name, team=[8, 9], definition={})
+    update = WorkflowViewSet.as_view({"patch": "partial_update"})
+
+    response = update(_request(APIRequestFactory(), "patch", f"/workflows/{workflow.id}/", superuser, {"team": [8]}), pk=workflow.id)
+
+    assert response.status_code == 400
+    assert response.data["name"] == ["同一组织下已存在同名流程"]
+    workflow.refresh_from_db()
+    assert workflow.team == [7]
 
 
 @pytest.mark.django_db
@@ -1924,13 +1942,16 @@ def test_artifact_download_rejects_oversized_artifact_before_object_get(superuse
 
 
 @pytest.mark.django_db
-def test_shared_report_link_downloads_without_login_and_rejects_expired_tokens(mocker):
-    from urllib.parse import parse_qs, urlparse
+def test_shared_artifact_link_uses_token_and_keeps_detail_download_private(mocker, client, settings):
+    from urllib.parse import urlsplit
 
-    from rest_framework.permissions import AllowAny
+    from django.urls import include, path
 
     from apps.workflow.services.report_links import build_report_download_link
 
+    # Use the workflow URLConf and the same authentication middleware as the deployed API.
+    settings.ROOT_URLCONF = (path("api/v1/workflow/", include("apps.workflow.urls")),)
+    settings.MIDDLEWARE = ["apps.core.middlewares.auth_middleware.AuthMiddleware"]
     workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     artifact = ExecutionArtifact.objects.create(
@@ -1951,17 +1972,22 @@ def test_shared_report_link_downloads_without_login_and_rejects_expired_tokens(m
     )
     audit = mocker.patch("apps.workflow.views.log_operation")
     link = build_report_download_link(artifact_id=str(artifact.id), execution_id=str(execution.id), team=7)
-    token = parse_qs(urlparse(link).query)["token"][0]
-    shared = ExecutionArtifactViewSet.as_view(
-        {"get": "shared"},
-        permission_classes=[AllowAny],
-        authentication_classes=[],
-    )
 
-    response = shared(APIRequestFactory().get("/artifacts/shared/", {"token": token}))
+    def backend_url(public_url):
+        uri = urlsplit(public_url)
+        assert uri.path == "/api/proxy/workflow/api/artifacts/shared/"
+        return f"{uri.path.replace('/api/proxy/', '/api/v1/', 1)}?{uri.query}"
+
+    response = client.get(backend_url(link))
 
     assert response.status_code == 200
     assert response["X-Content-Type-Options"] == "nosniff"
+    assert b"".join(response.streaming_content) == b"report"
     audit.assert_not_called()
-    expired = shared(APIRequestFactory().get("/artifacts/shared/?token=not-a-token"))
-    assert expired.status_code == 403
+    assert client.get("/api/v1/workflow/api/artifacts/shared/?token=invalid").status_code == 403
+    for wrong_execution, wrong_team in [(str(execution.id), 8), ("other", 7)]:
+        wrong_link = build_report_download_link(artifact_id=str(artifact.id), execution_id=wrong_execution, team=wrong_team)
+        assert client.get(backend_url(wrong_link)).status_code == 403
+    assert client.get(f"/api/v1/workflow/api/artifacts/{artifact.id}/download/").status_code == 401
+    ExecutionArtifact.objects.filter(pk=artifact.pk).update(expires_at=timezone.now())
+    assert client.get(backend_url(link)).status_code == 410

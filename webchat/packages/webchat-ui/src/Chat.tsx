@@ -1,5 +1,7 @@
 'use client';
 
+import { pendingUserChoice } from '@bk-lite/chat-content/userChoiceOptions';
+
 import { ChatContentProvider } from '@bk-lite/chat-content/ui';
 import { applyChatContentEvent, isChatContentEvent, type ChatContentState } from '@bk-lite/chat-content/core';
 import { setContentLocale } from '@bk-lite/chat-content/translation';
@@ -23,6 +25,7 @@ import {
   isSilentCustomEvent,
   normalizeWebChatConfig,
   parseLlmContextUsage,
+  type AnswerFeedbackDetail, type AnswerFeedback,
   type LlmContextUsage,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
@@ -99,6 +102,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     storageScope,
     onStateChange,
     onMessageReceived,
+    onAnswerFeedback,
     onError,
     onClose,
     agui,
@@ -154,6 +158,12 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
+  const handleAnswerFeedback = useCallback(async (messageId: number, feedback: AnswerFeedback, detail?: AnswerFeedbackDetail) => {
+    if (!onAnswerFeedback) return;
+    await onAnswerFeedback(messageId, feedback, detail);
+    setMessages(prev => prev.map(msg => msg.persistedMessageId === messageId
+      ? { ...msg, feedback, feedbackDetail: detail ?? (msg.feedback === feedback ? msg.feedbackDetail : undefined) } : msg));
+  }, [onAnswerFeedback]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -356,6 +366,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       return;
     }
     appliedSessionRef.current = sessionId;
+    void streamLifecycleRef.current?.cancel('session-cleared');
     handleAGUIEvent.cancelPendingText();
     cancelPendingImageBatches();
     streamingContentRef.current = '';
@@ -402,11 +413,21 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       timestamp: Date.now(),
       metadata: legacy.metadata,
     };
+    if (onAnswerFeedback) currentMessageIdRef.current = botMsg.id;
     addMessage(botMsg);
   };
 
   const applyCustomEvent = (event: CustomProtocolEvent) => {
     onCustomEvent?.(event);
+    if (event.name === 'assistant_message_saved') {
+      const value = event.value;
+      const id = value && typeof value === 'object' && 'message_id' in value ? value.message_id : null;
+      const localId = currentMessageIdRef.current;
+      if (localId && typeof id === 'number' && Number.isSafeInteger(id) && id > 0) {
+        setMessages(prev => prev.map(msg => msg.id === localId ? { ...msg, persistedMessageId: id, feedback: null } : msg));
+      }
+      return;
+    }
     if (event.name === 'planned_execution_step' && event.value && typeof event.value === 'object') {
       plannedStateRef.current = applyPlannedExecutionStep(
         plannedStateRef.current,
@@ -722,10 +743,17 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     }
   }, [queueImageFiles, reportImageError, t]);
 
+  const lastMessage = messages[messages.length - 1];
+  const pendingChoice = lastMessage?.sender === 'bot'
+    ? pendingUserChoice((lastMessage.metadata as ChatContentState | undefined)?.userChoiceRequests)
+    : undefined;
+  const canAnswerChoice = Boolean(sseUrl && !historyLoading && !isLoading &&
+    !documentChips.some(item => item.status && item.status !== 'ready'));
+
   // Send message. 第二个参数要么是待分发文件 id，要么是选择卡点击。
   const handleSendMessage = useCallback(async (
     value: string,
-    extra?: number[] | { choiceId?: string; optionKey?: string; replayMessage?: Message },
+    extra?: number[] | { choiceId?: string; optionKey?: string; selectedKeys?: string[]; replayMessage?: Message },
   ) => {
     const distributeFileIds = Array.isArray(extra) ? extra : [];
     const choice = !extra || Array.isArray(extra) ? undefined : extra;
@@ -735,7 +763,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     const activeDocuments = replay ? replayAttachments : documentChips;
     const activeImages = replay ? [] : uploadedImages;
     const hasDraft = Boolean(replayImages.length || value.trim() || activeImages.length || activeDocuments.length || distributeFileIds.length);
-    if (!hasDraft || isLoading) return;
+    if (!hasDraft || isLoading || historyLoading) return;
+    if (choice?.choiceId && choice.choiceId !== pendingChoice?.choice_id) return;
     if (!distributeFileIds.length && activeDocuments.some((item) => item.status && item.status !== 'ready')) return;
     plannedStateRef.current = createPlannedExecutionState();
 
@@ -773,19 +802,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         : {}),
     };
 
-    addMessage(userMsg);
-    if (hitlEvent?.name === 'user_choice_request' && hitlEvent.value && typeof hitlEvent.value === 'object') {
-      const choiceId = (hitlEvent.value as { choice_id?: string }).choice_id;
-      setMessages(prev => prev.map(message => {
-        const cards = (message.metadata as ChatContentState | undefined)?.userChoiceRequests;
-        if (!cards?.some(card => card.choice_id === choiceId)) return message;
-        return { ...message, metadata: { ...message.metadata, userChoiceRequests: cards.map(card => {
-          if (card.choice_id !== choiceId || card.status === 'submitted') return card;
-          const matched = card.options.find(option => option.label === value.trim() || option.key === value.trim());
-          return { ...card, status: 'submitted', selected: matched ? [matched.key] : [value.trim()] };
-        }) } };
-      }));
-    }
+    const answeringChoice = sseUrl && !replay ? pendingChoice : undefined;
+    if (!answeringChoice) addMessage(userMsg);
     if (!replay) setInputValue('');
     setHitlEvent(null);
     if (!replay) cancelPendingImageBatches();
@@ -839,12 +857,14 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
         };
+        delete requestBody.reply_to_choice_id;
         if (choice?.choiceId) {
           requestBody.choice_id = choice.choiceId;
           requestBody.choice_option = choice.optionKey || '';
         } else {
           delete requestBody.choice_id;
           delete requestBody.choice_option;
+          requestBody.reply_to_choice_id = answeringChoice?.choice_id || '';
         }
         if (!replay) setDocumentChips([]);
         setMessages(prev => prev.map(item => item.id === userMsg.id ? { ...item, content: value.trim(), metadata: { ...item.metadata, attachments: attachmentMetadata(readyAttachments) } } : item));
@@ -866,17 +886,33 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         const decoder = new TextDecoder();
         const sseParser = new SSEStreamParser();
         let streamTerminal = false;
+        let answerSent = false;
         await runOwnedStream({
           lifecycle: streamLifecycle,
           stream,
-          request: (signal) =>
-            fetch(sseUrl, {
-              method: 'POST',
-              headers,
-              credentials: credentials ?? 'same-origin',
-              body: JSON.stringify(requestBody),
-              ...(signal ? { signal } : {}),
-            }),
+          request: (signal) => fetch(sseUrl, {
+            method: 'POST',
+            headers,
+            credentials: credentials ?? 'same-origin',
+            body: JSON.stringify(requestBody),
+            ...(signal ? { signal } : {}),
+          }),
+          onAccepted: () => {
+            if (onAnswerFeedback) currentMessageIdRef.current = null;
+            if (!answeringChoice) return;
+            answerSent = true;
+            const selected = choice?.selectedKeys || (choice?.optionKey ? [choice.optionKey] : []);
+            if (selected.length) {
+              setMessages(prev => prev.map(item => {
+                if (item.id !== lastMessage.id) return item;
+                const cards = (item.metadata as ChatContentState | undefined)?.userChoiceRequests;
+                const updated = cards?.map(card => card.choice_id === answeringChoice.choice_id
+                  ? { ...card, status: 'submitted', selected } : card);
+                return { ...item, metadata: { ...item.metadata, userChoiceRequests: updated } };
+              }));
+            }
+            addMessage({ ...userMsg, metadata: { ...userMsg.metadata, attachments: attachmentMetadata(readyAttachments) } });
+          },
           onChunk: (chunk) => {
             const text = decoder.decode(chunk, { stream: true });
             for (const data of sseParser.push(text)) {
@@ -904,6 +940,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           onError: (error) => {
             handleAGUIEvent.flushPendingText();
             streamTerminal = true;
+            if (answeringChoice && !answerSent) {
+              reportImageError(error);
+              return;
+            }
             handleAGUIEvent({ type: 'RUN_ERROR', message: t('chat.connectionError', '连接中断，回答可能不完整，请重试') } as AGUIEvent);
             console.error('Error reading stream:', error);
             onError?.(error);
@@ -955,7 +995,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     collectContext,
     documentChips,
     reportImageError,
-    hitlEvent,
+    pendingChoice,
+    lastMessage,
+    onAnswerFeedback,
+    historyLoading,
     t,
   ]);
 
@@ -1065,14 +1108,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     }));
     setHitlEvent(null);
   };
-  const handleChoiceDecision = (id: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
-    setMessages(prev => prev.map(item => {
-      const cards = (item.metadata as ChatContentState | undefined)?.userChoiceRequests;
-      if (!cards?.some(request => request.choice_id === id)) return item;
-      return { ...item, metadata: { ...item.metadata, userChoiceRequests: cards.map(request => request.choice_id === id ? { ...request, status, selected } : request) } };
-    }));
-  };
-
   const contentRequest = useCallback(async <T,>(path: string, body?: unknown): Promise<T> => {
     const endpoints = chatAttachmentEndpoints(sseUrl || '');
     const prefix = endpoints?.upload.replace(/\/skill_channel\/chat_attachment\/upload\/$/, '');
@@ -1197,15 +1232,17 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
               <MessageBubble
                 key={msg.id}
                 message={msg}
+                onFeedback={onAnswerFeedback && handleAnswerFeedback}
                 isLastBotMessage={isPartOfLastQA}
                 fillWidth={wideLayout || panelFullscreen}
                 contentReadOnly={!hitlEvent || msg.id !== currentMessageIdRef.current}
                 onApproval={handleApprovalDecision}
-                onChoice={handleChoiceDecision}
+                activeChoiceId={msg === lastMessage && canAnswerChoice ? pendingChoice?.choice_id ?? null : null}
                 onSendMessage={handleSendMessage}
                 onRegenerate={handleRegenerate}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
+                showWikiMaterialWrites={Boolean(platform)}
                 loadAttachment={sseUrl ? async (id) => {
                   const endpoints = chatAttachmentEndpoints(sseUrl);
                   if (!endpoints) throw new Error('缺少附件下载地址');

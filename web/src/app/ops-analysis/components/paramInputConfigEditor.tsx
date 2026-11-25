@@ -57,8 +57,8 @@ import {
 } from '@/app/ops-analysis/utils/conditionFieldSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
+  classifyOptionSource,
   extractDataSourceItems,
-  resolveDynamicSourceId,
 } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { useDebouncedOptionsQueryValues } from '@/app/ops-analysis/hooks/useDebouncedOptionsQueryValues';
 import { isOptionsQueryTextEmpty } from '@/app/ops-analysis/utils/optionsQueryTextDebounce';
@@ -448,7 +448,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   onCreateDataVariable,
 }) => {
   const { t } = useTranslation();
-  const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
+  const { getDataSourceList, getSourceDataByApiId, resolveOptionSource } = useDataSourceApi();
   const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
   const [dataVariableId, setDataVariableId] = useState<string | undefined>();
@@ -476,6 +476,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
   const [dsLoading, setDsLoading] = useState(false);
   const [dynamicSourceId, setDynamicSourceId] = useState<number | undefined>();
+  const [legacyIssue, setLegacyIssue] = useState<'ambiguous' | 'missing' | 'forbidden' | 'unavailable' | null>(null);
   const [dynamicValueField, setDynamicValueField] = useState<string | undefined>();
   const [dynamicLabelField, setDynamicLabelField] = useState<string | undefined>();
   const [dynamicPreview, setDynamicPreview] = useState<Record<string, unknown>[]>([]);
@@ -529,26 +530,10 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       const valueField = dynamic?.valueField;
       const labelField = dynamic?.labelField;
       const queryParams = dynamic?.queryParams;
-      if (sourceRef && valueField && labelField) {
-        setSourceType('dynamic');
-        setExternalSourceRef(sourceRef);
-        setDynamicSourceId(undefined);
-        setDynamicValueField(valueField);
-        setDynamicLabelField(labelField);
-        setQueryParamRows(Object.entries(queryParams ?? {}).map(([name, raw]) => queryRowFromStored(name, raw)));
-        setDynamicPreview([]);
-        setPreviewFieldKeys([]);
-        setConditionRows([emptyConditionRow()]);
-        form.setFieldsValue({
-          dynamicSourceId: undefined,
-          dynamicValueField: valueField,
-          dynamicLabelField: labelField,
-        });
-        return;
-      }
       if (dynamic?.sourceId && valueField && labelField) {
         setSourceType('dynamic');
         setExternalSourceRef(undefined);
+        setLegacyIssue(null);
         setDynamicSourceId(dynamic.sourceId);
         setDynamicValueField(valueField);
         setDynamicLabelField(labelField);
@@ -558,6 +543,24 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         setConditionRows([emptyConditionRow()]);
         form.setFieldsValue({
           dynamicSourceId: dynamic.sourceId,
+          dynamicValueField: valueField,
+          dynamicLabelField: labelField,
+        });
+        return;
+      }
+      if (sourceRef && valueField && labelField) {
+        setSourceType('dynamic');
+        setExternalSourceRef(sourceRef);
+        setLegacyIssue(null);
+        setDynamicSourceId(undefined);
+        setDynamicValueField(valueField);
+        setDynamicLabelField(labelField);
+        setQueryParamRows(Object.entries(queryParams ?? {}).map(([name, raw]) => queryRowFromStored(name, raw)));
+        setDynamicPreview([]);
+        setPreviewFieldKeys([]);
+        setConditionRows([emptyConditionRow()]);
+        form.setFieldsValue({
+          dynamicSourceId: undefined,
           dynamicValueField: valueField,
           dynamicLabelField: labelField,
         });
@@ -612,9 +615,10 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       return;
     }
 
-    const initialSourceId = value.optionsSource.sourceRef
-      ? undefined
-      : value.optionsSource.sourceId;
+    const initialSourceId = typeof value.optionsSource.sourceId === 'number'
+      ? value.optionsSource.sourceId
+      : undefined;
+    setLegacyIssue(null);
     setSourceType('dynamic');
     setDynamicSourceId(initialSourceId);
     setDynamicValueField(value.optionsSource.valueField);
@@ -740,43 +744,156 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       return;
     }
 
-    const resolvedSourceId = resolveDynamicSourceId(
-      value.optionsSource,
-      dataSourceList,
-    );
-    if (resolvedSourceId) {
-      setDynamicSourceId(resolvedSourceId);
-      form.setFieldValue('dynamicSourceId', resolvedSourceId);
+    let cancelled = false;
+    const apply = (classified: { status: string; id?: number }) => {
+      if (cancelled) return;
+      if (classified.status === 'resolved' && typeof classified.id === 'number') {
+        setDynamicSourceId(classified.id);
+        form.setFieldValue('dynamicSourceId', classified.id);
+        setLegacyIssue(null);
+        return;
+      }
+      if (classified.status === 'unavailable') {
+        setLegacyIssue('unavailable');
+        return;
+      }
+      setLegacyIssue(
+        classified.status === 'missing'
+          ? 'missing'
+          : classified.status === 'forbidden'
+            ? 'forbidden'
+            : 'ambiguous',
+      );
+    };
+    const source = value.optionsSource;
+    // 数字 sourceId 只由解析结果决定。本地目录把任意数字都当成已解析，会把缺失/无权提示清掉。
+    if (typeof source.sourceId === 'number') return undefined;
+    if (resolveOptionSource) {
+      resolveOptionSource({
+        builtinKey: source.builtinKey,
+        sourceRef: source.sourceRef.value,
+      }).then((result) => {
+        if (result?.status === 'resolved' && typeof result.id === 'number') {
+          apply({ status: 'resolved', id: result.id });
+          return;
+        }
+        if (result?.status === 'ambiguous' || result?.status === 'missing' || result?.status === 'forbidden') {
+          apply({ status: result.status });
+          return;
+        }
+        apply({ status: 'unavailable' });
+      }).catch(() => {
+        apply({ status: 'unavailable' });
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [control, dataSourceList, dynamicSourceId, form, open, sourceType, value]);
+    apply(classifyOptionSource(source, dataSourceList));
+    return undefined;
+  }, [control, dataSourceList, dynamicSourceId, form, open, resolveOptionSource, sourceType, value]);
 
   useEffect(() => {
     if (!open || sourceType !== 'dynamic' || dynamicSourceId || !externalSourceRef || dataSourceList.length === 0) {
       return;
     }
-    const resolvedSourceId = resolveDynamicSourceId(
-      {
-        type: 'dynamic',
-        sourceRef: externalSourceRef,
-        valueField: dynamicValueField || 'value',
-        labelField: dynamicLabelField || 'label',
-      },
-      dataSourceList,
-    );
-    if (resolvedSourceId) {
-      setDynamicSourceId(resolvedSourceId);
-      form.setFieldValue('dynamicSourceId', resolvedSourceId);
+    let cancelled = false;
+    const apply = (classified: { status: string; id?: number }) => {
+      if (cancelled) return;
+      if (classified.status === 'resolved' && typeof classified.id === 'number') {
+        setDynamicSourceId(classified.id);
+        setLegacyIssue(null);
+        form.setFieldValue('dynamicSourceId', classified.id);
+        return;
+      }
+      if (classified.status === 'unavailable') {
+        setLegacyIssue('unavailable');
+        return;
+      }
+      setLegacyIssue(
+        classified.status === 'missing'
+          ? 'missing'
+          : classified.status === 'forbidden'
+            ? 'forbidden'
+            : 'ambiguous',
+      );
+    };
+    if (resolveOptionSource) {
+      resolveOptionSource({ sourceRef: externalSourceRef.value }).then((result) => {
+        if (result?.status === 'resolved' && typeof result.id === 'number') {
+          apply({ status: 'resolved', id: result.id });
+          return;
+        }
+        if (result?.status === 'ambiguous' || result?.status === 'missing' || result?.status === 'forbidden') {
+          apply({ status: result.status });
+          return;
+        }
+        apply({ status: 'unavailable' });
+      }).catch(() => {
+        apply({ status: 'unavailable' });
+      });
+      return () => {
+        cancelled = true;
+      };
     }
+    apply(classifyOptionSource({ sourceRef: externalSourceRef }, dataSourceList));
+    return undefined;
   }, [
     dataSourceList,
-    dynamicLabelField,
     dynamicSourceId,
-    dynamicValueField,
     externalSourceRef,
     form,
     open,
+    resolveOptionSource,
     sourceType,
   ]);
+
+  useEffect(() => {
+    if (
+      !open
+      || !resolveOptionSource
+      || !value
+      || value.control === 'input'
+      || value.control === 'organization'
+      || value.control === 'conditionFilter'
+      || value.control === 'dataVariable'
+      || value.optionsSource.type !== 'dynamic'
+    ) {
+      return;
+    }
+    const optionsSource = value.optionsSource;
+    const sourceId = optionsSource.sourceId;
+    if (typeof sourceId !== 'number') return;
+    let cancelled = false;
+    resolveOptionSource({
+      sourceId,
+      builtinKey: optionsSource.builtinKey,
+      sourceRef: optionsSource.sourceRef?.value,
+    }).then((result) => {
+      if (cancelled) return;
+      if (result?.status === 'resolved' && typeof result.id === 'number') {
+        if (result.id !== sourceId) {
+          setDynamicSourceId(result.id);
+          form.setFieldValue('dynamicSourceId', result.id);
+          setLegacyIssue(null);
+        }
+        return;
+      }
+      if (result?.status !== 'forbidden' && result?.status !== 'missing' && result?.status !== 'ambiguous') {
+        setLegacyIssue('unavailable');
+        return;
+      }
+      setDynamicSourceId(undefined);
+      form.setFieldValue('dynamicSourceId', undefined);
+      setLegacyIssue(result.status === 'missing' ? 'missing' : result.status === 'forbidden' ? 'forbidden' : 'ambiguous');
+    }).catch(() => {
+      if (cancelled) return;
+      setLegacyIssue('unavailable');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, open, resolveOptionSource, value]);
 
   const fetchDynamicPreview = useCallback((sourceId: number, params: Record<string, unknown> = {}) => {
     const requestId = ++previewRequestIdRef.current;
@@ -1066,9 +1183,14 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     const selectedSource = dataSourceList.find(
       (item) => item.id === dynamicValues.dynamicSourceId,
     );
-    const sourceRef = selectedSource?.rest_api
-      ? { type: 'rest_api' as const, value: selectedSource.rest_api }
-      : undefined;
+    const sourceBinding = {
+      sourceId: dynamicValues.dynamicSourceId,
+      ...(selectedSource?.build_in_key ? { builtinKey: selectedSource.build_in_key } : {}),
+      sourceSnapshot: {
+        name: selectedSource?.name || '',
+        restApi: selectedSource?.rest_api || '',
+      },
+    };
     if (queryParamRows.some((row) => row.name.trim() && row.mode === 'ref' && !row.refName.trim())) {
       message.error(t('paramInput.dynamic.refRequired'));
       return;
@@ -1151,9 +1273,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
     const optionsSource: DynamicOptionsSource = {
       type: 'dynamic',
-      ...(sourceRef
-        ? { sourceRef }
-        : { sourceId: dynamicValues.dynamicSourceId }),
+      ...sourceBinding,
       valueField: dynamicValues.dynamicValueField,
       labelField: dynamicValues.dynamicLabelField,
       ...(storedParams.queryParams ? { queryParams: storedParams.queryParams } : {}),
@@ -1164,9 +1284,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         control: 'conditionFilter',
         fields: {
           kind: 'dynamic',
-          ...(optionsSource.sourceRef
-            ? { sourceRef: optionsSource.sourceRef }
-            : { sourceId: optionsSource.sourceId }),
+          sourceId: sourceBinding.sourceId,
+          ...(sourceBinding.builtinKey ? { builtinKey: sourceBinding.builtinKey } : {}),
+          sourceSnapshot: sourceBinding.sourceSnapshot,
           valueField: optionsSource.valueField,
           labelField: optionsSource.labelField,
           ...(optionsSource.queryParams ? { queryParams: optionsSource.queryParams } : {}),
@@ -1673,6 +1793,15 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                   name="dynamicSourceId"
                   label={t('paramInput.dynamic.source')}
                   className={fieldClass}
+                  extra={legacyIssue === 'ambiguous'
+                    ? t('paramInput.dynamic.optionSourceLegacyAmbiguous')
+                    : legacyIssue === 'missing'
+                      ? t('paramInput.dynamic.optionSourceMissing')
+                      : legacyIssue === 'forbidden'
+                        ? t('paramInput.dynamic.optionSourceForbidden')
+                        : legacyIssue === 'unavailable'
+                          ? t('paramInput.dynamic.optionSourceUnavailable')
+                          : undefined}
                   rules={[
                     {
                       required: true,
@@ -1695,6 +1824,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       }))}
                       onChange={(sourceId) => {
                         previewRequestIdRef.current += 1;
+                        setLegacyIssue(null);
                         setDynamicSourceId(sourceId);
                         setDynamicValueField(undefined);
                         setDynamicLabelField(undefined);

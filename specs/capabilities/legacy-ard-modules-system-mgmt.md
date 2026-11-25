@@ -59,7 +59,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 > 证据来源：server/apps/system_mgmt/nats/credentials.py、server/apps/rpc/system_mgmt.py、server/apps/system_mgmt/services/credential_ref_count.py、server/apps/system_mgmt/services/credential_refresh.py、server/apps/system_mgmt/models/credential.py、server/apps/monitor/nats/monitor.py　|　【已实现：列表/创建/解析/描述/版本/询问/拦截/监控引用计数/监控改密通知】
 
 ## 5. 通知渠道【已实现/已存在】
-`models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
+`models/channel.py` 的 `ChannelChoices` 定义 9 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）、`sms`（短信）、`voice`（语音）。邮件、机器人和 Webhook 的发送实现见 `utils/channel_utils.py`。短信和语音按渠道上保存的已审核模板调用腾讯云或阿里云，实现见 `services/cloud_notify/`。BK 用户对接 `utils/bk_user_utils.py`。
 
 IM 应用通知、群聊小助手、智能机器人和事故建群选用的平台用户与外部 IM 身份对应，是独立的账号关联，不再写在渠道上。规则见 `specs/capabilities/im-account-association.md`。
 
@@ -85,7 +85,7 @@ IM 应用通知、群聊小助手、智能机器人和事故建群选用的平�
 
 ## 8. 证据来源
 - 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py`（ChannelChoices 9 类，含 `sms`、`voice`）、`models/role.py`、`models/group_data_rule.py`、`models/credential.py:7-32`。
 - 认证/权限：`server/apps/system_mgmt/nats_api.py:1-109`（兼容导出层）、`nats/auth.py:5-118`、`nats/login.py:5-220`、`nats/otp.py:5-186`、`nats/settings.py:21-79`、`nats/wechat.py:6-48`、`nats/credentials.py:59-138`；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。

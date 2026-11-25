@@ -4,17 +4,16 @@ import requests
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from rest_framework.decorators import action
 
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import node_logger as logger
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import PackageVersion, SidecarEnv
 from apps.node_mgmt.serializers.installer import InstallerArtifactQuerySerializer
+from apps.node_mgmt.services.bulk_install import BulkInstallService
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
@@ -421,7 +420,13 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             - 下载地址包含临时 token，防止未授权下载
 
         Usage:
-            if [ "$(id -u)" -eq 0 ]; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash; elif command -v sudo >/dev/null 2>&1; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash; else echo "Error: root or sudo is required"; fi
+            if [ "$(id -u)" -eq 0 ]; then
+                curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash
+            elif command -v sudo >/dev/null 2>&1; then
+                curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash
+            else
+                echo "Error: root or sudo is required"
+            fi
             iwr http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx -useb | iex
 
         示例:
@@ -547,7 +552,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 "zone_id": "1"
             }
         """
-        token = request.headers.get("X-Installation-Token") or request.query_params.get("token")
+        token = request.query_params.get("token")
         if not token:
             raise BaseAppException("Missing token parameter")
 
@@ -572,7 +577,6 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         config["remaining_usage"] = consumed_token_data["remaining_usage"]
 
         response = JsonResponse(config)
-        response["Cache-Control"] = "no-store"
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
         return response
 
@@ -660,3 +664,42 @@ exit "$installer_status"
 """
 
         return HttpResponse(script.encode("utf-8"), content_type="text/plain; charset=utf-8")
+
+    @action(detail=False, methods=["GET"], url_path="installer/bulk_bootstrap")
+    def bulk_bootstrap(self, request):
+        token = request.query_params.get("token")
+        if not token:
+            return HttpResponse("批量命令不存在\n", status=400, content_type="text/plain; charset=utf-8")
+        try:
+            script = BulkInstallService.render_bootstrap(token)
+        except ValidationAppException as exc:
+            return HttpResponse(f"{exc.message}\n", status=400, content_type="text/plain; charset=utf-8")
+        return HttpResponse(script.encode("utf-8"), content_type="text/plain; charset=utf-8")
+
+    @action(detail=False, methods=["POST"], url_path="installer/bulk_enroll")
+    def bulk_enroll(self, request):
+        outcome = BulkInstallService.enroll(
+            token=str(request.data.get("token") or ""),
+            node_ip=str(request.data.get("node_ip") or ""),
+            hostname=str(request.data.get("hostname") or ""),
+            cpu_architecture=str(request.data.get("cpu_architecture") or ""),
+        )
+        if not outcome.accepted:
+            return HttpResponse(f"{outcome.message}\n", status=400, content_type="text/plain; charset=utf-8")
+        return HttpResponse(
+            f"{outcome.install_token}\n{outcome.node_id}\n",
+            content_type="text/plain; charset=utf-8",
+        )
+
+    @action(detail=False, methods=["POST"], url_path="installer/bulk_result")
+    def bulk_result(self, request):
+        outcome = BulkInstallService.report(
+            token=str(request.data.get("token") or ""),
+            node_id=str(request.data.get("node_id") or ""),
+            outcome=str(request.data.get("outcome") or ""),
+            stage=request.data.get("stage"),
+            exit_code=request.data.get("exit_code"),
+        )
+        if not outcome.accepted:
+            return HttpResponse(f"{outcome.message}\n", status=400, content_type="text/plain; charset=utf-8")
+        return HttpResponse("OK\n", content_type="text/plain; charset=utf-8")

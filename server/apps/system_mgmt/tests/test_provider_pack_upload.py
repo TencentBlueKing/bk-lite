@@ -3,6 +3,7 @@ import logging
 import sys
 import zipfile
 from pathlib import Path
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -18,10 +19,8 @@ MAX_PACK_BYTES = 10 * 1024 * 1024
 
 def _enterprise_upload_available():
     try:
+        from apps.system_mgmt.enterprise.viewset.provider_pack_viewset import ProviderPackViewSet  # noqa: F401
         from apps.system_mgmt.models import UploadedProviderPack  # noqa: F401
-        from apps.system_mgmt.enterprise.viewset.provider_pack_viewset import (  # noqa: F401
-            ProviderPackViewSet,
-        )
     except ImportError:
         return False
     return True
@@ -123,11 +122,7 @@ def _zip_bytes(files: dict[str, str], *, extra_bytes: bytes | None = None) -> by
 
 def _auth_client(user, *, is_superuser: bool, permissions: set[str] | None = None) -> APIClient:
     user.is_superuser = is_superuser
-    user.permission = {
-        "system-manager": set(permissions)
-        if permissions is not None
-        else {"integration_center-Add", "integration_center-View"}
-    }
+    user.permission = {"system-manager": set(permissions) if permissions is not None else {"integration_center-Add", "integration_center-View"}}
     user.save(update_fields=["is_superuser"])
     client = APIClient()
     client.force_authenticate(user=user)
@@ -181,9 +176,7 @@ def test_community_provider_pack_migration_exists_without_upload_route():
 
 @requires_enterprise_upload
 @pytest.mark.django_db
-def test_superuser_upload_new_key_is_listed_and_can_create_instance(
-    authenticated_user, tmp_path
-):
+def test_superuser_upload_new_key_is_listed_and_can_create_instance(authenticated_user, tmp_path):
     from apps.system_mgmt.models import UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
@@ -294,9 +287,7 @@ def test_builtin_key_upload_is_rejected(authenticated_user, tmp_path):
 
 @requires_enterprise_upload
 @pytest.mark.django_db
-def test_existing_uploaded_key_returns_409_without_replace(
-    authenticated_user, tmp_path
-):
+def test_existing_uploaded_key_returns_409_without_replace(authenticated_user, tmp_path):
     from apps.system_mgmt.models import UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
@@ -352,8 +343,8 @@ def test_oversized_zip_is_rejected(authenticated_user, tmp_path):
 @requires_enterprise_upload
 @pytest.mark.django_db
 def test_trial_load_failure_does_not_persist(authenticated_user, tmp_path, caplog):
-    from apps.system_mgmt.models import UploadedProviderPack
     from apps.system_mgmt.enterprise.provider_pack_archive import uploaded_pack_import_name
+    from apps.system_mgmt.models import UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
     files = _minimal_pack_files("broken")
@@ -374,11 +365,7 @@ def test_trial_load_failure_does_not_persist(authenticated_user, tmp_path, caplo
         if name.startswith("bk_lite_uploaded_provider_staging_") or name == uploaded_pack_import_name("broken", 1)
     ]
     assert leftover == []
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_upload_failed" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_upload_failed" in record.msg]
     assert len(records) == 1
     record = records[0]
     assert record.msg == "event=provider_pack_upload_failed pack_key=%s failed_stage=%s error_type=%s"
@@ -445,10 +432,7 @@ def test_failed_pack_retry_waits_for_sync_ttl(authenticated_user, monkeypatch):
     from apps.system_mgmt.enterprise import provider_pack_archive, provider_pack_sync
 
     client = _auth_client(authenticated_user, is_superuser=True)
-    assert (
-        client.post(UPLOAD_URL, {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme")))}, format="multipart").status_code
-        == 201
-    )
+    assert client.post(UPLOAD_URL, {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme")))}, format="multipart").status_code == 201
     _corrupt_uploaded_pack_archive("acme")
     provider_registry.list()
     assert "acme" in provider_pack_sync.get_uploaded_pack_load_failures()
@@ -481,9 +465,10 @@ def test_list_provider_packs_does_not_select_archive(authenticated_user):
 @requires_enterprise_upload
 @pytest.mark.django_db
 def test_sync_snapshot_query_selects_only_key_and_pack_revision(authenticated_user):
-    from apps.system_mgmt.enterprise import provider_pack_sync
     from django.db import connection
     from django.test.utils import CaptureQueriesContext
+
+    from apps.system_mgmt.enterprise import provider_pack_sync
 
     client = _auth_client(authenticated_user, is_superuser=True)
     assert client.post(UPLOAD_URL, {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme")))}, format="multipart").status_code == 201
@@ -503,9 +488,10 @@ def test_sync_snapshot_query_selects_only_key_and_pack_revision(authenticated_us
 @requires_enterprise_upload
 @pytest.mark.django_db
 def test_sync_cache_hit_does_not_read_archive(authenticated_user, monkeypatch):
-    from apps.system_mgmt.enterprise import provider_pack_archive, provider_pack_sync
     from django.db import connection
     from django.test.utils import CaptureQueriesContext
+
+    from apps.system_mgmt.enterprise import provider_pack_archive, provider_pack_sync
 
     client = _auth_client(authenticated_user, is_superuser=True)
     assert client.post(UPLOAD_URL, {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme")))}, format="multipart").status_code == 201
@@ -565,11 +551,7 @@ def test_sync_failure_keeps_builtin_providers(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger="system-manager"):
         keys = {manifest.key for manifest in provider_registry.list()}
 
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_sync_skipped" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_sync_skipped" in record.msg]
     assert len(records) == 1
     record = records[0]
     assert record.levelno == logging.WARNING
@@ -595,11 +577,7 @@ def test_upload_audit_log_omits_archive(authenticated_user, tmp_path, caplog):
         response = client.post(UPLOAD_URL, {"file": io.BytesIO(padded)}, format="multipart")
 
     assert response.status_code == 201
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_uploaded" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_uploaded" in record.msg]
     assert len(records) == 1
     record = records[0]
     assert record.msg == "event=provider_pack_uploaded pack_key=%s pack_revision=%s"
@@ -608,6 +586,7 @@ def test_upload_audit_log_omits_archive(authenticated_user, tmp_path, caplog):
     logs = OperationLog.objects.filter(action_type="create", summary__contains="acmelog")
     assert logs.exists()
     for record in logs:
+        assert record.outcome == "success"
         assert sentinel not in str(record.summary).encode()
         assert "archive" not in (record.detail or {})
     assert sentinel not in caplog.text.encode()
@@ -711,10 +690,7 @@ def test_replace_true_overwrites_pack_and_resets_matching_instances(authenticate
     assert instance.config == kept_config
     assert instance.status == IntegrationInstanceStatusChoices.PENDING_VERIFICATION
     assert instance.capability_status.get("login_auth") != IntegrationInstanceStatusChoices.READY
-    assert all(
-        value == IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-        for value in instance.capability_status.values()
-    )
+    assert all(value == IntegrationInstanceStatusChoices.PENDING_VERIFICATION for value in instance.capability_status.values())
     assert LoginAuthBinding.objects.filter(pk=binding.pk).exists()
     assert wecom.status == IntegrationInstanceStatusChoices.READY
     assert wecom.capability_status == {"login_auth": IntegrationInstanceStatusChoices.READY}
@@ -729,17 +705,17 @@ def test_replace_true_overwrites_pack_and_resets_matching_instances(authenticate
 @requires_enterprise_upload
 @pytest.mark.django_db
 def test_replace_trial_load_failure_keeps_old_pack_and_instances(authenticated_user, tmp_path, caplog):
-    from apps.system_mgmt.models import (
-        IntegrationInstanceStatusChoices,
-        UploadedProviderPack,
-    )
+    from apps.system_mgmt.models import IntegrationInstanceStatusChoices, UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
-    assert client.post(
-        UPLOAD_URL,
-        {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
-        format="multipart",
-    ).status_code == 201
+    assert (
+        client.post(
+            UPLOAD_URL,
+            {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
+            format="multipart",
+        ).status_code
+        == 201
+    )
     instance = IntegrationInstance.objects.create(
         name="acme-prod",
         provider_key="acme",
@@ -769,11 +745,7 @@ def test_replace_trial_load_failure_keeps_old_pack_and_instances(authenticated_u
     assert instance.status == IntegrationInstanceStatusChoices.READY
     assert instance.config == {"keep": "yes"}
     assert not (cache_root / "acme" / "2").exists() or not any((cache_root / "acme" / "2").rglob("*"))
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_upload_failed" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_upload_failed" in record.msg]
     assert len(records) == 1
     assert records[0].args == ("acme", "trial_load", "RuntimeError")
     formatted = logging.Formatter().format(records[0])
@@ -785,11 +757,14 @@ def test_replace_trial_load_failure_keeps_old_pack_and_instances(authenticated_u
 def test_replace_success_drops_previous_revision_cache(authenticated_user, tmp_path):
     client = _auth_client(authenticated_user, is_superuser=True)
     cache_root = Path(tmp_path / "provider-pack-cache")
-    assert client.post(
-        UPLOAD_URL,
-        {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
-        format="multipart",
-    ).status_code == 201
+    assert (
+        client.post(
+            UPLOAD_URL,
+            {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
+            format="multipart",
+        ).status_code
+        == 201
+    )
     assert (cache_root / "acme" / "1").exists()
 
     replaced = client.post(
@@ -800,31 +775,32 @@ def test_replace_success_drops_previous_revision_cache(authenticated_user, tmp_p
     assert replaced.status_code == 200
     assert _connection_summary("acme") == "v2"
     assert not (cache_root / "acme" / "1").exists()
-    assert (cache_root / "acme" / "2" / "__init__.py").is_file() or (
-        cache_root / "acme" / "2" / "acme" / "__init__.py"
-    ).is_file()
+    assert (cache_root / "acme" / "2" / "__init__.py").is_file() or (cache_root / "acme" / "2" / "acme" / "__init__.py").is_file()
 
 
 @requires_enterprise_upload
 @pytest.mark.django_db
 def test_stale_replace_loser_returns_409_without_second_reset(authenticated_user, monkeypatch):
     from apps.system_mgmt.enterprise.viewset import provider_pack_viewset
-    from apps.system_mgmt.models import (
-        IntegrationInstanceStatusChoices,
-        UploadedProviderPack,
-    )
+    from apps.system_mgmt.models import IntegrationInstanceStatusChoices, UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
-    assert client.post(
-        UPLOAD_URL,
-        {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
-        format="multipart",
-    ).status_code == 201
-    assert client.post(
-        UPLOAD_URL,
-        {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v2"))), "replace": "true"},
-        format="multipart",
-    ).status_code == 200
+    assert (
+        client.post(
+            UPLOAD_URL,
+            {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v1")))},
+            format="multipart",
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            UPLOAD_URL,
+            {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme", marker="v2"))), "replace": "true"},
+            format="multipart",
+        ).status_code
+        == 200
+    )
     instance = IntegrationInstance.objects.create(
         name="acme-prod",
         provider_key="acme",
@@ -896,9 +872,7 @@ def test_uninstall_rejected_when_instances_exist(authenticated_user):
 
 @requires_enterprise_upload
 @pytest.mark.django_db
-def test_uninstall_without_instances_removes_pack_from_list_and_create_candidates(
-    authenticated_user, tmp_path, caplog
-):
+def test_uninstall_without_instances_removes_pack_from_list_and_create_candidates(authenticated_user, tmp_path, caplog):
     from apps.system_mgmt.models import UploadedProviderPack
 
     client = _auth_client(authenticated_user, is_superuser=True)
@@ -909,14 +883,12 @@ def test_uninstall_without_instances_removes_pack_from_list_and_create_candidate
         response = client.delete(_pack_url("acme"))
 
     assert response.status_code == 200
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_uninstalled" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_uninstalled" in record.msg]
     assert len(records) == 1
     assert records[0].msg == "event=provider_pack_uninstalled pack_key=%s pack_revision=%s"
     assert records[0].args == ("acme", 1)
+    uninstall_log = OperationLog.objects.get(action_type="delete", target_type="provider_pack", target_id="acme")
+    assert uninstall_log.outcome == "success"
     assert not UploadedProviderPack.objects.filter(key="acme").exists()
     assert provider_registry.get("acme") is None
     listed = {item["key"]: item for item in client.get(UPLOAD_URL).data}
@@ -969,11 +941,7 @@ def test_failed_uploaded_pack_is_listed_but_not_a_create_candidate(authenticated
     assert listed["wecom"]["load_status"] == "loaded"
     assert listed["wecom"]["source"] == "builtin"
     assert "acme" not in {item["key"] for item in providers.data}
-    records = [
-        record
-        for record in caplog.records
-        if record.name == "system-manager" and "provider_pack_sync_failed" in record.msg
-    ]
+    records = [record for record in caplog.records if record.name == "system-manager" and "provider_pack_sync_failed" in record.msg]
     assert records
     assert len(records) == 1
     record = records[0]
@@ -982,11 +950,7 @@ def test_failed_uploaded_pack_is_listed_but_not_a_create_candidate(authenticated
     assert record.args == ("acme", "ValueError")
     assert record.exc_info is not None
     assert record.exc_info[0] is ValueError
-    traceback_errors = [
-        item
-        for item in caplog.records
-        if item.name == "system-manager" and item.levelno == logging.ERROR and item.exc_info
-    ]
+    traceback_errors = [item for item in caplog.records if item.name == "system-manager" and item.levelno == logging.ERROR and item.exc_info]
     assert traceback_errors == [record]
     formatted = logging.Formatter().format(record)
     assert b"not-a-zip" not in formatted.encode()
@@ -996,9 +960,7 @@ def test_failed_uploaded_pack_is_listed_but_not_a_create_candidate(authenticated
 @pytest.mark.django_db
 def test_failed_pack_instance_can_be_updated_but_test_connection_is_unavailable(authenticated_user):
     client = _auth_client(authenticated_user, is_superuser=True)
-    authenticated_user.permission = {
-        "system-manager": {"integration_center-Add", "integration_center-View", "integration_center-Edit"}
-    }
+    authenticated_user.permission = {"system-manager": {"integration_center-Add", "integration_center-View", "integration_center-Edit"}}
     authenticated_user.save(update_fields=["is_superuser"])
     assert client.post(UPLOAD_URL, {"file": io.BytesIO(_zip_bytes(_minimal_pack_files("acme")))}, format="multipart").status_code == 201
     instance = IntegrationInstance.objects.create(
@@ -1058,3 +1020,48 @@ def test_failed_pack_without_instances_can_be_uninstalled(authenticated_user):
     assert response.status_code == 200
     assert not UploadedProviderPack.objects.filter(key="acme").exists()
     assert "acme" not in {item["key"] for item in client.get(UPLOAD_URL).data}
+
+
+@requires_enterprise_upload
+@pytest.mark.django_db
+def test_example_archives_download_and_upload(authenticated_user):
+    client = _auth_client(
+        authenticated_user,
+        is_superuser=False,
+        permissions={"integration_center-View", "integration_center-Add"},
+    )
+    integration = client.get(f"{UPLOAD_URL}example/", {"purpose": "integration"})
+    assert integration.status_code == 200
+    assert integration["Content-Type"] == "application/zip"
+    assert 'filename="example_integration.zip"' in integration["Content-Disposition"]
+    with zipfile.ZipFile(io.BytesIO(integration.content)) as archive:
+        assert "example_integration/__init__.py" in archive.namelist()
+        assert "example_integration/adapters/client.py" in archive.namelist()
+    uploaded = client.post(
+        UPLOAD_URL,
+        {"file": io.BytesIO(integration.content), "purpose": "integration"},
+        format="multipart",
+    )
+    assert uploaded.status_code == 201, uploaded.data
+    assert uploaded.data["key"] == "example_integration"
+    assert provider_registry.get("example_integration").get_capability("login_auth") is not None
+
+    channel = client.get(f"{UPLOAD_URL}example/", {"purpose": "notification_channel"})
+    assert channel.status_code == 200
+    assert 'filename="example_channel_template.zip"' in channel["Content-Disposition"]
+    with zipfile.ZipFile(io.BytesIO(channel.content)) as archive:
+        send_source = archive.read("example_channel_template/adapters/send.py").decode()
+    assert "缺少参数 code" in send_source
+    assert 'delivery 改成 "body"' in send_source
+    uploaded_channel = client.post(
+        UPLOAD_URL,
+        {"file": io.BytesIO(channel.content), "purpose": "notification_channel"},
+        format="multipart",
+    )
+    assert uploaded_channel.status_code == 201, uploaded_channel.data
+    capability = provider_registry.get("example_channel_template").get_capability("notification_channel")
+    assert capability.delivery == "template"
+    assert capability.parameter_mode == "named"
+
+    unknown = client.get(f"{UPLOAD_URL}example/", {"purpose": "other"})
+    assert unknown.status_code == 400

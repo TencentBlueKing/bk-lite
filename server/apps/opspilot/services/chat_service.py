@@ -14,6 +14,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE, INTERNAL_SAMPLING_TEMPERATURE_KEY, resolve_gateway_temperature
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
@@ -61,7 +62,13 @@ from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, 
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.auto_mode import normalize_auto_request, set_unattended_flag
-from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
+from apps.opspilot.utils.pending_question import (
+    allows_user_questions,
+    consume_pending_question,
+    job_confirmation_owner,
+    peek_pending_question,
+    resolve_conversation_key,
+)
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 from apps.opspilot.utils.run_locale import get_run_locale, reset_run_locale, set_run_locale
 
@@ -265,7 +272,7 @@ class ChatService:
         return {"content": data["message"], "citing_knowledge": []}
 
     @staticmethod
-    def invoke_chat(kwargs: Dict[str, Any]) -> Tuple[Dict, Dict, Dict]:
+    def invoke_chat(kwargs: Dict[str, Any], *, execution_timeout_seconds: int | None = None) -> Tuple[Dict, Dict, Dict]:
         """
         调用聊天服务并处理结果
 
@@ -313,6 +320,7 @@ class ChatService:
 
         token = set_run_locale(chat_kwargs.get("locale") or "en")
         try:
+            _agent_timeout = execution_timeout_seconds if execution_timeout_seconds is not None else _resolve_agent_execute_timeout()
             graph, request = create_agent_instance(skill_type, chat_kwargs)
 
             if _is_eventlet_environment():
@@ -331,7 +339,7 @@ class ChatService:
             async def _execute_graph():
                 # 外层同步调用可能占着全局/请求线程池等待本轮结束。
                 # 本轮 ORM 桥接使用独立单线程池，退出时由上下文回收。
-                async with ThreadSensitiveContext():
+                async with ThreadSensitiveContext(), asyncio.timeout(execution_timeout_seconds):
                     return await graph.execute(request)
 
             def _run_in_new_loop():
@@ -371,7 +379,6 @@ class ChatService:
                     worker_done.set()
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
-            _agent_timeout = _resolve_agent_execute_timeout()
             # 只传递本轮语言，不复制调用方的执行器上下文；调用方可能正在
             # sync_to_async 的单线程中等待本线程返回。
             worker_context = contextvars.Context()
@@ -432,7 +439,6 @@ class ChatService:
 
         except concurrent.futures.TimeoutError:
             # 整轮 agent 执行超时，调用方已放弃等待
-            _agent_timeout = _resolve_agent_execute_timeout()
             logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
             loader = LanguageLoader(app="opspilot", default_lang=_invoke_error_locale(kwargs))
             template = loader.get("error.llm_timeout") or "Agent execution timed out (>{seconds}s). Please try again later."
@@ -596,7 +602,7 @@ class ChatService:
                     count = len(instance_names)
                     cluster_guidance = (
                         "无人值守：先依据事件或查询结果确定集群；只读查询可按任务范围逐个检查。" "目标仍不明确时说明原因，不得选择第一个集群执行变更。\n"
-                        if extra_config.get("unattended")
+                        if not allows_user_questions(extra_config)
                         else (
                             "- 用户提到了某个具体工作负载名称（如 'payment-gateway'）→ 用 search_workload_across_namespaces 搜索它在哪些集群中存在。"
                             "如果只在一个集群找到则直接操作；如果多个集群都有则必须调用 request_user_choice 让用户选择目标集群后再执行。\n"
@@ -643,6 +649,8 @@ class ChatService:
             extra_config["attachment_id"] = kwargs["attachment_id"]
         if kwargs.get("node_id"):
             extra_config["node_id"] = kwargs["node_id"]
+        if kwargs.get("flow_id"):
+            extra_config["flow_id"] = kwargs["flow_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
         if kwargs.get("entry_type"):
@@ -681,6 +689,9 @@ class ChatService:
         user_message, unattended = normalize_auto_request(
             user_message, chat_history, entry_type=kwargs.get("entry_type"), explicit=kwargs.get("unattended")
         )
+        one_way_reply = kwargs.get("entry_type") == "workflow" and kwargs.get("reply_channel") == "WECOM_BOT"
+        if one_way_reply:
+            extra_config["reply_channel"] = "WECOM_BOT"
         set_unattended_flag(extra_config, unattended)
 
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
@@ -741,6 +752,7 @@ class ChatService:
         # 构建聊天参数
         chat_kwargs = {
             "openai_api_base": llm_model.openai_api_base,
+            "skip_ssl_verify": vendor_skips_ssl_verify(llm_model),
             "openai_api_key": llm_model.openai_api_key,
             "model": llm_model.model_name,
             "protocol_type": llm_model.protocol_type,
@@ -866,6 +878,9 @@ class ChatService:
         if kwargs.get(ATTACHMENT_GRANT_KEY):
             runtime_extra[ATTACHMENT_GRANT_KEY] = kwargs[ATTACHMENT_GRANT_KEY]
 
+        runtime_extra.pop("reply_channel", None)
+        if one_way_reply:
+            runtime_extra["reply_channel"] = "WECOM_BOT"
         set_unattended_flag(runtime_extra, unattended)
         _attach_pending_question(chat_kwargs, kwargs)
         _attach_wiki_material_write(chat_kwargs, kwargs)
@@ -895,17 +910,41 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     distribute_file_ids = kwargs.get("distribute_file_ids")
     if distribute_file_ids:
         runtime_extra_config["distribute_file_ids"] = distribute_file_ids
-    if runtime_extra_config.get("unattended"):
+    # 卡片、作业提案和授权决定只来自本会话服务器状态；客户端只能提交选择。
+    for key in ("pending_question", "job_confirmation_reply", "stale_choice", "choice_id", "choice_option", "choice_reply_text"):
+        runtime_extra_config.pop(key, None)
+    if not allows_user_questions(runtime_extra_config) or not conversation_key:
         return
-    pending_question = kwargs.get("pending_question")
-    if isinstance(pending_question, dict):
-        runtime_extra_config["pending_question"] = pending_question
+    choice_id = kwargs.get("choice_id")
+    reply_to_choice_id = kwargs.get("reply_to_choice_id")
+    current = peek_pending_question(conversation_key)
+    marker = (current or {}).get("job_confirmation")
+    expected_id = marker.get("choice_id") if marker else (current or {}).get("choice_id")
+    if reply_to_choice_id and reply_to_choice_id != expected_id:
+        runtime_extra_config["stale_choice"] = True
         return
-    if not conversation_key:
+    if marker:
+        owner = job_confirmation_owner(runtime_extra_config.get(CALLER_IDENTITY_CONFIG_KEY))
+        if not owner or owner != marker.get("owner") or (choice_id and marker.get("choice_id") != choice_id):
+            runtime_extra_config["stale_choice"] = True
+            return
+        if choice_id:
+            runtime_extra_config["choice_id"] = choice_id
+            runtime_extra_config["choice_option"] = kwargs.get("choice_option") or ""
+    if not current:
+        if choice_id:
+            runtime_extra_config["stale_choice"] = True
         return
-    consumed = consume_pending_question(conversation_key)
-    if consumed:
-        runtime_extra_config["pending_question"] = consumed
+    consumed = consume_pending_question(conversation_key, expected=current)
+    if not consumed:
+        runtime_extra_config["stale_choice"] = True
+        return
+    runtime_extra_config["pending_question"] = consumed
+    if marker:
+        raw = kwargs.get("choice_reply_text", kwargs.get("user_message", ""))
+        # Web 明确表示本页没有显示卡片时，先给本页展示原提案。IM 纯文本没有这个字段。
+        saw_no_card = not choice_id and "reply_to_choice_id" in kwargs and not reply_to_choice_id
+        runtime_extra_config["choice_reply_text"] = raw if isinstance(raw, str) and not saw_no_card else ""
 
 
 def _attach_wiki_material_write(chat_kwargs: dict, kwargs: dict) -> None:
@@ -926,7 +965,9 @@ _ATTACHMENT_GUIDANCE = (
     "询问已有或上传文件的内容时直接文字回复，不要生成文件。"
     "格式支持 txt、md、pdf、docx、pptx、xlsx、csv。用户要 txt 时用 file_type=txt，不要改成 md。"
     "用户要 PPT 时 file_type 必须是 pptx，文件名用 .pptx，禁止降级成 docx 或 pdf。"
-    "docx 和 pdf 的 content 用 Markdown，生成时会渲染成标题、段落和表格，不要指望原文符号留在文件里。"
+    "docx、pdf 和 pptx 的 content 用 Markdown，生成时会渲染成标题、段落、表格和幻灯片，不要指望 #、**、| 留在文件里。"
+    "pptx 的一级标题是封面，后面的短段落是副标题；二级标题分页。要突出几个数字时，列表每一条用数字开头。"
+    "要并排对比时用三级标题。行动项用有序列表，标题加粗，冒号后写说明。"
     "xlsx 和 csv 的 content 必须是带表头的逗号分隔数据，不要用 Markdown 表格。"
     "调用成功后只给简短摘要，不要在回复或正文里粘贴下载 URL、file://、/api/proxy 或加密 token。"
 )

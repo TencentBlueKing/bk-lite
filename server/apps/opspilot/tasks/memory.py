@@ -13,6 +13,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.memory.identity import resolve_owner_identity
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import BotWorkFlow, LLMModel, Memory, MemorySpace, MemoryWriteCache, SkillConversation
 from apps.opspilot.services.memory_card_catalog import (
     append_card,
@@ -98,6 +99,7 @@ def _build_memory_write_client(effective_model_id):
 
     llm_request = BasicLLMRequest(
         openai_api_base=llm_model.openai_api_base,
+        skip_ssl_verify=vendor_skips_ssl_verify(llm_model),
         openai_api_key=llm_model.openai_api_key,
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,

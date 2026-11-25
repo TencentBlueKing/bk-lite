@@ -113,7 +113,16 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
-            log_operation(request, "create", "channel", f"新增IM应用通知: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增IM应用通知: {response.data.get('name', '')}",
+                target_type="im_notification_channel",
+                target_id=response.data.get("id"),
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("channel_list-Edit")
@@ -131,7 +140,16 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
         response = super().update(request, *args, partial=True, **kwargs)
         if response.status_code == 200:
-            log_operation(request, "update", "channel", f"编辑IM应用通知: {response.data.get('name', '')}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑IM应用通知: {response.data.get('name', '')}",
+                target_type="im_notification_channel",
+                target_id=obj.id,
+                target_name=response.data.get("name", ""),
+                outcome="success",
+            )
         return response
 
     @HasPermission("channel_list-Delete")
@@ -158,7 +176,16 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             )
 
         if response.status_code in (200, 204):
-            log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除IM应用通知: {channel_name}",
+                target_type="im_notification_channel",
+                target_id=obj.id,
+                target_name=channel_name,
+                outcome="success",
+            )
         return response
 
     @action(methods=["GET"], detail=False, url_path="account_association_options")

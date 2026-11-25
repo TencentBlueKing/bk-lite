@@ -9,6 +9,7 @@ import type {
   FilterValue,
   UnifiedFilterDefinition,
   ValueConfig,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   DropPosition,
@@ -16,10 +17,10 @@ import type {
   NodeType,
   NodeTypeId,
   TopologyNodeData,
-  ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import type { useTopologyState } from './useTopologyState';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
+import { scalarCalcFromForm, singleValueSourceReady } from '@/app/ops-analysis/utils/scalarReduction';
 
 const DEFAULT_DROP_POSITION: DropPosition = { x: 300, y: 200 };
 
@@ -42,7 +43,7 @@ interface UseTopologyNodeConfigControllerParams {
     isSingleValue?: boolean,
   ) => string | null;
   handleAddChartNode: (
-    values: ViewConfigFormValues,
+    values: WidgetConfig,
     isNewNode?: boolean,
   ) => Promise<
     | {
@@ -59,7 +60,7 @@ interface UseTopologyNodeConfigControllerParams {
     namespaceId?: number,
   ) => Promise<void>;
   handleViewConfigConfirm: (
-    values: ViewConfigFormValues,
+    values: WidgetConfig,
     filterValues?: Record<string, FilterValue>,
     definitions?: UnifiedFilterDefinition[],
     dataSources?: DatasourceItem[],
@@ -161,7 +162,7 @@ export const useNodeConfigFlow = ({
   }, [state]);
 
   const handleTopologyViewConfigConfirm = useCallback(
-    async (values: ViewConfigFormValues) => {
+    async (values: WidgetConfig) => {
       if (!state.editingNodeData) return;
       if (state.editingNodeData.isNewNode && state.editingNodeData.position) {
         const result = await handleAddChartNode(values, true);
@@ -285,6 +286,11 @@ export const useNodeConfigFlow = ({
               : {}),
             unitId: values.unitId || undefined,
             valueMappings: values.valueMappings || undefined,
+            scalarCalc: scalarCalcFromForm({
+              method: values.scalarCalcMethod,
+              field: values.selectedFields?.[0],
+              timeField: values.scalarCalcTimeField,
+            }),
           },
           styleConfig: {
             width: values.width,
@@ -305,8 +311,7 @@ export const useNodeConfigFlow = ({
         };
         const isSingleValue =
           selectedNodeType.id === 'single-value' &&
-          !!nodeConfig.valueConfig?.dataSource &&
-          (nodeConfig.valueConfig?.selectedFields?.length ?? 0) > 0;
+          singleValueSourceReady(nodeConfig.valueConfig);
         const nodeId = addNewNode(nodeConfig, isSingleValue);
         scheduleTopologyPostMutation(
           ({

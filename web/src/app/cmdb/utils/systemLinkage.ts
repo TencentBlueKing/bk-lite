@@ -122,6 +122,99 @@ export const canOpenCmdbLink = (
   return !isPlatformTreeModel(modelId);
 };
 
+export const LINK_FOLLOW_UP_LIMIT = 100;
+
+export interface LinkFollowUpOffer {
+  ids: string[];
+  overflow: number;
+}
+
+const asFollowUpId = (value: unknown) => {
+  if (typeof value === 'string') return value.trim();
+  if (value == null || value === '') return '';
+  return String(value).trim();
+};
+
+export const buildLinkFollowUpOffer = (
+  rawIds: unknown[] | undefined | null,
+  createdCount?: number,
+): LinkFollowUpOffer | null => {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const value of rawIds || []) {
+    const id = asFollowUpId(value);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(id);
+  }
+  if (!unique.length) return null;
+  const ids = unique.slice(0, LINK_FOLLOW_UP_LIMIT);
+  const counted = Number(createdCount);
+  const total = Number.isFinite(counted) && counted > unique.length ? counted : unique.length;
+  return { ids, overflow: Math.max(0, total - ids.length) };
+};
+
+export const buildCmdbToMonitorFollowUp = (
+  clientData: ClientData[] | undefined | null,
+  clientLoading: boolean,
+  modelId: string,
+  rawIds: unknown[] | undefined | null,
+  createdCount?: number,
+) => {
+  if (!canOpenMonitorLink(clientData, clientLoading, modelId)) return null;
+  return buildLinkFollowUpOffer(rawIds, createdCount);
+};
+
+export const buildMonitorToCmdbFollowUp = (
+  clientData: ClientData[] | undefined | null,
+  clientLoading: boolean,
+  objectName: string,
+  rawIds: unknown[] | undefined | null,
+  createdCount?: number,
+) => {
+  if (!canOpenCmdbLink(clientData, clientLoading, objectName)) return null;
+  return buildLinkFollowUpOffer(rawIds, createdCount);
+};
+
+export const createdInstUuidsFromTransferSummary = (
+  summary: Record<string, unknown> | undefined | null,
+) => (Array.isArray(summary?.created_inst_uuids) ? summary.created_inst_uuids : []);
+
+export const createdCountFromTransferSummary = (
+  summary: Record<string, unknown> | undefined | null,
+) => {
+  const counted = Number(summary?.created);
+  return Number.isFinite(counted) && counted > 0 ? counted : undefined;
+};
+
+export const resolveImportFollowUpOffer = ({
+  task,
+  currentModelId,
+  clientData,
+  clientLoading,
+}: {
+  task: {
+    type?: string;
+    status?: string;
+    model_id?: string;
+    summary?: Record<string, unknown> | null;
+  };
+  currentModelId: string;
+  clientData: ClientData[] | undefined | null;
+  clientLoading: boolean;
+}) => {
+  if (task.type !== 'import') return null;
+  if (task.model_id !== currentModelId) return null;
+  if (task.status !== 'succeeded' && task.status !== 'partial_success') return null;
+  return buildCmdbToMonitorFollowUp(
+    clientData,
+    clientLoading,
+    currentModelId,
+    createdInstUuidsFromTransferSummary(task.summary),
+    createdCountFromTransferSummary(task.summary),
+  );
+};
+
 export const EXTERNAL_ID_COLUMN_KEY = 'external_id';
 export const EXTERNAL_ID_EMPTY = '--';
 const SYSTEM_LINK_ATTR_IDS = new Set(['node_id', 'monitor_id']);

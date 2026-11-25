@@ -278,15 +278,12 @@ class SkillPackageSerializer(AuthSerializer):
         )
 
     def update(self, instance: SkillPackage, validated_data):
-        """技能包只改分组和用户标签。内置包的系统标签不能少。"""
+        """技能包只改用户标签。分组不再决定谁能看见，提交的分组忽略。内置包的系统标签不能少。"""
         self._reject_removed_system_tags(instance)
         update_fields = []
         if "user_tags" in self.initial_data or "user_tags" in validated_data:
             instance.user_tags = normalize_user_tags(self.initial_data.get("user_tags", validated_data.get("user_tags")))
             update_fields.append("user_tags")
-        if "team" in validated_data:
-            instance.team = validated_data["team"]
-            update_fields.append("team")
         if not instance.is_build_in:
             instance.system_tags = []
             update_fields.append("system_tags")
@@ -409,9 +406,6 @@ class SkillToolsSerializer(AuthSerializer):
             if "user_tags" in self.initial_data or "user_tags" in validated_data:
                 instance.user_tags = normalize_user_tags(self.initial_data.get("user_tags", validated_data.get("user_tags")))
                 update_fields.append("user_tags")
-            if "team" in validated_data:
-                instance.team = validated_data["team"]
-                update_fields.append("team")
             if update_fields:
                 instance.save(update_fields=update_fields)
             return instance

@@ -27,6 +27,10 @@ import {
   getChangePercent,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+} from '@/app/ops-analysis/utils/scalarReduction';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
 import { resolveSingleDescriptionText } from '@/app/ops-analysis/utils/singleDescription';
@@ -199,17 +203,24 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const [iconMeasure, setIconMeasure] = useState({ src: '', aspect: 1 });
 
   const selectedField = config?.selectedFields?.[0];
+  const scalarCalc = readScalarCalc(config?.scalarCalc);
+  const reduction = scalarCalc ? reduceScalarRecords(rawData, scalarCalc) : null;
+  const baselineReduction = scalarCalc ? reduceScalarRecords(baselineData, scalarCalc) : null;
   const { active: dataLinkActive, openPoint, hoverHint } = useWidgetDataLink(config);
   const singlePoint = useMemo(
     () => buildInteractionPoints('single', rawData, config)[0],
     [config, rawData],
   );
-  const rawValue = extractComparableValue(rawData, selectedField);
+  const rawValue = reduction
+    ? (reduction.status === 'value' ? reduction.value : null)
+    : extractComparableValue(rawData, selectedField);
   const descriptionText = resolveSingleDescriptionText(
     rawData,
     config?.descriptionField,
   );
-  const baselineRawValue = extractComparableValue(baselineData, selectedField);
+  const baselineRawValue = baselineReduction
+    ? (baselineReduction.status === 'value' ? baselineReduction.value : null)
+    : extractComparableValue(baselineData, selectedField);
   const numericValue = toComparableNumber(rawValue);
   const baselineNumericValue = toComparableNumber(baselineRawValue);
   const changePercent = config?.compare
@@ -223,7 +234,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const thresholds: ThresholdColorConfig[] =
     config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
   const color = getColorByThreshold(numericValue, thresholds, chartTheme.singleValueColor);
-  const isDataReady = rawValue !== null;
+  const isDataReady = reduction ? reduction.status === 'value' : rawValue !== null;
   const displayValue = typeof rawValue === 'boolean'
     ? String(rawValue)
     : formatDisplayValue(
@@ -523,8 +534,15 @@ const ComSingle: React.FC<ComSingleProps> = ({
     );
   }
 
+  if (reduction?.status === 'uncomputable') {
+    return <WidgetState description={t('dashboard.noComputableValue')} />;
+  }
+  if (reduction?.status === 'empty') {
+    return <WidgetState />;
+  }
   // 命中值映射文本（如 null→"无数据"）时仍正常展示，不走空态
   if (
+    !reduction &&
     (!isDataReady || rawValue === null) &&
     valueMappingResult?.text === undefined
   ) {

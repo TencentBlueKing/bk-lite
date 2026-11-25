@@ -48,6 +48,14 @@ export function isUserChoiceRequestClosed(
   return status === 'submitted' || status === 'timeout';
 }
 
+/** Only the newest real question in the final assistant message can be resumed. */
+export function pendingUserChoice(requests: UserChoiceRequest[] | undefined): UserChoiceRequest | undefined {
+  const last = requests?.[requests.length - 1];
+  if (last?.status !== 'pending' || !last.choice_id || last.choice_id.startsWith('history-')) return;
+  if (last.timeout_seconds > 0 && Date.now() >= last.received_at + last.timeout_seconds * 1000) return;
+  return last;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -133,14 +141,15 @@ export function applyAnsweredUserChoices<T extends ChoiceMessage>(messages: T[])
     if (!cards?.length) {
       return message;
     }
-    const laterUser = messages.slice(index + 1).find((item) => item.role === 'user' && String(item.content || '').trim());
-    if (!laterUser) {
+    const laterUser = messages[index + 1];
+    if (laterUser?.role !== 'user' || !String(laterUser.content || '').trim()) {
       return message;
     }
     const text = String(laterUser.content).trim();
     return {
       ...message,
-      userChoiceRequests: cards.map((card) => {
+      userChoiceRequests: cards.map((card, cardIndex) => {
+        if (cardIndex !== cards.length - 1 || isUserChoiceRequestClosed(card.status)) return card;
         const options = normalizeUserChoiceOptions(card.options);
         const match = options.find((option) => option.label === text || option.key === text);
         if (match) {
@@ -149,9 +158,6 @@ export function applyAnsweredUserChoices<T extends ChoiceMessage>(messages: T[])
             status: 'submitted' as const,
             selected: [match.key],
           };
-        }
-        if (card.status === 'submitted' && card.selected && card.selected.length > 0) {
-          return { ...card, status: 'submitted' as const };
         }
         return {
           ...card,

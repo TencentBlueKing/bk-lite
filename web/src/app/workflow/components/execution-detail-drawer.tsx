@@ -102,14 +102,36 @@ function JsonEvidence({ title, value }: { title: string; value: Record<string, u
   );
 }
 
+function ArtifactDownloadButton({ artifact, showFilename = false }: { artifact: ExecutionArtifactRecord; showFilename?: boolean }) {
+  const { t } = useTranslation();
+  const { get } = useApiClient();
+  const [busy, setBusy] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      await downloadExecutionArtifact(get, artifact);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <Button
+    type={showFilename ? 'link' : 'default'}
+    size={showFilename ? 'small' : 'middle'}
+    className={showFilename ? 'max-w-full px-0' : undefined}
+    aria-label={t('workflowOrchestration.execution.artifactDownload', '下载 {filename}', { filename: artifact.filename })}
+    icon={<DownloadOutlined />}
+    loading={busy}
+    onClick={() => void download()}
+  ><span className="truncate">{showFilename ? artifact.filename : t('common.download', '下载')}</span></Button>;
+}
+
 function NodeDetail({ detail, instancePermissions, onChanged }: { detail: ExecutionNodeDetail; instancePermissions?: string[]; onChanged: () => Promise<void> }) {
-  const { get, post } = useApiClient();
+  const { post } = useApiClient();
   const { message } = App.useApp();
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
-  const [downloading, setDownloading] = useState<string>();
 
   const approval = detail.interaction?.type === 'APPROVAL' ? detail.interaction : undefined;
   const showFrozenConfigNotice = ['PENDING', 'SKIPPED', 'UNREACHABLE'].includes(detail.node.state) && detail.instances.length === 0;
@@ -128,15 +150,6 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
     }
   };
 
-  const download = async (artifact: ExecutionArtifactRecord) => {
-    setDownloading(artifact.id);
-    try {
-      await downloadExecutionArtifact(get, artifact);
-    } finally {
-      setDownloading(undefined);
-    }
-  };
-
   return (
     <div data-testid="node-detail-content" className="flex w-full min-w-0 max-w-full flex-col gap-5">
       {hasNodeNotice ? (
@@ -152,7 +165,7 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
           return { key, label: item.label, children: item.children };
         })} />
       </section>
-      {detail.artifacts.length ? <section className="flex flex-col gap-3"><h3 className="m-0 text-sm font-medium">{t('workflowOrchestration.node.artifacts', '产物')}</h3><div className="space-y-2">{detail.artifacts.map((artifact) => <div key={artifact.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-1)] p-3"><div className="min-w-0"><div className="truncate">{artifact.filename}</div><div className="mt-1 text-xs text-[var(--color-text-3)]">{artifact.format.toUpperCase()} · {(artifact.size / 1024).toFixed(1)} KiB</div></div><WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}><Button icon={<DownloadOutlined />} loading={downloading === artifact.id} onClick={() => void download(artifact)}>{t('common.download', '下载')}</Button></WorkflowPermission></div>)}</div></section> : null}
+      {detail.artifacts.length ? <section className="flex flex-col gap-3"><h3 className="m-0 text-sm font-medium">{t('workflowOrchestration.node.artifacts', '产物')}</h3><div className="space-y-2">{detail.artifacts.map((artifact) => <div key={artifact.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-1)] p-3"><div className="min-w-0"><div className="truncate">{artifact.filename}</div><div className="mt-1 text-xs text-[var(--color-text-3)]">{artifact.format.toUpperCase()} · {(artifact.size / 1024).toFixed(1)} KiB</div></div><WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}><ArtifactDownloadButton artifact={artifact} /></WorkflowPermission></div>)}</div></section> : null}
       {approval ? (
         <section className="flex flex-col gap-4">
           <Alert type={approval.can_act ? 'info' : 'warning'} showIcon message={approval.title} description={approval.description || t('workflowOrchestration.approval.waitingCandidate', '等待候选审批人处理')} />
@@ -307,6 +320,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
     return () => window.clearInterval(timer);
   }, [execution, load, open]);
 
+  const availableFiles = execution?.artifacts?.filter((file) => !file.deleted_at && Date.parse(file.expires_at) > Date.now()) ?? [];
   const status = execution ? executionStatusPresentation[execution.status] : undefined;
   const selectedNode = nodes.find((node) => node.reference === selectedNodeReference);
   const normalizedNodeSearch = nodeSearch.trim().toLowerCase();
@@ -361,6 +375,14 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
                 { key: 'organization', label: t('workflowOrchestration.execution.organization', '执行组织'), children: executionOrganizationText(execution.execution_team_id, flatGroups) },
                 { key: 'started', label: t('workflowOrchestration.execution.startedAt', '开始时间'), children: execution.created_at ? convertToLocalizedTime(execution.created_at) : '--' },
                 { key: 'duration', label: t('workflowOrchestration.execution.duration', '耗时'), children: formatDuration(execution.duration_ms) },
+                ...(availableFiles.length ? [{
+                  key: 'attachments', label: t('workflowOrchestration.execution.artifacts', '产物'), span: 2,
+                  children: <WorkflowPermission operation="View" area="executions" instancePermissions={execution.permission}>
+                    <div className="flex max-h-20 flex-wrap gap-x-3 overflow-y-auto">
+                      {availableFiles.map((file) => <ArtifactDownloadButton key={file.id} artifact={file} showFilename />)}
+                    </div>
+                  </WorkflowPermission>,
+                }] : []),
               ]} />
               {execution.termination_reason ? <Alert className="mt-3" type="info" message={t('workflowOrchestration.execution.terminationReasonValue', '终止原因：{reason}', { reason: execution.termination_reason })} /> : null}
             </section>

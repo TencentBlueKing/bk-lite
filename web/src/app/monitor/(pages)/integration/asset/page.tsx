@@ -9,6 +9,7 @@ import {
   Space,
   Tooltip,
   Modal,
+  Pagination as AntdPagination,
   Switch
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
@@ -82,6 +83,63 @@ type TableRowSelection<T extends object = object> =
 
 const ASSET_IP_FACT = 'asset.ip';
 const ASSET_IP_COLUMN_KEY = `summary_fact:${ASSET_IP_FACT}`;
+const REDISPATCH_CONFIRM_PAGE_SIZE = 5;
+
+const readAssetIp = (item: TableDataItem) => {
+  const facts = item?.summary_facts as Record<string, unknown> | undefined;
+  const value = facts?.[ASSET_IP_FACT] ?? item?.ip;
+  const text = value == null ? '' : String(value).trim();
+  return text;
+};
+
+const RedispatchConfirmContent = ({
+  rows,
+  tip,
+  countText
+}: {
+  rows: { id: string; name: string; ip: string }[];
+  tip: string;
+  countText: string;
+}) => {
+  const [page, setPage] = useState(1);
+  const start = (page - 1) * REDISPATCH_CONFIRM_PAGE_SIZE;
+  const pageRows = rows.slice(start, start + REDISPATCH_CONFIRM_PAGE_SIZE);
+  return (
+    <div className="space-y-3">
+      <div className="leading-6 text-[var(--color-text-2)]">{tip}</div>
+      <div className="text-sm font-medium text-[var(--color-text-1)]">{countText}</div>
+      <div className="overflow-hidden rounded border border-[var(--color-border-1)]">
+        {pageRows.map((row) => (
+          <div
+            key={row.id}
+            className="flex items-center justify-between gap-3 border-b border-[var(--color-border-1)] px-3 py-2 last:border-b-0"
+          >
+            <span className="min-w-0 truncate text-sm text-[var(--color-text-1)]">
+              {row.name}
+            </span>
+            {row.ip ? (
+              <span className="shrink-0 font-mono text-xs text-[var(--color-text-3)]">
+                {row.ip}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {rows.length > REDISPATCH_CONFIRM_PAGE_SIZE ? (
+        <div className="flex justify-end">
+          <AntdPagination
+            size="small"
+            current={page}
+            pageSize={REDISPATCH_CONFIRM_PAGE_SIZE}
+            total={rows.length}
+            showSizeChanger={false}
+            onChange={setPage}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const sameStringArray = (left: string[], right: string[]) =>
   left.length === right.length && left.every((item) => right.includes(item));
@@ -199,6 +257,14 @@ const Asset = () => {
     }
     if (e.key === 'batchUpdateCollectConfig') {
       batchUpdateCollectConfigs();
+      return;
+    }
+    if (e.key === 'batchRedispatchCollectConfig') {
+      if (!selectedRowKeys.length) {
+        message.warning(t('monitor.integrations.noRedispatchCollectConfig'));
+        return;
+      }
+      confirmRedispatchCollectConfigs(selectedRowKeys);
       return;
     }
     if (e.key === 'batchSyncCmdb') {
@@ -609,6 +675,14 @@ const Asset = () => {
                 content: t('common.deleteContent')
               },
               onClick: () => deleteInstConfirm(record)
+            });
+            moreItems.push({
+              key: 'redispatch',
+              label: t('monitor.integrations.redispatchCollectConfig'),
+              permission: 'Edit',
+              disabled: updatingKeys.includes(record.instance_id),
+              onClick: () =>
+                confirmRedispatchCollectConfigs([record.instance_id])
             });
           }
           return (
@@ -1059,9 +1133,15 @@ const Asset = () => {
     const templateName = plugin?.display_name || plugin?.name || '--';
     modal.confirm({
       title: t('monitor.integrations.unbindTemplateTitle'),
-      content: t('monitor.integrations.unbindTemplateContent', '', {
-        name: templateName
-      }),
+      content:
+        plugin?.collect_type === 'script' || plugin?.template_type === 'script'
+          ? t(
+            'monitor.integrations.scriptUnbindContent',
+            '只移除这份脚本采集，不会删除该实例，也不影响其它采集。'
+          )
+          : t('monitor.integrations.unbindTemplateContent', '', {
+            name: templateName
+          }),
       centered: true,
       okText: t('common.delete'),
       cancelText: t('common.cancel'),
@@ -1186,13 +1266,16 @@ const Asset = () => {
     });
   };
 
-  const reportCollectUpdateResult = (result: {
-    updated?: string[];
-    skipped?: Array<{ reason?: string }>;
-    failed?: unknown[];
-    truncated?: boolean;
-    max_instances?: number;
-  }) => {
+  const reportCollectUpdateResult = (
+    result: {
+      updated?: string[];
+      skipped?: Array<{ reason?: string }>;
+      failed?: unknown[];
+      truncated?: boolean;
+      max_instances?: number;
+    },
+    mode: 'upgrade' | 'redispatch' = 'upgrade'
+  ) => {
     const updated = result?.updated?.length || 0;
     const skippedItems = result?.skipped || [];
     const skipped = skippedItems.length;
@@ -1203,16 +1286,28 @@ const Asset = () => {
       (item) => item?.reason === 'hand_edited'
     ).length;
     const failed = result?.failed?.length || 0;
+    const truncatedKey =
+      mode === 'redispatch'
+        ? 'monitor.integrations.redispatchCollectConfigTruncated'
+        : 'monitor.integrations.updateCollectConfigTruncated';
+    const partialKey =
+      mode === 'redispatch'
+        ? 'monitor.integrations.redispatchCollectConfigPartial'
+        : 'monitor.integrations.updateCollectConfigPartial';
+    const successKey =
+      mode === 'redispatch'
+        ? 'monitor.integrations.redispatchCollectConfigSuccess'
+        : 'monitor.integrations.updateCollectConfigSuccess';
     if (result?.truncated) {
       message.warning(
-        t('monitor.integrations.updateCollectConfigTruncated', '', {
+        t(truncatedKey, '', {
           max: result.max_instances || 200
         })
       );
     }
     if (failed || skipped) {
       message.warning(
-        t('monitor.integrations.updateCollectConfigPartial', '', {
+        t(partialKey, '', {
           updated,
           skipped: handEdited,
           unauthorized,
@@ -1221,28 +1316,66 @@ const Asset = () => {
       );
       return;
     }
-    message.success(t('monitor.integrations.updateCollectConfigSuccess'));
+    message.success(t(successKey));
   };
 
   const updateCollectConfigs = async (
     instanceIds: React.Key[],
-    options?: { discardHandEdited?: boolean; pluginId?: React.Key }
+    options?: {
+      discardHandEdited?: boolean;
+      pluginId?: React.Key;
+      forceRedispatch?: boolean;
+    }
   ) => {
-    // 过滤指定插件时只升该插件；否则不传 plugin_id，与确认框列出的全部可升级探针一致。
-    const pluginId = options?.pluginId || stalePluginId || undefined;
+    const forceRedispatch = Boolean(options?.forceRedispatch);
+    // 重新下发重渲该实例全部配置，包括页面上改过的。升级探针才按当前可升级插件过滤。
+    const pluginId = forceRedispatch
+      ? undefined
+      : options?.pluginId || stalePluginId || undefined;
     setUpdatingKeys(instanceIds);
     try {
       const result = await updateCollectTemplateConfigs({
         instance_ids: instanceIds,
         ...(pluginId ? { monitor_plugin_id: pluginId } : {}),
-        ...(options?.discardHandEdited ? { discard_hand_edited: true } : {})
+        ...(options?.discardHandEdited ? { discard_hand_edited: true } : {}),
+        ...(forceRedispatch ? { force_redispatch: true } : {})
       });
-      reportCollectUpdateResult(result || {});
+      reportCollectUpdateResult(
+        result || {},
+        forceRedispatch ? 'redispatch' : 'upgrade'
+      );
       // 保持「可升级」过滤，刷新后剩余 stale 仍可见。
       await getAssetInsts(objectId);
     } finally {
       setUpdatingKeys([]);
     }
+  };
+
+  const confirmRedispatchCollectConfigs = (instanceIds: React.Key[]) => {
+    const rows = tableData
+      .filter((item) => instanceIds.includes(item.instance_id as React.Key))
+      .map((item) => ({
+        id: String(item.instance_id || ''),
+        name: String(item.instance_name || item.instance_id || '--'),
+        ip: readAssetIp(item)
+      }));
+    modal.confirm({
+      title: t('monitor.integrations.redispatchCollectConfigConfirmTitle'),
+      width: 520,
+      content: (
+        <RedispatchConfirmContent
+          rows={rows}
+          tip={t('monitor.integrations.redispatchCollectConfigConfirmTip')}
+          countText={t('monitor.integrations.redispatchCollectConfigCount', '', {
+            count: rows.length
+          })}
+        />
+      ),
+      centered: true,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => updateCollectConfigs(instanceIds, { forceRedispatch: true })
+    });
   };
 
   const confirmUpgradeCollectConfigs = (

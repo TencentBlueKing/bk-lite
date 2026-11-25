@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
 import { createParamInputOptionsLoader } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
@@ -25,6 +25,40 @@ type GetSourceDataByApiId = (
 ) => Promise<ReturnType<typeof asSourceData>>;
 
 describe('paramInputOptionsLoader runtime errors', () => {
+  it('drops an aborted resolve without an error state and still reports a real failure', async () => {
+    const controller = new AbortController();
+    let resolveSignal: AbortSignal | undefined;
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async () => asSourceData([]));
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId,
+      resolveOptionSource: (_body, signal) => new Promise((_resolve, reject) => {
+        resolveSignal = signal;
+        signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), { name: 'CanceledError', code: 'ERR_CANCELED' }));
+        }, { once: true });
+      }),
+    });
+    const pending = loader.load(dynamicConfig, undefined, controller.signal).promise;
+    await Promise.resolve();
+    expect(resolveSignal).toBe(controller.signal);
+    controller.abort();
+    assert.equal(await pending, null);
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
+
+    const failed = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId: async () => {
+        throw new HandledRequestError('未找到可用命名空间');
+      },
+    });
+    assert.deepEqual(await failed.load(dynamicConfig).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: '未找到可用命名空间',
+    });
+  });
+
   it('preserves business errorMessage when options request fails', async () => {
     const loader = createParamInputOptionsLoader({
       getDataSourceList: async () => [],
@@ -92,10 +126,11 @@ describe('paramInputOptionsLoader runtime errors', () => {
     assert.notEqual(second, first);
   });
 
-  it('resolves sourceRef from knownDataSources without listing the catalog', async () => {
-    const getDataSourceList = vi.fn(async () => {
-      throw new Error('catalog must not be called');
-    });
+  it('does not bind a bare path from a partial known list when another row shares it', async () => {
+    const getDataSourceList = vi.fn(async () => ([
+      { id: 42, name: '旧机房', rest_api: 'cmdb/get_room_list' },
+      { id: 43, name: '新机房', rest_api: 'cmdb/get_room_list' },
+    ]));
     const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
       async () => asSourceData([{ inst_uuid: 'room-1', inst_name: '机房A' }]),
     );
@@ -120,12 +155,70 @@ describe('paramInputOptionsLoader runtime errors', () => {
         },
       }).promise,
       {
-        status: 'success',
-        options: [{ value: 'room-1', label: '机房A' }],
+        status: 'error',
+        options: [],
+        errorMessage: 'option-source-ambiguous',
       },
     );
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
+  });
+
+  it('keeps a saved source id when a newer row has the same path', async () => {
+    const getDataSourceList = vi.fn(async () => {
+      throw new Error('catalog must not be called');
+    });
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 'host', name: '主机' }]),
+    );
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+    });
+
+    assert.equal(
+      (await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceId: 10,
+          sourceRef: { type: 'rest_api', value: 'cmdb/get_model_association_options' },
+          valueField: 'id',
+          labelField: 'name',
+        },
+      }).promise)?.status,
+      'success',
+    );
+    assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 10);
+  });
+
+  it('asks the full-table resolver before a visible catalog when the ref is only a path', async () => {
+    const resolveOptionSource = vi.fn(async () => ({ status: 'ambiguous' as const }));
+    const getDataSourceList = vi.fn(async () => ([
+      { id: 11, name: '新', rest_api: 'cmdb/get_model_association_options' },
+    ]));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 'host', name: '主机' }]),
+    );
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+      resolveOptionSource,
+    });
+
+    assert.deepEqual(
+      await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceRef: { type: 'rest_api', value: 'cmdb/get_model_association_options' },
+          valueField: 'id',
+          labelField: 'name',
+        },
+      }).promise,
+      { status: 'error', options: [], errorMessage: 'option-source-ambiguous' },
+    );
     assert.equal(getDataSourceList.mock.calls.length, 0);
-    assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 42);
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
   });
 
   it('resolves cmdb/get_room_list from the catalog and maps inst_uuid/inst_name', async () => {
@@ -274,5 +367,155 @@ describe('paramInputOptionsLoader runtime errors', () => {
     });
     await loader.load(dynamicConfig).promise;
     assert.equal(getSourceDataByApiId.mock.calls.length, 1);
+  });
+
+  it('resolves a numeric source id through the same missing, forbidden, and resolved states', async () => {
+    const resolveOptionSource = vi.fn()
+      .mockResolvedValueOnce({ status: 'missing' })
+      .mockResolvedValueOnce({ status: 'forbidden' })
+      .mockResolvedValueOnce({ status: 'resolved', id: 10 });
+    const getDataSourceList = vi.fn(async () => {
+      throw new Error('catalog must not be called');
+    });
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 1, name: '七天' }]),
+    );
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+      resolveOptionSource,
+    });
+    const config: InputControlConfig = {
+      control: 'select',
+      optionsSource: {
+        type: 'dynamic',
+        sourceId: 10,
+        builtinKey: 'builtin::days',
+        sourceRef: { type: 'rest_api', value: 'demo/accept_options' },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    };
+
+    assert.deepEqual(await loader.load(config).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: 'option-source-missing',
+    });
+    loader.reset();
+    assert.deepEqual(await loader.load(config).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: 'option-source-forbidden',
+    });
+    loader.reset();
+    assert.equal((await loader.load(config).promise)?.status, 'success');
+    assert.equal(getSourceDataByApiId.mock.calls.length, 1);
+    assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 10);
+    assert.deepEqual(getSourceDataByApiId.mock.calls[0]?.[2], {
+      suppressErrorNotification: true,
+    });
+    assert.deepEqual(resolveOptionSource.mock.calls[0]?.[0], {
+      sourceId: 10,
+      builtinKey: 'builtin::days',
+      sourceRef: 'demo/accept_options',
+    });
+    assert.equal(getDataSourceList.mock.calls.length, 0);
+  });
+
+  it('maps a 403 after resolve to forbidden and does not query another same-address row', async () => {
+    const resolveOptionSource = vi.fn(async () => ({ status: 'resolved' as const, id: 150 }));
+    const getDataSourceList = vi.fn(async () => ([
+      { id: 151, rest_api: 'demo/accept_forbidden' },
+    ]));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async () => {
+      throw new HandledRequestError('无权访问当前数据源', { status: 403 });
+    });
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+      resolveOptionSource,
+    });
+
+    assert.deepEqual(await loader.load({
+      control: 'select',
+      optionsSource: {
+        type: 'dynamic',
+        sourceId: 150,
+        sourceRef: { type: 'rest_api', value: 'demo/accept_forbidden' },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    }).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: 'option-source-forbidden',
+    });
+    assert.deepEqual(getSourceDataByApiId.mock.calls.map((call) => call[0]), [150]);
+    assert.equal(getDataSourceList.mock.calls.length, 0);
+  });
+
+  it('does not turn a resolve network error into an empty option list or another row', async () => {
+    const resolveOptionSource = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const getDataSourceList = vi.fn(async () => ([
+      { id: 8, name: '同地址', rest_api: 'demo/accept_options' },
+    ]));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>();
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+      resolveOptionSource,
+    });
+
+    const result = await loader.load({
+      control: 'select',
+      optionsSource: {
+        type: 'dynamic',
+        sourceRef: { type: 'rest_api', value: 'demo/accept_options' },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    }).promise;
+    assert.equal(result?.status, 'error');
+    assert.equal(
+      result && 'errorMessage' in result ? Boolean(result.errorMessage) : false,
+      true,
+    );
+    assert.equal(getDataSourceList.mock.calls.length, 0);
+    assert.equal(getSourceDataByApiId.mock.calls.length, 0);
+  });
+
+  it('maps a 404 after resolve to missing and does not restore by address', async () => {
+    const resolveOptionSource = vi.fn(async () => ({ status: 'resolved' as const, id: 999999 }));
+    const getDataSourceList = vi.fn(async () => ([
+      { id: 151, name: '同地址', rest_api: 'demo/accept_missing' },
+    ]));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async () => {
+      throw new HandledRequestError('数据源不存在或已删除', { status: 404 });
+    });
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+      resolveOptionSource,
+    });
+
+    assert.deepEqual(await loader.load({
+      control: 'select',
+      optionsSource: {
+        type: 'dynamic',
+        sourceId: 999999,
+        sourceRef: { type: 'rest_api', value: 'demo/accept_missing' },
+        valueField: 'id',
+        labelField: 'name',
+      },
+    }).promise, {
+      status: 'error',
+      options: [],
+      errorMessage: 'option-source-missing',
+    });
+    assert.deepEqual(getSourceDataByApiId.mock.calls.map((call) => call[0]), [999999]);
+    assert.equal(getDataSourceList.mock.calls.length, 0);
   });
 });

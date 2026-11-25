@@ -4,17 +4,14 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import (
-    _normalize_organization_ids,
-    resolve_current_team_data_scope,
-    validate_assignable_organizations,
-)
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids, resolve_current_team_data_scope, validate_assignable_organizations
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
-from apps.node_mgmt.models.installer import CollectorTaskNode
+from apps.node_mgmt.models.installer import CollectorTaskNode, ControllerBulkBatch
 from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
+    ControllerBulkInstallRequestSerializer,
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
     ControllerRetryRequestSerializer,
@@ -23,12 +20,12 @@ from apps.node_mgmt.serializers.installer import (
     InstallerArtifactQuerySerializer,
 )
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
+from apps.node_mgmt.services.bulk_install import BulkInstallService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope, normalize_push_targets
 from apps.node_mgmt.tasks.installer import install_collector, install_controller, retry_controller, uninstall_controller
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
-
 
 ASSIGN_ORGANIZATION_DENIED = "User does not have permission to assign nodes to these organizations"
 CURRENT_ORGANIZATION_REQUIRED = "Node organizations must include the current organization"
@@ -58,6 +55,17 @@ def _validate_install_target_organizations(request, nodes):
     except BaseAppException:
         return WebUtils.response_403(ASSIGN_ORGANIZATION_DENIED)
     return None
+
+
+def _authorized_bulk_batch(request, batch_id):
+    try:
+        scope = resolve_current_team_data_scope(request)
+    except BaseAppException as exc:
+        return None, WebUtils.response_403(exc.message)
+    batch = ControllerBulkBatch.objects.filter(id=batch_id, organization_id=scope.current_team).first()
+    if batch is None:
+        return None, WebUtils.response_403("批量命令不存在")
+    return batch, None
 
 
 def _authorize_existing_install_nodes(request, node_ids):
@@ -261,6 +269,56 @@ class InstallerViewSet(ViewSet):
             return error_response
         data = InstallerService.get_manual_install_status(node_ids)
         return WebUtils.response_success(data)
+
+    @action(detail=False, methods=["post"], url_path="controller/bulk_install")
+    @HasPermission("cloud_region_node-Edit")
+    def controller_bulk_install(self, request):
+        serializer = ControllerBulkInstallRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
+        try:
+            scope = resolve_current_team_data_scope(request)
+        except BaseAppException as exc:
+            return WebUtils.response_403(exc.message)
+        try:
+            payload = BulkInstallService.create_batch(
+                cloud_region_id=data["cloud_region_id"],
+                package_id=data["package_id"],
+                max_success_count=data["max_success_count"],
+                expires_in_hours=data["expires_in_hours"],
+                push_targets=data.get("push_targets") or [],
+                organization_id=scope.current_team,
+                username=scope.username or getattr(request.user, "username", ""),
+                domain=scope.domain or getattr(request.user, "domain", "domain.com"),
+                actor_scope=build_module_push_actor_scope(request),
+            )
+        except ValidationAppException as exc:
+            return WebUtils.response_error(error_message=exc.message)
+        return WebUtils.response_success(payload)
+
+    @action(detail=False, methods=["get"], url_path="controller/bulk_install/(?P<batch_id>[^/.]+)")
+    @HasPermission("cloud_region_node-Edit")
+    def controller_bulk_install_progress(self, request, batch_id):
+        batch, error_response = _authorized_bulk_batch(request, batch_id)
+        if error_response:
+            return error_response
+        try:
+            payload = BulkInstallService.progress(batch=batch)
+        except ValidationAppException as exc:
+            return WebUtils.response_error(error_message=exc.message)
+        return WebUtils.response_success(payload)
+
+    @action(detail=False, methods=["post"], url_path="controller/bulk_install/(?P<batch_id>[^/.]+)/revoke")
+    @HasPermission("cloud_region_node-Edit")
+    def controller_bulk_install_revoke(self, request, batch_id):
+        batch, error_response = _authorized_bulk_batch(request, batch_id)
+        if error_response:
+            return error_response
+        try:
+            payload = BulkInstallService.revoke(batch=batch, username=getattr(request.user, "username", ""))
+        except ValidationAppException as exc:
+            return WebUtils.response_error(error_message=exc.message)
+        return WebUtils.response_success(payload)
 
     # @action(detail=False, methods=["post"], url_path="controller/restart")
     # def controller_restart(self, request):

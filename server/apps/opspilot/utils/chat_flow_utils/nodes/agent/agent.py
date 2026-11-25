@@ -83,11 +83,14 @@ class AgentNode(BaseNodeExecutor):
             message = params.get("user_message", "")
             if not isinstance(message, str):
                 message = json.dumps(message, ensure_ascii=False, default=str)
+            flow_name = self.variable_manager.flow_name
             with transaction.atomic():
                 conversation, _ = SkillConversation.objects.get_or_create(
                     session_id=session_id,
-                    defaults={"skill_id": skill_id, "channel": None, "external_user_id": user_id},
+                    defaults={"skill_id": skill_id, "channel": None, "external_user_id": user_id, "flow_name": flow_name},
                 )
+                if flow_name and not conversation.flow_name:
+                    SkillConversation.objects.filter(pk=conversation.pk, flow_name="").update(flow_name=flow_name)
                 append_message(conversation, SkillConversationMessage.ROLE_USER, message)
                 if content:
                     append_message(conversation, SkillConversationMessage.ROLE_ASSISTANT, content)
@@ -301,7 +304,7 @@ class AgentNode(BaseNodeExecutor):
         if flow_input.get("entry_type") == "workflow" and flow_input.get("reply_channel") == "WECOM_BOT":
             resolved_prompt += (
                 "\n\n本次是企业微信群的单向通知。整条最终回答就是群消息，群成员不能通过这条消息回复你。"
-                "只写一份正文。若完整查询成功且结果为零，整条消息只写一句话，把查询对象和零项结论写在同一句，然后结束。"
+                "任务要求生成文件时直接调用附件工具，成功后由通知节点投递。只写一份正文；若查询成功且结果为零，正文用一句话说明。"
                 "有结果时先给结论，再按用户要求的维度分行汇总，省略内部记录编号、工具参数和查询过程。"
                 "缺失的数据就地注明，查询失败如实说明。可用加粗和引用，避免表格和包裹全文的代码块。"
                 "写完所问内容即结束。仅当用户明确要求时给出处置建议。省略推送示例、邀请回复、请求补充信息和继续服务的尾语。"
@@ -321,6 +324,7 @@ class AgentNode(BaseNodeExecutor):
             "temperature": DEFAULT_CHAT_TEMPERATURE,
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
+            "choice_reply_text": self.variable_manager.get_variable("original_user_message") or final_message,
             "conversation_window_size": skill.conversation_window_size,
             "run_model_call_limit": int(getattr(skill, "run_model_call_limit", 0) or 0),
             "show_think": False,
@@ -350,13 +354,18 @@ class AgentNode(BaseNodeExecutor):
         entry_type = flow_input.get("entry_type")
         if isinstance(entry_type, str) and entry_type.strip():
             params["entry_type"] = entry_type
+        if entry_type == "workflow" and flow_input.get("reply_channel") == "WECOM_BOT":
+            params["reply_channel"] = "WECOM_BOT"
         caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
         if caller_identity is not None:
             # 仅透传入口已经校验的快照，工具在目标模块按该身份鉴权。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
         params[WIKI_MATERIAL_ACTOR_KEY] = actor_for_chat_flow_input(flow_input)
-        if isinstance(flow_input.get("pending_question"), dict):
-            params["pending_question"] = flow_input["pending_question"]
+        if "reply_to_choice_id" in flow_input:
+            params["reply_to_choice_id"] = flow_input["reply_to_choice_id"]
+        if flow_input.get("choice_id"):
+            params["choice_id"] = flow_input["choice_id"]
+            params["choice_option"] = flow_input.get("choice_option") or ""
         return params
 
     @staticmethod
@@ -545,7 +554,9 @@ class AgentNode(BaseNodeExecutor):
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 
-    def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(
+        self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any], *, execution_timeout_seconds: int | None = None
+    ) -> Dict[str, Any]:
         """非流式执行agent节点"""
         config = node_config["data"].get("config", {})
         output_key = config.get("outputParams", "last_message")
@@ -553,7 +564,7 @@ class AgentNode(BaseNodeExecutor):
         llm_params, skill_name, supports_attachment_generation = self.set_llm_params(node_id, config, input_data)
 
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
-        data, _, _ = ChatService.invoke_chat(llm_params)
+        data, _, _ = ChatService.invoke_chat(llm_params, execution_timeout_seconds=execution_timeout_seconds)
         self._record_workbench_conversation(node_id=node_id, skill_id=config.get("agent"), params=llm_params, content=data.get("message") or "")
         self._record_agent_token_usage(
             node_id=node_id,

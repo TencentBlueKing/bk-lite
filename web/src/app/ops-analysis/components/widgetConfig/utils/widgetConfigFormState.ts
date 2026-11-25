@@ -32,6 +32,7 @@ import {
   normalizeLineBarFieldList,
 } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import { readSingleValueStyle } from '@/app/ops-analysis/utils/singleValueStyle';
+import { readChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
@@ -232,6 +233,10 @@ function buildClearedChartDependentFormFields() {
     },
     compare: false,
     compareMode: 'percent' as const,
+    scalarCalcMethod: undefined,
+    scalarCalcTimeField: undefined,
+    displayLimit: undefined,
+    sortByValue: false,
   };
 }
 
@@ -357,6 +362,8 @@ export function applyOpenedValueConfigToFormValues(
   } else {
     formValues.descriptionField = undefined;
   }
+  formValues.scalarCalcMethod = valueConfig?.scalarCalc?.method;
+  formValues.scalarCalcTimeField = valueConfig?.scalarCalc?.timeField;
 
   if (valueConfig?.topNLabelField !== undefined) {
     formValues.topNLabelField = valueConfig.topNLabelField;
@@ -453,6 +460,9 @@ export function applyOpenedValueConfigToFormValues(
     });
   }
   formValues.compareMode = valueConfig?.compareMode || 'percent';
+  const openedChartDisplay = readChartDisplay(valueConfig);
+  formValues.displayLimit = openedChartDisplay.displayLimit;
+  formValues.sortByValue = openedChartDisplay.sortByValue === true;
   if (
     normalizeLineBarFieldList(formValues.selectedFields).length === 0
     && (formValues.chartType === 'single' || formValues.chartType === 'gauge')

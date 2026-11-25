@@ -21,6 +21,7 @@ import { isDashboardGroupItem, isDashboardWidgetItem } from '@/app/ops-analysis/
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { optionsSourceIdentity } from '@/app/ops-analysis/utils/optionsSourceIdentity';
 import { normalizeInputConfigResult } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { CHART_DISPLAY_KEYS } from '@/app/ops-analysis/utils/chartDisplay';
 import {
   collectOptionsQueryParamIssues,
   dynamicQueryParamsOf,
@@ -236,6 +237,11 @@ const overlayColumns = (stored: ValueConfig, proposal: ValueConfig): ValueConfig
 const overlayValueConfig = (stored: ValueConfig, proposal: ValueConfig): ValueConfig => {
   const next: ValueConfig = { ...stored };
   FORMAT_VALUE_CONFIG_KEYS.forEach((key) => {
+    if (hasOwn(proposal, key)) {
+      (next as Record<string, unknown>)[key] = proposal[key];
+    }
+  });
+  CHART_DISPLAY_KEYS.forEach((key) => {
     if (hasOwn(proposal, key)) {
       (next as Record<string, unknown>)[key] = proposal[key];
     }

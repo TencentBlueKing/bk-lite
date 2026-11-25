@@ -21,7 +21,53 @@ interface SourceLike {
   id: number;
   name?: string;
   rest_api?: string;
+  build_in_key?: string | null;
 }
+
+export type OptionSourceStatus =
+  | { status: 'resolved'; id: number }
+  | { status: 'ambiguous' }
+  | { status: 'missing' };
+
+const optionSourceRef = (
+  source: { sourceRef?: { type?: string; value?: string } },
+): string => (
+  source.sourceRef?.type === 'rest_api' && typeof source.sourceRef.value === 'string'
+    ? source.sourceRef.value
+    : ''
+);
+
+/** 在一份候选清单里按身份解析。同地址多条时不取第一条。清单不全时，纯路径的唯一结果仍可能是假唯一，运行时要走全表接口。 */
+export const classifyOptionSource = (
+  source: {
+    sourceId?: number;
+    builtinKey?: string;
+    sourceRef?: { type?: string; value?: string };
+  },
+  dataSources: SourceLike[],
+): OptionSourceStatus => {
+  if (typeof source.sourceId === 'number') {
+    return { status: 'resolved', id: source.sourceId };
+  }
+  const builtinKey = source.builtinKey?.trim();
+  if (builtinKey) {
+    const restored = dataSources.filter((item) => item.build_in_key === builtinKey);
+    if (restored.length === 1) return { status: 'resolved', id: restored[0].id };
+    if (restored.length > 1) return { status: 'ambiguous' };
+  }
+  const ref = optionSourceRef(source);
+  if (!ref) return { status: 'missing' };
+  const named = dataSources.filter((item) => (
+    (typeof item.name === 'string' && item.name.length > 0 && `${item.name}::${item.rest_api || ''}` === ref)
+    || item.build_in_key === ref
+  ));
+  const candidates = named.length > 0
+    ? named
+    : dataSources.filter((item) => (item.rest_api || '') === ref);
+  if (candidates.length === 1) return { status: 'resolved', id: candidates[0].id };
+  if (candidates.length > 1) return { status: 'ambiguous' };
+  return { status: 'missing' };
+};
 
 export const isOptionInputControl = (
   config?: InputControlConfig,
@@ -162,16 +208,6 @@ export const resolveDynamicSourceId = (
   source: DynamicOptionsSource,
   dataSources: SourceLike[],
 ): number | undefined => {
-  if (source.sourceRef?.type === 'rest_api') {
-    const ref = source.sourceRef.value;
-    const byKey = dataSources.find(
-      (item) =>
-        typeof item.name === 'string' &&
-        item.name.length > 0 &&
-        `${item.name}::${item.rest_api || ''}` === ref,
-    );
-    if (byKey) return byKey.id;
-    return dataSources.find((item) => item.rest_api === ref)?.id;
-  }
-  return typeof source.sourceId === 'number' ? source.sourceId : undefined;
+  const classified = classifyOptionSource(source, dataSources);
+  return classified.status === 'resolved' ? classified.id : undefined;
 };

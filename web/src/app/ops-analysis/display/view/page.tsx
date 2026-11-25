@@ -11,6 +11,7 @@ import { ShareOrganizationProvider } from '@/app/ops-analysis/context/shareOrgan
 import { DashboardRenderOpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { useLocaleFromSearch } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
 
@@ -22,15 +23,21 @@ export default function ScreenDisplayViewPage() {
   const [invalid, setInvalid] = useState(false);
 
   useEffect(() => {
-    api.getDisplayCanvas()
+    const controller = new AbortController();
+    api.getDisplayCanvas(controller.signal)
       .then((next: SharedCanvasDto) => {
+        if (controller.signal.aborted) return;
         if (next?.resource_type !== 'screen') {
           setInvalid(true);
           return;
         }
         setCanvas(next);
       })
-      .catch(() => setInvalid(true));
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isTransportCanceled(error)) return;
+        setInvalid(true);
+      });
+    return () => controller.abort();
   }, [api.getDisplayCanvas]);
 
   const selectedItem = useMemo<DirItem | null>(
@@ -57,16 +64,29 @@ export default function ScreenDisplayViewPage() {
     [canvas],
   );
   const queryDataSource = useCallback(
-    (dataSourceId: number, requestParams?: unknown) =>
-      api.queryDisplayDataSource(dataSourceId, requestParams),
+    (
+      dataSourceId: number,
+      requestParams?: unknown,
+      options?: { suppressErrorNotification?: boolean; signal?: AbortSignal },
+    ) => api.queryDisplayDataSource(dataSourceId, requestParams, options),
     [api.queryDisplayDataSource],
+  );
+  const resolveOptionSource = useCallback(
+    (
+      body: { sourceId?: number; builtinKey?: string; sourceRef?: string },
+      signal?: AbortSignal,
+    ) => api.resolveDisplayOptionSource(body, signal),
+    [api.resolveDisplayOptionSource],
   );
   const shareAccess = useMemo(
     () => ({
       queryDataSource,
-      getDataSourceDetails: () => api.getDisplayDataSources(),
+      getDataSourceDetails: (_ids: Array<number | string>, signal?: AbortSignal) => (
+        api.getDisplayDataSources(signal)
+      ),
+      resolveOptionSource,
     }),
-    [api.getDisplayDataSources, queryDataSource],
+    [api.getDisplayDataSources, queryDataSource, resolveOptionSource],
   );
 
   if (invalid) {

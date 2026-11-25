@@ -9,7 +9,7 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Case, CharField, Count, Exists, F, OuterRef, Q, Value, When
 from django.http import StreamingHttpResponse
 from django.utils import timezone as django_timezone
 from django.utils.dateparse import parse_datetime
@@ -875,7 +875,7 @@ def _append_person_ids(extras: list[str], user: SystemUser) -> None:
             extras.append(f"{user.username}@{user.domain}")
 
 
-def _filter_conversations_by_person(qs, person: str):
+def filter_conversations_by_person(qs, person: str):
     keyword = (person or "").strip()
     if not keyword:
         return qs
@@ -898,10 +898,27 @@ def _filter_conversations_by_person(qs, person: str):
     return qs.filter(person_q)
 
 
+def history_conversations(skill_id, *, channel_id=None, person="", title=""):
+    qs = SkillConversation.objects.filter(skill_id=skill_id).annotate(
+        history_channel_type=Case(
+            When(channel__isnull=False, then=F("channel__channel_type")),
+            When(session_id__startswith="workflow_", then=Value("workflow")),
+            default=Value("workbench"),
+            output_field=CharField(),
+        )
+    )
+    if channel_id is not None:
+        qs = qs.filter(channel_id=channel_id)
+    if title:
+        qs = qs.filter(title__icontains=title.strip())
+    return filter_conversations_by_person(qs, person)
+
+
 def list_skill_conversations_for_admin(
     *,
     skill_id: int,
     channel_id: int | None = None,
+    channel_types: list[str] | None = None,
     person: str = "",
     title: str = "",
     start_time: str = "",
@@ -909,19 +926,19 @@ def list_skill_conversations_for_admin(
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
-    qs = SkillConversation.objects.filter(skill_id=skill_id).select_related("channel").annotate(message_count=Count("messages"))
-    if channel_id is not None:
-        qs = qs.filter(channel_id=channel_id)
-    title_keyword = (title or "").strip()
-    if title_keyword:
-        qs = qs.filter(title__icontains=title_keyword)
+    qs = history_conversations(skill_id, channel_id=channel_id, title=title, person=person)
+    if channel_types is not None:
+        questions = SkillConversationMessage.objects.filter(
+            conversation_id=OuterRef("pk"), role=SkillConversationMessage.ROLE_USER, created_at__lte=django_timezone.now()
+        )
+        qs = qs.filter(Exists(questions), history_channel_type__in=channel_types)
+    qs = qs.select_related("channel").annotate(message_count=Count("messages"))
     start_at = _parse_admin_datetime(start_time)
     end_at = _parse_admin_datetime(end_time)
     if start_at is not None:
         qs = qs.filter(updated_at__gte=start_at)
     if end_at is not None:
         qs = qs.filter(updated_at__lte=end_at)
-    qs = _filter_conversations_by_person(qs, person)
     qs = qs.order_by("-updated_at", "-id")
     page = max(int(page or 1), 1)
     page_size = min(max(int(page_size or 10), 1), ADMIN_CONVERSATION_PAGE_SIZE_MAX)
@@ -939,8 +956,8 @@ def list_skill_conversations_for_admin(
                 "title": (conv.title or "").strip() or "新会话",
                 "skill_id": conv.skill_id,
                 "channel_id": conv.channel_id,
-                "channel_type": channel.channel_type if channel else ("workflow" if conv.session_id.startswith("workflow_") else "workbench"),
-                "channel_name": (channel.name if channel else "") or "",
+                "channel_type": conv.history_channel_type,
+                "channel_name": (channel.name if channel else conv.flow_name) or "",
                 "external_user_id": external_user_id,
                 "person_display": displays.get(external_user_id) or external_user_id,
                 "count": int(getattr(conv, "message_count", 0) or 0),
@@ -1072,8 +1089,15 @@ def refresh_history_message_media(content: str) -> str:
     return json.dumps(events, ensure_ascii=False)
 
 
-def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
-    rows = list(conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX])
+def serialize_skill_session_messages(conv: SkillConversation, *, from_message_id: int | None = None) -> list[dict]:
+    messages = conv.messages.order_by("created_at", "id")
+    if from_message_id is not None:
+        anchor = messages.filter(id=from_message_id).values("created_at").first()
+        if not anchor:
+            raise SkillChannelChatError("引用的消息已删除", status=404)
+        created = anchor["created_at"]
+        messages = messages.filter(Q(created_at__gt=created) | Q(created_at=created, pk__gte=from_message_id))
+    rows = list(messages[:ADMIN_MESSAGE_FETCH_MAX])
     grouped: dict[int, list[dict]] = {}
     if rows:
         attachments = ChatAttachment.objects.filter(message_id__in=[row.id for row in rows]).order_by("id")
@@ -1093,6 +1117,18 @@ def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
             {
                 "id": msg.id,
                 "conversation_role": msg.role,
+                **({"feedback": msg.feedback} if msg.role == SkillConversationMessage.ROLE_ASSISTANT else {}),
+                **(
+                    {
+                        "feedback_detail": {
+                            "reasons": msg.feedback_reasons,
+                            "reason": msg.feedback_reasons[0] if msg.feedback_reasons else "",
+                            "comment": msg.feedback_comment,
+                        }
+                    }
+                    if msg.feedback and (msg.feedback_reasons or msg.feedback_comment)
+                    else {}
+                ),
                 "conversation_content": refresh_attachment_download_urls(refresh_history_message_media(msg.content or "")),
                 "conversation_time": msg.created_at.isoformat() if msg.created_at else None,
                 "session_id": conv.session_id,
@@ -1503,8 +1539,10 @@ def stream_skill_channel_chat(
     page_context=None,
     attachment_ids=None,
     distribute_file_ids=None,
+    include_message_receipt: bool = False,
     choice_id: str | None = None,
     choice_option: str | None = None,
+    reply_to_choice_id: str | None = None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
     user = identity_user or request.user
@@ -1633,8 +1671,15 @@ def stream_skill_channel_chat(
         params["choice_id"] = str(choice_id)
     if choice_option:
         params["choice_option"] = str(choice_option)
+    if reply_to_choice_id is not None:
+        params["reply_to_choice_id"] = reply_to_choice_id
     base_response = stream_agui_chat(params, skill.name, ingest_kwargs, current_ip, persist_text, skill_id=skill.id)
-    return _wrap_stream_persist_assistant(base_response, conversation.id, organization_id=organization_id)
+    return _wrap_stream_persist_assistant(
+        base_response,
+        conversation.id,
+        organization_id=organization_id,
+        include_message_receipt=include_message_receipt,
+    )
 
 
 async def _aiter_stream(iterable):
@@ -1648,7 +1693,7 @@ async def _aiter_stream(iterable):
 
 
 def _wrap_stream_persist_assistant(
-    response: StreamingHttpResponse, conversation_id: int, *, organization_id: int | None = None
+    response: StreamingHttpResponse, conversation_id: int, *, organization_id: int | None = None, include_message_receipt: bool = False
 ) -> StreamingHttpResponse:
     """包装 SSE：落库 AG-UI 事件数组（或 OpenAI 正文）。失败不影响流式输出。"""
 
@@ -1656,17 +1701,29 @@ def _wrap_stream_persist_assistant(
 
     async def generator():
         events: list[dict] = []
+        saved_message = None
+        terminal_frames = []
         try:
             async for piece in _aiter_stream(original):
                 text = piece.decode("utf-8") if isinstance(piece, (bytes, bytearray)) else str(piece)
+                parsed = parse_sse_json_payloads(text)
+                events.extend(parsed)
+                # 平台收到结束事件就能发起下一轮，先交付本轮回答 ID。
+                if include_message_receipt and (
+                    text.strip() == "data: [DONE]" or (parsed and all(event.get("type") == "RUN_FINISHED" for event in parsed))
+                ):
+                    terminal_frames.append(piece)
+                    continue
+                for frame in terminal_frames:
+                    yield frame
+                terminal_frames.clear()
                 yield piece
-                events.extend(parse_sse_json_payloads(text))
         finally:
             content = assemble_assistant_persist_content(events)
             if content:
                 try:
                     conversation = await sync_to_async(SkillConversation.objects.select_related("skill").get)(id=conversation_id)
-                    await sync_to_async(append_message)(
+                    saved_message = await sync_to_async(append_message)(
                         conversation,
                         SkillConversationMessage.ROLE_ASSISTANT,
                         content,
@@ -1675,6 +1732,12 @@ def _wrap_stream_persist_assistant(
                     await sync_to_async(maybe_schedule_skill_memory_write)(conversation)
                 except Exception:
                     logger.exception("persist skill channel assistant message failed: conversation_id=%s", conversation_id)
+
+        if include_message_receipt and saved_message is not None:
+            receipt = {"type": "CUSTOM", "name": "assistant_message_saved", "value": {"message_id": saved_message.pk}}
+            yield f"data: {json.dumps(receipt)}\n\n"
+        for frame in terminal_frames:
+            yield frame
 
     wrapped = StreamingHttpResponse(generator(), content_type=response["Content-Type"])
     for key, value in response.items():

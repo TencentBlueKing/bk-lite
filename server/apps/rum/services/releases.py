@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from apps.core.logger import rum_logger as logger
-from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
-from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
+from apps.rum.services.control import ControlError, ControlPlane, get_control_plane
 from apps.rum.services.errors import SourcemapStore, _sourcemap_meta, get_sourcemap_store
-from apps.rum.services.query import empty_release_list, parse_range_params
+from apps.rum.services.health import list_enabled_applications
+from apps.rum.services.query import empty_release_list, parse_range_params, stamp_pipeline_flags
 from apps.rum.services.settings import load_rum_settings
 from apps.rum.services.sourcemap import asset_fingerprint, new_sourcemap_token, validate_sourcemap, verify_sourcemap_token
 from apps.rum.services.validation import ValidationError, valid_application
@@ -203,16 +203,6 @@ class ReleasesService:
         self.credentials = credentials or get_credential_store()
         self.settings = load_rum_settings()
 
-    def _list_enabled_apps(self, actor: str) -> tuple[list[str], str | None]:
-        try:
-            _, data = self.control.request(SUBJECT_APPLICATION_LIST, actor, {})
-        except ControlError as exc:
-            if control_unavailable(exc):
-                return [], "control"
-            raise
-        registry = data if isinstance(data, list) else []
-        return [item.get("application") for item in registry if item.get("application") and item.get("enabled", True)], None
-
     def _requested_apps(self, params: dict[str, Any]) -> list[str]:
         apps: list[str] = []
         single = (params.get("application") or "").strip()
@@ -229,10 +219,10 @@ class ReleasesService:
         application = (application or "").strip()
         if not application or not valid_application(application):
             raise ValidationError("invalid application")
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor)
+        if found.control_down:
             raise ControlError("unavailable", "RUM controller is unavailable")
-        if application not in enabled:
+        if application not in found.applications:
             raise ControlError("not_found", "application not found")
 
     def list_releases(self, actor: str, params: dict[str, Any]) -> dict:
@@ -240,13 +230,12 @@ class ReleasesService:
             start, end = parse_range_params(params)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        enabled, reason = self._list_enabled_apps(actor)
-        if reason == "control":
+        found = list_enabled_applications(self.control, actor, self._requested_apps(params))
+        if found.control_down and found.catalog_empty:
             return empty_release_list(reason="control")
-        requested = self._requested_apps(params)
-        apps = [name for name in requested if name in enabled] if requested else enabled
+        apps = found.applications
         if not self.analytics.available():
-            return empty_release_list(reason="analytics")
+            return stamp_pipeline_flags(empty_release_list(reason="analytics"), control=found.control_down)
         limit = int(params.get("limit") or 0)
         try:
             page = self.analytics.list_releases(
@@ -264,7 +253,7 @@ class ReleasesService:
                 "rum releases list analytics failed failed_stage=list_releases error_type=%s",
                 type(exc).__name__,
             )
-            return empty_release_list(reason="analytics")
+            return stamp_pipeline_flags(empty_release_list(reason="analytics"), control=found.control_down)
         rows = list(page.get("releases") or [])
         if len(apps) == 1:
             baselines = {item["application"]: item["baselineRelease"] for item in self.baselines.list() if item.get("application") == apps[0]}
@@ -293,7 +282,7 @@ class ReleasesService:
                     row["lcpP75Delta"] = lcp_delta
                     row["inpP75Delta"] = inp_delta
                     row["suspectedRegression"] = error_delta > 0 or lcp_delta > 0 or inp_delta > 0
-        return {**page, "releases": rows}
+        return stamp_pipeline_flags({**page, "releases": rows}, control=found.control_down)
 
     def put_baseline(self, actor: str, application: str, body: dict) -> dict:
         application = (application or "").strip()

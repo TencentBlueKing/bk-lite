@@ -17,14 +17,14 @@ import {
   RumDualWorkbench,
   RumFilterBlock,
 } from '@/app/rum/components/rum-dual-workbench';
-import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
+import PipelineDegradedBanner, { RumDegradedEmpty } from '@/app/rum/components/pipeline-degraded';
 import ExportButton from '@/app/rum/components/export-button';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import Sparkline from '@/app/apm/components/home/sparkline';
 import { toneSemanticPalette, type CwvTone } from '@/app/rum/lib/cwv';
 import SemanticBadge from '@/components/semantic-badge';
-import { degradationReason } from '@/app/rum/lib/degradation';
+import { degradationBanners, listEmptyUsesAnalyticsCopy } from '@/app/rum/lib/degradation';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { isProtectedRumMessage } from '@/app/rum/sessions/lib/timeline-error';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
@@ -125,7 +125,8 @@ export default function RumErrorsPage() {
     issues,
     `${range}|${application}|${status}|${sort}|${traffic}|${release}`,
   );
-  const degrade = degradationReason(page);
+  const banners = degradationBanners(page);
+  const analyticsEmpty = listEmptyUsesAnalyticsCopy(page);
 
   async function triage(issue: RumErrorIssueItem, nextStatus: string) {
     setActing(issue.fingerprint);
@@ -300,7 +301,13 @@ export default function RumErrorsPage() {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <h1 className="sr-only">{t('rum.errors.title', '错误追踪')}</h1>
 
-      {degrade ? <div className="mb-2 shrink-0"><PipelineDegradedBanner reason={degrade} /></div> : null}
+      {banners.length > 0 ? (
+        <div className="mb-2 shrink-0">
+          {banners.map((reason) => (
+            <PipelineDegradedBanner key={reason} reason={reason} />
+          ))}
+        </div>
+      ) : null}
 
       <RumDualWorkbench
         asideTitle={t('rum.errors.filterTitle', '错误筛选')}
@@ -382,7 +389,11 @@ export default function RumErrorsPage() {
               <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
             ) : issues.length === 0 ? (
               <div className="flex min-h-0 flex-1 items-center justify-center">
-                <Empty description={t('rum.errors.empty', '没有错误样本')} />
+                {analyticsEmpty ? (
+                  <RumDegradedEmpty reason="analytics" />
+                ) : (
+                  <Empty description={t('rum.errors.empty', '没有错误样本')} />
+                )}
               </div>
             ) : (
               <div className="min-h-0 min-w-0 flex-1">

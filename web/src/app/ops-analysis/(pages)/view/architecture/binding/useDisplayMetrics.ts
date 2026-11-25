@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   ARCHITECTURE_METRIC_BATCH_SIZE,
   combineMetricBatches,
@@ -47,6 +48,7 @@ export function useArchitectureDisplayMetrics(options: {
     let timer = 0;
     let retryTimer = 0;
     let seq = 0;
+    let activeAbort: AbortController | null = null;
     const apply = (settled: Array<{ uuids: string[]; ok: boolean; data?: unknown }>, current: number) => {
       if (cancelled || current !== seq) return;
       const combined = combineMetricBatches(settled, cacheRef.current);
@@ -60,13 +62,16 @@ export function useArchitectureDisplayMetrics(options: {
       }
       setPhase(combined.failed ? 'failed' : 'ready');
     };
-    const requestBatches = () => {
+    const requestBatches = (signal: AbortSignal) => {
       const batches = chunkBoundUuids(requested, ARCHITECTURE_METRIC_BATCH_SIZE);
       return Promise.all(batches.map(async (uuids) => {
         try {
-          const data = await queryRef.current(uuids);
+          const data = await queryRef.current(uuids, signal);
           return { uuids, ok: true, data };
-        } catch {
+        } catch (error) {
+          if (signal.aborted || isTransportCanceled(error)) {
+            return { uuids, ok: true };
+          }
           return { uuids, ok: false };
         }
       }));
@@ -75,13 +80,16 @@ export function useArchitectureDisplayMetrics(options: {
       if (shouldPauseArchitectureStatusRefresh(typeof document !== 'undefined' && document.hidden)) {
         return;
       }
+      activeAbort?.abort();
+      const abort = new AbortController();
+      activeAbort = abort;
       const current = ++seq;
-      requestBatches().then((settled) => {
+      requestBatches(abort.signal).then((settled) => {
         if (cancelled || current !== seq) return;
         if (settled.some((batch) => !batch.ok)) {
           retryTimer = window.setTimeout(() => {
             if (cancelled || current !== seq) return;
-            requestBatches().then((retried) => apply(retried, current));
+            requestBatches(abort.signal).then((retried) => apply(retried, current));
           }, 500);
           return;
         }
@@ -107,6 +115,7 @@ export function useArchitectureDisplayMetrics(options: {
     }
     return () => {
       cancelled = true;
+      activeAbort?.abort();
       window.clearTimeout(timer);
       window.clearTimeout(retryTimer);
       if (refreshOnVisible) {

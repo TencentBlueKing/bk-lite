@@ -235,6 +235,9 @@ def test_save_operation_log_默认detail为None(client):
             "target_type": "",
             "target_id": "",
             "detail": None,
+            "outcome": "",
+            "failure_reason": "",
+            "target_name": "",
         },
     )
 

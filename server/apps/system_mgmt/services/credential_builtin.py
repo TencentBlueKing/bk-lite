@@ -134,7 +134,7 @@ BUILTIN_TYPES = {
     },
     "cloud": {
         "name": "AK/SK",
-        "categories": ["cloud", "storage"],
+        "categories": ["cloud", "storage", "middleware"],
         "fields": [
             {"id": "access_key", "name": "Access Key (AK)", "kind": "string", "required": True},
             {"id": "secret_key", "name": "Secret Key (SK)", "kind": "secret", "required": True},

@@ -27,20 +27,28 @@ export const normalizeMonitorToolConfigs = (tools: SelectTool[]): SelectTool[] =
 );
 
 export interface SkillSaveToolPayload {
-  id: number;
+  id?: number;
   name: string;
-  icon: string;
+  icon?: string;
   kwargs: ToolVariable[];
 }
 
-export const buildSkillSaveTools = (tools: SelectTool[]): SkillSaveToolPayload[] => (
-  normalizeMonitorToolConfigs(tools).map((tool) => ({
+function serializeTool(tool: SelectTool): SkillSaveToolPayload {
+  return {
     id: tool.id,
     name: tool.rawName || tool.name,
     icon: tool.icon,
-    kwargs: (tool.kwargs || []).filter((kwarg) => kwarg.key),
-  }))
-);
+    kwargs: (normalizeMonitorToolConfig(tool).kwargs || []).filter(kwarg => kwarg.key),
+  };
+}
+
+export const buildSkillSaveTools = (tools: SelectTool[]) => tools.map(serializeTool);
+
+/** Omit an untouched selection. An explicit empty selection means remove all bindings. */
+export function skillToolUpdate(edited: SelectTool[] | null, saved: SelectTool[]): { tools?: SelectTool[] } {
+  if (edited === null) return {};
+  return { tools: edited.map(tool => saved.includes(tool) ? normalizeMonitorToolConfig(tool) : serializeTool(tool)) };
+}
 
 export const buildStudioRuntimeTools = (tools: SelectTool[]): SelectTool[] => (
   normalizeMonitorToolConfigs(tools)

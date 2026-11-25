@@ -60,6 +60,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   builtinNamespaceId,
   filterDefinitions = [],
   globalFilterValues,
+  canRepairOptionSource = false,
   onClose,
   onConfirm,
   onCancel,
@@ -161,6 +162,8 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         compare: valueConfig.compare,
         compareMode: valueConfig.compareMode || 'percent',
         selectedFields: valueConfig.selectedFields,
+        scalarCalcMethod: valueConfig.scalarCalc?.method,
+        scalarCalcTimeField: valueConfig.scalarCalc?.timeField,
         fontSize: styleConfig.fontSize,
         textColor: normalizeColorForForm(styleConfig.textColor),
         backgroundColor: normalizeColorForForm(styleConfig.backgroundColor),
@@ -296,6 +299,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         dataSource: dataSourceId,
         compare: false,
         selectedFields: [],
+        scalarCalcTimeField: undefined,
       });
 
       if (selectedSource?.params?.length) {
@@ -306,6 +310,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         form.setFieldsValue({
           ...currentValues,
           selectedFields: [],
+          scalarCalcTimeField: undefined,
           params,
         });
         const previewDefs = computePreviewDefinitions(
@@ -442,6 +447,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
                 globalFilters={filterDefinitions}
                 filterBindings={filterBindings}
                 globalFilterValues={globalFilterValues}
+                canRepairOptionSource={canRepairOptionSource}
               />
             </Spin>
           </div>

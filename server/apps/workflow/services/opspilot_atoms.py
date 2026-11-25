@@ -6,9 +6,12 @@ from typing import Any
 from django.apps import apps as django_apps
 
 from apps.core.utils.viewset_utils import build_json_membership_query
+from apps.workflow.models import AtomExecution
+from apps.workflow.services.agent_artifacts import register_agent_artifacts
 from apps.workflow.services.agent_knowledge_inputs import resolve_uploaded_agent_knowledge
 from apps.workflow.services.tool_caller_identity import accepted_tool_caller_identity
 
+AGENT_EXECUTION_TIMEOUT_SECONDS = 10 * 60
 MAX_AGENT_OUTPUT_CHARS = 100_000
 MAX_MEMORY_CONTEXT_CHARS = 100_000
 AUTOMATIC_TRIGGERS = {"SCHEDULE", "NATS", "WEBHOOK"}
@@ -126,6 +129,7 @@ def _clean_text(value: Any, *, label: str, maximum: int, required: bool = True) 
 
 def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
+    from apps.opspilot.utils.pending_question import is_numbered_question
 
     context = _trusted_context(inputs)
     skill = _scoped_skill(inputs.get("agent_id"), context["organization_id"])
@@ -136,6 +140,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
         team=context.get("workflow_organization_id", context["organization_id"]),
     )
     manager = _variable_manager(context, inputs)
+    manager.flow_name = context.get("workflow_name", "")
     result = AgentNode(manager).execute(
         str(context.get("task_reference") or "workflow_agent"),
         {
@@ -149,6 +154,7 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
             }
         },
         {"message": message},
+        execution_timeout_seconds=AGENT_EXECUTION_TIMEOUT_SECONDS,
     )
     if not isinstance(result, dict) or result.get("success") is False:
         error_type = str((result or {}).get("error_type") or "AgentExecutionError") if isinstance(result, dict) else "AgentExecutionError"
@@ -156,7 +162,19 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     output = result.get("message")
     if not isinstance(output, str):
         raise ValueError("智能体返回结果非法")
-    return {"message": output[:MAX_AGENT_OUTPUT_CHARS]}
+    if context.get("reply_channel") == "WECOM_BOT" and is_numbered_question(output):
+        raise ValueError("智能体执行失败: 群通知无法等待用户选择")
+    artifacts = []
+    if inputs.get("__atom_execution_id") is not None:
+        atom_execution = AtomExecution.objects.select_related("execution").get(
+            pk=inputs["__atom_execution_id"],
+            execution_id=context["execution_id"],
+            execution__workflow_id=context["workflow_id"],
+            task_reference=context["task_reference"],
+            atom_key="bklite_agent",
+        )
+        artifacts = register_agent_artifacts(atom_execution)
+    return {"message": output[:MAX_AGENT_OUTPUT_CHARS], "artifacts": artifacts}
 
 
 def execute_intent_classification(inputs: dict[str, Any]) -> dict[str, Any]:

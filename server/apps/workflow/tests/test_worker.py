@@ -399,6 +399,7 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
     assert payload["__bklite_context"] == {
         "execution_id": str(execution.id),
         "workflow_id": str(workflow.id),
+        "workflow_name": workflow.name,
         "workflow_version": 1,
         "organization_id": 7,
         "actor": {"username": "alice", "domain": "example.com"},
@@ -412,7 +413,7 @@ def test_worker_injects_trusted_execution_context_only_for_declared_atoms(mocker
 @pytest.mark.parametrize("caller_identity", [None, {"username": "alice", "domain": "example.com", "team_id": 8, "include_children": False}])
 def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_identity):
     execution = WorkflowExecution(
-        workflow_id=1,
+        workflow=Workflow(id=1, name="生产巡检"),
         workflow_version=1,
         team=[7],
         started_by="alice",
@@ -422,12 +423,19 @@ def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_
     )
     atom = SimpleNamespace(pk=3, output={}, task_reference="agent-real")
     payload = _build_runtime_inputs(
-        inputs={"__bklite_context": {"task_reference": "agent-forged", "caller_identity": {"username": "forged", "team_id": 7}}},
+        inputs={
+            "__bklite_context": {
+                "task_reference": "agent-forged",
+                "workflow_name": "伪造名称",
+                "caller_identity": {"username": "forged", "team_id": 7},
+            }
+        },
         atom_execution=atom,
         task_type="bklite_agent",
         execution=execution,
     )
     assert payload["__bklite_context"]["task_reference"] == "agent-real"
+    assert payload["__bklite_context"]["workflow_name"] == "生产巡检"
     assert "caller_identity" not in payload["__bklite_context"]
 
 
@@ -443,9 +451,13 @@ def test_agent_node_reference_and_identity_come_from_execution_not_input(caller_
     ],
 )
 def test_agent_reply_channel_follows_exclusive_body_consumers_in_execution_snapshot(extra_inputs, outputs, channel, body, expected):
-    notification = {"name": "bklite_notification", "type": "SIMPLE", "inputParameters": {"notification_type": channel, "body": body}}
+    notification = {
+        "name": "bklite_notification",
+        "type": "SIMPLE",
+        "inputParameters": {"notification_type": channel, "body": body, "artifacts": "${agent.output.artifacts}"},
+    }
     execution = WorkflowExecution(
-        workflow_id=1,
+        workflow=Workflow(id=1, name="生产巡检"),
         workflow_version=1,
         team=[7],
         definition_snapshot={

@@ -1,0 +1,233 @@
+"""监控源屏蔽事件在窗口结束后的补准入。
+
+只处理 lite-monitor 的 created 事件。恢复与否只看告警中心里已有的
+recovery/closed，不回查监控。原事件保持 SHIELD，补一条新的 created 走现有入库。
+"""
+
+from django.core.cache import cache
+from django.utils import timezone
+
+from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
+from apps.alerts.constants.constants import AlertShieldMatchType, AlertStatus, EventAction, EventStatus
+from apps.alerts.models.alert_operator import AlertShield
+from apps.alerts.models.models import Alert, Event
+from apps.alerts.notification_templates.timefmt import resolve_display_timezone
+from apps.alerts.utils.monitor_source_rules import MonitorSourceRuleMatcher
+from apps.alerts.utils.rule_catalog import model_fields
+from apps.alerts.utils.time_range_checker import TimeRangeChecker
+from apps.core.logger import alert_logger as logger
+
+MONITOR_PUSH_SOURCE_ID = "lite-monitor"
+BATCH_SIZE = 200
+REPLAY_LIMIT = 20
+CURSOR_KEY = "alerts:shield_replay:cursor"
+SHIELD_SET_KEY = "alerts:shield_replay:shield_set"
+CURSOR_TTL_SECONDS = 7 * 24 * 60 * 60
+_REPLAY_PREFIX = "shield-replay:"
+
+
+def replay_settled_monitor_shields():
+    """了结或重放一批仍处于屏蔽状态的监控源事件。
+
+    从上次停下的 id 继续往后扫。还在窗口里的事件本轮跳过，但游标照样前进，
+    避免它们一直占住队头。生效中的屏蔽一变，就从最老的事件重新扫。
+    真正重新入库的条数每轮有上限。
+    """
+    shields = list(AlertShield.objects.filter(is_active=True).order_by("id"))
+    reset = _shield_set_changed(shields)
+    events, cursor = _load_batch(reset=reset)
+    settled = 0
+    replayed = 0
+    scanned = 0
+    processed_until = cursor
+    for event in events:
+        try:
+            outcome = _replay_one(event, shields, can_replay=replayed < REPLAY_LIMIT)
+        except Exception as exc:
+            logger.exception(
+                "event=monitor_shield_replay_failed event_id=%s failed_stage=replay error_type=%s",
+                event.event_id,
+                type(exc).__name__,
+            )
+            processed_until = event.id
+            scanned += 1
+            continue
+        if outcome == "deferred":
+            break
+        processed_until = event.id
+        scanned += 1
+        if outcome == "settled":
+            settled += 1
+        elif outcome == "replayed":
+            replayed += 1
+    cache.set(CURSOR_KEY, processed_until, CURSOR_TTL_SECONDS)
+    logger.info(
+        "event=monitor_shield_replay_finished scanned=%s settled=%s replayed=%s cursor=%s",
+        scanned,
+        settled,
+        replayed,
+        processed_until,
+    )
+    return {"scanned": scanned, "settled": settled, "replayed": replayed}
+
+
+def _unsettled_queryset():
+    return Event.objects.filter(
+        push_source_id=MONITOR_PUSH_SOURCE_ID,
+        status=EventStatus.SHIELD,
+        action=EventAction.CREATED,
+        shield_settled_at__isnull=True,
+    )
+
+
+def _shield_set_changed(shields):
+    """生效中的屏蔽和上次不同时，调用方从最老的事件重新扫。"""
+    token = _in_effect_token(shields)
+    changed = cache.get(SHIELD_SET_KEY) != token
+    cache.set(SHIELD_SET_KEY, token, CURSOR_TTL_SECONDS)
+    return changed
+
+
+def _in_effect_token(shields):
+    now = timezone.now()
+    in_effect = []
+    for shield in shields:
+        checker = TimeRangeChecker(
+            shield.suppression_time,
+            now,
+            resolve_display_timezone([getattr(shield, "created_by", None)]),
+        )
+        if checker.is_in_range():
+            in_effect.append(str(shield.pk))
+    return ",".join(in_effect)
+
+
+def _load_batch(reset=False):
+    cursor = 0 if reset else cache.get(CURSOR_KEY) or 0
+    try:
+        cursor = int(cursor)
+    except (TypeError, ValueError):
+        cursor = 0
+    queryset = _unsettled_queryset().select_related("source").order_by("id")
+    events = list(queryset.filter(id__gt=cursor)[:BATCH_SIZE])
+    if events or not cursor:
+        return events, cursor
+    return list(queryset[:BATCH_SIZE]), 0
+
+
+def _replay_one(event, shields, can_replay=True):
+    if not str(event.external_id or "").strip():
+        _settle(event)
+        return "settled"
+    if _has_later_recovery(event) or _has_active_alert(event) or _already_replayed(event):
+        _settle(event)
+        return "settled"
+    if _still_shielded(event, shields):
+        return "waiting"
+    if not can_replay:
+        return "deferred"
+    if not _replay(event):
+        return "failed"
+    _settle(event)
+    return "replayed"
+
+
+def _settle(event):
+    Event.objects.filter(pk=event.pk, shield_settled_at__isnull=True).update(shield_settled_at=timezone.now())
+
+
+def has_later_recovery(event):
+    return _has_later_recovery(event)
+
+
+def _has_later_recovery(event):
+    created_key = build_recovery_match_key(event)
+    if created_key is None:
+        return False
+    created_time = event.start_time or event.received_at
+    recoveries = Event.objects.filter(
+        source_id=event.source_id,
+        push_source_id=event.push_source_id,
+        external_id=event.external_id,
+        action__in=[EventAction.RECOVERY, EventAction.CLOSED],
+    ).only("source_id", "push_source_id", "external_id", "team", "end_time", "start_time", "received_at")
+    for recovery in recoveries:
+        if build_recovery_match_key(recovery) != created_key:
+            continue
+        recovery_time = recovery.end_time or recovery.start_time or recovery.received_at
+        if created_time and recovery_time and recovery_time > created_time:
+            return True
+    return False
+
+
+def _has_active_alert(event):
+    return Alert.objects.filter(
+        status__in=AlertStatus.ACTIVATE_STATUS,
+        events__source_id=event.source_id,
+        events__push_source_id=event.push_source_id,
+        events__external_id=event.external_id,
+        events__action=EventAction.CREATED,
+    ).exists()
+
+
+def _already_replayed(event):
+    generation = f"{_REPLAY_PREFIX}{event.event_id}"
+    rows = (
+        Event.objects.filter(
+            source_id=event.source_id,
+            push_source_id=event.push_source_id,
+            external_id=event.external_id,
+            action=EventAction.CREATED,
+        )
+        .exclude(pk=event.pk)
+        .only("raw_data")
+    )
+    for row in rows:
+        raw = row.raw_data if isinstance(row.raw_data, dict) else {}
+        if raw.get("lifecycle_generation") == generation:
+            return True
+    return False
+
+
+def _still_shielded(event, shields):
+    now = timezone.now()
+    matcher = None
+    for shield in shields:
+        checker = TimeRangeChecker(
+            shield.suppression_time,
+            now,
+            resolve_display_timezone([getattr(shield, "created_by", None)]),
+        )
+        if not checker.is_in_range():
+            continue
+        if shield.match_type == AlertShieldMatchType.ALL:
+            return True
+        if shield.match_type != AlertShieldMatchType.FILTER:
+            continue
+        if matcher is None:
+            matcher = MonitorSourceRuleMatcher(model_fields("shield"), source_field="push_source_id")
+        if event.pk in matcher.filter_queryset(Event.objects.filter(pk=event.pk), shield.match_rules or []):
+            return True
+    return False
+
+
+def _replay(event):
+    raw = event.raw_data if isinstance(event.raw_data, dict) else {}
+    payload = dict(raw)
+    payload["title"] = payload.get("title") or event.title
+    payload["level"] = payload.get("level") or event.level
+    payload["external_id"] = event.external_id
+    payload["action"] = EventAction.CREATED
+    payload["push_source_id"] = event.push_source_id
+    payload["organizations"] = list(event.team or [])
+    payload["lifecycle_action"] = "created"
+    payload["lifecycle_generation"] = f"{_REPLAY_PREFIX}{event.event_id}"
+    if event.start_time and not payload.get("start_time"):
+        payload["start_time"] = str(int(event.start_time.timestamp()))
+
+    from apps.alerts.common.source_adapter.nats import NatsAdapter
+
+    adapter = NatsAdapter(alert_source=event.source, events=[payload], trusted_internal=True)
+    adapter.main()
+    result = getattr(adapter, "last_ingestion_result", None) or {}
+    return result.get("accepted", 0) > 0 or result.get("duplicates", 0) > 0

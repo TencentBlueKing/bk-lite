@@ -16,6 +16,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_log_value
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory, resolve_gateway_temperature
+from apps.opspilot.metis.llm.common.vendor_tls import vendor_skips_ssl_verify
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.llm_context_budget import derive_llm_working_budget, window_tokens_for_model_id, working_budget_for_model
 from apps.opspilot.services.wiki.cascade_service import cascade
@@ -247,6 +248,7 @@ def _invoke_llm(
             extra_config["response_format"] = {"type": "json_object"}
         request = BasicLLMRequest(
             openai_api_base=llm.openai_api_base,
+            skip_ssl_verify=vendor_skips_ssl_verify(llm),
             openai_api_key=llm.openai_api_key,
             model=llm.model_name,
             temperature=_wiki_llm_temperature(llm.model_name, vendor_type),

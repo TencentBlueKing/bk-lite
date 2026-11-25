@@ -44,7 +44,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _skill_package_script_lines,
     compact_completed_step_line,
 )
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
+from apps.opspilot.metis.llm.chain.entity import PLANNED_FINAL_TEXT_KEY, BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -138,6 +138,7 @@ from apps.opspilot.utils.pending_question import (
     KIND_K8S_REPAIR_MODE,
     KIND_LIMIT_CONTINUE,
     KIND_USER_CHOICE,
+    allows_user_questions,
     deserialize_evidence,
     is_answer_after_choice_prompt,
     messages_include_terminal_choice,
@@ -274,7 +275,7 @@ class BasicNode:
         trace_id = config["configurable"]["trace_id"]
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False):
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None, max_retries=None):
         """
         获取LLM客户端
 
@@ -282,11 +283,19 @@ class BasicNode:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+            timeout: 单次调用超时（秒）。不传时用 LLM_INVOKE_TIMEOUT。
+            max_retries: HTTP 重试次数。不传时用 SDK 默认。
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
+        return LLMClientFactory.create_client(
+            request,
+            disable_stream=disable_stream,
+            isolated=isolated,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     async def _prepare_messages_for_llm(self, messages, graph_request, *, tools=None):
         if graph_request is None:
@@ -2210,8 +2219,8 @@ class ToolsNodes(
         """汇总传给 deepagent 的业务工具：langchain + MCP（+ 知识库检索工具）。"""
         tools = list(self.all_tools or self.tools or [])
         extra = getattr(graph_request, "extra_config", None) or {}
-        unattended = isinstance(extra, dict) and extra.get("unattended") is True
-        if unattended:
+        can_ask = allows_user_questions(extra)
+        if not can_ask:
             tools = [tool for tool in tools if getattr(tool, "name", "") != "request_user_choice"]
         kb_tool = self._build_knowledge_retrieve_tool(graph_request)
         if kb_tool is not None:
@@ -2219,11 +2228,7 @@ class ToolsNodes(
 
         # 澄清卡只在本轮已有业务工具时注入；空目录寒暄走轻量直答。
         # K8s 修复报告仍由后端状态机派发，不向模型暴露。
-        if (
-            not unattended
-            and self._catalog_has_business_tools(tools)
-            and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools)
-        ):
+        if can_ask and self._catalog_has_business_tools(tools) and not any(getattr(tool, "name", "") == "request_user_choice" for tool in tools):
             tools.append(self._build_choice_tool())
         return tools
 
@@ -2296,9 +2301,9 @@ class ToolsNodes(
             configurable = {}
         graph_request = configurable.get("graph_request")
         extra = getattr(graph_request, "extra_config", None) if graph_request is not None else None
-        unattended = isinstance(extra, dict) and extra.get("unattended") is True
+        can_ask = allows_user_questions(extra)
         pending = extra.get("pending_question") if isinstance(extra, dict) else None
-        if not unattended and isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
+        if can_ask and isinstance(pending, dict) and pending.get("kind") == KIND_K8S_REPAIR_MODE:
             user_message = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "")
             group_by = self._match_repair_group_reply(user_message)
             if not group_by:
@@ -2322,7 +2327,7 @@ class ToolsNodes(
             "problematic": int(analysis.get("problematic") or 0),
             "issues_detail": analysis.get("issues_detail"),
         }
-        if unattended:
+        if not can_ask:
             await self._emit_k8s_repair_report(k8s_analysis, "all", config, output_messages)
             return True
         question_text, tool_message = finalize_user_choice(
@@ -2531,6 +2536,8 @@ class ToolsNodes(
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
                 DECLARED_CMDB_MODEL_KEY,
                 MISSING_PARAMS_CHOICE_HINT,
+                PLANNER_LLM_MAX_RETRIES,
+                PLANNER_LLM_TIMEOUT_SECONDS,
                 TOOL_FAILURE_AUTHZ,
                 TOOL_FAILURE_CONFIG,
                 TOOL_FAILURE_INTERNAL,
@@ -2538,6 +2545,7 @@ class ToolsNodes(
                 CompletedExecutionStep,
                 ToolExecutionPlan,
                 ToolExecutionPlanner,
+                ToolExecutionStep,
                 ToolPlanningError,
                 attachment_step_produced_file,
                 classify_tool_failure_kind,
@@ -2574,9 +2582,11 @@ class ToolsNodes(
             graph_request = config["configurable"]["graph_request"]
             request_extra = getattr(graph_request, "extra_config", None) or {}
             unattended = isinstance(request_extra, dict) and request_extra.get("unattended") is True
+            can_ask = allows_user_questions(request_extra)
+            one_way_reply = isinstance(request_extra, dict) and request_extra.get("reply_channel") == "WECOM_BOT"
             auto_instruction = (
                 ("\n\n【无人值守】本次没有用户在线回答问题。不要提问或请求确认；" "利用已知上下文和可用工具尽力完成目标，合理选择只读查询范围并说明假设。" "无法确定必要目标或缺少权限时，完成其余可行步骤并明确说明未完成原因；不得虚构数据或批准操作。")
-                if unattended
+                if not can_ask
                 else ""
             )
             missing_params_thread_id = getattr(graph_request, "thread_id", None)
@@ -2591,7 +2601,11 @@ class ToolsNodes(
             llm = self.get_llm_client(graph_request)
             enable_nested_token_streaming(llm)
             nested_callbacks = nested_agent_callbacks(config)
+            if request_extra.get("stale_choice"):
+                return {"messages": [AIMessage(content="这张确认卡已失效。请刷新会话并回答最新的确认卡。如果已经过期，请重新发起脚本检查。")]}
             if getattr(graph_request, "max_model_calls", 0) == 1:
+                if (request_extra.get("pending_question") or {}).get("job_confirmation"):
+                    return {"messages": [AIMessage(content="本轮未启用工具执行，待确认脚本未执行。")]}
                 prepared = await self._prepare_messages_for_llm(
                     normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
                     graph_request,
@@ -2648,6 +2662,40 @@ class ToolsNodes(
             resumed_messages: list = []
             extra_config = getattr(graph_request, "extra_config", None) or {}
             pending_question = extra_config.get("pending_question") if isinstance(extra_config, dict) else None
+            job_replay = None
+            revise_job = False
+            if isinstance(pending_question, dict) and pending_question.get("job_confirmation"):
+                from apps.opspilot.metis.llm.middleware.job_confirmation import (
+                    JOB_TOOL,
+                    JobConfirmationReplayMiddleware,
+                    resolve_job_reply,
+                    saved_job_arguments,
+                )
+
+                if not can_ask or not any(getattr(tool, "name", "") == JOB_TOOL for tool in registered_tools):
+                    return {"messages": [AIMessage(content="当前没有使用作业执行工具的权限。")]}
+                marker = pending_question["job_confirmation"]
+                arguments = saved_job_arguments(pending_question)
+                if arguments is None:
+                    return {"messages": [AIMessage(content="无法恢复这张卡上的脚本和目标，请重新生成确认卡。")]}
+                options = pending_question["options"]
+                text = extra_config.get("choice_reply_text", "")
+                if extra_config.get("choice_id"):
+                    selected = next((opt for opt in options if opt["key"] == extra_config.get("choice_option")), None)
+                    if marker["choice_id"] != extra_config["choice_id"] or not selected or selected["label"] != text.strip():
+                        text = ""
+                with isolated_child_callback_context():
+                    decision = await resolve_job_reply(
+                        text, options, arguments, lambda: self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+                    )
+                revise_job = decision == "change"
+                reply = {"id": marker["id"], "decision": "unclear" if revise_job else decision}
+                config = {**config, "configurable": {**config["configurable"], "job_confirmation_reply": reply}}
+                allowed = {JOB_TOOL, "job_mgmt_search_targets", "job_mgmt_list_targets"} if revise_job else {JOB_TOOL}
+                tools = [tool for tool in registered_tools if tool.name in allowed]
+                registered_tools = list(tools)
+                if not revise_job:
+                    job_replay = JobConfirmationReplayMiddleware(arguments)
             if isinstance(pending_question, dict) and pending_question.get("kind") == "k8s_repair_mode":
                 if await self._run_pending_k8s_repair_workflow(original_messages, config, output_messages=resumed_messages):
                     return {"messages": resumed_messages}
@@ -2683,6 +2731,12 @@ class ToolsNodes(
                     self._build_skill_backend_and_sources, graph_request, packages=skill_packages, sandbox=python_sandbox
                 )
                 legacy_middleware = self._build_legacy_deep_agent_middleware(token_usage_accumulator, graph_request)
+                if job_replay or revise_job:
+                    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolVisibilityMiddleware
+
+                    legacy_middleware.append(ToolVisibilityMiddleware(business_tools=tools, active_tools=tools, allow_unregistered_tools=False))
+                if job_replay:
+                    legacy_middleware.append(job_replay)
                 if python_sandbox is not None:
                     from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
@@ -2773,7 +2827,13 @@ class ToolsNodes(
                     raise
                 return {"messages": new_messages}
 
-            planner_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+            planner_llm = self.get_llm_client(
+                graph_request,
+                disable_stream=True,
+                isolated=True,
+                timeout=PLANNER_LLM_TIMEOUT_SECONDS,
+                max_retries=PLANNER_LLM_MAX_RETRIES,
+            )
             planner = ToolExecutionPlanner(
                 planner_llm,
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
@@ -2792,17 +2852,29 @@ class ToolsNodes(
 
             await _emit_planned_execution_status("planning")
             try:
-                plan = await planner.plan(
-                    planning_question,
-                    tools,
-                    skill_packages=skill_packages,
-                    config=config,
-                    agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or "") + auto_instruction,
-                    thread_id=missing_params_thread_id,
-                    conversation_messages=original_messages,
-                    ppt_master_packages=matched_for_ppt,
-                )
+                if job_replay:
+                    objective = "按用户对当前作业确认卡的答复处理原脚本并报告结果"
+                    plan = ToolExecutionPlan(goal=objective, steps=[ToolExecutionStep(objective=objective, tools=[JOB_TOOL])])
+                elif revise_job:
+                    objective = "按用户本轮指定的改动更新脚本或目标，调用作业工具展示完整新提案，等待用户重新确认"
+                    names = [tool.name for tool in registered_tools]
+                    plan = ToolExecutionPlan(goal=objective, steps=[ToolExecutionStep(objective=objective, tools=names)])
+                else:
+                    plan = await planner.plan(
+                        planning_question,
+                        tools,
+                        skill_packages=skill_packages,
+                        config=config,
+                        agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or "") + auto_instruction,
+                        thread_id=missing_params_thread_id,
+                        conversation_messages=original_messages,
+                        ppt_master_packages=matched_for_ppt,
+                    )
             except Exception as planning_exc:
+                # 上游模型不可用时与步骤失败同一收口，禁止落入零工具直答编造「正在获取…」。
+                if is_llm_upstream_error(planning_exc):
+                    await _emit_planned_execution_status("idle", reason="planning_failed_upstream")
+                    return _llm_upstream_failure_result(planning_exc, failed_stage="tool_execution_planning")
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
                 logger.exception(
                     "DeepAgent 工具执行规划失败，将以零工具模式回答: %s",
@@ -2893,6 +2965,8 @@ class ToolsNodes(
                 token_usage_accumulator=token_usage_accumulator,
                 ppt_authoring=ppt_authoring,
             )
+            if job_replay:
+                runtime_middleware.append(job_replay)
             if python_sandbox is not None:
                 from apps.opspilot.metis.llm.middleware.python_sandbox import PythonSandboxMiddleware
 
@@ -3090,7 +3164,7 @@ class ToolsNodes(
                 require_formatted_report = False
                 self._set_hide_planned_step_text(graph_request, True)
                 ppt_run = current_ppt_run(graph_request) or (begin_ppt_run(graph_request) if ppt_authoring else None)
-                ppt_workspace_text = "/workspace/ppt-workspace" if ppt_run else ""
+                ppt_workspace_text = "/ppt-workspace" if ppt_run else ""
 
                 while pending_steps:
                     step = pending_steps.pop(0)
@@ -3130,6 +3204,8 @@ class ToolsNodes(
                             "单设一节「核心结论」，其中最多两个关键数字写成加粗，例如失败 **5** 次。"
                             "做统计、汇总或清单时，不要只写数量。步骤摘要里有逐条字段，就按这些字段逐条展开。摘要里没有的字段不要编造。"
                             "系统会另加封面。Word 目录带页码，PDF 目录不带页码。"
+                            "PPT 按一级标题分页。第一页只放标题和最多四行短说明。其余每页最多四条短句，不要把整段报告写成项目符号。"
+                            "标题是核心结论、执行摘要或决议时，每条单独一行。"
                             "official 不要写封面、目录和运维分析报告，标题只放在 title。"
                             "meeting_minutes 在第一个章节前各写一行「会议时间：」「会议地点：」「主持人：」「记录人：」。"
                             "正文用「出席人员」「议题」「决议」「待办」。出席人员用表格。不要写运维分析报告，也不要写目录。"
@@ -3152,7 +3228,7 @@ class ToolsNodes(
                             is_last_step=is_last_step,
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                            unattended=unattended,
+                            unattended=not can_ask,
                         )
                     step_guidance += auto_instruction
                     if attachments:
@@ -3383,7 +3459,7 @@ class ToolsNodes(
                                 step_payload = {
                                     **agent_state,
                                     "messages": list(agent_state.get("messages") or [])
-                                    + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
+                                    + [_internal_message(auto_instruction if not can_ask else MISSING_PARAMS_CHOICE_HINT)],
                                 }
                                 continue
                             if is_non_replanable_tool_failure(failure):
@@ -3397,7 +3473,7 @@ class ToolsNodes(
                         result_messages = list(step_result.get("messages") or [])
                         step_messages = result_messages[len(step_payload["messages"]) :]
                         remember_planned_tool_steps(config, step_index, step_messages)
-                        if messages_include_terminal_choice(step_messages):
+                        if not one_way_reply and messages_include_terminal_choice(step_messages):
                             _collect_output_messages(step_messages)
                             pending_steps.clear()
                             choice_stopped = True
@@ -3456,7 +3532,7 @@ class ToolsNodes(
                             step_payload = {
                                 **agent_state,
                                 "messages": list(agent_state.get("messages") or [])
-                                + [_internal_message(auto_instruction if unattended else MISSING_PARAMS_CHOICE_HINT)],
+                                + [_internal_message(auto_instruction if not can_ask else MISSING_PARAMS_CHOICE_HINT)],
                             }
                             continue
                         if ppt_authoring and ppt_run is not None:
@@ -3529,6 +3605,8 @@ class ToolsNodes(
                             limit_kind = ""
                         else:
                             limit_kind = detect_limit_kind(step_messages)
+                        if limit_kind and one_way_reply:
+                            return {"messages": [AIMessage(content="本次任务已达执行上限，未能完成。")]}
                         if limit_kind:
                             summary = _step_summary_for_limit_continue(step_messages)
                             question_text, tool_message = await ask_limit_continue(
@@ -3692,7 +3770,8 @@ class ToolsNodes(
                 clear_planned_step_holder(config)
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
-                self._set_hide_planned_step_text(graph_request, False)
+                if not ppt_authoring:
+                    self._set_hide_planned_step_text(graph_request, False)
                 if choice_stopped:
                     result = {"messages": list(agent_state.get("messages") or [])}
                 elif ppt_authoring:
@@ -3705,6 +3784,7 @@ class ToolsNodes(
                         notice = "PPT 已经生成，但下载登记失败。请确认对象存储可用后再试。"
                     elif not notice:
                         notice = "这次没有导出 pptx。"
+                    self._set_planned_final_text(graph_request, notice)
                     _collect_output_messages([AIMessage(content=notice)])
                     result = {"messages": list(agent_state.get("messages") or [])}
                     final_message = None
@@ -3800,7 +3880,8 @@ class ToolsNodes(
                 except Exception:
                     return {"messages": [AIMessage(content=tool_graph_failure_plain_text(_await_exc))]}
             finally:
-                self._set_hide_planned_step_text(graph_request, False)
+                if not str((getattr(graph_request, "extra_config", None) or {}).get(PLANNED_FINAL_TEXT_KEY) or "").strip():
+                    self._set_hide_planned_step_text(graph_request, False)
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
                 # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
                 # sandbox_dir 只在 _build_skill_backend_and_sources 成功返回时
@@ -3816,6 +3897,10 @@ class ToolsNodes(
                     replan_count=replan_count,
                     summary_ran=1 if summary_ran else 0,
                 )
+
+            if one_way_reply and any("generate_attachment_file" in step.tools for step in plan.steps) and not ppt_authoring:
+                if not attachment_step_produced_file(collected_output_messages):
+                    raise ValueError("智能体未能生成计划中的附件")
 
             # 分步执行路径已单独累积对外消息；其余路径仍从最终 state 截取新增消息。
             final_messages = result.get("messages", [])

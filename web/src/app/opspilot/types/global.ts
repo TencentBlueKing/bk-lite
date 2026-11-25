@@ -75,6 +75,7 @@ export interface CustomChatMessage {
   /** 点选确认卡时带上，手打的下一条消息没有这两项。 */
   choiceId?: string;
   choiceOption?: string;
+  replyToChoiceId?: string;
   configDiffReports?: ConfigDiffReport[];
   configAnalysisReports?: ConfigAnalysisReport[];
   reportFileDownloads?: ReportFileDownload[];

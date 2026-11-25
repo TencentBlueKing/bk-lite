@@ -1,6 +1,6 @@
 """终止式提问的会话续接标记。
 
-发出选择后本轮结束。下一轮用 conversation_key 取回证据并立即删除标记。
+发出选择后本轮结束。下一轮用 conversation_key 取回证据，每张卡只接受一次回复。
 存储使用 Django cache，不新增表。
 """
 
@@ -73,6 +73,14 @@ def resolve_conversation_key_from_mapping(source: Any) -> str:
         thread_id=source.get("thread_id") or getattr(graph_request, "thread_id", None) or extra.get("thread_id"),
         skill_session_id=source.get("skill_session_id") or extra.get("skill_session_id"),
     )
+
+
+def job_confirmation_owner(identity: Any) -> dict[str, Any] | None:
+    """Job 始终限于调用者的当前组织；是否包含子组织不改变确认卡归属。"""
+    fields = ("username", "domain", "team_id")
+    if not isinstance(identity, dict) or not all(identity.get(key) for key in fields):
+        return None
+    return {key: identity[key] for key in fields}
 
 
 def _skill_package_draft(draft: Any) -> dict[str, Any] | None:
@@ -251,7 +259,9 @@ def save_pending_question(
         return None
     evidence = payload.get("evidence_messages") or []
     stored = {
+        "claim_id": uuid.uuid4().hex,
         "kind": kind,
+        "choice_id": str(payload.get("choice_id") or ""),
         "execution_id": str(payload.get("execution_id") or ""),
         "node_id": str(payload.get("node_id") or ""),
         "question": str(payload.get("question") or ""),
@@ -261,6 +271,8 @@ def save_pending_question(
         "k8s_analysis": payload.get("k8s_analysis"),
         "created_at": int(payload.get("created_at") or time.time() * 1000),
     }
+    if kind == KIND_USER_CHOICE and payload.get("job_confirmation"):
+        stored["job_confirmation"] = payload["job_confirmation"]
     draft = _skill_package_draft(payload.get("skill_package_draft"))
     if draft is not None:
         stored["skill_package_draft"] = draft
@@ -277,21 +289,28 @@ def peek_pending_question(conversation_key: str) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
     if _is_expired(payload):
-        cache.delete(_cache_key(key))
-        logger.info(_EXPIRED_LOG, key, payload.get("kind") or "", _evidence_tokens(payload.get("evidence_messages")))
+        if cache.add(_answered_key(key, payload), True, PENDING_QUESTION_TTL_SECONDS):
+            logger.info(_EXPIRED_LOG, key, payload.get("kind") or "", _evidence_tokens(payload.get("evidence_messages")))
+        return None
+    if cache.get(_answered_key(key, payload)):
         return None
     return payload
 
 
-def consume_pending_question(conversation_key: str) -> dict[str, Any] | None:
-    """读取后立即删除。过期与未命中都返回 None。"""
+def _answered_key(key: str, payload: dict[str, Any]) -> str:
+    # 发布前生成的卡片也可能仍处于 30 分钟的有效期内。
+    claim_id = payload.get("claim_id") or payload.get("created_at")
+    return f"{_cache_key(key)}:answered:{claim_id}"
+
+
+def consume_pending_question(conversation_key: str, *, expected: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """只领取读到的这张卡，并发回复不能移除后来签发的卡。"""
     key = str(conversation_key or "").strip()
-    if not key:
-        return None
     payload = peek_pending_question(key)
-    if payload is None:
+    if payload is None or (expected is not None and _answered_key(key, payload) != _answered_key(key, expected)):
         return None
-    cache.delete(_cache_key(key))
+    if not cache.add(_answered_key(key, payload), True, PENDING_QUESTION_TTL_SECONDS):
+        return None
     logger.info(_HIT_LOG, key, payload.get("kind") or "", _evidence_tokens(payload.get("evidence_messages")))
     return payload
 
@@ -318,6 +337,25 @@ def splice_evidence_messages(
             insert_at = index
             break
     return list(messages[:insert_at]) + list(evidence) + list(messages[insert_at:])
+
+
+def allows_user_questions(extra: dict | None) -> bool:
+    """能否在当前会话等待收件人回复，与工具审批策略独立。"""
+    return not isinstance(extra, dict) or (extra.get("unattended") is not True and extra.get("reply_channel") != "WECOM_BOT")
+
+
+def is_numbered_question(text: str) -> bool:
+    """识别询问后跟编号选项的消息，保留普通报告里的编号分项。"""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for heading, first, second in zip(lines, lines[1:], lines[2:]):
+        if not first.startswith(("1.", "1、")) or not second.startswith(("2.", "2、")):
+            continue
+        options = (first[2:].strip().casefold(), second[2:].strip().casefold())
+        if options in {("是", "否"), ("yes", "no"), ("确认", "取消")}:
+            return True
+        if any(word in heading.casefold() for word in ("请选择", "请确认", "你希望", "您希望", "选择哪", "please choose", "please select", "would you like")):
+            return True
+    return False
 
 
 def is_choice_prompt_text(text: str) -> bool:

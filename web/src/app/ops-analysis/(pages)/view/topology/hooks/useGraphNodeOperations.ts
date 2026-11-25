@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Node, Graph as X6Graph } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { resolveEffectiveFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
@@ -7,12 +7,12 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
   UnifiedFilterDefinition,
+  WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   NodeStyleConfig,
   NodeConfigFormValues,
   TopologyNodeData,
-  ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import {
   extractComparableValue,
@@ -20,7 +20,14 @@ import {
   getChangePercent,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import {
+  readScalarCalc,
+  reduceScalarRecords,
+  scalarCalcFromForm,
+  singleValueSourceReady,
+} from '@/app/ops-analysis/utils/scalarReduction';
 import { useTranslation } from '@/utils/i18n';
+import { chartDisplayControls } from '@/app/ops-analysis/utils/chartDisplay';
 import { applyTopNValueConfig, buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
 import { getColorByThreshold, isFiniteNumber } from '../utils/thresholdUtils';
@@ -31,6 +38,7 @@ import {
   formatDisplayValue,
 } from '../utils/topologyUtils';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { isTransportCanceled } from '@/utils/requestCancellation';
 import {
   beginMappedOwnerRequest,
   finishMappedOwnerRequest,
@@ -122,6 +130,27 @@ export const useGraphNodeOperations = ({
   );
   const singleValueFetchGenerationRef = useRef<Map<string, number>>(new Map());
   const singleValueInflightCountRef = useRef<Map<string, number>>(new Map());
+  const singleValueAbortRef = useRef<Map<string, AbortController>>(new Map());
+  const singleValueAbortLifecycleRef = useRef(0);
+
+  const abortInflightSingleValueRequests = useCallback(() => {
+    singleValueAbortRef.current.forEach((controller) => controller.abort());
+    singleValueAbortRef.current.clear();
+    singleValueFetchGenerationRef.current.forEach((generation, nodeId) => {
+      singleValueFetchGenerationRef.current.set(nodeId, generation + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    const lifecycle = ++singleValueAbortLifecycleRef.current;
+    return () => {
+      const controllers = Array.from(singleValueAbortRef.current.values());
+      queueMicrotask(() => {
+        if (singleValueAbortLifecycleRef.current !== lifecycle) return;
+        controllers.forEach((controller) => controller.abort());
+      });
+    };
+  }, []);
 
   const startLoadingAnimation = useCallback((node: Node) => {
     const loadingStates = ['○ ○ ○', '● ○ ○', '○ ● ○', '○ ○ ●', '○ ○ ○'];
@@ -160,11 +189,7 @@ export const useGraphNodeOperations = ({
       const { valueConfig } = nodeConfig || {};
       if (!node) return;
 
-      if (
-        nodeConfig.type !== 'single-value' ||
-        !valueConfig?.dataSource ||
-        !valueConfig?.selectedFields?.length
-      ) {
+      if (nodeConfig.type !== 'single-value' || !singleValueSourceReady(valueConfig)) {
         return;
       }
 
@@ -182,6 +207,9 @@ export const useGraphNodeOperations = ({
       const generation = gate.generation;
       const isCurrent = () =>
         singleValueFetchGenerationRef.current.get(nodeId) === generation;
+      singleValueAbortRef.current.get(nodeId)?.abort();
+      const controller = new AbortController();
+      singleValueAbortRef.current.set(nodeId, controller);
       const previousData = node.getData();
 
       if (!silent) {
@@ -210,7 +238,8 @@ export const useGraphNodeOperations = ({
 
         const compareResult = await fetchCompareData({
           dataSourceId: Number(valueConfig.dataSource),
-          getSourceDataByApiId: getRuntimeSourceDataByApiId,
+          getSourceDataByApiId: (sourceId, params) =>
+            getRuntimeSourceDataByApiId(sourceId, params, controller.signal),
           config: valueConfig,
           dataSource: { params: valueConfig.dataSourceParams || [] },
           extraParams:
@@ -225,16 +254,46 @@ export const useGraphNodeOperations = ({
         if (!isCurrent()) return;
 
         const dataToExtract = compareResult.currentData;
-        if (!dataToExtract) {
+        const scalarCalc = readScalarCalc(valueConfig.scalarCalc);
+        if (dataToExtract == null || (!scalarCalc && !dataToExtract)) {
           throw new Error(t('topology.noData'));
         }
 
-        const field = valueConfig.selectedFields[0];
-        const value = extractComparableValue(dataToExtract, field);
-        const baselineValue = extractComparableValue(
-          compareResult.baselineData,
-          field,
-        );
+        const field = valueConfig.selectedFields?.[0];
+        const reduction = scalarCalc ? reduceScalarRecords(dataToExtract, scalarCalc) : null;
+        if (reduction?.status === 'empty') {
+          throw new Error(t('topology.noData'));
+        }
+        if (reduction?.status === 'uncomputable') {
+          const uncomputableLabel = t('dashboard.noComputableValue');
+          clearSingleValueFetchError(node as Node);
+          node.setData(
+            {
+              ...node.getData(),
+              isLoading: false,
+              hasError: true,
+              fetchError: false,
+              errorMessage: undefined,
+            },
+            { overwrite: true },
+          );
+          node.setAttrByPath('label/text', uncomputableLabel);
+          node.setAttrByPath('label/display', 'block');
+          node.setAttrByPath('errorIcon/display', 'none');
+          if (node.isNode()) {
+            adjustSingleValueNodeSize(node as Node, uncomputableLabel);
+          }
+          return;
+        }
+        const baselineReduction = scalarCalc
+          ? reduceScalarRecords(compareResult.baselineData, scalarCalc)
+          : null;
+        const value = reduction
+          ? reduction.value
+          : extractComparableValue(dataToExtract, field);
+        const baselineValue = baselineReduction
+          ? (baselineReduction.status === 'value' ? baselineReduction.value : null)
+          : extractComparableValue(compareResult.baselineData, field);
         const changePercent = valueConfig.compare
           ? getChangePercent(
             toComparableNumber(value),
@@ -329,7 +388,7 @@ export const useGraphNodeOperations = ({
           adjustSingleValueNodeSize(node as Node, nodeText);
         }
       } catch (error) {
-        if (!isCurrent()) return;
+        if (isTransportCanceled(error) || !isCurrent()) return;
         console.error('更新单值节点数据失败:', error);
         if (silent) {
           node.setData(
@@ -371,6 +430,9 @@ export const useGraphNodeOperations = ({
           adjustSingleValueNodeSize(node as Node, SINGLE_VALUE_ERROR_PLACEHOLDER);
         }
       } finally {
+        if (singleValueAbortRef.current.get(nodeId) === controller) {
+          singleValueAbortRef.current.delete(nodeId);
+        }
         finishMappedOwnerRequest(
           singleValueFetchGenerationRef.current,
           singleValueInflightCountRef.current,
@@ -402,16 +464,14 @@ export const useGraphNodeOperations = ({
       if (
         !skipInitialFetch &&
         nodeConfig.type === 'single-value' &&
-        valueConfig?.dataSource &&
-        valueConfig?.selectedFields?.length
+        singleValueSourceReady(valueConfig)
       ) {
         startLoadingAnimation(addedNode);
         updateSingleNodeData({ ...nodeConfig, id: addedNode.id });
       } else if (
         skipInitialFetch &&
         nodeConfig.type === 'single-value' &&
-        valueConfig?.dataSource &&
-        valueConfig?.selectedFields?.length
+        singleValueSourceReady(valueConfig)
       ) {
         startLoadingAnimation(addedNode);
       }
@@ -432,6 +492,11 @@ export const useGraphNodeOperations = ({
         ? { compareMode: values.compareMode }
         : {}),
       selectedFields: values.selectedFields || valueConfig?.selectedFields,
+      scalarCalc: scalarCalcFromForm({
+        method: values.scalarCalcMethod,
+        field: (values.selectedFields || valueConfig?.selectedFields)?.[0],
+        timeField: values.scalarCalcTimeField,
+      }),
       chartType: values.chartType || valueConfig?.chartType,
       dataSource: values.dataSource || valueConfig?.dataSource,
       dataSourceParams:
@@ -452,6 +517,11 @@ export const useGraphNodeOperations = ({
       unitId: values.unitId ?? valueConfig?.unitId,
       valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
     };
+    const displayControls = chartDisplayControls(
+      values.chartType || valueConfig?.chartType,
+    );
+    if (!displayControls.limit) delete nextValueConfig.displayLimit;
+    if (!displayControls.sort) delete nextValueConfig.sortByValue;
     if ((values.chartType || valueConfig?.chartType) === 'topN') {
       delete nextValueConfig.topNLabelField;
       delete nextValueConfig.topNValueField;
@@ -514,8 +584,7 @@ export const useGraphNodeOperations = ({
         updateNodeAttributes(node as Node, updatedConfig);
         if (
           updatedConfig.type === 'single-value' &&
-          updatedConfig.valueConfig?.dataSource &&
-          updatedConfig.valueConfig?.selectedFields?.length
+          singleValueSourceReady(updatedConfig.valueConfig)
         ) {
           node.setData(
             { ...node.getData(), isLoading: true, hasError: false },
@@ -540,7 +609,7 @@ export const useGraphNodeOperations = ({
 
   const handleViewConfigConfirm = useCallback(
     (
-      values: ViewConfigFormValues,
+      values: WidgetConfig,
       unifiedFilterValues?: Record<string, FilterValue>,
       filterDefinitions?: UnifiedFilterDefinition[],
       dataSources?: DatasourceItem[],
@@ -580,7 +649,7 @@ export const useGraphNodeOperations = ({
   );
 
   const handleAddChartNode = useCallback(
-    async (values: ViewConfigFormValues, skipInitialFetch?: boolean) => {
+    async (values: WidgetConfig, skipInitialFetch?: boolean) => {
       if (!graphInstance) {
         return null;
       }
@@ -627,8 +696,7 @@ export const useGraphNodeOperations = ({
         const nodeData = node.getData();
         if (
           nodeData.type === 'single-value' &&
-          nodeData.valueConfig?.dataSource &&
-          nodeData.valueConfig?.selectedFields?.length
+          singleValueSourceReady(nodeData.valueConfig)
         ) {
           const dataSource = dataSources?.find(
             (source) => source.id === nodeData.valueConfig.dataSource,
@@ -656,6 +724,7 @@ export const useGraphNodeOperations = ({
     handleNodeUpdate,
     handleViewConfigConfirm,
     refreshAllSingleValueNodes,
+    abortInflightSingleValueRequests,
     startLoadingAnimation,
     updateSingleNodeData,
     ...dataOperations,

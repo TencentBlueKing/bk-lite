@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from apps.system_mgmt.models import OpenAPICallLog
+from apps.system_mgmt.utils.openapi_call_result import derive_openapi_call_result
 
 
 class OpenAPICallLogSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(read_only=True, allow_null=True)
+    call_result = serializers.SerializerMethodField()
 
     class Meta:
         model = OpenAPICallLog
@@ -23,5 +25,9 @@ class OpenAPICallLogSerializer(serializers.ModelSerializer):
             "path",
             "http_status",
             "error_code",
+            "call_result",
         ]
         read_only_fields = fields
+
+    def get_call_result(self, obj):
+        return derive_openapi_call_result(obj.api_kind, obj.http_status, obj.error_code)

@@ -16,6 +16,8 @@
     },
     "action": {
       "run": "运行",
+      "orchestrate": "编排",
+      "modify": "修改",
       "moreFor": "更多操作：{name}",
       "copyToWorkflows": "复制到流程",
       "confirmDuplicate": "确认复制"
@@ -31,8 +33,9 @@
       "builtin": "是否内置",
       "custom": "自定义",
       "create": "新建流程",
-      "editProfile": "编辑流程",
-      "basicInfo": "基本信息",
+      "editProfile": "修改流程",
+      "updatedSuccess": "流程已修改",
+      "updatedElsewhere": "已修改流程，切换到 {organizations} 后可见",
       "description": "描述",
       "organization": "组织",
       "organizationRequired": "请选择组织",
@@ -205,7 +208,12 @@
             "memory_context": "记忆上下文"
           },
           "output": {
-            "message": "智能体输出"
+            "message": "智能体输出",
+            "artifacts": "生成的附件",
+            "artifacts.id": "文件标识",
+            "artifacts.filename": "文件名",
+            "artifacts.format": "格式",
+            "artifacts.size": "大小"
           }
         },
         "bklite_intent_classification": {
@@ -954,7 +962,8 @@
       "notificationTitle": "通知标题",
       "notificationContent": "通知内容",
       "notificationAttachment": "附件",
-      "notificationAttachmentHint": "可选，拖入上游报告产物",
+      "wecomNotificationAttachmentHint": "选择或拖入上游生成的附件，企微群会收到下载链接和文件",
+      "notificationAttachmentHint": "选择或拖入上游生成的附件，通知中将附上下载链接",
       "sendRealTestNotification": "发送真实测试通知？",
       "realNotificationWarning": "将调用当前组织的真实通知渠道，请确认渠道、接收人和内容均属于测试范围。",
       "notificationRecipients": "接收人",

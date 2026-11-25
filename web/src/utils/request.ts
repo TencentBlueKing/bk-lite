@@ -33,6 +33,11 @@ import {
   acquireMetricRequestSlot,
   shouldLimitMonitorQueryUrl,
 } from '@/app/monitor/utils/metricRequestSlot';
+import {
+  createTransportCancelError,
+  isTransportCanceled,
+  waitUntilDelayOrAbort,
+} from '@/utils/requestCancellation';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
@@ -171,6 +176,11 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     releaseMetricSlot(error?.config);
+    if (isTransportCanceled(error) || error?.config?.signal?.aborted) {
+      return Promise.reject(
+        isTransportCanceled(error) ? error : createTransportCancelError(),
+      );
+    }
     if (error.response) {
       try {
         error.response = await openGmAxiosResponse(error.response);
@@ -215,7 +225,10 @@ apiClient.interceptors.response.use(
             Number.isFinite(retryAfterSec) && retryAfterSec > 0
               ? retryAfterSec * 1000
               : 800 + Math.random() * 700;
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await waitUntilDelayOrAbort(delayMs, retryConfig.signal);
+          if (retryConfig.signal?.aborted) {
+            return Promise.reject(createTransportCancelError());
+          }
           return apiClient.request(retryConfig);
         }
         return Promise.reject(handledError);
@@ -254,8 +267,8 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Network error / timeout / no response
-    if (!axios.isAxiosError(error) || error.code === "ECONNABORTED") {
+    // Network error / timeout / no response. Cancellation is returned above.
+    if (!axios.isAxiosError(error) || error.code === "ECONNABORTED" || isTransportCanceled(error)) {
       return Promise.reject(error);
     }
     return Promise.reject(new HandledRequestError("网络异常"));

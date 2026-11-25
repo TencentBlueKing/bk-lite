@@ -113,7 +113,7 @@ def test_builtin_tool_update_keeps_system_tags_and_name(allow_team_instances):
     assert tool.params["url"] == "langchain:mysql"
     assert tool.system_tags == ["database"]
     assert tool.user_tags == ["值班"]
-    assert tool.team == [1, 2]
+    assert tool.team == [1]
     assert _body(accepted)["system_tags"] == ["database"]
     assert _body(accepted)["user_tags"] == ["值班"]
 
@@ -233,7 +233,7 @@ def test_builtin_skill_package_update_rejects_system_tag_removal(allow_team_inst
     assert pkg.skill_markdown == "body"
     assert pkg.system_tags == ["container"]
     assert pkg.user_tags == ["值班"]
-    assert pkg.team == [2]
+    assert pkg.team == [1]
 
 
 def test_imported_skill_package_tags_can_be_cleared(allow_team_instances):

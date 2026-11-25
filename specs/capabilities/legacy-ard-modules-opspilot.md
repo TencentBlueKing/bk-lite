@@ -74,7 +74,7 @@ AI 助手平台：Wiki 知识库、Bot 编排、LLM 厂商接入、工作流自�
 对应 PRD：[[legacy-prd-opspilot-工作台.md#3. 关键能力]]；对应功能清单：[[legacy-fuctionlist-10-opspilot-功能清单.md#8. 对外接口与触发]]
 > 证据来源：server/apps/opspilot/urls.py:139-143，server/apps/opspilot/utils/enterprise_wechat_aibot_chat_flow_utils.py:61-211　|　同步基线：83091efe　|　【已实现】
 
-技能包接口 `skill_packages` 支持 ZIP 导入并关联 `LLMSkill.skill_packages`，运行时按命中策略注入提示（证据：`urls.py:41`、`viewsets/llm_view.py:420,628`、`services/skill_package/importer.py:28`、`services/skill_package/runtime.py:56`）。
+技能包接口 `skill_packages` 支持 ZIP 导入并关联 `LLMSkill.skill_packages`，运行时按命中策略注入提示（证据：`urls.py:41`、`viewsets/llm_view.py:420,628`、`services/skill_package/importer.py:28`、`services/skill_package/runtime.py:56`）。同一域内，技能包列表、详情、修改和删除按调用者的域过滤，不按技能包分组过滤。内置工具目录不按分组过滤，编辑也不改分组。MCP 仍按分组过滤。
 
 ## 4. AI / RAG 集成【已实现/已存在】
 - 仓库内提示词模板以最小权限沙箱加载：默认清空模板全局对象、过滤器和测试能力，仅按模板实际需要显式白名单恢复能力；当前 RAG 模板仅恢复字符串转换过滤器，并保留 Jinja 沙箱的属性访问限制。该契约防止模板通过默认辅助对象取得非业务数据，同时保持既有检索提示词可编译、可渲染。

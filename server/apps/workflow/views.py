@@ -13,7 +13,7 @@ from django.db.models.functions import Coalesce, TruncDate
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.generics import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -23,6 +23,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import workflow_logger as logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.open_base import login_exempt
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
 from apps.core.utils.web_utils import WebUtils
@@ -453,16 +454,15 @@ class WorkflowViewSet(AuthViewSet):
 
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
-        scoped = self._scoped_object(request, require_operate=True)
-        if scoped.is_builtin:
-            return Response(
-                {"detail": render_known_message(request, "内置流程不可保存草稿，请复制后再编辑"), "code": "BUILTIN_WORKFLOW_READONLY"},
-                status=status.HTTP_409_CONFLICT,
-            )
         supplied_revision = request.data.get("draft_revision")
         try:
             with transaction.atomic():
-                workflow = Workflow.objects.select_for_update().get(pk=scoped.pk)
+                workflow = get_object_or_404(self._scoped_queryset(request, require_operate=True).select_for_update(), pk=self.kwargs["pk"])
+                if workflow.is_builtin:
+                    return Response(
+                        {"detail": render_known_message(request, "内置流程不可保存草稿，请复制后再编辑"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 if supplied_revision is not None and supplied_revision != workflow.draft_revision:
                     return Response(
                         {
@@ -478,11 +478,9 @@ class WorkflowViewSet(AuthViewSet):
                     team_ids, error = self._team_ids_from_payload(request, payload.get("team"))
                     if error is not None:
                         return error
-                    if workflow.current_version and team_ids != self._sorted_team(workflow.team):
-                        return Response(
-                            {"detail": render_known_message(request, "已发布流程不可修改组织"), "code": "PUBLISHED_TEAM_LOCKED"},
-                            status=status.HTTP_409_CONFLICT,
-                        )
+                team_changed = team_ids is not None and team_ids != self._sorted_team(workflow.team)
+                if team_changed:
+                    payload.setdefault("name", workflow.name)
                 serializer = self.get_serializer(
                     workflow,
                     data=payload,
@@ -502,6 +500,10 @@ class WorkflowViewSet(AuthViewSet):
                 if team_ids is not None:
                     save_kwargs["team"] = team_ids
                 serializer.save(**save_kwargs)
+                if team_changed and workflow.current_version:
+                    workflow.triggers.update(team=team_ids)
+                    if workflow.triggers.filter(trigger_type=WorkflowTrigger.Type.NATS).exists():
+                        transaction.on_commit(lambda workflow_id=workflow.pk: sync_workflow_nats_channels(workflow_id))
                 renew_workflow_file_distribute_assets(definition=workflow.definition, team=workflow.team)
         except IntegrityError as error:
             if _is_workflow_name_conflict(error):
@@ -2412,40 +2414,46 @@ class WorkflowTriggerViewSet(AuthViewSet):
         )
 
 
+@login_exempt
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def download_shared_artifact(request):
+    try:
+        payload = read_report_download_link(str(request.query_params.get("token") or ""))
+    except ValueError as error:
+        return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_403_FORBIDDEN)
+    artifact = ExecutionArtifact.objects.filter(pk=payload["artifact_id"]).first()
+    if artifact is None or artifact.team != [payload["team"]] or str(artifact.execution_id) != str(payload["execution_id"]):
+        return Response({"detail": workflow_message(request, "message.report_link_invalid", "附件下载链接无效")}, status=status.HTTP_403_FORBIDDEN)
+    return _download_artifact(request, artifact)
+
+
+def _download_artifact(request, artifact):
+    if artifact.deleted_at or artifact.expires_at <= timezone.now():
+        return Response({"detail": workflow_message(request, "message.report_expired", "附件已过期")}, status=status.HTTP_410_GONE)
+    if artifact.size > MAX_ARTIFACT_DOWNLOAD_BYTES:
+        return Response(
+            {"detail": workflow_message(request, "message.report_too_large", "附件超过下载大小限制")},
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    try:
+        content, _, _ = WorkflowObjectStore().get(artifact.object_key)
+    except ArtifactTooLarge:
+        return Response(
+            {"detail": workflow_message(request, "message.report_too_large", "附件超过下载大小限制")},
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    except Exception:
+        return Response({"detail": workflow_message(request, "message.report_unavailable", "附件暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    response = FileResponse(BytesIO(content), content_type=artifact.content_type, as_attachment=True, filename=artifact.filename)
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 class ExecutionArtifactViewSet(AuthViewSet):
     queryset = ExecutionArtifact.objects.select_related("execution", "execution__workflow")
     ORGANIZATION_FIELD = "team"
-
-    @action(methods=["GET"], detail=False, url_path="shared", permission_classes=[AllowAny], authentication_classes=[])
-    def shared(self, request):
-        try:
-            payload = read_report_download_link(str(request.query_params.get("token") or ""))
-        except ValueError as error:
-            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_403_FORBIDDEN)
-        artifact = ExecutionArtifact.objects.filter(pk=payload["artifact_id"]).first()
-        if artifact is None or artifact.team != [payload["team"]] or str(artifact.execution_id) != str(payload["execution_id"]):
-            return Response({"detail": workflow_message(request, "message.report_link_invalid", "报告下载链接无效")}, status=status.HTTP_403_FORBIDDEN)
-        if artifact.deleted_at or artifact.expires_at <= timezone.now():
-            return Response({"detail": workflow_message(request, "message.report_expired", "报告已过期")}, status=status.HTTP_410_GONE)
-        if artifact.size > MAX_ARTIFACT_DOWNLOAD_BYTES:
-            return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-        try:
-            content, _, _ = WorkflowObjectStore().get(artifact.object_key)
-        except ArtifactTooLarge:
-            return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-        except Exception:
-            return Response(
-                {"detail": workflow_message(request, "message.report_unavailable", "报告文件暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        response = FileResponse(BytesIO(content), content_type=artifact.content_type, as_attachment=True, filename=artifact.filename)
-        response["X-Content-Type-Options"] = "nosniff"
-        return response
 
     @action(methods=["GET"], detail=True)
     @HasPermission("workflow_execution-View", app_name=APP_NAME)
@@ -2456,25 +2464,7 @@ class ExecutionArtifactViewSet(AuthViewSet):
             self.get_queryset().filter(execution__workflow_id__in=workflows.values("pk")),
             pk=pk,
         )
-        if artifact.deleted_at or artifact.expires_at <= timezone.now():
-            return Response({"detail": workflow_message(request, "message.report_expired", "报告已过期")}, status=status.HTTP_410_GONE)
-        if artifact.size > MAX_ARTIFACT_DOWNLOAD_BYTES:
-            return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-        try:
-            content, _, _ = WorkflowObjectStore().get(artifact.object_key)
-        except ArtifactTooLarge:
-            return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-        except Exception:
-            return Response(
-                {"detail": workflow_message(request, "message.report_unavailable", "报告文件暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        response = FileResponse(BytesIO(content), content_type=artifact.content_type, as_attachment=True, filename=artifact.filename)
-        response["X-Content-Type-Options"] = "nosniff"
-        _audit(request, "download", "下载巡检报告", target_type="execution_artifact", target_id=artifact.id)
+        response = _download_artifact(request, artifact)
+        if response.status_code == status.HTTP_200_OK:
+            _audit(request, "download", "下载执行附件", target_type="execution_artifact", target_id=artifact.id)
         return response

@@ -20,9 +20,10 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.platform_scope import bypasses_write_guard, has_unrestricted_org_scope
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.team_utils import get_current_team
-from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
+from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet, team_access_denied_message, user_group_id_set
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
@@ -365,14 +366,18 @@ class LLMViewSet(PinMixin, AuthViewSet):
         # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
         # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
         # domain/is_builtin 等）即便随请求传入也被忽略。
-        for key in self.UPDATABLE_SKILL_FIELDS:
-            if key in params and hasattr(instance, key):
-                setattr(instance, key, params[key])
+        update_fields = set(self.UPDATABLE_SKILL_FIELDS.intersection(params))
+        for key in update_fields:
+            setattr(instance, key, params[key])
         # 使用组织不变式：显式传 usage_team，或仅改 team 时重新并入。
         if "usage_team" in params or "team" in params:
             instance.usage_team = merge_usage_team(instance.team, instance.usage_team)
+            update_fields.add("usage_team")
+        if not instance.instance_id:
+            update_fields.add("instance_id")  # LLMSkill.save initializes legacy rows.
         instance.updated_by = request.user.username
-        instance.save()
+        update_fields.add("updated_by")
+        instance.save(update_fields=update_fields)
         sync_skill_channel_usage_teams(instance)
         # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
         # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
@@ -574,6 +579,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             from apps.opspilot.services.python_sandbox.attachments import ATTACHMENT_GRANT_KEY, issue_attachment_grant
 
             params.pop(ATTACHMENT_GRANT_KEY, None)
+            user_reply = params.get("user_message") or ""
             raw_attachment_ids = params.pop("attachment_ids", None)
             if raw_attachment_ids:
                 llm_model = LLMModel.objects.filter(id=params.get("llm_model")).first()
@@ -604,7 +610,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 skill_obj.name,
                 {},
                 current_ip,
-                params["user_message"],
+                user_reply,
                 skill_id=skill_obj.id,
             )
         except LLMSkill.DoesNotExist:
@@ -961,12 +967,54 @@ class SkillPackageViewSet(AuthViewSet):
         return False
 
     def get_queryset_by_permission(self, request, queryset, permission_key=None):
-        """组织过滤后仍并入内置技能包，避免 team=[] 的内置行对各团队不可见。"""
-        result = super().get_queryset_by_permission(request, queryset, permission_key)
-        if isinstance(result, JsonResponse):
-            return result
-        return (result | queryset.filter(is_build_in=True)).distinct()
+        """技能包按调用者的域可见，不再按分组或工具实例规则过滤。"""
+        user = getattr(request, "user", None)
+        if not user:
+            message = self.loader.get("error.user_not_found") if self.loader else "User not found in request"
+            return self.value_error(message)
+        if not has_unrestricted_org_scope(user):
+            current_team = self._parse_current_team_cookie(request)
+            if current_team not in user_group_id_set(user):
+                raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
+        domain = getattr(user, "domain", "") or ""
+        return queryset.filter(domain=domain)
 
+    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
+        """同一域即可查看和操作。分组不作为技能包的行级边界。"""
+        return (getattr(user, "domain", "") or "") == (getattr(instance, "domain", "") or "")
+
+    def _validate_update_access(self, request, instance, data):
+        """允许同域其他分组修改标签。不要求当前组属于技能包的分组。"""
+        user = getattr(request, "user", None)
+        if bypasses_write_guard(user):
+            return None
+        if getattr(user, "is_auditor", False):
+            message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+            return self.value_error(message)
+        current_team = self._parse_current_team_cookie(request, default=None)
+        if current_team is None:
+            message = self.loader.get("error.invalid_current_team") if self.loader else "Invalid current_team cookie"
+            return self.value_error(message)
+        if not has_unrestricted_org_scope(user) and current_team not in user_group_id_set(user):
+            raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
+        if not self.get_has_permission(user, instance, current_team):
+            message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+            return self.value_error(message)
+        return None
+
+    @staticmethod
+    def _drop_incoming_team(request):
+        data = getattr(request, "data", None)
+        if not isinstance(data, dict) or "team" not in data:
+            return
+        if getattr(data, "_mutable", None) is False:
+            data._mutable = True
+            data.pop("team", None)
+            data._mutable = False
+            return
+        data.pop("team", None)
+
+    @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
         """删技能包:DRF 默认 destroy 删 DB 行,再调 _cleanup_storage_path 清磁盘。"""
         instance = self.get_object()
@@ -977,11 +1025,17 @@ class SkillPackageViewSet(AuthViewSet):
             )
         storage_path_text = str(getattr(instance, "storage_path", "") or "")
         response = super().destroy(request, *args, **kwargs)
-        self._cleanup_storage_path(storage_path_text)
+        if not SkillPackage.objects.filter(pk=instance.pk).exists():
+            self._cleanup_storage_path(storage_path_text)
         return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = getattr(getattr(self, "request", None), "user", None)
+        if not getattr(user, "is_authenticated", False):
+            queryset = queryset.none()
+        else:
+            queryset = queryset.filter(domain=getattr(user, "domain", "") or "")
         is_enabled = self.request.query_params.get("is_enabled")
         if is_enabled not in (None, ""):
             queryset = queryset.filter(is_enabled=str(is_enabled).lower() in ("1", "true", "yes"))
@@ -1003,6 +1057,7 @@ class SkillPackageViewSet(AuthViewSet):
 
     @HasPermission("tool_list-Edit")
     def update(self, request, *args, **kwargs):
+        self._drop_incoming_team(request)
         return super().update(request, *args, **kwargs)
 
     @HasPermission("tool_list-Edit")
@@ -1166,6 +1221,35 @@ class SkillToolsViewSet(AuthViewSet):
     filterset_class = ToolsFilter
     permission_key = "tools"
 
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        """MCP 仍按分组过滤。内置工具对各组可见。"""
+        result = super().get_queryset_by_permission(request, queryset, permission_key)
+        if isinstance(result, JsonResponse):
+            return result
+        return (result | queryset.filter(is_build_in=True)).distinct()
+
+    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
+        if getattr(instance, "is_build_in", False):
+            return True
+        return super().get_has_permission(user, instance, current_team, is_list, is_check, include_children)
+
+    def _validate_update_access(self, request, instance, data):
+        if not getattr(instance, "is_build_in", False):
+            return super()._validate_update_access(request, instance, data)
+        user = getattr(request, "user", None)
+        if bypasses_write_guard(user):
+            return None
+        if getattr(user, "is_auditor", False):
+            message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+            return self.value_error(message)
+        current_team = self._parse_current_team_cookie(request, default=None)
+        if current_team is None:
+            message = self.loader.get("error.invalid_current_team") if self.loader else "Invalid current_team cookie"
+            return self.value_error(message)
+        if not has_unrestricted_org_scope(user) and current_team not in user_group_id_set(user):
+            raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
+        return None
+
     def get_queryset(self):
         return super().get_queryset().exclude(is_build_in=True, name__in=ToolsLoader.CATALOG_HIDDEN_TOOL_NAMES)
 
@@ -1327,12 +1411,19 @@ class SkillToolsViewSet(AuthViewSet):
 
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if getattr(instance, "is_build_in", False):
+            return Response(
+                {"result": False, "message": user_message(request, "error.builtin_tool_not_deletable", "内置工具不可删除", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         response = super().destroy(request, *args, **kwargs)
-        if response.status_code >= 200 and response.status_code < 300:
-            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
-            if not tool_name:
-                tool_name = request.data.get("name", "")
-            log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
+        if SkillTools.objects.filter(pk=instance.pk).exists():
+            return response
+        tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+        if not tool_name:
+            tool_name = request.data.get("name", "")
+        log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
         return response
 
     @action(methods=["POST"], detail=False)

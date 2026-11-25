@@ -1,0 +1,224 @@
+{
+  "object_name": "RocketMQ",
+  "instance_type": "rocketmq",
+  "collect_type": "middleware",
+  "config_type": [
+    "rocketmq"
+  ],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{namesrv_addrs}}",
+  "form_fields": [
+    {
+      "name": "monitor_namesrv",
+      "label": "NameServer 地址",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "NameServer 地址，格式 host:port。多个地址用英文逗号分隔。",
+      "description_en": "NameServer addresses in host:port form. Separate multiple addresses with commas.",
+      "guide_short": "NameServer 地址，格式 host:port，默认端口 9876。多个地址用英文逗号分隔。采集节点需要能访问其中至少一个地址。",
+      "guide_short_en": "NameServer addresses in host:port form, commonly on port 9876. Separate multiple addresses with commas. The collector node must reach at least one address.",
+      "widget_props": {
+        "placeholder": "127.0.0.1:9876",
+        "placeholder_en": "127.0.0.1:9876"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^[^\\s,]+?:\\d{1,5}(\\s*,\\s*[^\\s,]+?:\\d{1,5})*$",
+          "message": "请填写 host:port，多个地址用英文逗号分隔",
+          "message_en": "Enter host:port. Separate multiple addresses with commas."
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.namesrv_addrs",
+        "to_form": {
+          "array_join": ","
+        }
+      },
+      "label_en": "NameServer Address"
+    },
+    {
+      "name": "monitor_broker_addr",
+      "label": "Broker 地址",
+      "type": "input",
+      "required": false,
+      "visible_in": "edit",
+      "description": "注册地址从采集节点不可达时，填写可连通的 Broker 地址。留空则使用注册地址。",
+      "description_en": "Enter a reachable Broker address when the registered address cannot be reached. Leave empty to use the registered address.",
+      "guide_short": "仅在 NameServer 中登记的 Broker 地址从采集节点不可达时填写，格式 host:port，例如 10.0.0.8:10911。留空则使用注册地址。",
+      "guide_short_en": "Fill this only when the Broker address registered in NameServer cannot be reached from the collector node. Use host:port, for example 10.0.0.8:10911. Leave empty to use the registered address.",
+      "widget_props": {
+        "placeholder": "10.0.0.8:10911",
+        "placeholder_en": "10.0.0.8:10911"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^$|^[^\\s,]+?:\\d{1,5}$",
+          "message": "请填写一个 host:port，或留空",
+          "message_en": "Enter one host:port, or leave this empty."
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.broker_addr"
+      },
+      "label_en": "Broker Address"
+    },
+    {
+      "name": "access_key",
+      "label": "访问密钥",
+      "type": "input",
+      "required": false,
+      "description": "集群开启访问控制时填写。未开启时留空。",
+      "description_en": "Required only when access control is enabled. Leave empty otherwise.",
+      "guide_short": "集群开启访问控制时与密钥成对填写。未开启时留空。",
+      "guide_short_en": "Enter this together with the secret key when access control is enabled. Leave both empty otherwise.",
+      "widget_props": {
+        "placeholder": "访问密钥（可选）",
+        "placeholder_en": "Access key (optional)"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.access_key"
+      },
+      "label_en": "Access Key"
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密钥",
+      "type": "password",
+      "required": false,
+      "description": "集群开启访问控制时填写。未开启时留空。",
+      "description_en": "Required only when access control is enabled. Leave empty otherwise.",
+      "guide_short": "集群开启访问控制时与访问密钥成对填写。未开启时留空。不要带入首尾空格。",
+      "guide_short_en": "Enter this together with the access key when access control is enabled. Leave both empty otherwise, and omit leading or trailing spaces.",
+      "widget_props": {
+        "placeholder": "密钥（可选）",
+        "placeholder_en": "Secret key (optional)"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      },
+      "label_en": "Secret Key"
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 NameServer 压力，过高会延误告警；建议不少于 30 秒。",
+      "guide_short_en": "The default is 60 seconds. Short intervals increase NameServer load, while long intervals delay alerts; use at least 30 seconds.",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点",
+        "placeholder_en": "Please select node"
+      },
+      "enable_row_filter": false,
+      "label_en": "Node"
+    },
+    {
+      "name": "namesrv_addrs",
+      "label": "NameServer 地址",
+      "type": "input",
+      "required": true,
+      "description": "NameServer 地址，格式 host:port。多个地址用英文逗号分隔。",
+      "description_en": "NameServer addresses in host:port form. Separate multiple addresses with commas.",
+      "guide_short": "NameServer 地址，格式 host:port，默认端口 9876。多个地址用英文逗号分隔。",
+      "guide_short_en": "NameServer addresses in host:port form, commonly on port 9876. Separate multiple addresses with commas.",
+      "widget_props": {
+        "placeholder": "127.0.0.1:9876",
+        "placeholder_en": "127.0.0.1:9876"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^[^\\s,]+?:\\d{1,5}(\\s*,\\s*[^\\s,]+?:\\d{1,5})*$",
+          "message": "请填写 host:port，多个地址用英文逗号分隔",
+          "message_en": "Enter host:port. Separate multiple addresses with commas."
+        }
+      ],
+      "change_handler": {
+        "type": "simple",
+        "source_fields": [
+          "namesrv_addrs"
+        ],
+        "target_field": "instance_name"
+      },
+      "label_en": "NameServer Address"
+    },
+    {
+      "name": "broker_addr",
+      "label": "Broker 地址",
+      "type": "input",
+      "required": false,
+      "description": "注册地址从采集节点不可达时，填写可连通的 Broker 地址。留空则使用注册地址。",
+      "description_en": "Enter a reachable Broker address when the registered address cannot be reached. Leave empty to use the registered address.",
+      "guide_short": "仅在登记的 Broker 地址不可达时填写，格式 host:port。留空则使用注册地址。",
+      "guide_short_en": "Fill this only when the registered Broker address cannot be reached. Use host:port. Leave empty to use the registered address.",
+      "widget_props": {
+        "placeholder": "10.0.0.8:10911",
+        "placeholder_en": "10.0.0.8:10911"
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^$|^[^\\s,]+?:\\d{1,5}$",
+          "message": "请填写一个 host:port，或留空",
+          "message_en": "Enter one host:port, or leave this empty."
+        }
+      ],
+      "label_en": "Broker Address"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false,
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
+    }
+  ]
+}

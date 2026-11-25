@@ -7,9 +7,11 @@ from core.logger import logger
 
 # 采集槽位 model_id 与插件目录不一致时的查找别名。
 # storage 是华为 OceanStor 的采集槽位，插件目录是 oceanstor。
+# vmware 是 vCenter 指标采集的 monitor_type，插件目录是 vmware_vc。
 # 请求目录下已经有 plugin.yml 时不改道，避免盖住同名插件。
 PLUGIN_DIRECTORY_ALIASES = {
     "storage": "oceanstor",
+    "vmware": "vmware_vc",
 }
 
 

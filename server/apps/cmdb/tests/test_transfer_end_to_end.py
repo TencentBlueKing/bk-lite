@@ -153,6 +153,7 @@ def test_import_partial_success_keeps_operation_audit_and_row_numbers(transfer_o
         "failed_rows": 1,
         "created_relations": 0,
         "failed_relations": 0,
+        "created_inst_uuids": [UUID],
     }
     assert writes.call_count + updates.call_count == 2
     if update_existing:
@@ -323,6 +324,7 @@ def test_relation_failures_are_separate_from_successful_instance_rows(transfer_o
         "failed_rows": 0,
         "created_relations": 0 if existing_relation else 1,
         "failed_relations": 1,
+        "created_inst_uuids": [UUID],
         **({"existing_relations": 1} if existing_relation else {}),
     }
     edges.assert_called_once()
@@ -386,6 +388,7 @@ def test_import_single_unique_conflict_does_not_stop_other_rows(transfer_owner, 
         "failed_rows": 1,
         "created_relations": 0,
         "failed_relations": 0,
+        "created_inst_uuids": [UUID],
     }
     writes.assert_called_once()
     assert writes.call_args.args[1]["inst_name"] == "two"

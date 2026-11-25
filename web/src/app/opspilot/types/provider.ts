@@ -44,6 +44,7 @@ export interface ModelVendor {
     vendor_type: VendorType;
     protocol_type?: ProtocolType;
     api_base: string;
+    skip_ssl_verify?: boolean;
     api_key?: string;
     description?: string;
     enabled?: boolean;
@@ -65,6 +66,7 @@ export interface ModelVendorPayload {
     vendor_type: VendorType;
     protocol_type?: ProtocolType;
     api_base: string;
+    skip_ssl_verify?: boolean;
     api_key: string;
     team: number[];
     description?: string;

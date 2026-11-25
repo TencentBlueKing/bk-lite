@@ -58,10 +58,7 @@ def build_test_connection_response(result):
 def build_pending_capability_status(instance):
     manifest = get_provider_registry().get(instance.provider_key)
     capability_keys = [capability.key for capability in manifest.capabilities] if manifest else (instance.capability_status or {}).keys()
-    return {
-        capability_key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-        for capability_key in capability_keys
-    }
+    return {capability_key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION for capability_key in capability_keys}
 
 
 class IntegrationInstanceFilter(FilterSet):
@@ -145,7 +142,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         response = super().create(request, *args, **kwargs)
         if response.status_code == 201:
             instance_name = response.data.get("name", "")
-            log_operation(request, "create", "system-manager", f"新增集成实例: {instance_name}")
+            log_operation(
+                request,
+                "create",
+                "system-manager",
+                f"新增集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=response.data.get("id"),
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.create: created, "
                 f"instance_id={response.data.get('id')}, instance_name={instance_name!r}, "
@@ -167,7 +173,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         response = super().update(request, *args, **kwargs)
         if response.status_code == 200:
             instance_name = response.data.get("name", "")
-            log_operation(request, "update", "system-manager", f"编辑集成实例: {instance_name}")
+            log_operation(
+                request,
+                "update",
+                "system-manager",
+                f"编辑集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=obj.id,
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.update: updated, "
                 f"instance_id={obj.id}, instance_name={instance_name!r}, "
@@ -192,7 +207,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
 
         response = super().destroy(request, *args, **kwargs)
         if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除集成实例: {instance_name}")
+            log_operation(
+                request,
+                "delete",
+                "system-manager",
+                f"删除集成实例: {instance_name}",
+                target_type="integration_instance",
+                target_id=obj.id,
+                target_name=instance_name,
+                outcome="success",
+            )
             logger.info(
                 f"IntegrationInstanceViewSet.destroy: deleted, "
                 f"instance_id={obj.id}, instance_name={instance_name!r}, "
@@ -204,7 +228,11 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
     @HasPermission("integration_center-View")
     def providers(self, request, *args, **kwargs):
         locale = request_locale(request)
-        data = [localize_public_manifest(manifest, locale) for manifest in get_provider_registry().list()]
+        data = [
+            localize_public_manifest(manifest, locale)
+            for manifest in get_provider_registry().list()
+            if manifest.get_capability("notification_channel") is None
+        ]
         return Response(data)
 
     @action(methods=["GET"], detail=True)
@@ -255,13 +283,21 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         else:
             obj.status = payload.get("instance_status", IntegrationInstanceStatusChoices.VERIFICATION_FAILED)
             obj.capability_status = (
-                build_pending_capability_status(obj)
-                if not result.success
-                else payload.get("capability_status", obj.capability_status)
+                build_pending_capability_status(obj) if not result.success else payload.get("capability_status", obj.capability_status)
             )
         obj.save(update_fields=["status", "capability_status", "updated_at"])
 
-        log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
+        log_operation(
+            request,
+            "execute",
+            "system-manager",
+            f"测试集成实例连接: {obj.name}",
+            target_type="integration_instance",
+            target_id=obj.id,
+            target_name=obj.name,
+            outcome="success" if result.success else "failure",
+            failure_reason="" if result.success else (result.summary or ""),
+        )
         if not result.success:
             # Runtime 负责唯一的失败告警；此处仅保留状态落库后的调试上下文。
             logger.debug(
@@ -287,14 +323,13 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         instances = []
         locale = request_locale(request)
         for item in queryset.order_by("name", "id"):
-            if (
-                item.capability_enabled.get(capability) is True
-                and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY
-            ):
-                instances.append({
-                    "id": item.id,
-                    "name": item.name,
-                    "provider_key": item.provider_key,
-                    "provider_name": resolve_registered_provider_name(item.provider_key, locale),
-                })
+            if item.capability_enabled.get(capability) is True and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY:
+                instances.append(
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "provider_key": item.provider_key,
+                        "provider_name": resolve_registered_provider_name(item.provider_key, locale),
+                    }
+                )
         return Response(instances)

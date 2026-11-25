@@ -18,7 +18,9 @@ from copy import deepcopy
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.common.builtin_datasource_identity import find_claimable_datasource
 from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
+from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
 from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     RENAME_SUFFIX,
@@ -42,9 +44,30 @@ from apps.operation_analysis.schemas.import_export_schema import (
     TopologyItem,
     YAMLDocument,
 )
-from apps.operation_analysis.services.import_export.view_sets import rewrite_canvas_view_sets_refs_for_storage, rewrite_data_variables
+from apps.operation_analysis.services.import_export.datasource_package_identity import (
+    HandleIndex,
+    business_config_equal,
+    find_identity_row,
+    rewrite_datasource_bindings,
+    unresolved_package_handles,
+)
+from apps.operation_analysis.services.import_export.view_sets import (
+    rewrite_canvas_view_sets_refs_for_storage,
+    rewrite_data_variables,
+)
 from apps.operation_analysis.services.string_param_multiple_migrate import migrate_filters_payload, migrate_param_items
 from apps.operation_analysis.services.user_messages import oa_message
+
+_LOG_TOKEN_LIMIT = 80
+
+
+def _log_token(value: object, limit: int = _LOG_TOKEN_LIMIT) -> str:
+    """日志只留短标签。去掉换行和控制符，避免上传名称把一条日志拆开。"""
+    text = "".join(ch if ch.isprintable() and ch not in "\r\n\t" else " " for ch in str(value or ""))
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[:limit]
 
 
 class ImportService:
@@ -82,6 +105,9 @@ class ImportService:
         preserve_existing_canvas_groups: bool = False,
         datasource_groups: list[int] | None = None,
         conflict_decisions_by_type: dict[tuple[str, str], str] | None = None,
+        current_team: int | None = None,
+        is_superuser: bool = False,
+        builtin_seed: bool = False,
     ):
         """
         初始化导入服务
@@ -111,11 +137,18 @@ class ImportService:
         self.datasource_groups = self.groups if datasource_groups is None else list(datasource_groups)
         self.existing_canvas_ids = existing_canvas_ids or {}
         self.preserve_existing_canvas_groups = preserve_existing_canvas_groups
+        self.current_team = current_team
+        self.is_superuser = is_superuser
+        self.builtin_seed = builtin_seed
+        self._handle_index = HandleIndex()
 
         # 导入过程中的映射表：YAML key -> DB ID
         self.namespace_key_to_id: dict[str, int] = {}
         self.datasource_key_to_id: dict[str, int] = {}
         self.tag_name_to_id: dict[str, int] = {}
+        # 本次新建或内置种子更新的数据源。复用的目标行不在这里，避免改写它的参数。
+        self.rewritable_datasource_keys: set[str] = set()
+        self._pending_datasource_results: list[tuple[DatasourceItem, int, str, str]] = []
 
         # 导入结果统计
         self.results: list[dict] = []
@@ -371,14 +404,292 @@ class ImportService:
             )
             return ns.id
 
+    def _package_datasource_keys(self) -> set[str]:
+        keys: set[str] = set()
+        for item in self.doc.datasources:
+            keys.add(item.key)
+            identity = item.identity
+            if identity is None:
+                continue
+            if identity.kind == "builtin" and identity.build_in_key:
+                keys.add(identity.build_in_key)
+                keys.add(f"builtin::{identity.build_in_key}")
+            if identity.kind == "portable" and identity.portable_key:
+                keys.add(f"portable::{identity.portable_key}")
+        return keys
+
+    def _bind_datasource_key(self, ds_item: DatasourceItem, datasource_id: int) -> None:
+        self.datasource_key_to_id[ds_item.key] = datasource_id
+        identity = ds_item.identity
+        if identity is None:
+            return
+        if identity.kind == "builtin" and identity.build_in_key:
+            self.datasource_key_to_id[f"builtin::{identity.build_in_key}"] = datasource_id
+            self.datasource_key_to_id[identity.build_in_key] = datasource_id
+        if identity.kind == "portable" and identity.portable_key:
+            self.datasource_key_to_id[f"portable::{identity.portable_key}"] = datasource_id
+
+    def _fail_datasource(self, ds_item: DatasourceItem, message: str, code: str) -> None:
+        self._record_result(
+            ds_item.key,
+            ObjectType.DATASOURCE.value,
+            ImportStatus.FAILED.value,
+            message,
+            code=code,
+        )
+
+    def _namespace_nats(self) -> dict[str, str]:
+        return {item.name: item.namespace or "" for item in self.doc.namespaces}
+
+    def _can_access_datasource(self, row: DataSourceAPIModel) -> bool:
+        # 与解析、预检同一套组织判断。超级用户当前组织看不到的行，不能当成有权复用。
+        if self.current_team is None:
+            return True
+        return can_access_datasource_in_org(row, self.current_team)
+
+    def _relation_ids(self, ds_item: DatasourceItem) -> tuple[list[int], list[int]]:
+        namespace_ids = [self.namespace_key_to_id[ns_key] for ns_key in ds_item.namespace_keys if ns_key in self.namespace_key_to_id]
+        tag_ids = [self.tag_name_to_id[tag_name] for tag_name in ds_item.tags if tag_name in self.tag_name_to_id]
+        return namespace_ids, tag_ids
+
+    def _remember_new_datasource(self, ds_item: DatasourceItem, datasource_id: int, status: str, message: str) -> None:
+        self.rewritable_datasource_keys.add(ds_item.key)
+        self._bind_datasource_key(ds_item, datasource_id)
+        self._pending_datasource_results.append((ds_item, datasource_id, status, message))
+
+    def _create_user_datasource(self, ds_item: DatasourceItem, *, adopt_identity: bool) -> int | None:
+        """新建数据源。首次到达时继承包内身份；冲突副本去掉原身份并另发一把。"""
+        connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item)
+        if missing_secrets:
+            self._fail_datasource(
+                ds_item,
+                oa_message(
+                    "messages.import_datasource_secrets_missing",
+                    "数据源缺少敏感配置: {fields}",
+                    fields=", ".join(missing_secrets),
+                ),
+                ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
+            )
+            return None
+        name = ds_item.name
+        renamed = ""
+        if DataSourceAPIModel.objects.filter(name=name, rest_api=ds_item.rest_api).exists():
+            name = self._generate_rename_name(name, DataSourceAPIModel)
+            renamed = name
+        is_build_in = False
+        build_in_key = None
+        portable_key = None
+        identity = ds_item.identity
+        if adopt_identity and identity is not None:
+            if identity.kind == "builtin" and identity.build_in_key:
+                is_build_in = True
+                build_in_key = identity.build_in_key
+            elif identity.kind == "portable" and identity.portable_key:
+                portable_key = identity.portable_key
+        datasource = DataSourceAPIModel.objects.create(
+            name=name,
+            rest_api=ds_item.rest_api,
+            source_type=ds_item.source_type,
+            connection=None,
+            connection_overrides={},
+            connection_config=connection_config,
+            query_config=query_config,
+            transform_config=self._normalize_transform_config(ds_item),
+            desc=ds_item.desc,
+            is_active=ds_item.is_active,
+            params=migrate_param_items(ds_item.params)[0],
+            chart_type=ds_item.chart_type,
+            field_schema=ds_item.field_schema,
+            created_by=self.created_by,
+            updated_by=self.updated_by,
+            groups=self.datasource_groups,
+            is_build_in=is_build_in,
+            build_in_key=build_in_key,
+            portable_key=portable_key,
+        )
+        namespace_ids, tag_ids = self._relation_ids(ds_item)
+        datasource.namespaces.set(namespace_ids)
+        datasource.tag.set(tag_ids)
+        message = (
+            oa_message("messages.import_renamed", "重命名为 {name}", name=renamed)
+            if renamed
+            else oa_message("messages.import_datasource_created", "新建数据源")
+        )
+        self._remember_new_datasource(ds_item, datasource.id, ImportStatus.SUCCESS.value, message)
+        return datasource.id
+
+    def _reuse_datasource(self, ds_item: DatasourceItem, existing: DataSourceAPIModel) -> int:
+        """沿用目标行。不改它的参数，也不改已经指向它的画布。"""
+        self._bind_datasource_key(ds_item, existing.id)
+        self._record_result(
+            ds_item.key,
+            ObjectType.DATASOURCE.value,
+            ImportStatus.SKIPPED.value,
+            oa_message("messages.import_datasource_reused", "复用目标配置"),
+            existing.id,
+        )
+        return existing.id
+
+    def _apply_datasource_fields(self, existing: DataSourceAPIModel, ds_item: DatasourceItem) -> list[str] | None:
+        connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item, existing)
+        if missing_secrets:
+            return missing_secrets
+        previous_source_type = existing.source_type
+        existing.desc = ds_item.desc
+        existing.source_type = ds_item.source_type
+        existing.connection = None
+        existing.connection_overrides = {}
+        existing.connection_config = connection_config
+        existing.query_config = query_config
+        existing.transform_config = self._normalize_transform_config(ds_item)
+        existing.is_active = ds_item.is_active
+        existing.params = migrate_param_items(ds_item.params)[0]
+        existing.chart_type = ds_item.chart_type
+        existing.field_schema = ds_item.field_schema
+        existing.updated_by = self.updated_by
+        existing.save()
+        if previous_source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL and existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
+
+            abandon_excel_materialization(existing, clear_excel_query_keys=False)
+        elif existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            self._reset_excel_materialization_if_needs_upload(existing, query_config)
+        namespace_ids, tag_ids = self._relation_ids(ds_item)
+        existing.namespaces.set(namespace_ids)
+        existing.tag.set(tag_ids)
+        return None
+
+    def _import_builtin_seed_datasource(self, ds_item: DatasourceItem) -> int | None:
+        """内置种子可以原地更新认领到的行。用户导入不会走到这里。"""
+        identity = ds_item.identity
+        stable_key = identity.build_in_key if identity is not None and identity.kind == "builtin" and identity.build_in_key else ds_item.key
+        try:
+            existing = find_claimable_datasource(
+                DataSourceAPIModel,
+                stable_key=stable_key,
+                name=ds_item.name,
+                rest_api=ds_item.rest_api,
+            )
+        except ValueError:
+            self._fail_datasource(
+                ds_item,
+                oa_message("messages.import_builtin_identity_conflict", "内置数据源稳定身份冲突"),
+                ImportExportErrorCode.IMPORT_CONFLICT_UNRESOLVED,
+            )
+            return None
+        if existing is None:
+            connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item)
+            if missing_secrets:
+                self._fail_datasource(
+                    ds_item,
+                    oa_message(
+                        "messages.import_datasource_secrets_missing",
+                        "数据源缺少敏感配置: {fields}",
+                        fields=", ".join(missing_secrets),
+                    ),
+                    ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
+                )
+                return None
+            datasource = DataSourceAPIModel(
+                name=ds_item.name,
+                rest_api=ds_item.rest_api,
+                source_type=ds_item.source_type,
+                connection=None,
+                connection_overrides={},
+                connection_config=connection_config,
+                query_config=query_config,
+                transform_config=self._normalize_transform_config(ds_item),
+                desc=ds_item.desc,
+                is_active=ds_item.is_active,
+                params=migrate_param_items(ds_item.params)[0],
+                chart_type=ds_item.chart_type,
+                field_schema=ds_item.field_schema,
+                created_by=self.created_by,
+                updated_by=self.updated_by,
+                groups=self.datasource_groups,
+                is_build_in=True,
+                build_in_key=stable_key,
+                portable_key=None,
+            )
+            datasource.save()
+            namespace_ids, tag_ids = self._relation_ids(ds_item)
+            datasource.namespaces.set(namespace_ids)
+            datasource.tag.set(tag_ids)
+            self._remember_new_datasource(
+                ds_item,
+                datasource.id,
+                ImportStatus.SUCCESS.value,
+                oa_message("messages.import_datasource_created", "新建数据源"),
+            )
+            return datasource.id
+
+        if existing.portable_key and not existing.is_build_in and not existing.build_in_key:
+            self._fail_datasource(
+                ds_item,
+                oa_message(
+                    "messages.import_builtin_user_identity_protected",
+                    "该行已有用户身份，不能认领为内置源",
+                ),
+                ImportExportErrorCode.IMPORT_CONFLICT_UNRESOLVED,
+            )
+            return None
+        existing.is_build_in = True
+        existing.build_in_key = stable_key
+        missing_secrets = self._apply_datasource_fields(existing, ds_item)
+        if missing_secrets:
+            self._fail_datasource(
+                ds_item,
+                oa_message(
+                    "messages.import_datasource_secrets_missing",
+                    "数据源缺少敏感配置: {fields}",
+                    fields=", ".join(missing_secrets),
+                ),
+                ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
+            )
+            return None
+        existing.save()
+        self._remember_new_datasource(
+            ds_item,
+            existing.id,
+            ImportStatus.OVERWRITTEN.value,
+            oa_message("messages.import_datasource_overwritten", "覆盖已存在的数据源"),
+        )
+        return existing.id
+
+    def _rewrite_fresh_datasource_params(self) -> None:
+        """全部源落库后再改写新建行的引用。复用行不进这个列表。"""
+        package_keys = self._package_datasource_keys()
+        for ds_item, datasource_id, status, message in self._pending_datasource_results:
+            row = DataSourceAPIModel.objects.filter(pk=datasource_id).first()
+            if row is None:
+                self._fail_datasource(
+                    ds_item,
+                    oa_message("messages.import_dependency_missing", "缺少依赖的数据源，已停止导入"),
+                    ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
+                )
+                continue
+            missing = unresolved_package_handles(row.params, self.datasource_key_to_id, package_keys)
+            if missing:
+                self._fail_datasource(
+                    ds_item,
+                    oa_message("messages.import_dependency_missing", "缺少依赖的数据源，已停止导入"),
+                    ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
+                )
+                continue
+            rewritten = rewrite_datasource_bindings(row.params, self.datasource_key_to_id)
+            if rewritten != row.params:
+                row.params = rewritten
+                row.save(update_fields=["params", "updated_at"])
+            self._record_result(ds_item.key, ObjectType.DATASOURCE.value, status, message, datasource_id)
+
     def _import_datasource(self, ds_item: DatasourceItem) -> int | None:
         """
-        导入单个数据源
+        导入单个数据源。
 
-        Returns:
-            新建或已存在的数据源ID
+        有稳定身份时按身份对齐。配置相同就复用，不改目标行。
+        配置不同时，只有复用或跳过会指向原行；作为新数据源导入会另建一行。
+        没有稳定身份的旧包不会按名称并到已有行。
         """
-        existing = DataSourceAPIModel.objects.filter(name=ds_item.name, rest_api=ds_item.rest_api).first()
         action = self._get_conflict_action(ds_item.key, ObjectType.DATASOURCE.value)
 
         targets_legacy_route = is_legacy_raw_monitor_query(
@@ -395,160 +706,61 @@ class ImportService:
             )
             return None
 
-        # 解析关联的命名空间ID
-        namespace_ids = [self.namespace_key_to_id[ns_key] for ns_key in ds_item.namespace_keys if ns_key in self.namespace_key_to_id]
+        if self.builtin_seed:
+            return self._import_builtin_seed_datasource(ds_item)
 
-        # 解析tags
-        tag_ids = [self.tag_name_to_id[tag_name] for tag_name in ds_item.tags if tag_name in self.tag_name_to_id]
-
-        if existing:
-            if action == ConflictAction.SKIP.value:
-                self._record_result(
-                    ds_item.key,
-                    ObjectType.DATASOURCE.value,
-                    ImportStatus.SKIPPED.value,
-                    oa_message("messages.import_datasource_skipped", "跳过已存在的数据源"),
-                    existing.id,
-                )
-                return existing.id
-
-            elif action == ConflictAction.OVERWRITE.value:
-                connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item, existing)
-                if missing_secrets:
-                    self._record_result(
-                        ds_item.key,
-                        ObjectType.DATASOURCE.value,
-                        ImportStatus.FAILED.value,
-                        oa_message(
-                            "messages.import_datasource_secrets_missing",
-                            "数据源缺少敏感配置: {fields}",
-                            fields=", ".join(missing_secrets),
-                        ),
-                        code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
-                    )
-                    return None
-                previous_source_type = existing.source_type
-                existing.desc = ds_item.desc
-                existing.source_type = ds_item.source_type
-                existing.connection = None
-                existing.connection_overrides = {}
-                existing.connection_config = connection_config
-                existing.query_config = query_config
-                existing.transform_config = self._normalize_transform_config(ds_item)
-                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
-                existing.is_active = ds_item.is_active
-                existing.params = migrate_param_items(ds_item.params)[0]
-                existing.chart_type = ds_item.chart_type
-                existing.field_schema = ds_item.field_schema
-                existing.updated_by = self.updated_by
-                existing.save()
-                if previous_source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL and existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-                    from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
-
-                    abandon_excel_materialization(existing, clear_excel_query_keys=False)
-                elif existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-                    self._reset_excel_materialization_if_needs_upload(existing, query_config)
-                existing.namespaces.set(namespace_ids)
-                existing.tag.set(tag_ids)
-                self._record_result(
-                    ds_item.key,
-                    ObjectType.DATASOURCE.value,
-                    ImportStatus.OVERWRITTEN.value,
-                    oa_message("messages.import_datasource_overwritten", "覆盖已存在的数据源"),
-                    existing.id,
-                )
-                return existing.id
-
-            else:  # rename
-                connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item)
-                if missing_secrets:
-                    self._record_result(
-                        ds_item.key,
-                        ObjectType.DATASOURCE.value,
-                        ImportStatus.FAILED.value,
-                        oa_message(
-                            "messages.import_datasource_secrets_missing",
-                            "数据源缺少敏感配置: {fields}",
-                            fields=", ".join(missing_secrets),
-                        ),
-                        code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
-                    )
-                    return None
-                new_name = self._generate_rename_name(ds_item.name, DataSourceAPIModel)
-                ds = DataSourceAPIModel.objects.create(
-                    name=new_name,
-                    rest_api=ds_item.rest_api,
-                    source_type=ds_item.source_type,
-                    connection=None,
-                    connection_overrides={},
-                    connection_config=connection_config,
-                    query_config=query_config,
-                    transform_config=self._normalize_transform_config(ds_item),
-                    desc=ds_item.desc,
-                    # [内部预留] is_active 字段仅内部使用，无产品功能依赖
-                    is_active=ds_item.is_active,
-                    params=migrate_param_items(ds_item.params)[0],
-                    chart_type=ds_item.chart_type,
-                    field_schema=ds_item.field_schema,
-                    created_by=self.created_by,
-                    updated_by=self.updated_by,
-                    groups=self.datasource_groups,
-                )
-                ds.namespaces.set(namespace_ids)
-                ds.tag.set(tag_ids)
-                self._record_result(
-                    ds_item.key,
-                    ObjectType.DATASOURCE.value,
-                    ImportStatus.SUCCESS.value,
-                    oa_message("messages.import_renamed", "重命名为 {name}", name=new_name),
-                    ds.id,
-                )
-                return ds.id
-        else:
-            # 新建
-            connection_config, query_config, missing_secrets = self._prepare_datasource_configs(ds_item)
-            if missing_secrets:
-                self._record_result(
-                    ds_item.key,
-                    ObjectType.DATASOURCE.value,
-                    ImportStatus.FAILED.value,
-                    oa_message(
-                        "messages.import_datasource_secrets_missing",
-                        "数据源缺少敏感配置: {fields}",
-                        fields=", ".join(missing_secrets),
-                    ),
-                    code=ImportExportErrorCode.IMPORT_SECRET_REQUIRED,
+        existing = find_identity_row(ds_item, lock=True)
+        if existing is not None:
+            if not self._can_access_datasource(existing):
+                if action in {ConflictAction.IMPORT_AS_NEW.value, ConflictAction.RENAME.value}:
+                    return self._create_user_datasource(ds_item, adopt_identity=False)
+                self._fail_datasource(
+                    ds_item,
+                    oa_message("messages.import_datasource_forbidden", "无权使用目标环境中的同身份数据源"),
+                    ImportExportErrorCode.IMPORT_PERMISSION_DENIED,
                 )
                 return None
-            ds = DataSourceAPIModel.objects.create(
-                name=ds_item.name,
-                rest_api=ds_item.rest_api,
-                source_type=ds_item.source_type,
-                connection=None,
-                connection_overrides={},
-                connection_config=connection_config,
-                query_config=query_config,
-                transform_config=self._normalize_transform_config(ds_item),
-                desc=ds_item.desc,
-                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
-                is_active=ds_item.is_active,
-                params=migrate_param_items(ds_item.params)[0],
-                chart_type=ds_item.chart_type,
-                field_schema=ds_item.field_schema,
-                created_by=self.created_by,
-                updated_by=self.updated_by,
-                groups=self.datasource_groups,
+            same_config = business_config_equal(
+                ds_item,
+                existing,
+                handle_index=self._handle_index.cover(ds_item, existing),
+                namespace_nats=self._namespace_nats(),
             )
-            ds.namespaces.set(namespace_ids)
-            ds.tag.set(tag_ids)
+            if same_config or action in {ConflictAction.REUSE_TARGET.value, ConflictAction.SKIP.value}:
+                if action == ConflictAction.OVERWRITE.value and not same_config:
+                    self._fail_datasource(
+                        ds_item,
+                        oa_message("messages.import_identity_overwrite_forbidden", "同一身份的数据源不能直接覆盖，请选择复用或作为新数据源导入"),
+                        ImportExportErrorCode.IMPORT_CONFLICT_UNRESOLVED,
+                    )
+                    return None
+                return self._reuse_datasource(ds_item, existing)
+            if action in {ConflictAction.IMPORT_AS_NEW.value, ConflictAction.RENAME.value}:
+                return self._create_user_datasource(ds_item, adopt_identity=False)
+            self._fail_datasource(
+                ds_item,
+                oa_message("messages.import_identity_overwrite_forbidden", "同一身份的数据源不能直接覆盖，请选择复用或作为新数据源导入"),
+                ImportExportErrorCode.IMPORT_CONFLICT_UNRESOLVED,
+            )
+            return None
+
+        name_taken = DataSourceAPIModel.objects.filter(name=ds_item.name, rest_api=ds_item.rest_api).exists()
+        if name_taken and action == ConflictAction.SKIP.value:
             self._record_result(
                 ds_item.key,
                 ObjectType.DATASOURCE.value,
-                ImportStatus.SUCCESS.value,
-                oa_message("messages.import_datasource_created", "新建数据源"),
-                ds.id,
+                ImportStatus.SKIPPED.value,
+                oa_message("messages.import_datasource_skipped", "跳过已存在的数据源"),
             )
-            return ds.id
+            return None
+        if name_taken and action in {ConflictAction.OVERWRITE.value, ConflictAction.REUSE_TARGET.value}:
+            self._fail_datasource(
+                ds_item,
+                oa_message("messages.import_legacy_name_attach_forbidden", "旧包没有稳定身份，不能按名称覆盖或复用已有数据源"),
+                ImportExportErrorCode.IMPORT_CONFLICT_UNRESOLVED,
+            )
+            return None
+        return self._create_user_datasource(ds_item, adopt_identity=True)
 
     def _import_canvas(
         self,
@@ -568,6 +780,20 @@ class ImportService:
         else:
             existing = model.objects.filter(name=canvas_item.name).first()
         action = self._get_conflict_action(canvas_item.key, object_type.value)
+        if not (existing and action == ConflictAction.SKIP.value):
+            package_keys = self._package_datasource_keys()
+            missing = unresolved_package_handles(canvas_item.view_sets, self.datasource_key_to_id, package_keys)
+            if object_type == ObjectType.DASHBOARD and hasattr(canvas_item, "filters"):
+                missing.extend(unresolved_package_handles(canvas_item.filters, self.datasource_key_to_id, package_keys))
+            if missing:
+                self._record_result(
+                    canvas_item.key,
+                    object_type.value,
+                    ImportStatus.FAILED.value,
+                    oa_message("messages.import_dependency_missing", "缺少依赖的数据源，已停止导入"),
+                    code=ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
+                )
+                return None
 
         # 获取目标目录
         directory = None
@@ -593,10 +819,10 @@ class ImportService:
             name_conflict = model.objects.filter(name=canvas_item.name).exclude(pk=stable_existing_id).exists()
             if name_conflict:
                 logger.warning(
-                    "[CanvasImport] 内置%s稳定键 %s 的目标名称 %s 已被占用，保留原名称",
+                    "[CanvasImport] builtin canvas name is taken; object_type=%s key=%s name=%s",
                     object_type.value,
-                    canvas_item.key,
-                    canvas_item.name,
+                    _log_token(canvas_item.key),
+                    _log_token(canvas_item.name),
                 )
             else:
                 canvas_data["name"] = canvas_item.name
@@ -620,7 +846,10 @@ class ImportService:
 
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas_item, "filters"):
-            canvas_data["filters"] = migrate_filters_payload(canvas_item.filters)[0]
+            canvas_data["filters"] = rewrite_datasource_bindings(
+                migrate_filters_payload(canvas_item.filters)[0],
+                self.datasource_key_to_id,
+            )
 
         if object_type in CANVAS_REFRESH_OBJECT_TYPES:
             canvas_data["refresh_interval"] = normalize_canvas_refresh_interval(getattr(canvas_item, "refresh_interval", 0))
@@ -734,6 +963,8 @@ class ImportService:
                 ds_id = self._import_datasource(ds_item)
                 if ds_id:
                     self.datasource_key_to_id[ds_item.key] = ds_id
+
+            self._rewrite_fresh_datasource_params()
 
             rollback_result = self._rollback_on_failure()
             if rollback_result:

@@ -47,10 +47,15 @@ export const useParamInputOptions = (
   if (!loaderRef.current) {
     loaderRef.current = createParamInputOptionsLoader(
       {
-        getDataSourceList: (...args) => apiRef.current.getDataSourceList(...args),
+        getDataSourceList: (params, signal) => apiRef.current.getDataSourceList(params, signal),
         getSourceDataByApiId: (...args) =>
           runtimeRef.current.getSourceDataByApiId?.(...args)
           ?? apiRef.current.getSourceDataByApiId(...args),
+        resolveOptionSource: async (body, signal) => {
+          const resolver = apiRef.current.resolveOptionSource;
+          if (!resolver) throw new Error('option-source-resolver-unavailable');
+          return resolver(body, signal);
+        },
       },
       () => loaderOptionsRef.current,
     );
@@ -113,12 +118,13 @@ export const useParamInputOptions = (
       loaderRef.current!.reset();
     }
     let active = true;
+    const controller = new AbortController();
     const request = {
       resolvedParams: runtimeRef.current.resolvedQueryParams,
       blocked: runtimeRef.current.optionsBlocked,
       blockReason: runtimeRef.current.optionsBlockReason,
     };
-    const load = loaderRef.current!.load(configRef.current, request);
+    const load = loaderRef.current!.load(configRef.current, request, controller.signal);
     setResolved({ key: loadSignature, state: load.initial });
     if (!load.sync) {
       void load.promise.then((result) => {
@@ -127,6 +133,7 @@ export const useParamInputOptions = (
     }
     return () => {
       active = false;
+      controller.abort();
     };
   }, [enabled, inputKey, knownSourcesKey, loadSignature, optionsBlockReason, optionsBlocked, querySignature, reloadKey]);
 

@@ -11,10 +11,10 @@ choice:
 message:
   invalid_current_team: "Missing or invalid current_team"
   waiting_items: "and {count} more"
-  report_link_invalid: "Invalid report download link"
-  report_expired: "Report has expired"
-  report_unavailable: "Report file is temporarily unavailable"
-  report_too_large: "Report file exceeds the download size limit"
+  report_link_invalid: "Invalid attachment download link"
+  report_expired: "Attachment has expired"
+  report_unavailable: "Attachment is temporarily unavailable"
+  report_too_large: "Attachment exceeds the download size limit"
 error:
   workflow_deleted: "Workflow has been deleted and cannot start new executions"
   workflow_publish_required: "Only published workflows can be executed"
@@ -291,6 +291,14 @@ error:
   report_payload_invalid: The report template reference content is invalid
   report_reference_execution: The report file does not belong to the current execution
   report_reference_forbidden: The report file does not exist or is not accessible
+  notification_attachment_count: "A notification supports up to 10 attachments"
+  notification_attachment_base_url: "Set WEB_BASE_URL to send attachment download links"
+  notification_wecom_text_limit: "The WeCom robot message exceeds 4096 bytes"
+  notification_wecom_body_rejected: "The WeCom robot rejected the notification message."
+  agent_attachment_missing_file: "The file for the generated attachment is missing"
+  agent_attachment_too_large: "The generated attachment exceeds the download size limit"
+  artifact_link_invalid: "Invalid attachment download link"
+  artifact_link_expired: "The attachment download link has expired"
   report_reference_invalid: The report file reference is invalid
   report_reference_rejected: The report template reference is not valid
   report_store_unavailable: Report template storage is unavailable
@@ -409,7 +417,6 @@ error:
   interaction_create_unsupported: "Manual tasks can only be created by the execution engine"
   workflow_name_conflict: "A workflow with this name already exists in the team"
   team_required: "Select an organization"
-  published_team_locked: "Organization cannot be changed after the workflow is published"
   trigger_caller_forbidden: "The trigger does not exist or does not belong to the caller's team"
   execution_permission_required: "Missing permission to operate this execution"
   orchestration_unavailable: "The orchestration service is temporarily unavailable"
@@ -461,7 +468,7 @@ field_label:
     recipients: "Recipients"
     title: "Notification Title"
     body: "Notification Content"
-    artifacts: "Office Attachments"
+    artifacts: "Attachments"
     report_artifact: "Attachment"
   bklite_job_execute:
     targets: "Target Hosts"

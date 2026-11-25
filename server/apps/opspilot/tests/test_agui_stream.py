@@ -2204,6 +2204,60 @@ def test_agui_stream_hides_planned_step_text_but_keeps_tools(monkeypatch):
     assert tool_results[0]["content"] == '[{"name":"calico"}]'
 
 
+def test_ppt_final_notice_replaces_late_page_inventory(monkeypatch):
+    """隐藏开关关掉之后，晚到的页面清单不能盖住导出结果。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    inventory = "已完成全部 7 页 SVG 的编写，文件位于 /ppt-workspace/projects/alert-overview/svg_output/"
+    notice = "PPT 已导出，可以下载。"
+
+    class _Compiled:
+        async def astream_events(self, *_args, **kwargs):
+            request = kwargs["config"]["configurable"]["graph_request"]
+            request.extra_config["opspilot_hide_planned_step_text"] = True
+            yield {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": SimpleNamespace(content=inventory, tool_call_chunks=[], additional_kwargs={})},
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "model",
+                "data": {"output": {"messages": [AIMessage(content=inventory)]}},
+            }
+            request.extra_config["opspilot_hide_planned_step_text"] = False
+            request.extra_config["opspilot_planned_final_text"] = notice
+            yield {
+                "event": "on_chain_end",
+                "name": "model",
+                "data": {"output": {"messages": [AIMessage(content=inventory)]}},
+            }
+            yield {
+                "event": "on_chain_end",
+                "name": "deep_agent",
+                "data": {"output": {"messages": Overwrite([AIMessage(content=notice)])}},
+            }
+
+    class _Graph(BasicGraph):
+        async def compile_graph(self, _request):
+            return _Compiled()
+
+    request = BasicLLMRequest(thread_id="thread-ppt-final", extra_config={"show_think": False})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in _Graph().agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    text = "".join(str(item.get("delta") or "") for item in payloads if item.get("type") == "TEXT_MESSAGE_CONTENT")
+    assert inventory not in text
+    assert notice in text
+
+
 def _hidden_step_delta(payload):
     value = payload.get("value")
     if isinstance(value, dict):

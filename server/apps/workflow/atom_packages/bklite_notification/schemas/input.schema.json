@@ -10,8 +10,8 @@
     "recipients": {"type": "array", "title": "收件人", "items": {"type": "string"}, "maxItems": 100, "uniqueItems": true},
     "title": {"type": "string", "title": "通知标题", "maxLength": 200},
     "body": {"type": "string", "title": "通知内容", "maxLength": 10000},
-    "artifacts": {"type": "array", "title": "Office 附件", "items": {"type": "object"}, "maxItems": 10},
-    "report_artifact": {"type": "object", "title": "附件", "description": "可选。拖入上游文档生成的 artifact，通知中发送 24 小时下载链接，不发送真实附件。"}
+    "artifacts": {"type": "array", "title": "附件列表", "description": "引用上游智能体输出的 artifacts。通知提供限时下载链接，企微机器人同时发送支持的文件。", "items": {"type": "object"}, "maxItems": 10},
+    "report_artifact": {"type": "object", "title": "附件", "description": "可选。引用上游文档生成节点的单个 artifact，通知中提供限时下载链接。"}
   },
   "required": ["notification_type", "body"],
   "additionalProperties": false

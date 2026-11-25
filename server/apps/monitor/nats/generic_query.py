@@ -39,7 +39,7 @@ from apps.monitor.services.generic_query import (
 )
 from apps.monitor.services.generic_query_limits import STAT_GROUP_MAX
 from apps.monitor.services.instance_distribution import GROUP_BY_OBJECT, GROUP_BY_TYPE, query_instance_distribution
-from apps.monitor.services.interface_current import query_interface_current_rows
+from apps.monitor.services.interface_current import query_interface_current_count, query_interface_current_rows
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -303,6 +303,10 @@ def query_monitor_collection(
     )
 
 
+# 全量排序会连续读取 VictoriaMetrics。留在唯一的 NATS 同步线程上会堵住其他画布。
+query_monitor_collection._nats_thread_sensitive = False
+
+
 @nats_client.register
 @_guard("query_monitor_collection_counts")
 def query_monitor_collection_counts(
@@ -331,6 +335,9 @@ def query_monitor_collection_counts(
         bounded=False,
     )
     return _ok([{"instance_count": len(rows)}])
+
+
+query_monitor_collection_counts._nats_thread_sensitive = False
 
 
 @nats_client.register
@@ -366,6 +373,10 @@ def query_interface_current(
     )
 
 
+# 范围内的接口统计会连续读取 VictoriaMetrics。留在唯一的 NATS 同步线程上会堵住其他画布。
+query_interface_current._nats_thread_sensitive = False
+
+
 @nats_client.register
 @_guard("query_interface_current_counts")
 def query_interface_current_counts(
@@ -382,14 +393,20 @@ def query_interface_current_counts(
         _scoped_monitor_instances(user_info, monitor_object_id, monitor_object_type_ids),
         instance_ids,
     )
-    instances = list(queryset.select_related("monitor_object").distinct())
-    rows = query_interface_current_rows(
-        instances,
-        interface_match=interface_match,
-        locale=(user_info or {}).get("locale"),
-        bounded=False,
+    instances = list(queryset.distinct())
+    return _ok(
+        [
+            {
+                "interface_count": query_interface_current_count(
+                    instances,
+                    interface_match=interface_match,
+                )
+            }
+        ]
     )
-    return _ok([{"interface_count": len(rows)}])
+
+
+query_interface_current_counts._nats_thread_sensitive = False
 
 
 def _distribution_type_ids(value) -> list[str]:

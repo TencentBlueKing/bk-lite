@@ -315,7 +315,7 @@ export interface AtomExecutionRecord {
 
 export interface DownloadableArtifact {
   id: string;
-  format: 'docx' | 'xlsx';
+  format: string;
   filename: string;
   size: number;
   created_at: string;
@@ -324,8 +324,9 @@ export interface DownloadableArtifact {
 }
 
 export interface ExecutionArtifactRecord {
+  deleted_at?: string | null;
   id: string;
-  format: 'docx' | 'xlsx';
+  format: string;
   filename: string;
   size: number;
   summary: Record<string, number | string>;

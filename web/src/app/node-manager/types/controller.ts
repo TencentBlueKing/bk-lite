@@ -238,6 +238,35 @@ export interface ManualInstallController {
   push_targets?: Array<'cmdb' | 'monitor'>;
 }
 
+export interface BulkInstallAttempt {
+  ip: string;
+  node_name: string;
+  cpu_architecture: string;
+  status: string;
+  message: string;
+  online: boolean;
+  attempt_count: number;
+}
+
+export interface BulkInstallBatch {
+  batch_id: number;
+  status: string;
+  max_success_count: number;
+  accepted_count: number;
+  failure_count: number;
+  expires_at: string;
+  command: string;
+  items: BulkInstallAttempt[];
+}
+
+export interface CreateBulkInstallParams {
+  cloud_region_id: number;
+  package_id: number;
+  max_success_count: number;
+  expires_in_hours: number;
+  push_targets?: string[];
+}
+
 export interface OperationGuidanceProps {
   ip: string;
   nodeName: string;

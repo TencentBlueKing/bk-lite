@@ -12,9 +12,7 @@ class CustomProviderSerializer(TeamSerializer):
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
         vendor_list = ModelVendor.objects.all().values("id", "name", "vendor_type", "enabled")
-        self.vendor_map = {
-            item["id"]: {"name": item["name"], "vendor_type": item["vendor_type"], "enabled": item["enabled"]} for item in vendor_list
-        }
+        self.vendor_map = {item["id"]: {"name": item["name"], "vendor_type": item["vendor_type"], "enabled": item["enabled"]} for item in vendor_list}
 
     def get_fields(self):
         return super().get_fields()
@@ -50,6 +48,7 @@ class ModelVendorSerializer(serializers.ModelSerializer):
             "vendor_type",
             "protocol_type",
             "api_base",
+            "skip_ssl_verify",
             "api_key",
             "enabled",
             "team",
@@ -73,6 +72,7 @@ class ModelVendorTestConnectionSerializer(serializers.Serializer):
     original_id = serializers.IntegerField(required=False, allow_null=True)
     api_base = serializers.CharField(required=True, allow_blank=False)
     api_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    skip_ssl_verify = serializers.BooleanField(required=False)
     password_changed = serializers.BooleanField(required=False, default=True)
     protocol_type = serializers.ChoiceField(choices=["openai", "anthropic"], required=False, default="openai")
     vendor_type = serializers.CharField(required=False, allow_blank=True, default="")
@@ -91,9 +91,12 @@ class ModelVendorTestConnectionSerializer(serializers.Serializer):
         if not original_id:
             raise serializers.ValidationError({"original_id": "未修改密码时，原供应商ID不能为空"})
 
-        vendor = ModelVendor.objects.filter(id=original_id).first()
+        view = self.context["view"]
+        vendors = view.get_queryset_by_permission(self.context["request"], view.get_queryset())
+        vendor = vendors.filter(id=original_id).first()
         if not vendor:
             raise serializers.ValidationError({"original_id": "原供应商不存在"})
 
+        attrs.setdefault("skip_ssl_verify", vendor.skip_ssl_verify)
         attrs["resolved_api_key"] = vendor.decrypted_api_key
         return attrs

@@ -33,6 +33,7 @@ interface MonitorNodeSelectProps {
   loadNodes: (query: { page: number; pageSize: number; keyword: string }) => Promise<MonitorNodePageResult>;
   onNodesLoaded?: (nodes: MonitorNodeOption[]) => void;
   excludeValues?: Array<string | number>;
+  pinnedNodes?: MonitorNodeOption[];
   componentProps?: Record<string, unknown>;
 }
 
@@ -49,6 +50,7 @@ export default function MonitorNodeSelect({
   loadNodes,
   onNodesLoaded,
   excludeValues = [],
+  pinnedNodes = [],
   componentProps = {},
 }: MonitorNodeSelectProps) {
   const [options, setOptions] = useState<MonitorNodeOption[]>([]);
@@ -136,6 +138,13 @@ export default function MonitorNodeSelect({
   selectedIds.forEach((id) => {
     if (!visible.some((node) => nodeValue(node) === id) && knownRef.current.has(id)) {
       visible.unshift(knownRef.current.get(id)!);
+    }
+  });
+  pinnedNodes.forEach((node) => {
+    const id = nodeValue(node);
+    if (!id || !selectedIds.includes(id)) return;
+    if (!visible.some((item) => nodeValue(item) === id)) {
+      visible.unshift(node);
     }
   });
 
