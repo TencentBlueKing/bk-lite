@@ -1,6 +1,7 @@
 """周期评估通知配置的授权候选数据。"""
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.system_mgmt import SystemMgmt
@@ -19,6 +20,7 @@ def _build_actor_context(request) -> dict:
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": request.user.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),

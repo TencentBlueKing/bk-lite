@@ -20,6 +20,10 @@ error:
   order_required: Order value cannot be empty
   time_range_required: Time range is required
   cannot_delete_admin_normal_roles: Admin and normal roles cannot be deleted
+  module_role_locked: Module admin and module auditor cannot be changed, deleted, or assigned to an organization
+  module_role_grant_forbidden: Only a platform super administrator can grant or revoke module admin and module auditor roles
+  module_role_identity_transition_forbidden: Changing this platform identity would revoke module administrator or module auditor roles. A platform super administrator must perform this operation.
+  platform_identity_cannot_take_module_role: Platform administrators and platform auditors cannot be assigned module roles
   group_id_required: Group ID cannot be empty
   group_has_users_remove_first: This group or sub groups has users, please remove
     the users first!

@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.module_scope import effective_module_privilege
 
 
 def protected_delete_response(
@@ -70,7 +71,7 @@ class VendorModelMixin:
             return self._list(self.get_queryset().none())
 
         # 验证用户有权限访问 current_team（superuser 跳过验证）
-        if not getattr(request.user, "is_superuser", False):
+        if not getattr(request.user, "is_superuser", False) and effective_module_privilege(request.user, "opspilot") is None:
             user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
             if current_team not in user_group_ids:
                 raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")

@@ -18,7 +18,7 @@ import type { Option } from '@/types';
 import { TrainJob } from '@/app/mlops/types/task';
 import { TRAIN_STATUS_MAP, TRAIN_TEXT, ALGORITHM_TYPE_I18N_KEYS } from '@/app/mlops/constants';
 import { DataSet } from '@/app/mlops/types/manage';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useModuleGroupNameDirectory } from '@/hooks/useOperableGroupTree';
 import { formatGroupNames } from '@/app/mlops/utils/common';
 const { Search } = Input;
 
@@ -34,7 +34,7 @@ const TrainingPage = () => {
   const { t } = useTranslation();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
-  const { flatGroups } = useUserInfoContext();
+  const groupNameDirectory = useModuleGroupNameDirectory();
 
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getDatasetsList } = useMlopsManageApi();
@@ -103,7 +103,7 @@ const TrainingPage = () => {
       dataIndex: 'team',
       width: 180,
       render: (_, record: TrainJob) => {
-        const organizationText = formatGroupNames(record.team, flatGroups);
+        const organizationText = formatGroupNames(record.team, groupNameDirectory);
         return (
           <EllipsisWithTooltip
             className="w-full overflow-hidden text-ellipsis whitespace-nowrap"

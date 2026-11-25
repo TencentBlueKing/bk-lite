@@ -6,6 +6,7 @@ from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.util import encode_team_secret
 from apps.core.logger import alert_logger as logger
+from apps.core.utils.module_scope import effective_module_privilege
 
 
 class AlertSourceCredentialService:
@@ -86,6 +87,8 @@ class AlertSourceCredentialService:
 
     @classmethod
     def _mutate(cls, user, source_id, team_id, action):
+        if effective_module_privilege(user, "alarm") == "auditor" and not getattr(user, "is_superuser", False):
+            raise PermissionDenied()
         team_id = cls.ensure_team_access(user, team_id)
         with transaction.atomic():
             try:

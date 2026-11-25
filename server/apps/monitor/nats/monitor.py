@@ -3316,6 +3316,7 @@ def _get_nats_actor_scope(user_info):
         "username": username,
         "domain": domain,
         "current_team": current_team,
+        "app": "monitor",
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(
@@ -3899,6 +3900,7 @@ def get_monitor_effective_plugins(monitor_object_id=None, instance_id=None, user
         "is_superuser": scope.is_superuser,
         "group_list": [],
         "data_scope": scope,
+        "app": "monitor",
     }
     try:
         data = load_authorized_effective_plugins(

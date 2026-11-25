@@ -31,6 +31,8 @@ interface UserTabProps {
   onDeleteUser: (record: User) => Promise<void>;
   onBatchDelete: () => Promise<boolean>;
   onFetchAllUsers: () => Promise<void>;
+  hidePlatformIdentities?: boolean;
+  canManageUsers?: boolean;
 }
 
 const UserTab: React.FC<UserTabProps> = ({
@@ -53,7 +55,9 @@ const UserTab: React.FC<UserTabProps> = ({
   onAddUser,
   onDeleteUser,
   onBatchDelete,
-  onFetchAllUsers
+  onFetchAllUsers,
+  hidePlatformIdentities = false,
+  canManageUsers = true,
 }) => {
   const [addUserForm] = Form.useForm();
 
@@ -71,7 +75,7 @@ const UserTab: React.FC<UserTabProps> = ({
     {
       title: t('common.actions'),
       key: 'actions',
-      render: (_: unknown, record: User) => (
+      render: (_: unknown, record: User) => canManageUsers ? (
         <PermissionWrapper requiredPermissions={['Remove user']}>
           <Popconfirm
             title={t('common.delConfirm')}
@@ -82,9 +86,9 @@ const UserTab: React.FC<UserTabProps> = ({
             <Button type="link">{t('common.delete')}</Button>
           </Popconfirm>
         </PermissionWrapper>
-      ),
+      ) : null,
     },
-  ], [t, onDeleteUser]);
+  ], [t, onDeleteUser, canManageUsers]);
 
   const openUserModal = () => {
     if (!allUserList.length) onFetchAllUsers();
@@ -127,7 +131,7 @@ const UserTab: React.FC<UserTabProps> = ({
             <PermissionWrapper requiredPermissions={['Remove user']}>
               <Button
                 loading={deleteLoading}
-                disabled={selectedUserKeys.length === 0 || deleteLoading}
+                disabled={!canManageUsers || selectedUserKeys.length === 0 || deleteLoading}
                 onClick={handleBatchDeleteClick}
               >
                 {t('system.common.modifydelete')}
@@ -136,6 +140,7 @@ const UserTab: React.FC<UserTabProps> = ({
             <PermissionWrapper requiredPermissions={['Add user']}>
               <Button
                 type="primary"
+                disabled={!canManageUsers}
                 onClick={openUserModal}
               >
                 {t('common.new')}
@@ -190,7 +195,7 @@ const UserTab: React.FC<UserTabProps> = ({
                 typeof option?.label === 'string' && option.label.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {allUserList.map(user => (
+              {allUserList.filter((user) => !hidePlatformIdentities || (!user.is_auditor && !user.is_superuser)).map(user => (
                 <Option key={user.id} value={user.id} label={`${user.display_name}(${user.username})`}>
                   {user.display_name}({user.username})
                 </Option>

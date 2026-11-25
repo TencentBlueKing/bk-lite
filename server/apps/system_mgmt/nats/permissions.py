@@ -31,18 +31,25 @@ def _prepare_user_rules_query(group_id, username, domain, app, include_children=
     if not user_obj:
         return None, None, None, None, None
 
-    # 获取管理员角色列表
+    # 旧 admin 和当前应用的模块管理员走全权限短路。模块审计员只扩大组织查询范围。
     admin_list = list(Role.objects.filter(name="admin").filter(Q(app="") | Q(app=app)).values_list("id", flat=True))
+    from apps.core.utils.module_scope import EXCLUDED_CLIENTS, MODULE_ADMIN_ROLE, MODULE_AUDITOR_ROLE
+
+    module_auditor_ids = []
+    if app and app not in EXCLUDED_CLIENTS:
+        admin_list.extend(Role.objects.filter(name=MODULE_ADMIN_ROLE, app=app).values_list("id", flat=True))
+        module_auditor_ids = list(Role.objects.filter(name=MODULE_AUDITOR_ROLE, app=app).values_list("id", flat=True))
 
     # 获取用户所有角色（个人角色 + 组角色）
-    all_role_ids = get_user_all_roles(user_obj)
-    is_admin = bool(set(all_role_ids).intersection(admin_list))
+    all_role_ids = set(get_user_all_roles(user_obj))
+    is_admin = bool(all_role_ids.intersection(admin_list))
+    expands_org_scope = is_admin or bool(all_role_ids.intersection(module_auditor_ids))
 
-    # 获取查询的组ID列表（包含子组）。管理员在选中组织内拥有完整子树权限；
+    # 获取查询的组ID列表（包含子组）。模块角色在选中组织内拥有完整子树；
     # 普通用户仍需按其持久化组织授权裁剪，避免扩大数据范围。
     query_group_ids = []
     if include_children:
-        if is_admin:
+        if expands_org_scope:
             query_group_ids = GroupUtils.get_group_with_descendants(int(group_id))
         else:
             # 使用优化后的单次查询方法替代 N+1 的 get_all_child_groups

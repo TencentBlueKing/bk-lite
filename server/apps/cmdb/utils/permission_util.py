@@ -36,7 +36,9 @@ class CmdbRulesFormatUtil:
     @staticmethod
     def get_authorized_team_ids(user, current_team, include_children):
         current_team = int(current_team)
-        if getattr(user, "is_superuser", False):
+        from apps.core.utils.module_scope import effective_module_privilege
+
+        if getattr(user, "is_superuser", False) or effective_module_privilege(user, "cmdb"):
             return GroupUtils.get_group_with_descendants(current_team) if include_children else [current_team]
 
         user_group_ids = CmdbRulesFormatUtil._normalize_user_group_ids(getattr(user, "group_list", []))
@@ -227,6 +229,15 @@ class CmdbRulesFormatUtil:
 
     @staticmethod
     def format_user_context_permissions(user, current_team, include_children, model_id, permission_type=PERMISSION_INSTANCES):
+        from apps.core.utils.module_scope import effective_module_privilege
+
+        privilege = effective_module_privilege(user, "cmdb")
+        if privilege:
+            teams = CmdbRulesFormatUtil.get_authorized_team_ids(user, current_team, include_children)
+            if privilege == "admin":
+                return {int(team): {"permission_instances_map": {}, "inst_names": []} for team in teams}
+            return {int(team): {"__default_model": True, "permission_instances_map": {}, "inst_names": []} for team in teams}
+
         user_teams = CmdbRulesFormatUtil.get_authorized_team_ids(
             user=user,
             current_team=current_team,

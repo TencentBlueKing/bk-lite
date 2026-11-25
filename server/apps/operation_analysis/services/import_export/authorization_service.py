@@ -6,6 +6,7 @@ from typing import Any
 
 from rest_framework.exceptions import PermissionDenied
 
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
@@ -72,6 +73,9 @@ class ImportExportAuthorizationService:
 
         if not current_team:
             raise PermissionDenied(oa_message("messages.team_access_denied", "无权访问该团队数据"))
+
+        if effective_module_privilege(request.user, cls.APP_PERMISSION_NAME):
+            return current_team
 
         user_group_ids = cls._normalize_ids(getattr(request.user, "group_list", []))
         if current_team not in user_group_ids:
@@ -610,6 +614,11 @@ class ImportExportAuthorizationService:
             return []
         if request.COOKIES.get("include_children", "0") != "1":
             return [current_team]
+
+        if effective_module_privilege(request.user, "ops-analysis"):
+            from apps.system_mgmt.utils.group_utils import GroupUtils
+
+            return GroupUtils.get_group_with_descendants(current_team)
 
         from apps.core.utils.viewset_utils import GenericViewSetFun
 

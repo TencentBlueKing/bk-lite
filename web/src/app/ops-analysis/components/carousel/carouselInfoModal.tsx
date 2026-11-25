@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Form, Input, Modal, message } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { useTranslation } from '@/utils/i18n';
 import { useCarouselApi } from '@/app/ops-analysis/api/carousel';
@@ -28,7 +29,8 @@ const CarouselInfoModal: React.FC<CarouselInfoModalProps> = ({
   onUpdated,
 }) => {
   const { t } = useTranslation();
-  const { selectedGroup, groupTree } = useUserInfoContext();
+  const { selectedGroup } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const { createCarousel, updateCarousel } = useCarouselApi();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);

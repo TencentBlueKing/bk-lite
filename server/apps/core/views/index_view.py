@@ -683,6 +683,9 @@ def login_info(request):
                 "roles": getattr(request.user, "roles", []),
                 "is_first_login": is_first_login,
                 "group_tree": getattr(request.user, "group_tree", []),
+                "module_group_tree": getattr(request.user, "module_group_tree", []),
+                "module_admin_apps": getattr(request.user, "module_admin_apps", []),
+                "module_auditor_apps": getattr(request.user, "module_auditor_apps", []),
                 "locale": getattr(request.user, "locale", "zh-CN"),
                 "timezone": getattr(request.user, "timezone", "Asia/Shanghai"),
             },
@@ -918,9 +921,14 @@ def get_user_menus(request):
 
     if not client_name:
         return JsonResponse({"result": False, "message": "Client name is required"})
-    app_admin = f"{client_name}--admin"
-    is_superuser = request.user.is_superuser or app_admin in request.user.roles
-    is_auditor = bool(getattr(request.user, "is_auditor", False)) and not is_superuser
+    from apps.core.utils.module_scope import menu_scope_flags
+
+    is_superuser, is_auditor = menu_scope_flags(
+        getattr(request.user, "roles", []),
+        client_name,
+        platform_admin=bool(request.user.is_superuser),
+        platform_auditor=bool(getattr(request.user, "is_auditor", False)),
+    )
     try:
         client = _create_system_mgmt_client()
         return_data = client.get_user_menus(

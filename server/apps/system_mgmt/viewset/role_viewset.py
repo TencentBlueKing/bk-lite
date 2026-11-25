@@ -3,9 +3,11 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.module_scope import can_assign_module_roles, is_module_builtin_role, role_sort_key
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
@@ -20,6 +22,18 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 class RoleViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Role.objects.exclude(app="")
     serializer_class = RoleSerializer
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
 
     def _loader(self, request):
         return getattr(self, "loader", None) or LanguageLoader(
@@ -57,8 +71,9 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         client_id = request.data.get("client_id", [])
         if not isinstance(client_id, list):
             client_id = [client_id]
-        data = Role.objects.filter(app__in=client_id).values("id", "name").order_by("id")
-        return JsonResponse({"result": True, "data": list(data)})
+        data = list(Role.objects.filter(app__in=client_id).values("id", "name"))
+        data.sort(key=lambda row: role_sort_key(row["name"]))
+        return JsonResponse({"result": True, "data": data})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("application_role-View,user_group-View")
@@ -66,15 +81,18 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         client_list = list(request.data.get("client_list", []))
         return_data = []
         client_ids = [i["name"] for i in client_list]
-        roles = Role.objects.filter(app__in=client_ids).values("id", "name", "app").order_by("id")
+        roles = Role.objects.filter(app__in=client_ids).values("id", "name", "app")
         role_map = {}
         for i in roles:
             role_map.setdefault(i["app"], []).append(
                 {
                     "id": i["id"],
                     "name": i["name"],
+                    "builtin": "module" if is_module_builtin_role(i["name"]) else "",
                 }
             )
+        for app_roles in role_map.values():
+            app_roles.sort(key=lambda row: role_sort_key(row["name"]))
         for client_obj in client_list:
             app_role = role_map.get(client_obj["name"], [])
             return_data.append(
@@ -141,6 +159,9 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     def delete_role(self, request):
         role_id = request.data.get("role_id")
         role_name = request.data.get("role_name")
+        current = Role.objects.filter(id=role_id).only("name").first()
+        if is_module_builtin_role(role_name) or (current is not None and is_module_builtin_role(current.name)):
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
         if role_name in ["admin", "normal"]:
             return JsonResponse(
                 {
@@ -172,6 +193,9 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     def update_role(self, request):
         role_name = request.data.get("role_name")
         role_id = request.data.get("role_id")
+        current = Role.objects.filter(id=role_id).only("name").first()
+        if current is not None and is_module_builtin_role(current.name):
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
         affected_user_info = list(self._get_users_affected_by_role(role_id).values("username", "domain"))
         with transaction.atomic():
             Role.objects.filter(id=role_id).update(name=role_name)
@@ -192,7 +216,23 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             role_id = Role.objects.get(name="admin", app="").id
             role_name = "超级管理员"
         else:
-            role_name = Role.objects.get(id=role_id).name
+            role = Role.objects.get(id=role_id)
+            role_name = role.name
+            if is_module_builtin_role(role.name) and not can_assign_module_roles(request.user):
+                return JsonResponse(
+                    {"result": False, "message": self._loader(request).get("error.module_role_grant_forbidden")},
+                    status=403,
+                )
+            if is_module_builtin_role(role.name):
+                platform_role_ids = set(
+                    Role.objects.filter(name__in=["admin", "auditor"], app__in=["", "system-manager"]).values_list("id", flat=True)
+                )
+                blocked = [user.username for user in User.objects.filter(id__in=user_ids) if platform_role_ids.intersection(user.role_list or [])]
+                if blocked:
+                    return JsonResponse(
+                        {"result": False, "message": self._loader(request).get("error.platform_identity_cannot_take_module_role")},
+                        status=400,
+                    )
 
         user_list = User.objects.filter(id__in=user_ids)
         usernames = []
@@ -230,6 +270,11 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
             role_name = "超级管理员"
         else:
             role_name = Role.objects.get(id=pk).name
+            if is_module_builtin_role(role_name) and not can_assign_module_roles(request.user):
+                return JsonResponse(
+                    {"result": False, "message": self._loader(request).get("error.module_role_grant_forbidden")},
+                    status=403,
+                )
 
         user_list = User.objects.filter(id__in=user_ids)
         usernames = []
@@ -263,6 +308,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         role_id = params.get("role_id")
         menus = params.get("menus")
         role_obj = Role.objects.get(id=role_id)
+        if is_module_builtin_role(role_obj.name):
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
         menu_ids = Menu.objects.filter(app=role_obj.app, name__in=menus).values_list("id", flat=True)
         with transaction.atomic():
             role_obj.menu_list = list(menu_ids)
@@ -324,6 +371,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "message": self.loader.get("error.some_roles_not_exist"),
                 }
             )
+        if is_module_builtin_role(role.name):
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
 
         with transaction.atomic():
             # 使用ManyToMany关系批量分配角色（从角色侧批量添加，避免N+1）

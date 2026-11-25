@@ -1,11 +1,13 @@
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
 from apps.core.logger import logger, safe_exception_info
 from apps.core.services.user_group import USER_LIST_MAX_PAGE_SIZE, UserGroup
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.system_mgmt import SystemMgmt
-from rest_framework import viewsets
-from rest_framework.decorators import action
 
 
 def _build_actor_context(request):
@@ -23,6 +25,7 @@ def _build_actor_context(request):
         "username": getattr(user, "username", None),
         "domain": getattr(user, "domain", "domain.com"),
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": bool(getattr(user, "is_superuser", False)),
         "group_list": normalize_user_group_ids(getattr(user, "group_list", [])),
@@ -30,7 +33,6 @@ def _build_actor_context(request):
 
 
 class UserGroupViewSet(viewsets.ViewSet):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.system_mgmt_client = SystemMgmt()

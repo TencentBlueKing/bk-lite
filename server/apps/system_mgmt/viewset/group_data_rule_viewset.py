@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -43,6 +44,7 @@ def _build_actor_context(request, loader=None):
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": request.user.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),

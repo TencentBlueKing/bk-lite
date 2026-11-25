@@ -9,6 +9,7 @@ from croniter import croniter
 from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 
+from apps.core.utils.platform_scope import bypasses_write_guard
 from apps.core.utils.viewset_utils import user_group_id_set
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.workflow.services.definitions import DefinitionValidationError
@@ -173,9 +174,10 @@ def schedule_execution_identity(config: dict, *, user, current_team: int) -> dic
     """Bind a validated schedule selection to the user operating the designer."""
     team_id = config.get("execution_team_id", current_team)
     bound_team = getattr(user, "_api_secret_team", None)
+    # 工作流模块管理员可绑定本模块内的非所属组织。平台审计员和其他应用的模块角色不行。
     if (
         (bound_team is not None and team_id != bound_team)
-        or (not user.is_superuser and team_id not in user_group_id_set(user))
+        or (not bypasses_write_guard(user, "workflow") and team_id not in user_group_id_set(user))
         or not GroupUtils.active_queryset(id=team_id).exists()
     ):
         raise PermissionDenied("定时执行组织不在当前用户的可用组织内")

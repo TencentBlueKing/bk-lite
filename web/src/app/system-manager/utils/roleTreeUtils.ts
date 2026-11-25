@@ -1,3 +1,5 @@
+import { moduleRoleLabel } from '@/app/system-manager/utils/moduleRoles';
+import type { AppDisplaySource } from '@/utils/appDisplayName';
 import React from 'react';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { resolveAppDisplayName } from '@/utils/appDisplayName';
@@ -182,16 +184,20 @@ export function isNodeDisabled(node: TreeDataNode): boolean {
   return node.disabled === true;
 }
 
-type SearchableTreeNode = TreeDataNode & { display_name?: string };
+type SearchableTreeNode = TreeDataNode & { display_name?: string; app?: AppDisplaySource };
 
-type RoleTreeTranslate = (id: string, defaultMessage?: string) => string;
+type RoleTreeTranslate = (id: string, defaultMessage?: string, values?: { app: string }) => string;
 
-/** 内置应用标题走界面语言词条；角色名和外部应用保持原标题。 */
+/** 内置应用标题走界面语言词条；模块角色使用父应用显示名模板；其余角色名保持原标题。 */
 export function resolveRoleTreeLabel(
   node: SearchableTreeNode,
   t: RoleTreeTranslate,
 ): React.ReactNode {
   const rawTitle = typeof node.title === 'function' ? node.title(node) : node.title;
+  if (typeof rawTitle === 'string' && (rawTitle === 'module_admin' || rawTitle === 'module_auditor')) {
+    const appName = node.app ? resolveAppDisplayName(node.app, t) : undefined;
+    return moduleRoleLabel(rawTitle, t, appName);
+  }
   if (typeof node.display_name === 'string' && typeof rawTitle === 'string') {
     return resolveAppDisplayName(
       { name: rawTitle, display_name: node.display_name, is_build_in: true },

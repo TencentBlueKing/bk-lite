@@ -4,7 +4,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Form, Modal, Select, TreeSelect } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import type { DirItem } from '@/app/ops-analysis/types';
 import {
@@ -36,7 +36,7 @@ const CopyCanvasModal: React.FC<CopyCanvasModalProps> = ({
 }) => {
   const [form] = Form.useForm<{ directory?: number; groups?: number[] }>();
   const { t } = useTranslation();
-  const { groupTree } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const directoryId = Form.useWatch('directory', form);
   const allowedGroupIds = collectDirectoryChainGroupIds(directories, directoryId);
   const allowedGroupKey = allowedGroupIds.join(',');

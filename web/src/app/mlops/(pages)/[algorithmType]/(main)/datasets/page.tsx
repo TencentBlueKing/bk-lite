@@ -17,7 +17,7 @@ import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
 import { DatasetType, ModalRef } from '@/app/mlops/types';
 import { DataSet } from '@/app/mlops/types/manage';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useModuleGroupNameDirectory } from '@/hooks/useOperableGroupTree';
 import { formatGroupNames } from '@/app/mlops/utils/common';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 const { confirm } = Modal;
@@ -27,7 +27,7 @@ const DatasetsPage = () => {
   const router = useRouter();
   const params = useParams();
   const algorithmType = params.algorithmType as DatasetType;
-  const { flatGroups } = useUserInfoContext();
+  const groupNameDirectory = useModuleGroupNameDirectory();
 
   const {
     getDatasetsList,
@@ -148,7 +148,7 @@ const DatasetsPage = () => {
               description={item.description}
               icon={<Icon type={item.icon} className="text-2xl" />}
               owner={item.creator}
-              team={formatGroupNames(item.team, flatGroups)}
+              team={formatGroupNames(item.team, groupNameDirectory)}
               ownerLabel={t('mlops-common.owner')}
               teamLabel={t('mlops-common.organizations')}
               footer="entity"

@@ -119,10 +119,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             resolved.append(internal_id)
         return resolved, None
 
-    @staticmethod
-    def _get_allowed_org_ids(request) -> list[int]:
+    def _get_allowed_org_ids(self, request) -> list[int]:
         # 超级管理员 / 审计员：不按当前组织裁剪，通过 system_mgmt NATS 取可分配组织。
-        if has_unrestricted_org_scope(request.user):
+        from apps.core.utils.module_scope import client_id_from_module
+
+        if has_unrestricted_org_scope(request.user, client_id_from_module(self.__class__.__module__)):
             return list(resolve_assignable_organization_ids(request))
 
         current_team = get_current_team_from_request(request)
