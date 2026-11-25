@@ -1,6 +1,5 @@
-import { ChatMarkdown } from '@bk-lite/chat-content/ui';
-import React, { useEffect, useRef, useState } from 'react';
-import { unwrapPlatformPayload } from '@webchat/core';
+import { ChatMarkdown, useChatContentHost } from '@bk-lite/chat-content/ui';
+import { useEffect, useState } from 'react';
 
 interface WikiWriteSeed {
   material_id: number;
@@ -34,6 +33,22 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_ORDER = ['keep_current', 'use_new', 'keep_all', 'keep_separate', 'merge', 'edit_accept'];
+const DISPLAY_BODY_LIMIT = 4000;
+const OUTCOME_RETRY_MS = 3000;
+
+const PHASE_LABEL: Record<string, string> = {
+  writing: '写入中',
+  needs_decision: '待确认',
+  published: '已发布',
+  failed: '写入失败',
+};
+
+const PHASE_TONE: Record<string, string> = {
+  writing: 'text-[var(--color-primary)]',
+  needs_decision: 'text-[var(--color-warning)]',
+  published: 'text-[var(--color-success)]',
+  failed: 'text-[var(--theme-color-status-error)]',
+};
 
 const orderedActions = (actions: string[]) =>
   [...actions].sort((left, right) => {
@@ -42,105 +57,102 @@ const orderedActions = (actions: string[]) =>
     return (leftRank === -1 ? ACTION_ORDER.length : leftRank) - (rightRank === -1 ? ACTION_ORDER.length : rightRank);
   });
 
-async function readOutcome(
-  materialId: number,
-  headers: Record<string, string>,
-  credentials: RequestCredentials,
-): Promise<WikiWriteOutcome | null> {
-  const response = await fetch(`/api/proxy/opspilot/chat_wiki_material/${materialId}/outcome/`, {
-    credentials,
-    headers,
-  });
-  if (!response.ok) return null;
-  const payload = unwrapPlatformPayload(await response.json());
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const record = payload as WikiWriteOutcome;
+function messageFrom(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
+function asOutcome(value: unknown): WikiWriteOutcome | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as WikiWriteOutcome;
   return typeof record.phase === 'string' ? record : null;
 }
 
-async function submitDecision(
-  materialId: number,
-  body: Record<string, unknown>,
-  headers: Record<string, string>,
-  credentials: RequestCredentials,
-): Promise<WikiWriteOutcome | null> {
-  const response = await fetch(`/api/proxy/opspilot/chat_wiki_material/${materialId}/decide/`, {
-    method: 'POST',
-    credentials,
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) return null;
-  const payload = unwrapPlatformPayload(await response.json());
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const record = payload as WikiWriteOutcome;
-  return typeof record.phase === 'string' ? record : null;
+function previewBody(body: string): { text: string; truncated: boolean } {
+  if (body.length <= DISPLAY_BODY_LIMIT) return { text: body, truncated: false };
+  return { text: body.slice(0, DISPLAY_BODY_LIMIT), truncated: true };
 }
 
-function WriteCard({
-  seed,
-  headers,
-  credentials,
-}: {
-  seed: WikiWriteSeed;
-  headers: Record<string, string>;
-  credentials: RequestCredentials;
-}) {
+function knowledgePane(label: string, body: string) {
+  const preview = previewBody(body);
+  return (
+    <section className="min-w-0 rounded-md bg-[var(--color-fill-1,#f7f8fa)] px-3 py-2">
+      <div className="mb-1 text-xs text-[var(--color-text-2,#4e5969)]">{label}</div>
+      <div className="max-h-56 overflow-auto">
+        {preview.text ? <ChatMarkdown content={preview.text} /> : <span className="text-sm text-[var(--color-text-2,#4e5969)]">无</span>}
+      </div>
+      {preview.truncated ? <div className="mt-1 text-xs text-[var(--color-text-2,#4e5969)]">还有未展示的全文</div> : null}
+    </section>
+  );
+}
+
+function WriteCard({ seed }: { seed: WikiWriteSeed }) {
+  const { post } = useChatContentHost();
   const [outcome, setOutcome] = useState<WikiWriteOutcome | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [outcomeError, setOutcomeError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const phase = outcome?.phase || seed.phase;
   const summary = outcome?.summary || seed.summary;
-  const headersRef = useRef(headers);
-  headersRef.current = headers;
 
   useEffect(() => {
     let stopped = false;
     let timer = 0;
     const phaseRef = { current: seed.phase };
-    const load = async () => {
-      try {
-        const data = await readOutcome(seed.material_id, headersRef.current, credentials);
-        if (stopped || !data) {
-          schedule();
-          return;
-        }
-        phaseRef.current = data.phase;
-        setOutcome(data);
-        if (data.phase === 'writing') schedule();
-      } catch {
-        schedule();
-      }
-    };
+
     const schedule = () => {
       if (stopped || phaseRef.current !== 'writing') return;
       timer = window.setTimeout(() => {
         void load();
-      }, 3000);
+      }, OUTCOME_RETRY_MS);
     };
+
+    const fail = (error: unknown) => {
+      if (stopped) return;
+      setOutcomeError(messageFrom(error, '暂时没有拿到写入结果'));
+      if (phaseRef.current === 'writing') schedule();
+    };
+
+    const load = async () => {
+      try {
+        if (!post) throw new Error('当前对话不能执行此操作');
+        const data = await post<unknown>(`/opspilot/chat_wiki_material/${seed.material_id}/outcome/`, undefined);
+        const next = asOutcome(data);
+        if (!next) throw new Error('暂时没有拿到写入结果');
+        if (stopped) return;
+        phaseRef.current = next.phase;
+        setOutcome(next);
+        setOutcomeError(null);
+        if (next.phase === 'writing') schedule();
+      } catch (error) {
+        fail(error);
+      }
+    };
+
     void load();
     return () => {
       stopped = true;
       window.clearTimeout(timer);
     };
-  }, [credentials, seed.material_id, seed.phase]);
+  }, [post, seed.material_id, seed.phase]);
 
   const submit = async (checkId: number, action: string, body?: string) => {
     if (submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      const data = await submitDecision(
-        seed.material_id,
-        { check_id: checkId, action, body },
-        headers,
-        credentials,
-      );
-      if (data) {
-        setOutcome(data);
-        setEditingId(null);
-        setDraft('');
-      }
+      if (!post) throw new Error('当前对话不能执行此操作');
+      const payload: Record<string, unknown> = { check_id: checkId, action };
+      if (body !== undefined) payload.body = body;
+      const data = await post<unknown>(`/opspilot/chat_wiki_material/${seed.material_id}/decide/`, payload);
+      const next = asOutcome(data);
+      if (!next) throw new Error('确认没有写上，请再试一次');
+      setOutcome(next);
+      setEditingId(null);
+      setDraft('');
+    } catch (error) {
+      setSubmitError(messageFrom(error, '确认没有写上，请再试一次'));
     } finally {
       setSubmitting(false);
     }
@@ -152,23 +164,19 @@ function WriteCard({
 
   return (
     <div className="w-full rounded-lg border border-[var(--color-border-1,#edeff3)] bg-white px-3 py-3">
-      <div className="text-sm text-[var(--color-text-1,#1d2129)]">{summary}</div>
+      <div className="flex items-center gap-2 text-sm text-[var(--color-text-1,#1d2129)]">
+        <span className={`shrink-0 text-xs font-medium ${PHASE_TONE[phase] || ''}`}>{PHASE_LABEL[phase] || phase}</span>
+        <span>{summary}</span>
+      </div>
+      {outcomeError ? (
+        <div role="alert" className="mt-2 text-xs text-[var(--theme-color-status-error)]">{outcomeError}</div>
+      ) : null}
       {openChecks.map((check) => (
         <div key={check.id} className="mt-3">
           {check.page_title ? <div className="mb-2 text-sm font-medium">{check.page_title}</div> : null}
           <div className="grid grid-cols-2 gap-2">
-            <section className="min-w-0 rounded-md bg-[var(--color-fill-1,#f7f8fa)] px-3 py-2">
-              <div className="mb-1 text-xs text-[var(--color-text-2,#4e5969)]">现有内容</div>
-              <div className="max-h-56 overflow-auto">
-                {check.current_body ? <ChatMarkdown content={check.current_body} /> : <span className="text-sm text-[var(--color-text-2,#4e5969)]">无</span>}
-              </div>
-            </section>
-            <section className="min-w-0 rounded-md bg-[var(--color-fill-1,#f7f8fa)] px-3 py-2">
-              <div className="mb-1 text-xs text-[var(--color-text-2,#4e5969)]">待确认内容</div>
-              <div className="max-h-56 overflow-auto">
-                {check.incoming_body ? <ChatMarkdown content={check.incoming_body} /> : <span className="text-sm text-[var(--color-text-2,#4e5969)]">无</span>}
-              </div>
-            </section>
+            {knowledgePane('现有内容', check.current_body || '')}
+            {knowledgePane('待确认内容', check.incoming_body || '')}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {orderedActions(check.actions || []).map((action) => (
@@ -210,24 +218,19 @@ function WriteCard({
           ) : null}
         </div>
       ))}
+      {submitError ? (
+        <div role="alert" className="mt-2 text-xs text-[var(--theme-color-status-error)]">{submitError}</div>
+      ) : null}
     </div>
   );
 }
 
-export function WikiMaterialWriteCards({
-  writes,
-  headers,
-  credentials,
-}: {
-  writes: WikiWriteSeed[];
-  headers: Record<string, string>;
-  credentials: RequestCredentials;
-}) {
+export function WikiMaterialWriteCards({ writes }: { writes: WikiWriteSeed[] }) {
   if (writes.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
       {writes.map((write) => (
-        <WriteCard key={write.material_id} seed={write} headers={headers} credentials={credentials} />
+        <WriteCard key={write.material_id} seed={write} />
       ))}
     </div>
   );

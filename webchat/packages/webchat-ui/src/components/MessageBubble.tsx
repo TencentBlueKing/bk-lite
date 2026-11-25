@@ -136,8 +136,7 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   onCopy?: (content: string) => void;
   onDelete?: (messageId: string) => void;
-  wikiAuthHeaders?: Record<string, string>;
-  wikiCredentials?: RequestCredentials;
+  showWikiMaterialWrites?: boolean;
 }
 
 type ContentChunk = 
@@ -191,7 +190,7 @@ function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment, wikiAuthHeaders, wikiCredentials }) => {
+  ({ message, contentReadOnly, activeChoiceId, onApproval, onChoice, onSendMessage, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment, showWikiMaterialWrites }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
@@ -347,13 +346,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             ? renderBotAnswer(renderMarkdown(visibleText(message.content as string)))
             : null}
         <ContentCards state={message.metadata || {}} content={typeof message.content === 'string' ? message.content : ''} readOnly={contentReadOnly} activeChoiceId={activeChoiceId} onApproval={onApproval} onChoice={onChoice} onSendMessage={onSendMessage} />
-        {wikiAuthHeaders ? (
-          <WikiMaterialWriteCards
-            writes={wikiWrites}
-            headers={wikiAuthHeaders}
-            credentials={wikiCredentials || 'include'}
-          />
-        ) : null}
+        {showWikiMaterialWrites ? <WikiMaterialWriteCards writes={wikiWrites} /> : null}
         <AttachmentDownloadCards files={downloads} />
         {choiceValue?.answered ? <AnsweredChoice value={choiceValue} /> : null}
       </div>
