@@ -29,11 +29,11 @@ def super_client(db):
 
 @pytest.fixture(autouse=True)
 def _patch_externals():
-    with patch("apps.system_mgmt.viewset.group_viewset.log_operation"), patch(
-        "apps.system_mgmt.services.group_archive_service.log_operation"
-    ), patch("apps.system_mgmt.viewset.group_viewset.clear_users_permission_cache"), patch(
-        "apps.system_mgmt.services.group_archive_service.clear_users_permission_cache"
-    ), patch("apps.system_mgmt.viewset.group_viewset.CMDB") as m_cmdb:
+    with patch("apps.system_mgmt.viewset.group_viewset.log_operation"), patch("apps.system_mgmt.services.group_archive_service.log_operation"), patch(
+        "apps.system_mgmt.viewset.group_viewset.clear_users_permission_cache"
+    ), patch("apps.system_mgmt.services.group_archive_service.clear_users_permission_cache"), patch(
+        "apps.system_mgmt.viewset.group_viewset.CMDB"
+    ) as m_cmdb:
         m_cmdb.return_value.sync_display_fields.return_value = None
         yield
 
@@ -139,9 +139,7 @@ def test_create_group_top_level(super_client):
 
 
 def test_create_group_top_level_virtual_forbidden(super_client):
-    resp = super_client.post(
-        f"{BASE}/create_group/", {"group_name": "顶级虚拟", "is_virtual": True}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/create_group/", {"group_name": "顶级虚拟", "is_virtual": True}, format="json")
     assert resp.json()["result"] is False
 
 
@@ -271,12 +269,18 @@ def test_update_group_invalidates_descendant_users(super_client):
 
 
 def test_update_group_default_protected(super_client):
+    Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(name="Default", parent_id=0).delete()
-    g = Group.objects.create(name="Default", parent_id=0)
+    g = Group.objects.create(name="Default", parent_id=0, is_builtin=True)
     resp = super_client.post(
-        f"{BASE}/update_group/", {"group_id": g.id, "group_name": "x"}, format="json"
+        f"{BASE}/update_group/",
+        {"group_id": g.id, "group_name": "x", "role_ids": None},
+        format="json",
     )
-    assert resp.json()["result"] is False
+    assert resp.json()["result"] is True
+    g.refresh_from_db()
+    assert g.name == "x"
+    assert g.is_builtin is True
 
 
 @pytest.fixture
@@ -343,9 +347,14 @@ def test_delete_groups_with_children(super_client):
 
 
 def test_delete_groups_default_protected(super_client):
+    Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(name="Default", parent_id=0).delete()
-    g = Group.objects.create(name="Default", parent_id=0)
-    resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
+    g = Group.objects.create(name="Default", parent_id=0, is_builtin=True)
+    with patch(
+        "apps.system_mgmt.services.group_archive_service.GroupArchiveService._users_overlapping_groups",
+        staticmethod(lambda subtree_ids: User.objects.none()),
+    ):
+        resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
     assert resp.json()["result"] is False
     g.refresh_from_db()
     assert g.is_delete is False
@@ -443,9 +452,7 @@ def test_list_restore_permanent_delete_archived_groups_api(super_client):
 
     # 再归档后永久删除
     assert super_client.post(f"{BASE}/delete_groups/", {"id": root.id}, format="json").json()["result"] is True
-    deleted = super_client.post(
-        f"{BASE}/permanently_delete_archived_groups/", {"id": root.id}, format="json"
-    )
+    deleted = super_client.post(f"{BASE}/permanently_delete_archived_groups/", {"id": root.id}, format="json")
     assert deleted.json()["result"] is True
     assert not Group.objects.filter(id__in=[root.id, child.id]).exists()
     user = User.objects.get(username="api-arch-user")
@@ -492,9 +499,7 @@ def test_get_group_detail_with_roles_inheritance(super_client):
     role_own = Role.objects.create(name="ro", app="cmdb")
     child.roles.add(role_own)
 
-    resp = super_client.post(
-        f"{BASE}/get_group_detail_with_roles/", {"group_id": child.id}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/get_group_detail_with_roles/", {"group_id": child.id}, format="json")
     data = resp.json()["data"]
     assert data["own_role_ids"] == [role_own.id]
     assert role_parent.id in data["inherited_role_ids"]
@@ -505,9 +510,7 @@ def test_get_group_detail_with_roles_inheritance(super_client):
 def test_group_detail_with_roles_skips_archived_parents(super_client, batch):
     role_archived = Role.objects.create(name="r-arch", app="cmdb")
     role_active = Role.objects.create(name="r-active", app="cmdb")
-    archived_parent = Group.objects.create(
-        name="ArchRP", parent_id=0, allow_inherit_roles=True, is_delete=True
-    )
+    archived_parent = Group.objects.create(name="ArchRP", parent_id=0, allow_inherit_roles=True, is_delete=True)
     archived_parent.roles.add(role_archived)
     mid = Group.objects.create(name="MidRP", parent_id=archived_parent.id, allow_inherit_roles=True)
     mid.roles.add(role_active)
@@ -522,9 +525,7 @@ def test_group_detail_with_roles_skips_archived_parents(super_client, batch):
         assert resp.json()["result"] is True
         data = resp.json()["data"][0]
     else:
-        resp = super_client.post(
-            f"{BASE}/get_group_detail_with_roles/", {"group_id": child.id}, format="json"
-        )
+        resp = super_client.post(f"{BASE}/get_group_detail_with_roles/", {"group_id": child.id}, format="json")
         data = resp.json()["data"]
 
     assert role_active.id in data["inherited_role_ids"]
@@ -533,17 +534,13 @@ def test_group_detail_with_roles_skips_archived_parents(super_client, batch):
 
 
 def test_get_group_detail_with_roles_not_found(super_client):
-    resp = super_client.post(
-        f"{BASE}/get_group_detail_with_roles/", {"group_id": 999999}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/get_group_detail_with_roles/", {"group_id": 999999}, format="json")
     assert resp.json()["result"] is False
 
 
 def test_get_group_detail_with_roles_hides_archived(super_client):
     archived = Group.objects.create(name="ArchivedRoles", parent_id=0, is_delete=True)
-    resp = super_client.post(
-        f"{BASE}/get_group_detail_with_roles/", {"group_id": archived.id}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/get_group_detail_with_roles/", {"group_id": archived.id}, format="json")
     body = resp.json()
     assert body["result"] is False
     assert "ArchivedRoles" not in str(body)
@@ -562,7 +559,5 @@ def test_batch_get_group_detail_with_roles(super_client):
 
 
 def test_batch_get_group_detail_invalid_param(super_client):
-    resp = super_client.post(
-        f"{BASE}/batch_get_group_detail_with_roles/", {"group_ids": "notalist"}, format="json"
-    )
+    resp = super_client.post(f"{BASE}/batch_get_group_detail_with_roles/", {"group_ids": "notalist"}, format="json")
     assert resp.status_code == 400

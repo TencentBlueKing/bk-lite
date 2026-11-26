@@ -18,8 +18,11 @@ def get_default_group_id():
     :return: 默认组织ID列表
     """
     from apps.system_mgmt.models.user import Group
+    from apps.system_mgmt.utils.group_utils import GroupUtils
 
-    default_group = Group.objects.get(name="Default", parent_id=0)
+    default_group = GroupUtils.builtin_root()
+    if default_group is None:
+        raise Group.DoesNotExist("builtin root group does not exist")
     return [default_group.id]
 
 

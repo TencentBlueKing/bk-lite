@@ -10,6 +10,7 @@ from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
 from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class Command(BaseCommand):
@@ -56,7 +57,12 @@ class Command(BaseCommand):
                 print(f"create {app_obj['client_id']} resource success")
                 create_default_roles(app_inst, app_obj["roles"])
                 print(f"create {app_obj['client_id']} roles success")
-            Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
+            if GroupUtils.builtin_root() is None:
+                Group.objects.get_or_create(
+                    name="Default",
+                    parent_id=0,
+                    defaults={"description": "Default group", "is_builtin": True},
+                )
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
             from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
 

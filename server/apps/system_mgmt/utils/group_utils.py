@@ -1,4 +1,3 @@
-
 from apps.system_mgmt.models import Group
 
 
@@ -7,6 +6,11 @@ class GroupUtils(object):
     def active_queryset(**filters):
         """正常使用路径的活动组织查询：始终带 is_delete=False。"""
         return Group.objects.filter(is_delete=False, **filters)
+
+    @staticmethod
+    def builtin_root():
+        """活动内置根组织：parent_id 为 0 且 is_builtin=True。没有则 None。"""
+        return GroupUtils.active_queryset(parent_id=0, is_builtin=True).first()
 
     @staticmethod
     def _group_relation_queryset(include_deleted=False):
@@ -129,11 +133,7 @@ class GroupUtils(object):
 
         # 递归获取子组织的子组织
         for child_id in child_groups:
-            group_ids.update(
-                GroupUtils.get_all_child_groups(
-                    child_id, include_self=True, group_list=group_list, include_deleted=include_deleted
-                )
-            )
+            group_ids.update(GroupUtils.get_all_child_groups(child_id, include_self=True, group_list=group_list, include_deleted=include_deleted))
 
         return list(group_ids)
 
@@ -209,6 +209,7 @@ class GroupUtils(object):
                 "hasAuth": is_superuser or group.id in user_groups,
                 "role_ids": role_ids,
                 "is_virtual": group.is_virtual,
+                "is_builtin": group.is_builtin,
                 "sync_source": group.sync_source_id,
             }
 

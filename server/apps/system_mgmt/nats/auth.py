@@ -20,12 +20,16 @@ def build_user_authorization_context(user):
 
     if unrestricted_scope:
         queryset = list(GroupUtils.active_queryset().prefetch_related("roles").order_by("id"))
-        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
+        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id, "is_builtin": group.is_builtin} for group in queryset]
     else:
         visible_ids = _collect_ancestor_group_ids(user.group_list)
         queryset = list(GroupUtils.active_queryset(id__in=visible_ids).prefetch_related("roles").order_by("id"))
         direct_group_ids = set(user.group_list)
-        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset if group.id in direct_group_ids]
+        groups = [
+            {"id": group.id, "name": group.name, "parent_id": group.parent_id, "is_builtin": group.is_builtin}
+            for group in queryset
+            if group.id in direct_group_ids
+        ]
 
     group_tree = GroupUtils.build_group_tree(queryset, unrestricted_scope, [group["id"] for group in groups])
     permissions = {}

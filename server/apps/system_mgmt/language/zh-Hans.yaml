@@ -35,7 +35,6 @@ error:
   no_permission_delete_group: 您没有权限删除此组。
   some_roles_not_exist: 角色不存在
   login_module_name_exists: 已存在同名且同类型的登录模块。
-  default_group_cannot_modify: 默认组无法修改。
   time_range_too_large: 时间跨度不能超过90天
   cannot_modify_builtin_menu_group: 内置菜单组不允许修改
   cannot_delete_menu_with_children: 无法删除包含子菜单的菜单

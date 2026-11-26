@@ -42,6 +42,7 @@ export interface Group {
   parentId?: string;
   subGroupCount?: number;
   subGroups?: Group[];
+  is_builtin?: boolean;
 }
 
 export interface UserInfoContextType {
