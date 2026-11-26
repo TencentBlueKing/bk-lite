@@ -40,28 +40,26 @@ export function FieldFetchEditor({ field, fields, patch, tableKey }: EditorProps
   const cfg = field.fetch;
   const source = cfg?.source === 'integration' ? cfg.integration_kind || catalog?.integrations.find(i => i.id === cfg.integration_id)?.kind || 'api' : cfg?.source || 'static';
   const title = capability?.mode === 'options' ? '选项来源' : capability?.mode === 'table' ? '行数据来源' : '自动填值';
-  if (tableKey) return capability?.mode === 'options'
-    ? <SubformOptions options={field.source?.options || []} tree={CASCADE_TYPES.has(field.type)} onChange={options => patch(field.key, { source: { type: 'static', options } })} />
-    : null;
   if (!capability) return error ? <Alert type="error" message={error} /> : null;
-  if (!capability.sources.length || (cfg && (!capability.sources.includes(source) || cfg.mode !== capability.mode))) return cfg ? <Alert type="warning" message="此字段不支持当前取数配置" action={<Button onClick={() => patch(field.key, { fetch: undefined })}>移除无效配置</Button>} /> : null;
+  if ((tableKey ? !capability.sources.includes('api') : !capability.sources.length) || (cfg && (!capability.sources.includes(source) || cfg.mode !== capability.mode))) return cfg ? <Alert type="warning" message="此字段不支持当前取数配置" action={<Button onClick={() => patch(field.key, { fetch: undefined })}>移除无效配置</Button>} /> : null;
   const resource = cfg?.source === 'integration' ? catalog?.integrations.find(i => i.id === cfg.integration_id)?.name : (cfg?.source === 'dictionary' ? catalog?.dictionaries : catalog?.tables)?.find(i => i.key === cfg?.resource_key)?.name;
   const replaceDraft = (items: FormFieldSchema[]): FormFieldSchema[] => items.map(item => item.key === field.key ? draft! : item.children ? { ...item, children: replaceDraft(item.children) } : item);
   return <div className="flex flex-col gap-3">
     <span className="text-xs font-medium">{title}</span>
-    <Select aria-label={title} value={source} options={[{ value: 'static', label: capability.mode === 'options' ? '自定义' : '手动填写' }, { value: 'api', label: 'API' }, { value: 'python', label: 'Python 动作' }, { value: 'dictionary', label: '数据字典' }, { value: 'table', label: '数据表' }].filter(i => i.value === 'static' || capability.sources.includes(i.value))} onChange={value => {
+    <Select aria-label={title} value={source} options={[{ value: 'static', label: capability.mode === 'options' ? '自定义' : '手动填写' }, { value: 'api', label: 'API' }, { value: 'python', label: 'Python 动作' }, { value: 'dictionary', label: '数据字典' }, { value: 'table', label: '数据表' }].filter(i => i.value === 'static' || ((!tableKey || i.value === 'api') && capability.sources.includes(i.value)))} onChange={value => {
       if (value === 'static') { patch(field.key, { fetch: undefined }); return; }
       setDraft({ ...structuredClone(field), fetch: { source: ['api', 'python'].includes(value) ? 'integration' : value, integration_kind: ['api', 'python'].includes(value) ? value : undefined, mode: capability.mode, trigger: 'change', inputs: value === 'python' ? { rows: [], params: {} } : {}, label_path: value === 'dictionary' ? 'label' : '', value_path: value === 'dictionary' ? 'value' : '' } as FieldFetchBinding });
     }} />
     {cfg && <><span className="truncate text-xs text-[var(--color-text-3)]" title={resource}>{resource || '尚未选择资源'}</span><Button onClick={() => setDraft(structuredClone(field))}>设置</Button></>}
-    {!cfg && capability.mode === 'options' && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
+    {!cfg && tableKey && capability.mode === 'options' && <SubformOptions options={field.source?.options || []} tree={CASCADE_TYPES.has(field.type)} onChange={options => patch(field.key, { source: { type: 'static', options } })} />}
+    {!cfg && !tableKey && capability.mode === 'options' && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
     {draft && <Modal formValue={draft} title={capability.mode === 'options' ? '设置选项' : capability.mode === 'table' ? '设置行数据' : '设置自动填值'} open={!!draft} width={1000} centered destroyOnHidden maskClosable={false} okText="确定" cancelText="取消" styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 4px' } }} onCancel={() => setDraft(undefined)} onOk={() => { if (draft) { patch(field.key, { fetch: draft.fetch, source: draft.source }); setDraft(undefined); } }}>
-      {draft && <FieldFetchSettings key={draft.key} initialCatalog={catalog} field={draft} fields={replaceDraft(fields)} patch={(_, next) => setDraft(current => current ? { ...current, ...next } : current)} />}
+      {draft && <FieldFetchSettings key={draft.key} initialCatalog={catalog} field={draft} fields={replaceDraft(fields)} tableKey={tableKey} patch={(_, next) => setDraft(current => current ? { ...current, ...next } : current)} />}
     </Modal>}
   </div>;
 }
 
-export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { field: FormFieldSchema; fields: FormFieldSchema[]; patch: (key: string, next: Partial<FormFieldSchema>) => void; initialCatalog?: Catalog }) {
+export function FieldFetchSettings({ field, fields, patch, initialCatalog, tableKey }: EditorProps & { initialCatalog?: Catalog }) {
   const api = useItsmApi();
   const [catalog, setCatalog] = useState<Catalog>(initialCatalog || { integrations: [], tables: [], dictionaries: [] });
   const [error, setError] = useState('');
@@ -87,10 +85,11 @@ export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { f
   const apiSchema = !python && cfg?.source === 'integration' ? catalog.integrations.find(i => i.id === cfg.integration_id)?.request_schema : undefined;
   const simpleProperties = Object.fromEntries(Object.entries(apiSchema?.properties || {}).filter(([, value]) => !['array', 'object'].includes(value.type || '')));
   const simpleSchema = apiSchema ? { ...apiSchema, properties: simpleProperties } : undefined;
-  const dependencyFields = fields.filter(f => f.key !== field.key && f.state !== 'hidden');
+  const scope = tableKey ? fields.find(item => item.key === tableKey)?.children || [] : fields;
+  const dependencyFields = scope.filter(f => f.key !== field.key && f.state !== 'hidden');
   const sourceValue = cfg?.source === 'integration' ? kind : cfg?.source || 'static';
   const row = (label: string, child: React.ReactNode) => <label key={label} className="flex flex-col gap-1 text-xs">{label}{child}</label>;
-  const sourceOptions = [{ value: 'static', label: choices ? '自定义' : '手动填写' }, { value: 'api', label: 'API' }, { value: 'python', label: 'Python 动作' }, { value: 'dictionary', label: '数据字典' }, { value: 'table', label: '数据表' }].filter(i => i.value === 'static' || capability?.sources.includes(i.value));
+  const sourceOptions = [{ value: 'static', label: choices ? '自定义' : '手动填写' }, { value: 'api', label: 'API' }, { value: 'python', label: 'Python 动作' }, { value: 'dictionary', label: '数据字典' }, { value: 'table', label: '数据表' }].filter(i => i.value === 'static' || ((!tableKey || i.value === 'api') && capability?.sources.includes(i.value)));
   const targetColumns = String(field.props?.columns || '').split('\n').filter(line => line.includes(':')).map(line => { const [label, key, type] = line.split(':').map(v => v.trim()); return { label, key, type: type === 'number' ? 'number' : 'string' }; });
   const paths = sample ? samplePaths(sample.data) : [];
   const chosenList = cfg?.transform_id ? '' : cfg?.list_path || (sample ? listPath(sample.data) : undefined);
@@ -103,13 +102,13 @@ export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { f
       options={value && !options.some(o => o.value === value) ? [{ value, label: `${value}（当前配置）` }, ...options] : options}
       onChange={v => change(v || '')} />);
   if (!capability) return error ? <Alert type="error" message={error} /> : null;
-  if (!capability.sources.length || (cfg && (!capability.sources.includes(sourceValue) || cfg.mode !== capability.mode))) return cfg ? <Alert type="warning" message="此字段不支持当前取数配置" action={<Button onClick={() => patch(field.key, { fetch: undefined })}>移除无效配置</Button>} /> : null;
+  if ((tableKey ? !capability.sources.includes('api') : !capability.sources.length) || (cfg && (!capability.sources.includes(sourceValue) || cfg.mode !== capability.mode))) return cfg ? <Alert type="warning" message="此字段不支持当前取数配置" action={<Button onClick={() => patch(field.key, { fetch: undefined })}>移除无效配置</Button>} /> : null;
 
   const test = async (inspect: boolean) => {
     const seq = ++request.current;
     setBusy(true); setError(''); setOutput(undefined);
     try {
-      const result = await api.fetchField({ preview: true, inspect, schema: { version: 1, fields }, field: field.key, values: testValues }) as Record<string, unknown>;
+      const result = await api.fetchField({ preview: true, inspect, schema: { version: 1, fields }, field: tableKey ? tableKey + '.' + field.key : field.key, values: tableKey ? { [tableKey]: [testValues] } : testValues }) as Record<string, unknown>;
       if (seq !== request.current) return;
       if (!inspect) { setOutput(Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'receipt'))); return; }
       const data = result.sample;
@@ -138,7 +137,8 @@ export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { f
     <Select aria-label={title} showSearch optionFilterProp="label" value={sourceValue} options={sourceOptions} onChange={source => {
       reset(); patch(field.key, { fetch: source === 'static' ? undefined : { source: ['api', 'python'].includes(source) ? 'integration' : source, integration_kind: ['api', 'python'].includes(source) ? source : undefined, mode: capability.mode, trigger: 'change', inputs: source === 'python' ? { rows: [], params: {} } : {}, label_path: source === 'dictionary' ? 'label' : '', value_path: source === 'dictionary' ? 'value' : '' } as FieldFetchBinding, source: { type: 'static', options: field.source?.options || [] } });
     }} />
-    {!cfg && choices && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
+    {!cfg && tableKey && choices && <SubformOptions options={field.source?.options || []} tree={CASCADE_TYPES.has(field.type)} onChange={options => patch(field.key, { source: { type: 'static', options } })} />}
+    {!cfg && !tableKey && choices && <Input.TextArea aria-label="自定义选项" rows={3} placeholder={'选项1:1\n选项2:2'} value={(field.source?.options || []).map(i => `${i.label}:${i.value}`).join('\n')} onChange={e => patch(field.key, { source: { type: 'static', options: e.target.value.split('\n').filter(Boolean).map(line => { const [label, value] = line.split(':'); return { label, value: value || label }; }) } })} />}
     {cfg && <>
       <FieldFetchGuide mode={cfg.mode} source={python ? 'python' : cfg.source} number={field.type === 'number'} tree={capability.shape === 'tree'} fill={capability.fill} />
       {cfg.source === 'integration' ? row(python ? 'Python 动作' : 'API', <Select aria-label={python ? 'Python 动作' : 'API'} showSearch optionFilterProp="label" placeholder="搜索并选择" value={cfg.integration_id} options={[
@@ -163,7 +163,8 @@ export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { f
       }} />)
       : row(dictionary ? '数据字典' : '数据表', <Select aria-label={dictionary ? '数据字典' : '数据表'} showSearch optionFilterProp="label" placeholder="搜索并选择" value={cfg.resource_key} options={(dictionary ? catalog.dictionaries : catalog.tables).map(i => ({ value: i.key, label: i.name }))} onChange={resource_key => { reset(); update({ resource_key, inputs: {}, list_path: '', label_path: dictionary ? 'label' : '', value_path: dictionary ? 'value' : '', columns: {}, fill: {}, transform_id: undefined }); }} />)}
       {cfg.source === 'integration' && !python && <div className="flex items-center justify-between gap-3 text-xs text-[var(--color-text-3)]"><span>可直接搜索平台网关查询接口；外部 API 需先在集成中配置并启用，仅 GET 接口可用于字段取数。</span><a href="/itsm/form/integrations" target="_blank" rel="noreferrer" className="shrink-0 text-[var(--color-primary)]">配置外部 API</a></div>}
-      {apiSchema && Object.keys(simpleProperties).length > 0 && <details open={apiSchema.required?.some(k => k in simpleProperties) || undefined}><summary className="cursor-pointer text-xs">接口参数</summary><div className="mt-2"><FieldParameterBindings tableLayout schema={simpleSchema} value={Object.fromEntries(Object.entries(cfg.inputs || {}).filter(([k]) => k in simpleProperties))} fields={dependencyFields} onChange={inputs => { reset(); update({ inputs: { ...Object.fromEntries(Object.entries(cfg.inputs || {}).filter(([k]) => !(k in simpleProperties))), ...inputs } }); }} /></div></details>}
+      {apiSchema && Object.keys(simpleProperties).length > 0 && <details open={apiSchema.required?.some(k => k in simpleProperties) || undefined}><summary className="cursor-pointer text-xs">接口参数</summary><div className="mt-2"><FieldParameterBindings tableLayout sameRow={Boolean(tableKey)} schema={simpleSchema} value={Object.fromEntries(Object.entries(cfg.inputs || {}).filter(([k]) => k in simpleProperties))} fields={dependencyFields} onChange={inputs => { reset(); update({ inputs: { ...Object.fromEntries(Object.entries(cfg.inputs || {}).filter(([k]) => !(k in simpleProperties))), ...inputs } }); }} /></div></details>}
+      {tableKey && cfg.source === 'integration' && cfg.integration_id && !apiSchema && <details open><summary className="cursor-pointer text-xs">接口参数</summary><FieldParameterBindings tableLayout sameRow value={cfg.inputs || {}} fields={dependencyFields} onChange={inputs => { reset(); update({ inputs }); }} /></details>}
       {directTable && <details><summary className="cursor-pointer text-xs">筛选条件</summary><div className="mt-2"><FieldParameterBindings tableLayout columns={tableColumns} value={cfg.inputs || {}} fields={dependencyFields} onChange={inputs => { reset(); update({ inputs }); }} /></div></details>}
       <Button loading={busy} disabled={cfg.source === 'integration' ? !cfg.integration_id : !cfg.resource_key} onClick={() => void test(true)}>测试并选择返回字段</Button>
       {sample && <span role="status" className="text-xs text-[var(--color-text-3)]">已获取样本，请确认下方映射；最多展示 3 行。</span>}
@@ -195,10 +196,10 @@ export function FieldFetchSettings({ field, fields, patch, initialCatalog }: { f
           {choices && row('手动名称路径', <Input aria-label="手动名称路径" value={cfg.label_path} onChange={e => update({ label_path: e.target.value })} />)}
         </>}
         {isTable && <JsonInput key={`${sourceValue}:columns`} label="手动列映射（JSON）" value={cfg.columns || {}} onChange={columns => update({ columns: columns as Record<string, string> })} />}
-        {row('结果加工', <Select aria-label="结果加工" showSearch optionFilterProp="label" allowClear value={cfg.transform_id} options={catalog.integrations.filter(i => i.kind === 'python').map(i => ({ value: i.id, label: i.name }))} onChange={transform_id => { reset(); update({ transform_id }); }} />)}
+        {!tableKey && row('结果加工', <Select aria-label="结果加工" showSearch optionFilterProp="label" allowClear value={cfg.transform_id} options={catalog.integrations.filter(i => i.kind === 'python').map(i => ({ value: i.id, label: i.name }))} onChange={transform_id => { reset(); update({ transform_id }); }} />)}
         {cfg.transform_id && <FieldParameterBindings tableLayout value={cfg.transform_params || {}} fields={dependencyFields} onChange={transform_params => { reset(); update({ transform_params }); }} />}
         {row('取数时机', <Select aria-label="取数时机" value={cfg.trigger || 'change'} options={[{ value: 'change', label: '首次加载及依赖变化' }, { value: 'manual', label: '手动刷新' }]} onChange={trigger => update({ trigger })} />)}
-        <JsonInput label="测试表单值（JSON）" value={testValues} onChange={value => { reset(); setTestValues(value); }} />
+        <JsonInput label={tableKey ? '测试行数据（JSON）' : '测试表单值（JSON）'} value={testValues} onChange={value => { reset(); setTestValues(value); }} />
         {(sample || output) && <pre className="max-h-56 overflow-auto rounded bg-[var(--color-fill-1)] p-2 text-xs">{JSON.stringify(output || sample?.data, null, 2)}</pre>}
       </div></details>
     </>}

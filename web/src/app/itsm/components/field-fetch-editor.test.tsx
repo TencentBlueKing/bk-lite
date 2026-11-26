@@ -130,3 +130,16 @@ it('打开取数设置复用已加载目录，不重复查询', async () => {
   await screen.findByRole('dialog');
   expect(api.fieldCatalog).toHaveBeenCalledTimes(1);
 });
+
+it('子表单参数从同行选择，测试使用子字段路径和单行值', async () => {
+  const field: FormFieldSchema = {key: 'size', type:'radio', label:'规格', fetch: { source:'integration', integration_kind:'api', integration_id:1, mode:'options', inputs:{page:'${form.region}'} }};
+  const table: FormFieldSchema = {key:'vms', type:'table', label:'配置', children:[{key:'region',type:'input',label:'机房'},field]};
+  api.fetchField.mockResolvedValue({sample:[{id:1,name:'小型'}]});
+  render(<FieldFetchSettings field={field} fields={[{key:'outside', type:'input',label:'外层'},table]} tableKey="vms" patch={vi.fn()} />);
+  const options = within(await screen.findByLabelText('参数1联动字段'));
+  expect(options.getByRole('option',{name:'机房 (region)',hidden:true})).toBeTruthy();
+  expect(options.queryByRole('option',{name:'外层 (outside)',hidden:true})).toBeNull();
+  fireEvent.change(screen.getByLabelText('测试行数据（JSON）'),{target:{value:'{"region":"北京"}'}});
+  fireEvent.click(screen.getByRole('button',{name:'测试并选择返回字段'}));
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledWith(expect.objectContaining({field:'vms.size',values:{vms:[{region:'北京'}]}})));
+});

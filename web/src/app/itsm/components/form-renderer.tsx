@@ -72,7 +72,7 @@ const control = (field: FormFieldSchema, disabled: boolean, context?: FetchConte
     return <AttachmentField field={field.key} context={context} disabled={disabled} />;
   }
   if (TABLE_TYPES.has(field.type)) {
-    return <TableField field={field} disabled={disabled} fieldPerm={fieldPerm} />;
+    return <TableField field={field} disabled={disabled} context={context} fieldPerm={fieldPerm} />;
   }
   if (field.type === 'link') {
     const href = String(field.props?.href || '');

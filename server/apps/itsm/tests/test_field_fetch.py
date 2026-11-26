@@ -408,6 +408,7 @@ def test_sample_inspection_requires_edit_permission_and_never_relaxes_publish(se
 
 def test_manual_child_validates_receipt_as_requester_and_inherits_test_flag(setup):
     import json
+
     from apps.itsm.models import Ticket, Workflow, WorkflowVersion
     from apps.itsm.services.integrations import request_identity
     from apps.itsm.tests.test_review_regressions import request
@@ -426,3 +427,92 @@ def test_manual_child_validates_receipt_as_requester_and_inherits_test_flag(setu
     assert response["result"], response
     child = Ticket.objects.get(pk=response["data"]["id"])
     assert child.is_test and child.creator == "reader" and child.form_data["asset"] == "a1"
+
+
+def test_row_api_receipts_follow_sibling_inputs_and_never_enter_ticket_values(setup):
+    from apps.itsm.services.form.fetch import validate_submission
+
+    _, _, identity = setup
+    api = Integration.objects.create(
+        name="规格查询",
+        kind="api",
+        config={
+            "transport": "external",
+            "method": "GET",
+            "request_schema": {"type": "object", "properties": {"region": {"type": "string"}}},
+        },
+    )
+    cols = [
+        {"key": "region", "type": "input"},
+        {
+            "key": "size",
+            "label": "规格",
+            "type": "select",
+            "fetch": {
+                "source": "integration",
+                "integration_id": api.pk,
+                "mode": "options",
+                "inputs": {"region": "${form.region}"},
+                "label_path": "name",
+                "value_path": "id",
+            },
+        },
+    ]
+    schema = freeze_schema({"fields": [{"type": "table", "key": "machines", "children": cols}]}, identity.domain)
+    rows = []
+    for region in ["east", "west"]:
+        with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "done", "output": [{"id": region, "name": region}]}):
+            result = fetch_field(schema, "machines.size", {"machines": [{"region": region}]}, identity, context="create")
+        rows.append({"region": region, "size": region, "_field_receipts": {"size": [result["receipt"]]}})
+    submitted = validate_submission(schema, {"machines": rows}, identity, "create")
+    assert submitted["machines"] == [{"region": r, "size": r} for r in ["east", "west"]]
+    assert submitted["_field_labels"]["machines.1.size"] == [{"label": "west", "value": "west"}]
+    from apps.itsm.services.form.table_columns import visible_table_rows
+
+    presented = visible_table_rows(submitted["machines"], cols, "ticket:1", "machines", preserve_hidden=True, labels=submitted["_field_labels"])
+    moved = validate_submission(schema, {"machines": list(reversed(presented))}, identity, "ticket:1", original=submitted)
+    assert moved["_field_labels"]["machines.0.size"] == [{"value": "west", "label": "west"}]
+    assert moved["machines"][0] == {"region": "west", "size": "west"}
+    with pytest.raises(ValueError, match="行数组"):
+        validate_submission(schema, {"machines": '[{"region":"east","size":"unverified"}]'}, identity, "create")
+    rows[1]["_field_receipts"] = rows[0]["_field_receipts"]
+    with pytest.raises(ValueError, match="第 2 行"):
+        validate_submission(schema, {"machines": rows}, identity, "create")
+    with pytest.raises(ValueError):
+        fetch_field(schema, "size", {"region": "east"}, identity, context="create")
+
+
+def test_generic_row_value_fetch_uses_its_sibling_scope(setup):
+    from apps.itsm.services.form.fetch import validate_submission
+
+    _, _, identity = setup
+    api = Integration.objects.create(
+        name="容量查询",
+        kind="api",
+        config={"transport": "external", "method": "GET", "request_schema": {"type": "object", "properties": {"region": {"type": "string"}}}},
+    )
+    column = {
+        "key": "capacity",
+        "type": "number",
+        "fetch": {
+            "source": "integration",
+            "integration_id": api.pk,
+            "mode": "value",
+            "value_path": "capacity",
+            "inputs": {"region": "${form.region}"},
+            "enforce": True,
+        },
+    }
+    fields = [{"key": "region", "type": "input"}, {"type": "table", "key": "machines", "children": [column]}]
+    with pytest.raises(ValueError, match="依赖字段"):
+        freeze_schema({"fields": fields}, identity.domain)
+    fields[1]["children"].append({"key": "region", "type": "input"})
+    schema = freeze_schema({"fields": fields}, identity.domain)
+    row = {"region": "east"}
+    with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "done", "output": {"capacity": 8}}):
+        proof = fetch_field(schema, "machines.capacity", {"region": "west", "machines": [row]}, identity, context="v1")
+    assert proof["value"] == 8
+    value = validate_submission(
+        schema, {"machines": [{**row, "capacity": 1000, "_field_receipts": {"capacity": [proof["receipt"]]}}]}, identity, "v1"
+    )
+    assert value["machines"] == [{**row, "capacity": 8}]

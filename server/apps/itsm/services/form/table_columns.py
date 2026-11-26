@@ -42,7 +42,7 @@ def row_signature(row, index, context, field_key):
     return signer.signature(value)
 
 
-def visible_table_rows(rows, columns, context, field_key, *, preserve_hidden):
+def visible_table_rows(rows, columns, context, field_key, *, preserve_hidden, labels=None):
     if not isinstance(rows, list):
         return []
     output = []
@@ -53,6 +53,9 @@ def visible_table_rows(rows, columns, context, field_key, *, preserve_hidden):
                 for column in columns
                 if column["key"] in row and match_when(column.get("visibleWhen"), row, strict=False)
             }
+            row_labels = {key: labels[f"{field_key}.{index}.{key}"] for key in visible if labels and f"{field_key}.{index}.{key}" in labels}
+            if row_labels:
+                visible["_field_labels"] = row_labels
             if preserve_hidden:
                 visible[ROW_REFERENCE] = row_signature(row, index, context, field_key)
             output.append(visible)
@@ -67,7 +70,7 @@ def merge_table_rows(field, old_rows, rows, permissions, context):
     protected = {column["key"] for column in columns if column.get("key") and protected_column(column, permissions)}
     if not editable:
         return old_rows
-    preserve = bool(protected) or any(column.get("visibleWhen") for column in editable.values())
+    preserve = bool(protected) or any(column.get("visibleWhen") or column.get("fetch") for column in editable.values())
     previous = {
         row_signature(row, index, context, field["key"]): row
         for index, row in enumerate(old_rows if isinstance(old_rows, list) else [])

@@ -3,18 +3,55 @@ import { cloneElement, useEffect, useRef, useState, type ReactElement } from 're
 import { Button, Form, Spin } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useItsmApi } from '../api/useItsmApi';
-import type { FormFieldSchema, FormSchema } from '../types';
+import type { FormChoice, FieldFetchBinding, FormFieldSchema, FormSchema } from '../types';
+
+export function fetchDependencies(cfg?: FieldFetchBinding): string[] {
+  if (!cfg) return [];
+  if (!cfg.inputs && !cfg.transform_params) return cfg.dependencies || [];
+  const keys = new Set<string>();
+  function visit(value: unknown) {
+    if (typeof value === 'string') {
+      const key = /^\$\{form\.([\p{L}\p{N}_]+)\}$/u.exec(value)?.[1];
+      if (key) keys.add(key);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(visit);
+    }
+  }
+  visit(cfg.inputs);
+  visit(cfg.transform_params);
+  return [...keys].sort();
+}
 
 export interface FetchContext { service_id?: number; ticket_id?: number; task_id?: number; preview?: boolean; schema?: FormSchema }
-interface Result { options: { value: string | number; label: string }[]; fills: Record<string, Record<string, unknown>>; value: unknown; receipt: string; has_more?: boolean }
-export function FieldFetchControl({ field, context, children, value, onChange, id }: {
+interface Result { options: FormChoice[]; fills: Record<string, Record<string, unknown>>; value: unknown; receipt: string; has_more?: boolean }
+interface FetchProps {
   field: FormFieldSchema; context: FetchContext; children: ReactElement; id?: string; value?: unknown; onChange?: (...args: unknown[]) => void;
+}
+export interface FieldStore {
+  getFieldValue: (key: string) => unknown;
+  setFieldValue: (key: string, value: unknown) => void;
+  isFieldTouched: (key: string) => boolean;
+  requestValues: () => Record<string, unknown>;
+}
+
+export function FieldFetchControl(props: FetchProps) {
+  const form = Form.useFormInstance();
+  const refs = fetchDependencies(props.field.fetch);
+  const depKey = Form.useWatch(values => JSON.stringify(refs.map(key => values[key] ?? null)), form);
+  return <ScopedFetchControl {...props} path={props.field.key} depKey={depKey} store={{
+    getFieldValue: key => form.getFieldValue(key), setFieldValue: (key, value) => form.setFieldValue(key, value),
+    isFieldTouched: key => form.isFieldTouched(key), requestValues: () => form.getFieldsValue(true),
+  }} />;
+}
+
+export function ScopedFetchControl({ field, context, children, value, onChange, id, store, path, depKey }: FetchProps & {
+  store: FieldStore; path: string; depKey?: string;
 }) {
   const api = useItsmApi();
-  const form = Form.useFormInstance();
+  const currentStore = useRef(store);
+  currentStore.current = store;
   const cfg = field.fetch!;
-  const refs = cfg.dependencies || [];
-  const depKey = Form.useWatch(values => JSON.stringify(refs.map(key => values[key] ?? null)), form);
+  const refs = fetchDependencies(cfg);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
@@ -25,6 +62,7 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
   const [awaitingRefresh, setAwaitingRefresh] = useState(false);
   const sequence = useRef(0);
   const changed = useRef(false);
+  const defaultFirst = field.type === 'select' && field.props?.defaultFirstOption === true;
   const binding = JSON.stringify(cfg);
   const contextKey = JSON.stringify(context);
   const previousDeps = useRef<string | undefined>(undefined);
@@ -33,18 +71,19 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
   useEffect(() => {
     const seq = ++sequence.current;
     if (!api.ready || depKey === undefined) return;
+    const form = currentStore.current;
     const dependenciesChanged = previousDeps.current !== undefined && previousDeps.current !== depKey;
     previousDeps.current = depKey;
     if (dependenciesChanged) {
       setPage(1); setResult(null); resultRef.current = null;
       setError('');
       if (cfg.trigger === 'manual') setAwaitingRefresh(true);
-      const receipts = { ...form.getFieldValue('_field_receipts') };
+      const receipts = { ...(form.getFieldValue('_field_receipts') as Record<string, string[]> | undefined) };
       delete receipts[field.key];
       form.setFieldValue('_field_receipts', receipts);
       if (cfg.mode === 'options' || cfg.enforce) form.setFieldValue(field.key, undefined);
     }
-    if (refs.some(key => [null, undefined, ''].includes(form.getFieldValue(key)))) {
+    if (refs.some(key => form.getFieldValue(key) == null || form.getFieldValue(key) === '')) {
       manualRequest.current = undefined;
       setLoading(false);
       return;
@@ -61,15 +100,23 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
         manualRequest.current = undefined;
         setAwaitingRefresh(false);
       }
-      void api.fetchField({ ...JSON.parse(contextKey), field: field.key, values: cfg.trigger === 'manual' ? request!.values : form.getFieldsValue(true), query, page: dependenciesChanged ? 1 : page }).then(raw => {
-        if (sequence.current !== seq) return;
+      void api.fetchField({ ...JSON.parse(contextKey), field: path, values: cfg.trigger === 'manual' ? request!.values : form.requestValues(), query, page: dependenciesChanged ? 1 : page }).then(raw => {
+        if (sequence.current !== seq || JSON.stringify(refs.map(key => form.getFieldValue(key) ?? null)) !== depKey) return;
         const next = raw as Result;
         const prior = page > 1 && !dependenciesChanged ? resultRef.current : null;
         const options = [...new Map([...(prior?.options || []), ...next.options].map(option => [option.value, option])).values()];
         const merged = { ...next, options, fills: { ...prior?.fills, ...next.fills } };
         resultRef.current = merged; setResult(merged);
-        const receipts = form.getFieldValue('_field_receipts') || {};
-        form.setFieldValue('_field_receipts', { ...receipts, [field.key]: [...(dependenciesChanged ? [] : receipts[field.key] || []), next.receipt].slice(-20) });
+        const receipts = (form.getFieldValue('_field_receipts') || {}) as Record<string, string[]>;
+        if (next.receipt) form.setFieldValue('_field_receipts', { ...receipts, [field.key]: [...(dependenciesChanged ? [] : receipts[field.key] || []), next.receipt].slice(-20) });
+        const current = form.getFieldValue(field.key);
+        const option = next.options[0];
+        if (defaultFirst && cfg.mode === 'options' && !query && (page === 1 || dependenciesChanged) && (current == null || current === '') && option) {
+          form.setFieldValue(field.key, option.value);
+          for (const [key, v] of Object.entries(next.fills?.[String(option.value)] || {})) {
+            if (!form.isFieldTouched(key)) form.setFieldValue(key, v);
+          }
+        }
         if (cfg.mode !== 'options' && (cfg.enforce || (!changed.current && (!first.current || form.getFieldValue(field.key) == null || form.getFieldValue(field.key) === '')))) form.setFieldValue(field.key, next.value);
         first.current = false;
       }).catch((cause: unknown) => { if (sequence.current === seq) setError(cause instanceof Error ? cause.message : '取数失败，请重试'); })
@@ -77,9 +124,9 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
     }, 300);
     return () => { clearTimeout(timer); sequence.current++; };
     // 配置和上下文以稳定序列化值参与依赖，避免表单重绘触发重复请求。
-  }, [api.ready, api.fetchField, binding, contextKey, depKey, query, page, refresh, form, field.key]);
+  }, [api.ready, api.fetchField, binding, contextKey, depKey, query, page, refresh, path, field.key, defaultFirst]);
   const refreshCurrent = (nextPage: number) => {
-    manualRequest.current = { depKey, contextKey, binding, query, page: nextPage, values: form.getFieldsValue(true) };
+    manualRequest.current = { depKey, contextKey, binding, query, page: nextPage, values: currentStore.current.requestValues() };
     setPage(nextPage);
     setRefresh(n => n + 1);
   };
@@ -87,13 +134,16 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
     changed.current = true; onChange?.(...args);
     const input = args[0];
     const selected = input && typeof input === 'object' && 'target' in input ? (input.target as { value?: unknown }).value : input;
-    const fills = result?.fills[String(selected)];
+    const form = currentStore.current;
+    const fills = result?.fills?.[String(selected)];
     if (fills) for (const [key, next] of Object.entries(fills)) if (!form.isFieldTouched(key)) form.setFieldValue(key, next);
   };
+  const missing = refs.some(key => store.getFieldValue(key) == null || store.getFieldValue(key) === '');
   const props: Record<string, unknown> = { id, value, onChange: update };
+  if (missing && cfg.mode === 'options') props.disabled = true;
   if (cfg.enforce && cfg.mode !== 'options') props.disabled = true;
   const tree = ['cascade', 'multiCascade'].includes(field.type);
-  if (cfg.mode === 'options' && result) props[tree ? 'treeData' : 'options'] = result.options;
+  if (cfg.mode === 'options') props[tree ? 'treeData' : 'options'] = result?.options || [];
   if (['select', 'multiselect'].includes(field.type)) Object.assign(props, {
     showSearch: true, filterOption: false, loading, onSearch: (text: string) => { setQuery(text); setPage(1); },
   });
@@ -101,7 +151,7 @@ export function FieldFetchControl({ field, context, children, value, onChange, i
     {cloneElement(children as ReactElement<Record<string, unknown>>, props)}
     <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)]">
       {loading && <Spin size="small" />}
-      <Button size="small" type="text" icon={<ReloadOutlined />} aria-label="刷新取数" title="刷新取数" disabled={loading} onClick={() => refreshCurrent(1)} />
+      <Button size="small" type="text" icon={<ReloadOutlined />} aria-label="刷新取数" title="刷新取数" disabled={loading || missing} onClick={() => refreshCurrent(1)} />
       {result?.has_more && <Button size="small" type="link" disabled={loading} onClick={() => refreshCurrent(page + 1)}>加载更多</Button>}
       {awaitingRefresh && !loading && <span>依赖已变化，请刷新取数</span>}
       {error && <span role="alert" className="text-[var(--color-fail)]">{error}</span>}

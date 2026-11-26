@@ -159,3 +159,11 @@ it('错误原因定位到缺失的单元格，旁边已填列不会继承红框'
   await waitFor(()=>expect(screen.queryByText(/请填写第 1 行/)).toBeNull());
 
 });
+
+it('只读动态多选按行展示持久化名称', () => {
+  render(<FormRenderer readOnly schema={{version:1,fields:[{key:'rows',type:'table',label:'明细',children:[{
+    key:'choice',type:'multiselect',label:'规格',fetch:{source:'integration',mode:'options',integration_id:1}
+  }]}]}} initialValues={{rows:['华北','华东'].map(label=>({choice:['vm'],_field_labels:{choice:[{label,value:'vm'}]}}))}} onSubmit={vi.fn()} />);
+  expect(screen.getByText('华北')).toBeTruthy();
+  expect(screen.getByText('华东')).toBeTruthy();
+});

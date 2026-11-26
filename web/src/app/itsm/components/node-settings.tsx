@@ -101,7 +101,8 @@ export function NodeSettings({ data: source, fields, onChange: commit }: { data:
     const children = tree(item.children || []);
     return !keyword || `${item.label} ${item.key}`.toLowerCase().includes(keyword.toLowerCase()) || children.length ? [{...item,children:children.length ? children : undefined}] : [];
   });
-  const previewForm = <FormRenderer key={JSON.stringify(data.fieldPerm)} schema={{version:1,fields}} fieldPerm={data.fieldPerm as Parameters<typeof FormRenderer>[0]['fieldPerm']} hideSubmit onSubmit={() => undefined} />;
+  const previewSchema = { version: 1, fields };
+  const previewForm = <FormRenderer key={JSON.stringify(data.fieldPerm)} schema={previewSchema} fetchContext={{ preview: true, schema: previewSchema }} fieldPerm={data.fieldPerm as Parameters<typeof FormRenderer>[0]['fieldPerm']} hideSubmit onSubmit={() => undefined} />;
   return <>
     <Button type="primary" onClick={() => { setDraft(source); setTab('handler'); setOpen(true); }}>配置节点</Button>
     <Button onClick={() => { setDraft(source); setTab('preview'); setOpen(true); }}>预览该节点</Button>

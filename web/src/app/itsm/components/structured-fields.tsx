@@ -3,6 +3,7 @@
 import React, { cloneElement, type ReactElement, useEffect, useLayoutEffect, useRef } from 'react';
 import { basicFieldControl, dateItemProps } from './basic-field-control';
 import { matches } from './form-conditions';
+import { fetchDependencies, ScopedFetchControl, type FetchContext } from './field-fetch-control';
 import { TableOptionCell } from './table-option-cell';
 import { Button, Form, Input, Tooltip } from 'antd';
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -39,8 +40,9 @@ function displayCell(column: FormFieldSchema, row: Record<string, unknown>, labe
   return cellLabels(column, row, labels).join(column.type === 'dateRange' ? ' 至 ' : '、') || '—';
 }
 
-export function TableField({ field, value = [], onChange, disabled = false, fieldPerm = {} }: {
+export function TableField({ field, value = [], onChange, disabled = false, context, fieldPerm = {} }: {
   field: FormFieldSchema;
+  context?: FetchContext;
   fieldPerm?: Record<string, string>;
   value?: Array<Record<string, unknown>>;
   onChange?: (value: Array<Record<string, unknown>>) => void;
@@ -48,6 +50,7 @@ export function TableField({ field, value = [], onChange, disabled = false, fiel
 }) {
   const { errors } = Form.Item.useStatus();
   const form = Form.useFormInstance();
+  const touched = useRef(new Map<number, Set<string>>());
   const configured: FormFieldSchema[] = field.children && (field.children.length || !field.props?.columns) ? field.children
     : String(field.props?.columns || '名称:name\n数量:quantity:number').split('\n').filter(Boolean).map((line) => {
       const [label, key = label, type = 'input'] = line.split(':');
@@ -81,11 +84,16 @@ export function TableField({ field, value = [], onChange, disabled = false, fiel
       const cell = copy ? current[index]?.[column.key] : column.default;
       return [column.key, cell == null ? '' : structuredClone(cell)];
     }));
+    if (copy) {
+      const source = current[index];
+      for (const key of ['_field_receipts', '_field_labels']) if (source?.[key]) added[key] = structuredClone(source[key]);
+    }
     const key = ++nextKey.current;
     rowKeys.current.splice(index + 1, 0, key);
     changeRows([...current.slice(0, index + 1), added, ...current.slice(index + 1)]);
   };
   const remove = (index: number) => {
+    touched.current.delete(keys[index]);
     rowKeys.current.splice(index, 1);
     changeRows(latestRows.current.filter((_, i) => i !== index));
   };
@@ -94,6 +102,16 @@ export function TableField({ field, value = [], onChange, disabled = false, fiel
     const current = latestRows.current;
     if (!current[index] || Object.is(current[index][key], next)) return;
     const changed = { ...current[index], [key]: next };
+    for (const column of columns) {
+      if (!column.fetch || !fetchDependencies(column.fetch).includes(key)) continue;
+      if (column.fetch.mode === 'options' || column.fetch.enforce) delete changed[column.key];
+      for (const name of ['_field_receipts', '_field_labels']) {
+        if (!changed[name]) continue;
+        const metadata = { ...changed[name] as Record<string, unknown> };
+        delete metadata[column.key];
+        changed[name] = metadata;
+      }
+    }
     changeRows(current.map((row, i) => i === index ? changed : row));
   };
   return <div className="overflow-x-auto">
@@ -109,13 +127,18 @@ export function TableField({ field, value = [], onChange, disabled = false, fiel
         {columns.map((column) => {
           if (!matches(column.visibleWhen, row)) return <td key={column.key} />;
           const locked = disabled || ['readonly', 'read'].includes(permission(column)) || ['readonly', 'disabled'].includes(column.state || '');
+          const path = field.key + '.' + column.key;
           const rowKey = keys[index];
+          const read = () => latestRows.current[rowKeys.current.indexOf(rowKey)] || {};
           const set = (key: string, next: unknown) => update(rowKey, key, next);
           const label = column.label + ' ' + (index + 1);
           const raw = row[column.key];
           const date = dateItemProps(column);
           const cellValue = date.getValueProps ? date.getValueProps(raw).value : raw === '' ? undefined : raw;
           const edit = (next: unknown) => {
+            const fields = touched.current.get(rowKey) || new Set<string>();
+            fields.add(column.key);
+            touched.current.set(rowKey, fields);
             const input = next && typeof next === 'object' && 'target' in next ? (next.target as HTMLInputElement).value : next;
             set(column.key, date.normalize ? date.normalize(input) : input);
           };
@@ -123,9 +146,18 @@ export function TableField({ field, value = [], onChange, disabled = false, fiel
             value: cellValue, onChange: edit,
             ...(column.type === 'user' || column.type === 'multiUser' ? { ariaLabel: label } : { 'aria-label': label }),
           });
+          const deps = fetchDependencies(column.fetch);
           let control = cell;
-          if (locked && column.type === 'select') {
-            control = <span>{displayCell(column, row, {})}</span>;
+          if (!locked && column.fetch && context) {
+            control = <ScopedFetchControl field={column} path={path} context={context} value={cellValue} onChange={edit}
+              depKey={JSON.stringify(deps.map(key => row[key] ?? null))}
+              store={{
+                getFieldValue: key => read()[key], setFieldValue: set,
+                isFieldTouched: key => Boolean(touched.current.get(rowKey)?.has(key)),
+                requestValues: () => ({ [field.key]: [Object.fromEntries(Object.entries(read()).filter(([key]) => !['_field_receipts', '_field_labels'].includes(key)))] }),
+              }}>{cell}</ScopedFetchControl>;
+          } else if (locked && (column.type === 'select' || column.fetch?.mode === 'options')) {
+            control = <span>{displayCell(column, row, row._field_labels as RowLabels || {})}</span>;
           } else if (column.type === 'select') {
             control = <TableOptionCell column={column} row={row} index={index} onChange={choice => edit(choice.value)} />;
           }

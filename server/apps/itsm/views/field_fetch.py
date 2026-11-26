@@ -11,7 +11,9 @@ from apps.core.utils.web_utils import WebUtils
 from apps.itsm.models import DataDictionary, DataTable
 from apps.itsm.models.integration import Integration
 from apps.itsm.services.form.capabilities import FIELD_CAPABILITIES
-from apps.itsm.services.form.fetch import fetch_field, field_safe, freeze_schema, task_fetch_context, walk
+from apps.itsm.services.form.fetch import fetch_field, field_safe, form_scope, freeze_schema, row_choice, task_fetch_context
+from apps.itsm.services.form.rules import match_when
+from apps.itsm.services.form.table_columns import hidden_column, merge_table_rows, protected_column
 from apps.itsm.services.form.validator import FormValidator, visible_field_keys
 from apps.itsm.services.integrations import request_identity
 from apps.itsm.services.service_access import visible_services
@@ -88,6 +90,7 @@ def field_fetch(request):
     if body.get("inspect") and not body.get("preview"):
         raise PermissionError()
     original = {}
+    row_context = ""
     if body.get("preview"):
         require(request, "form-Edit")
         schema = freeze_schema(body.get("schema") or {}, domain_of(request), sampling_field=body.get("field") if body.get("inspect") else None)
@@ -108,17 +111,37 @@ def field_fetch(request):
         schema = workflow_schema(ticket.workflow_version)
         perm = _find_node(ticket.workflow_version.design, node_id=task.node_id).get("field_perm")
         context, original = task_fetch_context(ticket, task), ticket.form_data or {}
+        row_context = f"ticket:{ticket.pk}"
     else:
         raise ValueError("请指定服务或工单")
     validator = FormValidator(schema, _normalize_perm(perm))
-    writable = {f.key for f, mode in validator._fields() if mode not in {"hidden", "readonly"}}
-    visible = {f.key for f, mode in validator._fields() if mode != "hidden"}
+    writable = {f.key for f, mode in validator._fields(include_table_columns=False) if mode not in {"hidden", "readonly"}}
+    visible = {f.key for f, mode in validator._fields(include_table_columns=False) if mode != "hidden"}
     values = {**original, **{k: v for k, v in values.items() if k in writable}}
     key = body.get("field")
-    field = next((f for f in walk(schema.get("fields", [])) if f["key"] == key), None)
-    if key not in writable or not field or key not in visible_field_keys(validator.schema, values):
+    if not isinstance(key, str) or not key:
+        raise ValueError("请选择取数字段")
+    active_keys = visible_field_keys(validator.schema, values)
+    if "." in key:
+        parent, field = row_choice(schema, key)
+        if parent not in writable or parent not in active_keys or protected_column(field, validator.field_perm):
+            raise PermissionError()
+        table = next(f for f in form_scope(schema.get("fields", [])) if f["key"] == parent)
+        rows = values.get(parent)
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("请提供当前子表单行")
+        values[parent] = merge_table_rows(table, original.get(parent), rows, validator.field_perm, row_context or context)
+        row = values[parent][0]
+        active_keys = {c["key"] for c in table["children"] if match_when(c.get("visibleWhen"), row, strict=False)}
+        visible = {c["key"] for c in table["children"] if not hidden_column(c, validator.field_perm)}
+        writable = {c["key"] for c in table["children"] if not protected_column(c, validator.field_perm)}
+        field_key = field["key"]
+    else:
+        field = next((f for f in form_scope(schema.get("fields", [])) if f["key"] == key), None)
+        field_key = key
+    if not field or field_key not in writable & active_keys:
         raise PermissionError()
-    if set((field.get("fetch") or {}).get("dependencies", [])) - visible:
+    if set((field.get("fetch") or {}).get("dependencies", [])) - (visible & active_keys):
         raise PermissionError()
     result = fetch_field(
         schema,

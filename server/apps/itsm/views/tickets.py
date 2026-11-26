@@ -314,7 +314,10 @@ def ticket_form_view(ticket, design, own_task, status_key, *, include_legacy_fie
                         allowed,
                         f"ticket:{ticket.pk}",
                         key,
-                        preserve_hidden=any(protected_column(column, permissions) or column.get("visibleWhen") for column in columns),
+                        labels=values.get("_field_labels"),
+                        preserve_hidden=any(
+                            protected_column(column, permissions) or column.get("visibleWhen") or column.get("fetch") for column in columns
+                        ),
                     )
             else:
                 if key in values:

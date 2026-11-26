@@ -28,6 +28,21 @@ def walk(fields):
         yield from walk(field.get("children", []))
 
 
+def form_scope(fields):
+    for field in fields:
+        yield field
+        if field.get("type") != "table":
+            yield from form_scope(field.get("children", []))
+
+
+def binding_scopes(schema):
+    form = {f["key"]: f for f in form_scope(schema.get("fields", []))}
+    yield "", form
+    for key, table in form.items():
+        if table.get("type") == "table":
+            yield key + ".", {c["key"]: c for c in table.get("children", [])}
+
+
 def digest(value):
     def canonical(item):
         if isinstance(item, dict):
@@ -177,14 +192,23 @@ def validate_api_inputs(item, cfg):
 
 def freeze_schema(schema, domain, *, sampling_field=None):
     schema = copy.deepcopy(schema)
-    fields = {f["key"]: f for f in walk(schema.get("fields", []))}
+    for prefix, fields in binding_scopes(schema):
+        _freeze_scope(fields, domain, prefix, sampling_field)
+    return schema
+
+
+def _freeze_scope(fields, domain, prefix, sampling_field):
     graph = {}
     for field in fields.values():
         cfg = field.get("fetch")
         if not cfg:
             continue
+        if prefix and (cfg["source"] != "integration" or cfg.get("transform_id")):
+            raise ValueError("子表单动态字段需要选择查询 API")
         if cfg["source"] == "integration":
             item = Integration.objects.get(id=cfg.get("integration_id"), domain=domain)
+            if prefix and item.kind != "api":
+                raise ValueError("子表单动态字段需要选择查询 API")
             cfg["snapshot"] = snapshot(item)
             cfg["integration_kind"] = item.kind
             validate_api_inputs(item, cfg)
@@ -195,7 +219,7 @@ def freeze_schema(schema, domain, *, sampling_field=None):
                 columns = set(resource.fields.values_list("key", flat=True))
                 if set(cfg.get("inputs", {})) - columns:
                     raise ValueError("数据表筛选条件必须使用已定义的列")
-                if not cfg.get("transform_id") and field["key"] != sampling_field:
+                if not cfg.get("transform_id") and prefix + field["key"] != sampling_field:
                     paths = (
                         list((cfg.get("columns") or {}).values())
                         if cfg.get("mode") == "table"
@@ -213,7 +237,7 @@ def freeze_schema(schema, domain, *, sampling_field=None):
             cfg["transform_snapshot"] = snapshot(item)
         else:
             cfg.pop("transform_snapshot", None)
-        validate_binding(field, inspect=field["key"] == sampling_field)
+        validate_binding(field, inspect=prefix + field["key"] == sampling_field)
         rows_ref = cfg.get("inputs", {}).get("rows") if cfg.get("integration_kind") == "python" else None
         if isinstance(rows_ref, str):
             name = rows_ref.removeprefix("${form.").removesuffix("}")
@@ -242,7 +266,6 @@ def freeze_schema(schema, domain, *, sampling_field=None):
 
     for key in graph:
         visit(key, set())
-    return schema
 
 
 def public_schema(schema, labels=None):
@@ -252,6 +275,11 @@ def public_schema(schema, labels=None):
             cfg = field["fetch"]
             cfg.pop("snapshot", None)
             cfg.pop("transform_snapshot", None)
+        if labels and field.get("type") == "table":
+            for column in field.get("children", []):
+                path = f"{field['key']}.{column['key']}"
+                if path in labels:
+                    column["source"] = {"type": "static", "options": labels[path]}
         if labels and field["key"] in labels:
             field["source"] = {"type": "static", "options": labels[field["key"]]}
     return schema
@@ -359,10 +387,32 @@ def fetch_source_data(cfg, params, identity, query, page, tree):
     return data
 
 
+def row_choice(schema, key):
+    """解析一行内的目录选项，避免把同名的顶层字段或其他表的列当作取数配置。"""
+    parent, _, child = key.partition(".")
+    table = next((f for f in form_scope(schema.get("fields", [])) if f["key"] == parent and f.get("type") == "table"), {})
+    field = next((f for f in table.get("children", []) if f["key"] == child), {})
+    cfg = field.get("fetch") or {}
+    if cfg.get("mode") not in {"value", "options"} or (cfg.get("snapshot") or {}).get("kind") != "api":
+        raise ValueError("子表单字段未配置查询 API")
+    return parent, field
+
+
+def _field_inputs(schema, key, values):
+    if "." in key:
+        parent, field = row_choice(schema, key)
+        rows = values.get(parent)
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("请提供当前子表单行")
+        return field, rows[0], parent + "."
+    field = next((f for f in form_scope(schema.get("fields", [])) if f["key"] == key), None)
+    return field, values, ""
+
+
 def fetch_field(schema, key, values, identity, *, context, query="", page=1, inspect=False):
     if inspect and context != "preview":
         raise ValueError("样本探查仅用于表单编辑调试")
-    field = next((f for f in walk(schema.get("fields", [])) if f["key"] == key), None)
+    field, values, prefix = _field_inputs(schema, key, values)
     if not field or not field.get("fetch"):
         raise ValueError("字段未配置取数")
     cfg = field["fetch"]
@@ -429,7 +479,7 @@ def fetch_field(schema, key, values, identity, *, context, query="", page=1, ins
             mapped["value"] = read_path(data, cfg.get("value_path", ""))
         if cfg["mode"] != "options":
             validate_result(field, mapped["value"])
-        targets = {f["key"]: f for f in walk(schema.get("fields", []))}
+        targets = dict(binding_scopes(schema))[prefix]
         for fill in mapped["fills"].values():
             for target, value in fill.items():
                 validate_result(targets[target], value)
@@ -439,14 +489,14 @@ def fetch_field(schema, key, values, identity, *, context, query="", page=1, ins
     return {**mapped, "receipt": signing.dumps({**stamp, "field": key, "result": mapped}, salt=SALT, compress=True)}
 
 
-def verify_fields(schema, values, identity, *, context, original=None, allowed=None):
+def verify_fields(schema, values, identity, *, context, original=None, allowed=None, prefix=""):
     result = dict(values)
     original = original or {}
     labels = dict(original.get("_field_labels") or {})
     receipts = values.get("_field_receipts") or {}
     if not isinstance(receipts, dict):
         raise ValueError("字段取数凭据必须是对象")
-    for field in walk(schema.get("fields", [])):
+    for field in form_scope(schema.get("fields", [])):
         key, cfg = field["key"], field.get("fetch")
         if not cfg or (allowed is not None and key not in allowed):
             continue
@@ -467,12 +517,17 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
             "deps": digest({ref: values.get(ref) for ref in refs}),
         }
         valid = []
-        for token in list(receipts.get(key) or [])[-20:]:
+        tokens = receipts.get(key) or []
+        if not isinstance(tokens, list):
+            raise ValueError({key: "字段取数凭据必须是列表"})
+        for token in tokens[-20:]:
+            if not isinstance(token, str):
+                continue
             try:
                 proof = signing.loads(token, salt=SALT, max_age=900)
             except (signing.BadSignature, TypeError):
                 continue
-            if proof.get("field") == key and all(proof.get(k) == v for k, v in expected.items()):
+            if proof.get("field") == prefix + key and all(proof.get(k) == v for k, v in expected.items()):
                 valid.append(proof["result"])
         if not valid:
             raise ValueError({key: "取数结果已失效，请刷新字段后重试"})
@@ -490,6 +545,58 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
     result["_field_labels"] = labels
     result.pop("_field_receipts", None)
     return result
+
+
+def _verify_row_fields(schema, verified, submitted, original, permissions, allowed, identity, context, receipt_context):
+    from .rules import match_when
+    from .table_columns import ROW_REFERENCE, protected_column, row_signature
+
+    saved_labels = original.get("_field_labels") or {}
+    labels = verified["_field_labels"]
+    for prefix, columns in binding_scopes(schema):
+        table = prefix.rstrip(".")
+        if not prefix or table not in allowed or table not in submitted:
+            continue
+        dynamic = [column for column in columns.values() if column.get("fetch")]
+        if not dynamic:
+            continue
+        if submitted[table] is not None and not isinstance(submitted[table], list):
+            raise ValueError({table: "子表单值必须为行数组"})
+        old_rows = original.get(table) or []
+        if verified.get(table) == old_rows:
+            continue
+        if verified.get(table) is None and not submitted[table]:
+            verified[table] = []
+        for label_key in list(labels):
+            if label_key.startswith(prefix):
+                labels.pop(label_key)
+        source_indices = {row_signature(row, i, context, table): i for i, row in enumerate(old_rows)}
+        for index, row in enumerate(verified[table]):
+            source = submitted[table][index]
+            original_index = source_indices.get(source.get(ROW_REFERENCE))
+            old = old_rows[original_index] if original_index is not None else {}
+            path = f"{prefix}{index}."
+            old_path = f"{prefix}{original_index}."
+            original_labels = {c["key"]: saved_labels[old_path + c["key"]] for c in dynamic if old_path + c["key"] in saved_labels}
+            editable = {c["key"] for c in dynamic if not protected_column(c, permissions) and match_when(c.get("visibleWhen"), row, strict=False)}
+            try:
+                clean = verify_fields(
+                    {"fields": dynamic},
+                    {**row, "_field_receipts": source.get("_field_receipts", {})},
+                    identity,
+                    context=receipt_context,
+                    original={**old, "_field_labels": original_labels},
+                    allowed=editable,
+                    prefix=prefix,
+                )
+            except ValueError as exc:
+                message = exc.args[0]
+                if isinstance(message, dict):
+                    key, reason = next(iter(message.items()))
+                    message = f"{columns[key].get('label') or key}：{reason}"
+                raise ValueError({table: f"第 {index + 1} 行：{message}"}) from exc
+            labels.update({path + key: options for key, options in clean.pop("_field_labels").items()})
+            row.update(clean)
 
 
 def task_fetch_context(ticket, task):
@@ -516,6 +623,7 @@ def validate_submission(schema, values, identity, context, original=None, field_
     allowed = editable.keys() & visible_field_keys(validator.schema, merged)
     merged["_field_receipts"] = values.get("_field_receipts", {})
     verified = verify_fields(schema, merged, identity, context=receipt_context or context, original=original, allowed=allowed)
+    _verify_row_fields(schema, verified, values, original, validator.field_perm, allowed, identity, context, receipt_context or context)
     # 动态选项由凭据验证，不能再拿旧静态选项二次判断。
     checked_schema = copy.deepcopy(schema)
     for field in walk(checked_schema.get("fields", [])):
