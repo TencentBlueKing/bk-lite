@@ -18,6 +18,87 @@ KIND = "opspilot-agent"
 FORMAT_VERSION = 1
 _TRANSPORTS = {"streamable_http", "sse"}
 _KWARG_TYPES = {"text", "textarea", "password", "number", "checkbox"}
+MAX_AGENT_ARCHIVE_BYTES = 50 * 1024 * 1024
+MAX_AGENT_ENTRIES = 128
+MAX_AGENT_UNCOMPRESSED_BYTES = 80 * 1024 * 1024
+MAX_PACKAGE_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_PACKAGE_ENTRIES = 2000
+MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+
+
+class AgentArchiveError(Exception):
+    pass
+
+
+class _ZipBudget:
+    """按成员声明大小和实际读出的字节数共用一个上界。"""
+
+    def __init__(self, archive: zipfile.ZipFile, limit: int, label: str):
+        self.archive = archive
+        self.left = limit
+        self.label = label
+        self._cache: dict[str, bytes] = {}
+
+    def read(self, member) -> bytes:
+        info = member if isinstance(member, zipfile.ZipInfo) else self.archive.getinfo(member)
+        cached = self._cache.get(info.filename)
+        if cached is not None:
+            return cached
+        if info.file_size < 0 or info.file_size > self.left:
+            raise AgentArchiveError(f"{self.label}解压后超过大小限制")
+        with self.archive.open(info, "r") as handle:
+            data = handle.read(self.left + 1)
+        if len(data) > self.left:
+            raise AgentArchiveError(f"{self.label}解压后超过大小限制")
+        self.left -= len(data)
+        self._cache[info.filename] = data
+        return data
+
+
+def _guard_zip_headers(archive: zipfile.ZipFile, *, entries: int, uncompressed: int, label: str) -> None:
+    infos = archive.infolist()
+    if len(infos) > entries:
+        raise AgentArchiveError(f"{label}条目过多")
+    total = 0
+    for info in infos:
+        if info.is_dir():
+            continue
+        size = info.file_size
+        if size < 0 or size > uncompressed or total > uncompressed - size:
+            raise AgentArchiveError(f"{label}解压后超过大小限制")
+        total += size
+
+
+def _inspect_package_blob(data: bytes) -> None:
+    if len(data) > MAX_PACKAGE_ARCHIVE_BYTES:
+        raise AgentArchiveError("技能包超过大小限制")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        return
+    with archive:
+        _guard_zip_headers(
+            archive,
+            entries=MAX_PACKAGE_ENTRIES,
+            uncompressed=MAX_PACKAGE_UNCOMPRESSED_BYTES,
+            label="技能包",
+        )
+
+
+def read_bounded_upload(upload) -> bytes:
+    if upload is None:
+        return b""
+    claimed = getattr(upload, "size", None)
+    try:
+        claimed_size = int(claimed)
+    except (TypeError, ValueError):
+        claimed_size = None
+    if claimed_size is not None and claimed_size > MAX_AGENT_ARCHIVE_BYTES:
+        raise AgentArchiveError("智能体文件超过大小限制")
+    data = upload.read(MAX_AGENT_ARCHIVE_BYTES + 1)
+    if len(data) > MAX_AGENT_ARCHIVE_BYTES:
+        raise AgentArchiveError("智能体文件超过大小限制")
+    return data
 
 
 @dataclass
@@ -47,6 +128,7 @@ class AgentRecipe:
     builtin_packages: list[str] = field(default_factory=list)
     packages: list[tuple[str, bytes]] = field(default_factory=list)
     omitted_packages: list[str] = field(default_factory=list)
+    omitted_tools: list[str] = field(default_factory=list)
     mcp: list[dict] = field(default_factory=list)
 
     @property
@@ -80,18 +162,37 @@ def build_agent_zip(skill: LLMSkill) -> bytes:
         archive.writestr("agent.json", json.dumps(document, ensure_ascii=False))
         for index, blob in enumerate(blobs):
             archive.writestr(f"packages/{index}.zip", blob)
-    return buffer.getvalue()
+    payload = buffer.getvalue()
+    if len(payload) > MAX_AGENT_ARCHIVE_BYTES:
+        raise AgentArchiveError("智能体文件超过大小限制")
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        _guard_zip_headers(
+            archive,
+            entries=MAX_AGENT_ENTRIES,
+            uncompressed=MAX_AGENT_UNCOMPRESSED_BYTES,
+            label="智能体文件",
+        )
+    return payload
 
 
 def read_agent_zip(data: bytes) -> AgentRecipe | None:
     if not data:
         return None
+    if len(data) > MAX_AGENT_ARCHIVE_BYTES:
+        raise AgentArchiveError("智能体文件超过大小限制")
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         return None
     with archive:
-        document = _find_document(archive)
+        _guard_zip_headers(
+            archive,
+            entries=MAX_AGENT_ENTRIES,
+            uncompressed=MAX_AGENT_UNCOMPRESSED_BYTES,
+            label="智能体文件",
+        )
+        budget = _ZipBudget(archive, MAX_AGENT_UNCOMPRESSED_BYTES, "智能体文件")
+        document = _find_document(archive, budget)
         if document is None:
             return None
         packages: list[tuple[str, bytes]] = []
@@ -101,9 +202,15 @@ def read_agent_zip(data: bytes) -> AgentRecipe | None:
             source_name = str(item.get("source_name") or "")
             member = str(item.get("archive") or "")
             try:
-                packages.append((source_name, archive.read(member)))
+                info = archive.getinfo(member)
             except KeyError:
                 packages.append((source_name, b""))
+                continue
+            if info.file_size > MAX_PACKAGE_ARCHIVE_BYTES:
+                raise AgentArchiveError("技能包超过大小限制")
+            blob = budget.read(info)
+            _inspect_package_blob(blob)
+            packages.append((source_name, blob))
         return AgentRecipe(
             name=str(document.get("name") or ""),
             introduction=str(document.get("introduction") or ""),
@@ -116,6 +223,7 @@ def read_agent_zip(data: bytes) -> AgentRecipe | None:
             builtin_packages=_string_list(document.get("builtin_packages")),
             packages=packages,
             omitted_packages=_string_list(document.get("omitted_packages")),
+            omitted_tools=_string_list(document.get("omitted_tools")),
             mcp=_mcp_entries(document.get("mcp")),
         )
 
@@ -145,6 +253,8 @@ def import_agent_recipe(recipe: AgentRecipe, *, team_id: int, user, name_taken) 
     username = getattr(user, "username", "") or ""
     for source_name in recipe.omitted_packages:
         notes.append(f"技能包「{source_name or '技能包'}」没有带上")
+    for source_name in recipe.omitted_tools:
+        notes.append(f"工具「{source_name or '工具'}」没有带上")
 
     with transaction.atomic():
         return _create_imported_skill(
@@ -186,15 +296,20 @@ def _create_imported_skill(recipe, *, final_name, skill_params, team_id, domain,
 
 def _export_document(skill: LLMSkill) -> tuple[dict, list[bytes]]:
     builtin_tools: list[str] = []
+    omitted_tools: list[str] = []
     mcp: list[dict] = []
     for binding in skill.tools or []:
         if not isinstance(binding, dict):
             continue
-        row = _tool_row(binding)
-        if row is None or row.is_build_in:
-            name = row.name if row is not None else str(binding.get("name") or "")
+        row = _tool_row(binding, skill)
+        if row is not None and row.is_build_in:
+            if row.name:
+                builtin_tools.append(row.name)
+            continue
+        if row is None:
+            name = str(binding.get("name") or "")
             if name:
-                builtin_tools.append(name)
+                omitted_tools.append(name)
             continue
         params = row.params or {}
         transport = params.get("transport") or "sse"
@@ -245,17 +360,18 @@ def _export_document(skill: LLMSkill) -> tuple[dict, list[bytes]]:
         "builtin_packages": _dedupe(builtin_packages),
         "packages": package_entries,
         "omitted_packages": omitted,
+        "omitted_tools": _dedupe(omitted_tools),
         "mcp": mcp,
     }
     return document, blobs
 
 
-def _find_document(archive: zipfile.ZipFile) -> dict | None:
+def _find_document(archive: zipfile.ZipFile, budget: _ZipBudget) -> dict | None:
     for info in archive.infolist():
         if PurePosixPath(info.filename).name != "agent.json" or info.is_dir():
             continue
         try:
-            parsed = json.loads(archive.read(info).decode("utf-8"))
+            parsed = json.loads(budget.read(info).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
         if isinstance(parsed, dict) and parsed.get("kind") == KIND and parsed.get("format_version") == FORMAT_VERSION:
@@ -378,19 +494,21 @@ def _import_tools(recipe: AgentRecipe, *, team_id: int, domain: str, username: s
 def save_package_copy(data: bytes, organization_id: str) -> StoredSkillPackage | None:
     if not data:
         return None
+    _inspect_package_blob(data)
     storage_path: Path | None = None
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             members = [item for item in archive.infolist() if not item.is_dir()]
+            budget = _ZipBudget(archive, MAX_PACKAGE_UNCOMPRESSED_BYTES, "技能包")
             SkillPackageImporter._validate_members(members)
             skill_doc_member = SkillPackageImporter._find_required_member(members, "SKILL.md")
             package_root = PurePosixPath(skill_doc_member).parent
             manifest_member = SkillPackageImporter._find_optional_member(members, "skill.yaml", package_root)
-            skill_markdown = archive.read(skill_doc_member).decode("utf-8")
+            skill_markdown = budget.read(skill_doc_member).decode("utf-8")
             frontmatter, skill_body = SkillPackageImporter._split_frontmatter(skill_markdown)
             if manifest_member:
                 manifest = SkillPackageImporter._load_manifest(
-                    archive.read(manifest_member).decode("utf-8"),
+                    budget.read(manifest_member).decode("utf-8"),
                     source="skill.yaml",
                 )
             elif frontmatter:
@@ -412,7 +530,11 @@ def save_package_copy(data: bytes, organization_id: str) -> StoredSkillPackage |
                     continue
                 target = extracted / relative_name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(archive.read(member))
+                target.write_bytes(budget.read(member))
+    except AgentArchiveError:
+        if storage_path is not None and storage_path.exists():
+            shutil.rmtree(storage_path, ignore_errors=True)
+        raise
     except (zipfile.BadZipFile, ValueError, OSError, UnicodeDecodeError) as exc:
         if storage_path is not None and storage_path.exists():
             shutil.rmtree(storage_path, ignore_errors=True)
@@ -432,23 +554,68 @@ def save_package_copy(data: bytes, organization_id: str) -> StoredSkillPackage |
     )
 
 
-def _tool_row(binding: dict):
+def _id_set(values) -> set:
+    found = set()
+    for value in values or []:
+        if value in (None, ""):
+            continue
+        found.add(value)
+        found.add(str(value))
+        try:
+            found.add(int(value))
+        except (TypeError, ValueError):
+            pass
+    return found
+
+
+def _tool_in_scope(row, skill: LLMSkill) -> bool:
+    if row.is_build_in:
+        return True
+    if (row.domain or "") != (skill.domain or ""):
+        return False
+    if not row.team:
+        return True
+    return bool(_id_set(row.team) & _id_set(skill.team))
+
+
+def _tool_row(binding: dict, skill: LLMSkill):
+    name = str(binding.get("name") or "")
     pk = binding.get("id")
     if pk:
         row = SkillTools.objects.filter(pk=pk).first()
-        if row is not None:
+        if row is not None and _tool_in_scope(row, skill) and (not name or row.name == name):
             return row
-    name = binding.get("name")
     if name:
-        return SkillTools.objects.filter(name=name).first()
+        row = SkillTools.objects.filter(name=name).first()
+        if row is not None and _tool_in_scope(row, skill):
+            return row
     return None
+
+
+def _package_identifiers(row) -> set[str]:
+    found = set()
+    if row.package_id:
+        found.add(str(row.package_id))
+    manifest = row.manifest if isinstance(row.manifest, dict) else {}
+    manifest_id = manifest.get("id")
+    if manifest_id:
+        found.add(str(manifest_id))
+    return found
+
+
+def _package_identity_matches(row, binding: dict) -> bool:
+    package_id = str(binding.get("package_id") or "")
+    name = str(binding.get("name") or "")
+    if package_id and package_id in _package_identifiers(row):
+        return True
+    return bool(name) and name == (row.name or "")
 
 
 def _package_row(binding: dict, domain: str):
     pk = binding.get("id")
     if pk:
-        row = SkillPackage.objects.filter(pk=pk).first()
-        if row is not None:
+        row = SkillPackage.objects.filter(pk=pk, domain=domain or "").first()
+        if row is not None and _package_identity_matches(row, binding):
             return row
     package_id = str(binding.get("package_id") or "")
     version = binding.get("version")
@@ -474,15 +641,12 @@ def _package_by_column_id(package_id: str, version, domain: str):
         scoped = queryset.filter(domain=domain).first()
         if scoped is not None:
             return scoped
-    return queryset.first()
+    # 内置包按包标识匹配目录，正文不进 ZIP。自定义包不跨域。
+    return queryset.filter(is_build_in=True).first()
 
 
 def _package_by_manifest_id(package_id: str, version, domain: str, name):
-    queryset = SkillPackage.objects.filter(manifest__id=package_id)
-    if domain:
-        scoped = queryset.filter(domain=domain)
-        if scoped.exists():
-            queryset = scoped
+    queryset = SkillPackage.objects.filter(manifest__id=package_id, domain=domain or "")
     if name:
         named = queryset.filter(name=name)
         if version:
@@ -511,10 +675,13 @@ def _named_package(name: str, version, domain: str):
 def _package_archive(row) -> bytes | None:
     original = _original_zip(row)
     if original is not None:
+        _inspect_package_blob(original)
         return original
     if row is None or not str(row.skill_markdown or "").strip():
         return None
-    return _zip_stored_skill(row)
+    blob = _zip_stored_skill(row)
+    _inspect_package_blob(blob)
+    return blob
 
 
 def _zip_stored_skill(row) -> bytes:
@@ -562,7 +729,11 @@ def _original_zip(row) -> bytes | None:
     candidate = Path(row.storage_path) / "original.zip"
     if not candidate.is_file():
         return None
-    return candidate.read_bytes()
+    with candidate.open("rb") as handle:
+        data = handle.read(MAX_PACKAGE_ARCHIVE_BYTES + 1)
+    if len(data) > MAX_PACKAGE_ARCHIVE_BYTES:
+        raise AgentArchiveError("技能包超过大小限制")
+    return data
 
 
 def _package_label(binding: dict, row) -> str:
