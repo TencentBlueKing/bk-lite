@@ -7,6 +7,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
 import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
+import { nginxCollectionIntervalSeconds } from '../rate-window';
 import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
@@ -91,6 +92,7 @@ export default function NginxProLayout({
     setPhase('loading');
     const context = { monitorObjectId, instanceId };
     const currentTime = timeValuesRef.current;
+    const interval = nginxCollectionIntervalSeconds(intervalSeconds);
     runWithConcurrency([...NGINX_PRO_QUERIES], 4, async (spec) => {
       const params = buildSearchParams(
         spec.query,
@@ -100,8 +102,9 @@ export default function NginxProLayout({
         currentTime,
         undefined,
         false,
-        undefined,
-        context
+        interval,
+        context,
+        interval
       );
       try {
         const result = spec.instant ? await getInstanceInstantQuery(params) : await getInstanceQuery(params);
@@ -124,7 +127,7 @@ export default function NginxProLayout({
     return () => {
       active = false;
     };
-  }, [getInstanceInstantQuery, getInstanceQuery, instanceId, instanceLoading, monitorObjectId, timeKey]);
+  }, [getInstanceInstantQuery, getInstanceQuery, instanceId, instanceLoading, intervalSeconds, monitorObjectId, timeKey]);
 
   const model = useMemo(() => buildNginxDashboard({
     onboarded: Boolean(instanceId) && !instanceLoading,

@@ -1,5 +1,7 @@
 /**
- * Nginx 专业盘查询。打在 TSDB 原始名上，窗口跟盘面走。
+ * Nginx 专业盘查询。打在 TSDB 原始名上。
+ * 趋势 rate 用 __$rate_window__，等于 max(4×采集间隔, step)。
+ * 即时窗口次数和比例仍用 __$window__（整段范围）。本文件没有这类模板。
  * 传统盘 config.ts 里的查询保持原样，不在这里改。
  */
 
@@ -7,16 +9,16 @@ const CODES = ['1xx', '2xx', '3xx', '4xx', '5xx'] as const;
 
 const statusRate = (prefix: string, selector: string, codes: readonly string[] = CODES) => (
   codes.map((code) => (
-    `label_replace(rate(${prefix}_response_${code}_count${selector}[__$window__]), "code", "${code}", "__name__", ".*")`
+    `label_replace(rate(${prefix}_response_${code}_count${selector}[__$rate_window__]), "code", "${code}", "__name__", ".*")`
   )).join(' or ')
 );
 
 const bytesRate = (prefix: string, selector: string) => (
-  `label_replace(rate(${prefix}_in_bytes${selector}[__$window__]), "direction", "in", "__name__", ".*") or label_replace(rate(${prefix}_out_bytes${selector}[__$window__]), "direction", "out", "__name__", ".*")`
+  `label_replace(rate(${prefix}_in_bytes${selector}[__$rate_window__]), "direction", "in", "__name__", ".*") or label_replace(rate(${prefix}_out_bytes${selector}[__$rate_window__]), "direction", "out", "__name__", ".*")`
 );
 
 const totalRate = (metric: string, selector: string) => (
-  `label_replace(rate(${metric}${selector}[__$window__]), "code", "total", "__name__", ".*")`
+  `label_replace(rate(${metric}${selector}[__$rate_window__]), "code", "total", "__name__", ".*")`
 );
 
 /**
@@ -34,7 +36,9 @@ const presentOr = (metrics: readonly string[]) => (
   metrics.map((metric) => `last_over_time(${metric}{__$labels__}[24h])`).join(' or ')
 );
 
+/** 按站点列出或汇总时排除 VTS 总计行，避免和各 zone 加在一起翻倍。 */
 const ZONE_DETAIL = '{__$labels__,zone!="*"}';
+/** zone="*" 是 VTS 自己的总计，只给表底合计和总览处理时间，不进站点列表。 */
 const ZONE_STAR = '{__$labels__,zone="*"}';
 const ANY = '{__$labels__}';
 
@@ -108,9 +112,9 @@ export const NGINX_PRO_QUERIES: readonly NginxQuerySpec[] = [
   ].map(([status, metric]) => (
     `label_replace(${metric}{__$labels__}, "status", "${status}", "__name__", ".*")`
   )).join(' or ')),
-  range('requestsRate', 'rate(nginx_requests{__$labels__}[__$window__])'),
-  range('acceptsRate', 'rate(nginx_accepts{__$labels__}[__$window__])'),
-  range('handledRate', 'rate(nginx_handled{__$labels__}[__$window__])'),
+  range('requestsRate', 'rate(nginx_requests{__$labels__}[__$rate_window__])'),
+  range('acceptsRate', 'rate(nginx_accepts{__$labels__}[__$rate_window__])'),
+  range('handledRate', 'rate(nginx_handled{__$labels__}[__$rate_window__])'),
   range('requestsTotal', 'nginx_requests{__$labels__}'),
   instant('stubFresh', tlastOr(STUB_FRESH)),
   instant('serverFresh', tlastOr(SERVER_RAW)),

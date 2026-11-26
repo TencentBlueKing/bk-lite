@@ -6,7 +6,7 @@ import { formatBytesPerSecond, formatDuration, formatPerSecond } from './format'
 import { NGINX_HINTS } from './hints';
 import { NginxDimensionalChart } from './dimensional-chart';
 import { NginxHint } from './nginx-hint';
-import { zoneColumns, type NginxDashboardModel, type ZoneTableRow } from './model';
+import { zoneColumns, zoneTableLabel, type NginxDashboardModel, type ZoneTableRow } from './model';
 
 const cell = (value: number | null, text: string) => (value == null ? '--' : text);
 
@@ -64,8 +64,8 @@ export default function SitesPane({
   const byteText = (value: number | null) => cell(value, formatBytesPerSecond(value ?? 0, scale));
   const timeText = (value: number | null) => cell(value, formatDuration(value ?? 0, model.zoneTimeUnit));
   const renderRow = (row: ZoneTableRow, summary = false) => (
-    <tr key={`${summary ? 'sum' : 'zone'}-${row.zone}`} data-nginx-zone-row={row.zone} className={summary ? 'bg-[var(--color-fill-1)]' : undefined}>
-      <td className="px-2 py-2 font-medium text-[var(--color-text-1)]">{summary ? `${row.zone} 汇总` : row.zone}</td>
+    <tr key={`${summary ? 'sum' : 'zone'}-${row.zone}`} data-nginx-zone-row={summary ? 'total' : row.zone} className={summary ? 'bg-[var(--color-fill-1)]' : undefined}>
+      <td className="px-2 py-2 font-medium text-[var(--color-text-1)]">{zoneTableLabel(row.zone, summary)}</td>
       {columns.request ? <td className="px-2 py-2 tabular-nums">{rateText(row.requestRate)}</td> : null}
       {columns.c2 ? <td className="px-2 py-2 tabular-nums">{rateText(row.codes['2xx'])}</td> : null}
       {columns.c4 ? <td className="px-2 py-2 tabular-nums">{rateText(row.codes['4xx'])}</td> : null}

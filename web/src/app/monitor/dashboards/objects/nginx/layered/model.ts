@@ -920,6 +920,8 @@ export const buildNginxDashboard = ({
   };
 };
 
+export const zoneTableLabel = (zone: string, summary = false) => (summary ? '合计' : zone);
+
 export const zoneColumns = (rows: readonly ZoneTableRow[]) => {
   const all = [...rows];
   const show = (pick: (row: ZoneTableRow) => number | null) => all.some((row) => hasFinite(pick(row)));
