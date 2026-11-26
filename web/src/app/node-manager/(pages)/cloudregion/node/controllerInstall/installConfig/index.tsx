@@ -292,17 +292,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     if (versionLoading) {
       return false;
     }
-    if (isBulk) {
-      return Boolean(os) && filteredSidecarVersionList.length === 0;
-    }
     return !!selectedPlatform && filteredSidecarVersionList.length === 0;
-  }, [
-    filteredSidecarVersionList.length,
-    isBulk,
-    os,
-    selectedPlatform,
-    versionLoading
-  ]);
+  }, [filteredSidecarVersionList.length, selectedPlatform, versionLoading]);
 
   const getControllerPlatforms = useCallback(async () => {
     setPlatformLoading(true);
@@ -426,13 +417,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }, [getControllerPlatforms, isLoading]);
 
   useEffect(() => {
-    const ready = isBulk ? Boolean(os) : Boolean(os && cpuArchitecture);
-    if (!isLoading && ready) {
+    if (!isLoading && os && cpuArchitecture) {
       getSidecarList();
       return;
     }
     setSidecarVersionList([]);
-  }, [cpuArchitecture, isBulk, isLoading, os]);
+  }, [cpuArchitecture, isLoading, os]);
 
   useEffect(() => {
     form.setFieldValue('install', installMethod);
@@ -701,7 +691,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     try {
       const data = await getPackages({
         os,
-        ...(isBulk ? {} : { cpu_architecture: cpuArchitecture }),
+        cpu_architecture: cpuArchitecture,
         type: 'controller',
         object: 'Controller'
       });
@@ -891,25 +881,24 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             disabled={platformLoading || availableOSOptions.length <= 1}
           />
         </Form.Item>
-        {!isBulk && (
-          <Form.Item<ControllerInstallFields>
-            name="cpu_architecture"
-            required
-            label={t('node-manager.cloudregion.node.cpuArchitecture')}
-            rules={[{ required: true, message: t('common.required') }]}
-          >
-            <Segmented
-              options={architectureOptions}
-              disabled={platformLoading || architectureOptions.length <= 1}
-              value={cpuArchitecture}
-              onChange={(value) => {
-                setCpuArchitecture(value);
-                form.setFieldValue('cpu_architecture', value);
-                form.setFieldValue('sidecar_package', null);
-              }}
-            />
-          </Form.Item>
-        )}
+        <Form.Item<ControllerInstallFields>
+          name="cpu_architecture"
+          required
+          label={t('node-manager.cloudregion.node.cpuArchitecture')}
+          rules={[{ required: true, message: t('common.required') }]}
+        >
+          <Segmented
+            options={architectureOptions}
+            disabled={platformLoading || architectureOptions.length <= 1}
+            value={cpuArchitecture}
+            onChange={(value) => {
+              setCpuArchitecture(value);
+              setBulkBatch(null);
+              form.setFieldValue('cpu_architecture', value);
+              form.setFieldValue('sidecar_package', null);
+            }}
+          />
+        </Form.Item>
         <Form.Item<ControllerInstallFields>
           required
           label={t('node-manager.cloudregion.node.installationMethod')}
@@ -989,11 +978,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                 showIcon
                 message={t('node-manager.cloudregion.node.noControllerVersionTitle')}
                 description={t('node-manager.cloudregion.node.noControllerVersionDesc', undefined, {
-                  architecture: isBulk
-                    ? 'x86_64 / ARM64'
-                    : cpuArchitecture === 'arm64'
-                      ? 'ARM64'
-                      : cpuArchitecture,
+                  architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture,
                   os: os === 'windows' ? 'Windows' : 'Linux'
                 })}
               />

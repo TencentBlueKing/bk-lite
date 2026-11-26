@@ -16,6 +16,10 @@ import {
   LogExtractorRule,
   LogExtractorScopeQuery
 } from '@/app/log/types/extractor';
+import {
+  SyslogSourceDeviceListResponse,
+  SyslogSourceDeviceQuery
+} from '@/app/log/types/syslogSourceDevice';
 interface NodeConfigParam {
   configs?: any;
   collect_type?: string;
@@ -266,6 +270,13 @@ const useIntegrationApi = () => {
     return await del(`/log/log_group/${String(id)}/`);
   };
 
+  const getSyslogSourceDevices = async (params: SyslogSourceDeviceQuery) => {
+    return await get<SyslogSourceDeviceListResponse>(
+      '/log/syslog_source_devices/',
+      { params }
+    );
+  };
+
   const getLogExtractors = async (scope: LogExtractorScopeQuery) => {
     return await get<LogExtractorListResponse>('/log/log_extractors/', {
       params: scope
@@ -381,6 +392,7 @@ const useIntegrationApi = () => {
     getCollectTypesById,
     getFields,
     getFieldValues,
+    getSyslogSourceDevices,
     getLogExtractors,
     getGrokPatterns,
     createLogExtractor,

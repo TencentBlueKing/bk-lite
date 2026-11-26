@@ -6,6 +6,11 @@ import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
 import { findTreeParentKey } from '@/app/log/utils/common';
 import { TreeSortData } from '@/app/log/types/event';
+import {
+  expandableTreeKeys,
+  filterTreeByTitle,
+  restoreMatchedBranches
+} from './treeSearch';
 import treeStyle from './index.module.scss';
 
 const { Search } = Input;
@@ -53,7 +58,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     setOriginalTreeData(data);
     const filteredData = filterAllMenu(data);
     setTreeData(filteredData);
-    setExpandedKeys(filteredData.map((item) => item.key));
+    setExpandedKeys(expandableTreeKeys(filteredData));
   }, [data]);
 
   const filterAllMenu = (data: TreeItem[], searchValue: string = '') => {
@@ -74,66 +79,21 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     }
   };
 
-  const filterTree = (data: TreeItem[], searchValue: string): TreeItem[] => {
-    return data
-      .map((item: any) => {
-        const children = filterTree(item.children || [], searchValue);
-        if (
-          item.title.toLowerCase().includes(searchValue.toLowerCase()) ||
-          children.length
-        ) {
-          return {
-            ...item,
-            children,
-          };
-        }
-        return null;
-      })
-      .filter(Boolean) as TreeItem[];
-  };
-
   const handleSearchTree = (value: string) => {
     if (!value) {
       const filteredData = filterAllMenu(originalTreeData);
       setTreeData(filteredData);
-      setExpandedKeys(filteredData.map((item) => item.key));
+      setExpandedKeys(expandableTreeKeys(filteredData));
       return;
     }
-    const filteredData = filterTree(originalTreeData, value);
-    const allMenuFilteredData = filterAllMenu(filteredData, value);
-    // 检查是否只有一级菜单匹配，如果是，则展开并显示所有子节点
-    const expandedFilteredData = allMenuFilteredData.map((item: any) => {
-      // 如果一级菜单匹配但没有子节点匹配到搜索条件，则显示所有子节点
-      const originalItem = originalTreeData.find(
-        (orig) => orig.key === item.key
-      );
-      if (
-        originalItem &&
-        item.title.toLowerCase().includes(value.toLowerCase()) &&
-        (!item.children || item.children.length === 0) &&
-        originalItem.children
-      ) {
-        return {
-          ...item,
-          children: originalItem.children,
-        };
-      }
-      return item;
-    });
-    setTreeData(expandedFilteredData);
-    // 自动展开所有包含匹配结果的一级节点
-    const keysToExpand: React.Key[] = [];
-    expandedFilteredData.forEach((item: any) => {
-      // 展开一级菜单匹配的节点
-      if (item.title.toLowerCase().includes(value.toLowerCase())) {
-        keysToExpand.push(item.key);
-      }
-      // 展开包含匹配子节点的一级节点
-      if (item.children && item.children.length > 0) {
-        keysToExpand.push(item.key);
-      }
-    });
-    setExpandedKeys(keysToExpand);
+    const matched = filterTreeByTitle(originalTreeData, value);
+    const restored = restoreMatchedBranches(
+      filterAllMenu(matched, value),
+      originalTreeData,
+      value
+    );
+    setTreeData(restored);
+    setExpandedKeys(expandableTreeKeys(restored));
   };
 
   const onDrop: TreeProps['onDrop'] = (info) => {

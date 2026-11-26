@@ -141,7 +141,7 @@
         "bulkCommandHint": "把命令中的主机 IP 占位换成每台机器的 IPv4。同一条命令可以发给多台。",
         "bulkCopyCommand": "复制命令",
         "bulkViewProgress": "查看进度",
-        "bulkSidecarVersionDes": "同一条命令覆盖该版本已发布的 x86_64 和 ARM64 安装包。缺少某个架构的包时，只有那个架构的主机会失败。",
+        "bulkSidecarVersionDes": "版本按所选 CPU 架构列出。同一条命令仍覆盖该版本已发布的 x86_64 和 ARM64 安装包。缺少某个架构的包时，只有那个架构的主机会失败。",
         "bulkEmptyProgress": "还没有主机执行这条命令。",
         "bulkAcceptedCount": "已受理 {accepted} / {max}",
         "bulkFailureCount": "计入停用的失败 {count}",
