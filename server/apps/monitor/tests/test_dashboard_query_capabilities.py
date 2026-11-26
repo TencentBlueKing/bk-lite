@@ -8,6 +8,7 @@ import pytest
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
 from apps.monitor.services.dashboard_query_capabilities import (
+    DashboardQueryCapability,
     _fill_dashboard_placeholders,
     build_dashboard_query,
     dashboard_query_capability_id,
@@ -242,6 +243,105 @@ def test_rate_window_and_step_placeholders():
         interval_seconds=60,
     )
     assert bucketed == ('increase(postgresql_deadlocks{instance="a"}[1m]) or rate(postgresql_deadlocks{instance="a"}[4m])')
+
+
+def test_missing_step_uses_collection_interval_not_full_window():
+    """即时查询没有步长：rate 窗是 4×采集间隔，step 是采集间隔，整段窗口不动。"""
+    template = "rate(x{__$labels__}[__$rate_window__]) or increase(x{__$labels__}[__$step__]) or count_over_time(x{__$labels__}[__$window__])"
+    query = 'rate(x{instance="a"}[__$rate_window__]) or increase(x{instance="a"}[__$step__]) ' 'or count_over_time(x{instance="a"}[__$window__])'
+    filled = _fill_dashboard_placeholders(
+        query,
+        template,
+        start=0,
+        end=3_600_000,
+        step_seconds=None,
+        interval_seconds=None,
+    )
+    assert filled == ('rate(x{instance="a"}[4m]) or increase(x{instance="a"}[1m]) ' 'or count_over_time(x{instance="a"}[1h])')
+    assert "__$" not in filled
+
+    shorter = _fill_dashboard_placeholders(
+        query,
+        template,
+        start=0,
+        end=3_600_000,
+        step_seconds=None,
+        interval_seconds=15,
+    )
+    assert shorter == ('rate(x{instance="a"}[1m]) or increase(x{instance="a"}[15s]) ' 'or count_over_time(x{instance="a"}[1h])')
+
+    for invalid in (None, 0, -1, True, False, 1.5, "nope", "015", ""):
+        defaulted = _fill_dashboard_placeholders(
+            "rate(x{a}[__$rate_window__])",
+            "rate(x{__$labels__}[__$rate_window__])",
+            start=0,
+            end=3_600_000,
+            step_seconds=None,
+            interval_seconds=invalid,
+        )
+        assert defaulted == "rate(x{a}[4m])"
+        assert "[1h]" not in defaulted
+
+
+@pytest.mark.django_db
+def test_instant_and_prepare_fill_placeholders_when_step_is_absent(mocker):
+    """query_instant 与 prepare 都不传步长，占位符仍要换掉，且不抛 capability_template_invalid。"""
+    template = (
+        "rate(demo_requests{__$labels__}[__$rate_window__]) or "
+        "increase(demo_requests{__$labels__}[__$step__]) or "
+        "count_over_time(demo_requests{__$labels__}[__$window__])"
+    )
+    capability = DashboardQueryCapability(
+        id=dashboard_query_capability_id(template),
+        object_names=frozenset({"Website"}),
+        template=template,
+    )
+    mocker.patch(
+        "apps.monitor.services.dashboard_query_capabilities.load_dashboard_query_capabilities",
+        return_value={capability.id: capability},
+    )
+    monitor_object = MonitorObject.objects.create(name="Website", instance_id_keys=["instance_id"])
+    instance = MonitorInstance.objects.create(
+        id="('website-a',)",
+        name="website-a",
+        monitor_object=monitor_object,
+    )
+    service = AuthorizedMetricQueryService(
+        user=SimpleNamespace(is_superuser=True),
+        current_team=1,
+        include_children=False,
+    )
+    instant = mocker.patch(
+        "apps.monitor.services.authorized_metric_query.Metrics.get_metrics",
+        return_value={"status": "success", "data": {"result": []}},
+    )
+
+    def payload(**extra):
+        body = {
+            "monitor_object_id": monitor_object.id,
+            "capability_id": capability.id,
+            "instance_ids": [instance.id],
+            "start": 0,
+            "end": 3_600_000,
+        }
+        body.update(extra)
+        return body
+
+    prepared = service.prepare(payload())
+    assert prepared.query == (
+        'rate(demo_requests{instance_id=~"website\\\\-a"}[4m]) or '
+        'increase(demo_requests{instance_id=~"website\\\\-a"}[1m]) or '
+        'count_over_time(demo_requests{instance_id=~"website\\\\-a"}[1h])'
+    )
+
+    result = service.query_instant(payload(interval_seconds=15))
+    assert result["status"] == "success"
+    assert instant.call_args.args[0] == (
+        'rate(demo_requests{instance_id=~"website\\\\-a"}[1m]) or '
+        'increase(demo_requests{instance_id=~"website\\\\-a"}[15s]) or '
+        'count_over_time(demo_requests{instance_id=~"website\\\\-a"}[1h])'
+    )
+    instant.assert_called_once()
 
 
 def test_nginx_rate_window_defaults_and_rejects_bad_interval():
