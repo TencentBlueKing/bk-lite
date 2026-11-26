@@ -1,5 +1,6 @@
 from apps.apm.adapters.errors import (
     TelemetryGroupedReadFallback,
+    TelemetryQueryOutOfRetention,
     TelemetryQueryTooLarge,
     TelemetryStoreUnavailable,
     TelemetryUniqueSpanLimitExceeded,
@@ -18,6 +19,7 @@ __all__ = [
     "InMemoryTraceStore",
     "MemorySpan",
     "TelemetryGroupedReadFallback",
+    "TelemetryQueryOutOfRetention",
     "TelemetryQueryTooLarge",
     "TelemetryStoreUnavailable",
     "TelemetryUniqueSpanLimitExceeded",
