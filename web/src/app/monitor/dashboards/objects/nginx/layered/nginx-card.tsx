@@ -66,7 +66,7 @@ function CardStatus({
 }
 
 export function NginxSpark({ points, step = false }: { points: readonly Point[]; step?: boolean }) {
-  if (points.length < 1) return <div className="h-6" />;
+  if (points.length < 1) return <div className="h-6 w-full" data-nginx-spark="" />;
   const width = 160;
   const height = 24;
   const values = points.map((point) => point.value);
@@ -88,9 +88,57 @@ export function NginxSpark({ points, step = false }: { points: readonly Point[];
     if (!step && previous) return;
   });
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-full" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-full" data-nginx-spark="" preserveAspectRatio="none" aria-hidden="true">
       <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
+  );
+}
+
+export interface NginxSharePart {
+  id: string;
+  color: string;
+  value: number;
+}
+
+function NginxShareBar({ parts }: { parts: readonly NginxSharePart[] }) {
+  const sum = parts.reduce((total, part) => total + Math.max(part.value, 0), 0);
+  return (
+    <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]" data-nginx-share-bar="">
+      {sum > 0 ? (
+        <div className="flex h-full w-full">
+          {parts.map((part) => (
+            <div
+              key={part.id}
+              style={{ width: `${(Math.max(part.value, 0) / sum) * 100}%`, background: part.color }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const TILE_FRAME = `${CARD} !h-[104px] h-full w-full px-3 py-2.5`;
+const FOCUS_FRAME = `${CARD} !h-[136px] h-full w-full px-3 py-3 text-left`;
+const CARD_SHELL = 'flex h-full min-h-0 w-full min-w-0 flex-col';
+
+function TileHeading({
+  label,
+  hint,
+  unit
+}: {
+  label: string;
+  hint?: NginxHintCopy | readonly NginxHintCopy[];
+  unit?: string;
+}) {
+  return (
+    <div className="flex w-full items-center justify-between gap-2">
+      <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
+        <span className="truncate">{label}</span>
+        {hint ? <NginxHint copy={hint} /> : null}
+      </div>
+      {unit ? <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">{unit}</span> : null}
+    </div>
   );
 }
 
@@ -109,7 +157,8 @@ export function NginxTile({
   emptyText = '暂无数据',
   onRetry,
   onActivate,
-  extra
+  extra,
+  baseline = false
 }: {
   anchor?: string;
   label: string;
@@ -126,59 +175,76 @@ export function NginxTile({
   onRetry?: () => void;
   onActivate?: () => void;
   extra?: ReactNode;
+  /** 概览四张 KPI 共用同一条大数基线。其它签保持底部对齐。 */
+  baseline?: boolean;
 }) {
   const quiet = phase !== 'ready' || figure === '暂无数据';
-  const body = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
-          <span className="truncate">{label}</span>
-          {hint ? <NginxHint copy={hint} /> : null}
-        </div>
-        {unit ? <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">{unit}</span> : null}
+  const figureNode = (
+    <div
+      className="text-[28px] font-semibold leading-none tabular-nums text-[var(--color-text-1)]"
+      data-nginx-figure=""
+      style={tone ? { color: tone } : undefined}
+    >
+      {figure}
+    </div>
+  );
+  const progressNode = progress != null ? (
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]">
+      <div
+        className="h-full rounded-full bg-[var(--color-primary)]"
+        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+      />
+    </div>
+  ) : null;
+  const body = baseline && !quiet ? (
+    <div className="grid h-full w-full grid-rows-[auto_auto_minmax(0,1fr)_1.5rem]">
+      <TileHeading label={label} hint={hint} unit={unit} />
+      <div className="flex w-full items-baseline gap-2" data-nginx-figure-row="">
+        {figureNode}
+        {extra}
       </div>
+      <div className="min-h-0 w-full text-[12px] text-[var(--color-text-3)]">{sub}</div>
+      <div className="flex h-6 w-full items-end self-end" data-nginx-tile-trail="">
+        {spark ? <NginxSpark points={spark} step={sparkStep} /> : null}
+        {progressNode}
+      </div>
+    </div>
+  ) : (
+    <>
+      <TileHeading label={label} hint={hint} unit={unit} />
       {phase !== 'ready' ? (
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 w-full flex-1">
           <CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} />
         </div>
       ) : quiet ? (
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
           <div className="text-[14px] text-[var(--color-text-3)]">{figure}</div>
           {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col justify-end">
-          <div className="flex items-end justify-between gap-2">
-            <div className="text-[28px] font-semibold leading-none tabular-nums text-[var(--color-text-1)]" style={tone ? { color: tone } : undefined}>
-              {figure}
-            </div>
+        <div className="flex min-h-0 w-full flex-1 flex-col justify-end">
+          <div className="flex w-full items-end justify-between gap-2">
+            {figureNode}
             {extra}
           </div>
           {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
           {spark ? <NginxSpark points={spark} step={sparkStep} /> : null}
-          {progress != null ? (
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]">
-              <div
-                className="h-full rounded-full bg-[var(--color-primary)]"
-                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-              />
-            </div>
-          ) : null}
+          {progressNode}
         </div>
       )}
     </>
   );
-  const className = `${CARD} h-[104px] px-3 py-2.5`;
+  const content = <div className={CARD_SHELL}>{body}</div>;
   if (onActivate && phase === 'ready') {
     return (
-      <button id={anchor} type="button" className={`${className} cursor-pointer text-left`} onClick={onActivate} data-nginx-tile={label}>
-        {body}
+      <button id={anchor} type="button" className={`${TILE_FRAME} cursor-pointer text-left`} onClick={onActivate} data-nginx-tile={label}>
+        {content}
       </button>
     );
   }
   return (
-    <section id={anchor} className={className} data-nginx-tile={label}>
-      {body}
+    <section id={anchor} className={TILE_FRAME} data-nginx-tile={label}>
+      {content}
     </section>
   );
 }
@@ -189,6 +255,9 @@ export function NginxFocusTile({
   unit,
   figure,
   sub,
+  spark,
+  sparkStep = false,
+  bar,
   phase = 'ready',
   emptyText = '暂无数据',
   onRetry,
@@ -199,36 +268,46 @@ export function NginxFocusTile({
   unit?: string;
   figure: string;
   sub?: string;
+  spark?: readonly Point[];
+  sparkStep?: boolean;
+  bar?: readonly NginxSharePart[];
   phase?: NginxQueryPhase;
   emptyText?: string;
   onRetry?: () => void;
   onOpen?: () => void;
 }) {
-  const inner = (
-    <>
-      <div className="flex w-full items-center justify-between gap-2">
-        <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
-          <span className="truncate">{label}</span>
-          {hint ? <NginxHint copy={hint} /> : null}
-        </div>
-        {unit ? <span className="shrink-0 text-[12px] font-normal text-[var(--color-text-3)]">{unit}</span> : null}
+  const title = (
+    <div className="flex w-full min-w-0 items-center gap-1" data-nginx-focus-title="">
+      <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
+        <span className="truncate">{label}</span>
+        {hint ? <NginxHint copy={hint} /> : null}
       </div>
-      {phase !== 'ready' ? (
-        <div className="min-h-0 flex-1"><CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} /></div>
-      ) : (
-        <>
-          <div className={`text-[22px] font-semibold leading-tight tabular-nums ${figure === '暂无数据' ? 'text-[14px] font-normal text-[var(--color-text-3)]' : 'text-[var(--color-text-1)]'}`}>{figure}</div>
-          {sub ? <div className="text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
-        </>
-      )}
-    </>
+    </div>
   );
-  const className = `${CARD} h-[136px] items-start gap-1 px-3 py-3 text-left`;
+  const quietFigure = figure === '暂无数据';
+  const inner = phase !== 'ready' ? (
+    <div className={`${CARD_SHELL} gap-1`}>
+      {title}
+      <div className="min-h-0 w-full flex-1"><CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} /></div>
+    </div>
+  ) : (
+    <div className="grid h-full w-full grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-1">
+      {title}
+      <div className="flex w-full items-baseline gap-2" data-nginx-figure-row="">
+        <div className={`tabular-nums ${quietFigure ? 'text-[14px] font-normal text-[var(--color-text-3)]' : 'text-[22px] font-semibold leading-tight text-[var(--color-text-1)]'}`} data-nginx-figure="">{figure}</div>
+        {unit && !quietFigure ? <span className="shrink-0 text-[12px] font-normal text-[var(--color-text-3)]">{unit}</span> : null}
+      </div>
+      <div className="w-full text-[12px] text-[var(--color-text-3)]">{sub}</div>
+      <div className="flex w-full items-end" data-nginx-focus-trail="">
+        {bar ? <NginxShareBar parts={bar} /> : <NginxSpark points={spark ?? []} step={sparkStep} />}
+      </div>
+    </div>
+  );
   if (!onOpen || phase !== 'ready') {
-    return <section className={className} data-nginx-focus={label}>{inner}</section>;
+    return <section className={FOCUS_FRAME} data-nginx-focus={label}>{inner}</section>;
   }
   return (
-    <button type="button" className={`${className} cursor-pointer`} onClick={onOpen} data-nginx-focus={label}>
+    <button type="button" className={`${FOCUS_FRAME} cursor-pointer`} onClick={onOpen} data-nginx-focus={label}>
       {inner}
     </button>
   );

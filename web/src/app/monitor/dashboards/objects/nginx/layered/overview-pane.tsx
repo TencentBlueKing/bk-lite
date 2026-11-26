@@ -5,7 +5,7 @@ import { LinkedHostSegment } from '../../../shared/widgets/linked-host-segment';
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { formatCount, formatPerSecond } from './format';
 import { NGINX_HINTS } from './hints';
-import { NginxChartCard, NginxFocusTile, NginxRetryBanner, NginxTile } from './nginx-card';
+import { NginxChartCard, NginxFocusTile, NginxRetryBanner, NginxTile, type NginxSharePart } from './nginx-card';
 import type { NginxDashboardModel } from './model';
 import { NGINX_CARD_QUERIES, focusCardQueries, phaseOf, type NginxQueryPhase } from './query-phase';
 
@@ -13,6 +13,22 @@ export type NginxTabKey = 'overview' | 'connections' | 'sites' | 'upstream';
 
 const rateText = (value: number) => formatPerSecond(value, '次');
 const connText = (value: number) => formatPerSecond(value, '连接');
+
+const CONNECTION_SHARE = [
+  { id: 'reading', key: 'reading', color: '#27c274' },
+  { id: 'writing', key: 'writing', color: '#ff8a1f' },
+  { id: 'waiting', key: 'waiting', color: '#8a5cff' }
+] as const;
+
+const connectionShare = (model: NginxDashboardModel): NginxSharePart[] => {
+  const ring = model.ring;
+  const known = ring.reading != null && ring.writing != null && ring.waiting != null;
+  return CONNECTION_SHARE.map((part) => ({
+    id: part.id,
+    color: part.color,
+    value: known ? Math.max(ring[part.key] ?? 0, 0) : 0
+  }));
+};
 
 export default function OverviewPane({
   model,
@@ -72,6 +88,7 @@ export default function OverviewPane({
             figure={model.collection.label}
             sub={board.collectionSub}
             tone={model.collection.tone}
+            baseline
             phase={collectionPhase}
             emptyText={emptyText}
             onRetry={() => onRetry(NGINX_CARD_QUERIES.collection)}
@@ -85,6 +102,7 @@ export default function OverviewPane({
             figure={board.requestFigure}
             sub={board.requestSub}
             spark={model.requestPoints}
+            baseline
             phase={requestPhase}
             emptyText={emptyText}
             onRetry={() => onRetry(NGINX_CARD_QUERIES.request)}
@@ -98,6 +116,7 @@ export default function OverviewPane({
             sub={board.activeSub}
             spark={model.connSeries.find((item) => item.id === 'active')?.points}
             sparkStep
+            baseline
             phase={activePhase}
             emptyText={emptyText}
             onRetry={() => onRetry(NGINX_CARD_QUERIES.active)}
@@ -109,6 +128,7 @@ export default function OverviewPane({
             hint={NGINX_HINTS.alerts}
             figure={alertFigure}
             tone={alertTone}
+            baseline
             phase={alertPhase}
             emptyText={emptyText}
             onActivate={onOpenAlerts}
@@ -133,6 +153,7 @@ export default function OverviewPane({
             unit="次/秒"
             figure={board.requestFigure}
             sub={board.focusRequestSub}
+            spark={model.requestPoints}
             phase={requestPhase}
             emptyText={emptyText}
             onRetry={() => onRetry(NGINX_CARD_QUERIES.request)}
@@ -146,6 +167,7 @@ export default function OverviewPane({
             unit="连接/秒"
             figure={board.droppedFigure}
             sub={board.handledFigure === '暂无数据' ? '' : `完成率 ${board.handledFigure}`}
+            spark={model.droppedPoints}
             phase={acceptPhase}
             emptyText={emptyText}
             onRetry={() => onRetry(NGINX_CARD_QUERIES.accept)}
@@ -160,6 +182,10 @@ export default function OverviewPane({
               : [NGINX_HINTS.siteUpstream, NGINX_HINTS.upstreamDown]}
             figure={board.focusThirdFigure}
             sub={board.focusThirdSub}
+            spark={board.focusThirdTab === 'connections'
+              ? undefined
+              : model.board.statusSteps.find((item) => item.id === '5xx')?.points}
+            bar={board.focusThirdTab === 'connections' ? connectionShare(model) : undefined}
             phase={thirdPhase}
             emptyText={emptyText}
             onRetry={() => onRetry(thirdKeys)}
