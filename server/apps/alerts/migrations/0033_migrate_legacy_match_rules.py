@@ -6,6 +6,7 @@ from copy import deepcopy
 from django.db import migrations, transaction
 
 from apps.core.logger import alert_logger as logger
+from apps.core.utils.queryset_lock import list_locked_batch
 
 # 迁移只保存转换所需的 2026-09-14 契约；后续业务目录变化不得修改这里。
 EVENT_SCOPES = {"correlation", "shield", "enrichment"}
@@ -243,7 +244,11 @@ def migrate_rules(apps, schema_editor):
             last_id = 0
             converter = LegacyRuleConverter(scope, apps, database)
             while last_id < upper_id:
-                records = list(queryset.select_for_update().filter(pk__gt=last_id, pk__lte=upper_id).order_by("pk")[:200])
+                records = list_locked_batch(
+                    queryset.filter(pk__gt=last_id, pk__lte=upper_id).order_by("pk"),
+                    200,
+                    schema_editor.connection,
+                )
                 if not records:
                     break
                 for current in records:
