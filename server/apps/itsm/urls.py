@@ -85,6 +85,7 @@ from apps.itsm.views.tickets import (
 )
 from apps.itsm.views.triggers import trigger_logs, trigger_options
 from apps.itsm.views.users import PublicStatusView, UserSearchView
+from apps.itsm.views.vmware_assets import ticket_vmware_assets
 
 urlpatterns = [
     path("api/fields/gateway/", field_gateway, name="itsm-field-gateway"),
@@ -200,6 +201,7 @@ urlpatterns = [
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/reconcile/", reconcile_auto_node, name="itsm-auto-reconcile"),
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/retry/", retry_auto_node, name="itsm-auto-retry"),
     path("api/tickets/<int:ticket_id>/logs/", ticket_logs, name="itsm-ticket-logs"),
+    path("api/tickets/<int:ticket_id>/vmware-assets/", ticket_vmware_assets, name="itsm-ticket-vmware-assets"),
     path("api/tickets/<int:ticket_id>/trigger-logs/", trigger_logs, name="itsm-ticket-trigger-logs"),
     path("api/tickets/<int:ticket_id>/survey/", ticket_survey, name="itsm-ticket-survey"),
 ]
