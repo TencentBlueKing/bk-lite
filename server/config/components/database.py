@@ -81,7 +81,7 @@ elif db_engine == "dameng":
     #   - django_celery_results/0009_groupresult.py (重复索引)
     #   - alerts/0001_initial.py (PostgreSQL 专属索引: GinIndex, BTreeIndex)
     #   - alerts/0005_*.py (跳过 ForeignKey 重复索引)
-    #   - alerts/0009_*.py (FakeRemoveIndex 配对 0005，删除操作可重入)
+    #   - alerts/0009_*.py (*IfExists 先查库再删，可从中断点重跑)
     #   - alerts/0010_*.py (FakeRemoveIndex 配对 0001)
 
     # ============================================================
