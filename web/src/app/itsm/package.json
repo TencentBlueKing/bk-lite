@@ -1,0 +1,12 @@
+{
+  "name": "itsm",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@xyflow/react": "^12.8.4",
+    "aieditor": "^1.4.2",
+    "dagre": "^0.8.5"
+  }
+}

@@ -136,9 +136,9 @@ def test_every_plugin_binding_matches_builtin_credential_directory(binding, obje
     assert actual_builtin_type_keys(binding, [row]) == [key], object_id
 
 
-def test_mapping_covers_all_118_authenticating_tree_entries():
-    assert sum(len(ids) for ids in COLLECT_VAULT_BINDINGS.values()) == 118
-    assert len({object_id for ids in COLLECT_VAULT_BINDINGS.values() for object_id in ids}) == 118
+def test_mapping_covers_authenticating_tree_entries():
+    assert sum(len(ids) for ids in COLLECT_VAULT_BINDINGS.values()) == 121
+    assert len({object_id for ids in COLLECT_VAULT_BINDINGS.values() for object_id in ids}) == 121
 
 
 @pytest.mark.parametrize(
@@ -147,6 +147,8 @@ def test_mapping_covers_all_118_authenticating_tree_entries():
         ("oracle", "protocol", "database/sql"),
         ("network_topo", "protocol", "network/snmp"),
         ("aliyun", "protocol", "cloud/cloud"),
+        ("volcengine", "protocol", "cloud/cloud"),
+        ("volcengine_account", "protocol", "cloud/cloud"),
         ("keepalived", "job", "middleware/ssh"),
         ("postgresql", "job", "database/sql"),
         ("mysql", "job", "database/sql"),

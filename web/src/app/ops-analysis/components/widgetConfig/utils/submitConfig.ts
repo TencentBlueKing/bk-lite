@@ -39,7 +39,7 @@ import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
-import { chartDisplayPatch, CHART_DISPLAY_KEYS } from '@/app/ops-analysis/utils/chartDisplay';
+import { applyChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { persistLineBarFormFields } from '@/app/ops-analysis/utils/lineBarFieldMapping';
 import {
   persistSingleValueStyle,
@@ -83,6 +83,10 @@ export interface WidgetConfigFormValues {
   pieScalarFields?: Array<{ field?: string; label?: string }>;
   displayLimit?: number;
   sortByValue?: boolean;
+  stackBars?: boolean;
+  autoScroll?: boolean;
+  scrollSeconds?: number | null;
+  referenceLines?: Array<{ name?: string; value?: number | null; color?: string }>;
   multiValueLabelField?: string;
   multiValueValueField?: string;
   nodeGraphIdentityMode?: 'ip' | 'service';
@@ -532,69 +536,73 @@ export const omitForeignChartTypeFields = <T extends object>(
 
 export const dashboardWidgetValueConfigPatch = (
   config: WidgetConfig,
-): ValueConfig => ({
-  dataSource: config.dataSource,
-  chartType: config.chartType,
-  sceneWidgetType: config.sceneWidgetType,
-  networkStatusTopology: config.networkStatusTopology,
-  relatedTopology: config.relatedTopology,
-  applicationTopology: config.applicationTopology,
-  room3D: config.room3D,
-  application3DWall: config.application3DWall,
-  dataSourceParams: config.dataSourceParams,
-  tableConfig: config.tableConfig,
-  filterBindings: config.filterBindings,
-  selectedFields: config.selectedFields,
-  scalarCalc: config.scalarCalc,
-  descriptionField: config.descriptionField,
-  topNLabelField: config.topNLabelField,
-  topNValueField: config.topNValueField,
-  topNScalarFields: config.topNScalarFields,
-  barMode: config.barMode,
-  barMax: config.barMax,
-  ...chartDisplayPatch(config),
-  dimensionField: config.dimensionField,
-  valueField: config.valueField,
-  valueFields: config.valueFields,
-  seriesField: config.seriesField,
-  pieScalarFields: config.pieScalarFields,
-  multiValueLabelField: config.multiValueLabelField,
-  multiValueValueField: config.multiValueValueField,
-  eventTimeline: config.eventTimeline,
-  radar: config.radar,
-  nodeGraphIdentityMode: config.nodeGraphIdentityMode,
-  nodeGraphSourceField: config.nodeGraphSourceField,
-  nodeGraphTargetField: config.nodeGraphTargetField,
-  nodeGraphValueField: config.nodeGraphValueField,
-  nodeGraphTargetPortField: config.nodeGraphTargetPortField,
-  unit: config.unit,
-  unitId: config.unitId,
-  valueMappings: config.valueMappings,
-  chartThemeMode: config.chartThemeMode,
-  appearance: config.appearance,
-  conversionFactor: config.conversionFactor,
-  decimalPlaces: config.decimalPlaces,
-  thresholdColors: config.thresholdColors,
-  gaugeMin: config.gaugeMin,
-  gaugeMax: config.gaugeMax,
-  gaugeShape: config.gaugeShape,
-  cardList: config.cardList,
-  compare: config.compare,
-  compareMode: config.compareMode,
-  singleStyle: config.singleStyle,
-  interaction: config.interaction,
-  actions: config.actions,
-});
+): ValueConfig => {
+  const patch: ValueConfig & Record<string, unknown> = {
+    dataSource: config.dataSource,
+    chartType: config.chartType,
+    sceneWidgetType: config.sceneWidgetType,
+    networkStatusTopology: config.networkStatusTopology,
+    relatedTopology: config.relatedTopology,
+    applicationTopology: config.applicationTopology,
+    room3D: config.room3D,
+    application3DWall: config.application3DWall,
+    dataSourceParams: config.dataSourceParams,
+    tableConfig: config.tableConfig,
+    filterBindings: config.filterBindings,
+    selectedFields: config.selectedFields,
+    scalarCalc: config.scalarCalc,
+    descriptionField: config.descriptionField,
+    topNLabelField: config.topNLabelField,
+    topNValueField: config.topNValueField,
+    topNScalarFields: config.topNScalarFields,
+    barMode: config.barMode,
+    barMax: config.barMax,
+    dimensionField: config.dimensionField,
+    valueField: config.valueField,
+    valueFields: config.valueFields,
+    seriesField: config.seriesField,
+    pieScalarFields: config.pieScalarFields,
+    multiValueLabelField: config.multiValueLabelField,
+    multiValueValueField: config.multiValueValueField,
+    eventTimeline: config.eventTimeline,
+    radar: config.radar,
+    nodeGraphIdentityMode: config.nodeGraphIdentityMode,
+    nodeGraphSourceField: config.nodeGraphSourceField,
+    nodeGraphTargetField: config.nodeGraphTargetField,
+    nodeGraphValueField: config.nodeGraphValueField,
+    nodeGraphTargetPortField: config.nodeGraphTargetPortField,
+    unit: config.unit,
+    unitId: config.unitId,
+    valueMappings: config.valueMappings,
+    chartThemeMode: config.chartThemeMode,
+    appearance: config.appearance,
+    conversionFactor: config.conversionFactor,
+    decimalPlaces: config.decimalPlaces,
+    thresholdColors: config.thresholdColors,
+    gaugeMin: config.gaugeMin,
+    gaugeMax: config.gaugeMax,
+    gaugeShape: config.gaugeShape,
+    cardList: config.cardList,
+    compare: config.compare,
+    compareMode: config.compareMode,
+    singleStyle: config.singleStyle,
+    interaction: config.interaction,
+    actions: config.actions,
+  };
+  applyChartDisplay(patch, config);
+  return patch;
+};
 
 export const buildAddedDashboardWidgetValueConfig = (
   config: WidgetConfig,
-): ValueConfig => omitForeignChartTypeFields(
-  {
+): ValueConfig => {
+  const draft: ValueConfig & Record<string, unknown> = {
     ...dashboardWidgetValueConfigPatch(config),
     dataSourceParams: config.dataSourceParams || [],
-  },
-  config.chartType || '',
-);
+  };
+  applyChartDisplay(draft, config);
+  return omitForeignChartTypeFields(draft, config.chartType || '');
+};
 
 /**
  * Dashboard 编辑保存边界：调用方会把本次表单字段逐项写入 nextFields，
@@ -604,14 +612,14 @@ export const mergeSanitizedWidgetValueConfig = (
   existingValueConfig: ValueConfig | undefined,
   nextFields: ValueConfig,
   chartType: string,
-): ValueConfig =>
-  omitForeignChartTypeFields(
-    {
-      ...(existingValueConfig || {}),
-      ...nextFields,
-    },
-    chartType,
-  );
+): ValueConfig => {
+  const merged: ValueConfig & Record<string, unknown> = {
+    ...(existingValueConfig || {}),
+    ...nextFields,
+  };
+  applyChartDisplay(merged, { ...nextFields, chartType });
+  return omitForeignChartTypeFields(merged, chartType);
+};
 
 /**
  * 提交结果故意不带这些键，表示用户清空了。大屏用对象展开合并时，
@@ -625,7 +633,6 @@ const SCREEN_OPTIONAL_KEYS_CLEARED_WHEN_ABSENT = [
   'valueFields',
   'seriesField',
   'nodeGraphTargetPortField',
-  ...CHART_DISPLAY_KEYS,
 ] as const;
 
 const isBlankOptionalValue = (value: unknown) => {
@@ -664,6 +671,7 @@ export const mergeScreenWidgetValueConfig = (
     }
   }
 
+  applyChartDisplay(merged, { ...submitted, chartType });
   return omitForeignChartTypeFields(merged, chartType);
 };
 
@@ -974,13 +982,7 @@ export const buildWidgetSubmitConfig = ({
     result.filterBindings = filterBindings;
   }
 
-  const displayPatch = chartDisplayPatch({ ...values, chartType });
-  if (displayPatch.displayLimit !== undefined) {
-    result.displayLimit = displayPatch.displayLimit;
-  }
-  if (displayPatch.sortByValue !== undefined) {
-    result.sortByValue = displayPatch.sortByValue;
-  }
+  applyChartDisplay(result as WidgetConfig & Record<string, unknown>, { ...values, chartType });
 
   return { config: result };
 };

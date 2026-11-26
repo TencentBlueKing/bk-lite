@@ -67,9 +67,11 @@ export default function AnalysisDrawer({ skillId, channel, channelName, person, 
 
   function scopeLabel(task: AnalysisTask) {
     const s = task.scope;
-    if (s.scope === 'sessions') return t('skill.analysis.sessions');
-    return [`${convertToLocalizedTime(s.start, 'YYYY-MM-DD')} — ${convertToLocalizedTime(new Date(Date.parse(s.end) - 1).toISOString(), 'YYYY-MM-DD')}`, s.channel_id && `${t('skill.history.channel')} #${s.channel_id}`, s.person]
-      .filter(Boolean).join(' · ');
+    const channels = s.channel_types?.map(type => t(`skill.channel.types.${type}`, type)).join(' / ');
+    if (s.scope === 'sessions') return [t('skill.analysis.sessions'), channels].filter(Boolean).join(' · ');
+    const dates = `${convertToLocalizedTime(s.start, 'YYYY-MM-DD')} — ${convertToLocalizedTime(new Date(Date.parse(s.end) - 1).toISOString(), 'YYYY-MM-DD')}`;
+    const binding = s.channel_id && `${t('skill.history.channel')} #${s.channel_id}`;
+    return [dates, channels, binding, s.person].filter(Boolean).join(' · ');
   }
 
   const reload = () => setRevision(v => v + 1);

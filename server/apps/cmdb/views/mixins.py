@@ -16,13 +16,8 @@ from typing import Optional
 
 from rest_framework import status
 
-from apps.cmdb.constants.constants import (
-    OPERATE,
-    PERMISSION_INSTANCES,
-    PERMISSION_MODEL,
-    VIEW,
-)
-from apps.cmdb.utils.base import get_organization_and_children_ids, get_current_team_from_request
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, PERMISSION_MODEL, VIEW
+from apps.cmdb.utils.base import get_current_team_from_request, get_organization_and_children_ids
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.utils.web_utils import WebUtils
 
@@ -39,6 +34,36 @@ class CmdbPermissionMixin:
     organization_field = "organization"
 
     @staticmethod
+    def _module_privilege(request):
+        from apps.core.utils.module_scope import effective_module_privilege
+
+        user = getattr(request, "user", None)
+        return effective_module_privilege(user, "cmdb")
+
+    @staticmethod
+    def _membership_ids(user) -> set:
+        ids = set()
+        for item in getattr(user, "group_list", []) or []:
+            if isinstance(item, dict) and item.get("id") is not None:
+                ids.add(item["id"])
+            elif isinstance(item, int):
+                ids.add(item)
+        return ids
+
+    @staticmethod
+    def _actor_group_ids(request) -> set:
+        user = request.user
+        ids = CmdbPermissionMixin._membership_ids(user)
+        if not CmdbPermissionMixin._module_privilege(request):
+            return ids
+        current_team = get_current_team_from_request(request, required=False)
+        if current_team is None:
+            return ids
+        include_children = request.COOKIES.get("include_children") == "1"
+        teams = CmdbRulesFormatUtil.get_authorized_team_ids(user, current_team, include_children)
+        return ids | set(teams)
+
+    @staticmethod
     def get_user_organizations(request, obj, org_field: str = "organization") -> list:
         """
         Get the intersection of user's groups and object's organizations.
@@ -51,7 +76,7 @@ class CmdbPermissionMixin:
         Returns:
             List of organization IDs the user has access to for this object
         """
-        user_groups = {i["id"] for i in request.user.group_list}
+        user_groups = CmdbPermissionMixin._actor_group_ids(request)
         obj_orgs = obj.get(org_field, [])
         return list(set(obj_orgs) & user_groups)
 
@@ -71,17 +96,17 @@ class CmdbPermissionMixin:
         Returns:
             True if user is creator with org access, False otherwise
         """
+        if CmdbPermissionMixin._module_privilege(request) == "auditor":
+            return False
         organizations = instance.get("organization", [])
         current_team = get_current_team_from_request(request, required=False)
-        authorized_teams = {group["id"] for group in request.user.group_list}
+        authorized_teams = CmdbPermissionMixin._actor_group_ids(request)
         if current_team not in authorized_teams:
             return False
         include_children = request.COOKIES.get("include_children") == "1"
 
         if include_children:
-            user_teams = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
+            user_teams = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
             if not set(organizations) & set(user_teams):
                 return False
         else:
@@ -107,14 +132,12 @@ class CmdbPermissionMixin:
         Returns:
             True if user has permission, False otherwise
         """
-        user_groups = {i["id"] for i in request.user.group_list}
+        user_groups = self._actor_group_ids(request)
         include_children = request.COOKIES.get("include_children") == "1"
-        if include_children:
+        if include_children and not self._module_privilege(request):
             current_team = get_current_team_from_request(request, required=False)
             if current_team:
-                child_groups = get_organization_and_children_ids(
-                    tree_data=request.user.group_tree, target_id=current_team
-                )
+                child_groups = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
                 if child_groups:
                     user_groups = set(child_groups)
                 else:
@@ -124,9 +147,7 @@ class CmdbPermissionMixin:
             return False
 
         model_id = instance["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
 
         return CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_INSTANCES,
@@ -155,15 +176,13 @@ class CmdbPermissionMixin:
         Returns:
             True if user has permission, False otherwise
         """
-        user_groups = {i["id"] for i in request.user.group_list}
+        user_groups = self._actor_group_ids(request)
         organizations = list(set(model_info.get("group", [])) & user_groups)
         if not organizations:
             return False
 
         model_id = model_info["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id, permission_type=PERMISSION_MODEL
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
 
         return CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
@@ -240,9 +259,7 @@ class CmdbPermissionMixin:
                 status_code=status.HTTP_403_FORBIDDEN,
             )
 
-        if not self.check_model_permission(
-            request, model_info, operator, default_group_id
-        ):
+        if not self.check_model_permission(request, model_info, operator, default_group_id):
             return WebUtils.response_error(
                 error_message or "抱歉！您没有此模型的权限",
                 status_code=status.HTTP_403_FORBIDDEN,

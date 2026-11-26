@@ -10,6 +10,8 @@ export interface User {
   roles: string[];
   username?: string;
   display_name?: string;
+  is_auditor?: boolean;
+  is_superuser?: boolean;
 }
 
 export interface Menu {

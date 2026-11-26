@@ -10,7 +10,7 @@ pytestmark = pytest.mark.unit
 
 
 def runtime_env(**overrides):
-    env = {"ENABLE_CELERY": "true", "INSTALL_APPS": "", "CELERY_TOTAL_CONCURRENCY_LIMIT": "15"}
+    env = {"ENABLE_CELERY": "true", "INSTALL_APPS": "", "CELERY_TOTAL_CONCURRENCY_LIMIT": "17"}
     for pool, maximum in (("CRITICAL", 2), ("NOTIFICATION", 2), ("STATE", 2), ("BACKGROUND", 4)):
         env[f"CELERY_{pool}_MIN"] = "1"
         env[f"CELERY_{pool}_MAX"] = str(maximum)
@@ -23,7 +23,7 @@ def test_four_consumers_have_independent_bounded_capacity():
     assert [c[c.index("-Q") + 1] for c in commands] == ["critical", "notification", "state", "background,celery"]
     assert all("--autoscale=2,1" in c for c in commands[:3])
     assert "--autoscale=4,1" in commands[3]
-    assert config.maximum_concurrency == 15
+    assert config.maximum_concurrency == 17
 
 
 @pytest.mark.parametrize(
@@ -45,20 +45,20 @@ def test_invalid_or_over_budget_configuration_fails_before_start(overrides):
 
 
 def test_budget_counts_all_replicas_at_maximum():
-    config = RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="30", CELERY_RUN_BEAT="false"))
-    assert config.maximum_concurrency == 30
+    config = RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="34", CELERY_RUN_BEAT="false"))
+    assert config.maximum_concurrency == 34
     assert "[program:beat]" not in config.supervisor_config()
 
 
 def test_multiple_replicas_require_explicit_beat_owner():
     with pytest.raises(ValueError, match="CELERY_RUN_BEAT"):
-        RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="30"))
+        RuntimeConfig.from_env(runtime_env(CELERY_WORKER_REPLICAS="2", CELERY_TOTAL_CONCURRENCY_LIMIT="34"))
 
 
 def test_missing_budget_uses_fixed_limit_and_still_rejects_excess_capacity():
     env = runtime_env()
     del env["CELERY_TOTAL_CONCURRENCY_LIMIT"]
-    assert RuntimeConfig.from_env(env).total_limit == 15
+    assert RuntimeConfig.from_env(env).total_limit == 17
     env["CELERY_BACKGROUND_MAX"] = "5"
     with pytest.raises(ValueError, match="CELERY_TOTAL_CONCURRENCY_LIMIT"):
         RuntimeConfig.from_env(env)
@@ -72,21 +72,21 @@ def test_enabled_celery_starts_with_bounded_defaults():
         ("state", 1, 2),
         ("background", 1, 4),
     ]
-    assert config.maximum_concurrency == config.total_limit == 15
+    assert config.maximum_concurrency == config.total_limit == 17
     assert config.supervisor_config().count("[program:") == 5
 
 
 def test_partial_overrides_preserve_defaults_and_budget():
-    config = RuntimeConfig.from_env({"ENABLE_CELERY": "true", "CELERY_CRITICAL_MAX": "3", "CELERY_TOTAL_CONCURRENCY_LIMIT": "16"})
+    config = RuntimeConfig.from_env({"ENABLE_CELERY": "true", "CELERY_CRITICAL_MAX": "3", "CELERY_TOTAL_CONCURRENCY_LIMIT": "18"})
     assert "--autoscale=3,1" in config.worker_args("critical")
     assert "--autoscale=4,1" in config.worker_args("background")
-    assert config.maximum_concurrency == 16
+    assert config.maximum_concurrency == 18
 
 
 @pytest.mark.parametrize("legacy", ["2", "100"])
 def test_legacy_concurrency_does_not_block_or_expand_new_workers(legacy, caplog):
     config = RuntimeConfig.from_env({"ENABLE_CELERY": "true", "CELERY_CONCURRENCY": legacy})
-    assert config.maximum_concurrency == 15
+    assert config.maximum_concurrency == 17
     assert "CELERY_CONCURRENCY" in caplog.text
     assert "忽略" in caplog.text
 
@@ -131,5 +131,11 @@ def test_existing_specialized_workers_count_towards_total_budget():
     env = runtime_env(INSTALL_APPS="", CELERY_TOTAL_CONCURRENCY_LIMIT="14")
     with pytest.raises(ValueError, match="预算|总和"):
         RuntimeConfig.from_env(env)
-    config = RuntimeConfig.from_env(env | {"CELERY_TOTAL_CONCURRENCY_LIMIT": "15"})
-    assert config.maximum_concurrency == 15
+    config = RuntimeConfig.from_env(env | {"CELERY_TOTAL_CONCURRENCY_LIMIT": "17"})
+    assert config.maximum_concurrency == 17
+
+
+def test_job_worker_capacity_follows_installed_apps():
+    env = runtime_env(INSTALL_APPS="job_mgmt", JOB_CELERY_CONCURRENCY="3")
+    assert {p.name: p.maximum for p in RuntimeConfig.from_env(env).dedicated}["job"] == 3
+    assert "job" not in {p.name for p in RuntimeConfig.from_env(env | {"INSTALL_APPS": "itsm"}).dedicated}

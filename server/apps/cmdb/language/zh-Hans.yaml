@@ -9,6 +9,7 @@ CLASSIFICATION:
   vmware: VMware
   hyperv: Hyper-V
   aliyun: 阿里云
+  volcengine: 火山引擎
   qcloud: 腾讯云
   hwcloud: 华为云
   azure: Azure
@@ -89,6 +90,13 @@ MODEL:
   hyperv_vm: Hyper-V 虚拟机
   aliyun_account: 阿里云
   aliyun_ecs: 阿里云ECS
+  volcengine_account: 火山引擎
+  volcengine_ecs: 火山引擎云服务器
+  volcengine_eip: 火山引擎公网IP
+  volcengine_clb: 火山引擎负载均衡CLB
+  volcengine_mysql: 火山引擎MySQL
+  volcengine_pgsql: 火山引擎PostgreSQL
+  volcengine_tos: 火山引擎对象存储
   qcloud: 腾讯云
   qcloud_cvm: 腾讯云CVM
   hwcloud: 华为云

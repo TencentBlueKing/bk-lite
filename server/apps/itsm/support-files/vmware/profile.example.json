@@ -1,0 +1,19 @@
+{
+  "host": "vcenter.example.invalid",
+  "port": 443,
+  "username": "svc-bklite-provision@example.invalid",
+  "password_file": "/run/secrets/bklite-vcenter-password",
+  "ca_file": "/etc/bklite/vmware/vcenter-ca.pem",
+  "folder_id": "group-v12",
+  "resource_pool_id": "resgroup-21",
+  "customization_spec": "Linux-DHCP",
+  "journal_dir": "/var/lib/bklite/vmware",
+  "name_prefix": "vm",
+  "wait_seconds": 1080,
+  "catalog": {
+    "flavor": [{"value":"s2","label":"标准","cpu":2,"memory_gib":4}],
+    "template": [{"value":"vm-101","label":"Linux 模板"}],
+    "network": [{"value":"network-21","label":"开发网络"}],
+    "disk_policy": [{"value":"standard","label":"标准盘","datastore_id":"datastore-8","allowed_disk_gib":[0,20,40]}]
+  }
+}

@@ -86,6 +86,14 @@ def test_custom_script_doc_explains_connection_execution_and_output():
     assert "SSH" in en and "WinRM" in en and "inst_name" in en
 
 
+def test_volcengine_account_doc_describes_the_collected_products():
+    zh = get_collect_model_document("volcengine_account", "zh-Hans")
+    en = get_collect_model_document("volcengine_account", "en")
+    assert zh != DOCUMENT_NOT_FOUND
+    assert "volcengine_ecs" in zh and "volcengine_tos" in zh and "一条任务只采集一个地域" in zh
+    assert "volcengine_ecs" in en and "volcengine_tos" in en and "One task collects one region" in en
+
+
 def test_community_plugin_docs_have_english_siblings():
     from pathlib import Path
 

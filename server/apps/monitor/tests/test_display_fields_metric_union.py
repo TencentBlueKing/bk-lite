@@ -154,7 +154,7 @@ def test_validate_display_fields_rejects_field_column_without_field(monkeypatch)
 def test_query_metric_field_values_reads_vm_label(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
-            assert query == 'node_info{instance_id=~"i1|i2"}'
+            assert query == 'node_info{instance_id=~"i1|i2", collect_type!="script"}'
             assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
@@ -183,7 +183,7 @@ def test_query_metric_field_values_reads_vm_label(monkeypatch):
 def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
-            assert query == 'node_info{instance_id=~"i1"}'
+            assert query == 'node_info{instance_id=~"i1", collect_type!="script"}'
             assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
@@ -208,7 +208,7 @@ def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
 def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
-            assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
+            assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1", collect_type!="script"}'
             assert step is None
             return {"data": {"result": [
                 {
@@ -239,7 +239,7 @@ def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(m
 def test_query_metric_values_uses_default_query_step(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
-            assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}'
+            assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1", collect_type!="script"}'
             assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1"}, "value": [0, "8.52"]},
@@ -267,7 +267,7 @@ def test_query_metric_values_enum_prefers_latest_series_by_timestamp(monkeypatch
         def query(self, query, step=None):
             self.queries.append(query)
             assert step is None
-            if query == 'http_response_result_code{instance_id=~"i1"}':
+            if query == 'http_response_result_code{instance_id=~"i1", collect_type!="script"}':
                 return {"data": {"result": [
                     {
                         "metric": {"instance_id": "i1", "result": "connection_failed"},
@@ -278,7 +278,7 @@ def test_query_metric_values_enum_prefers_latest_series_by_timestamp(monkeypatch
                         "value": [1782888110, "0"],
                     },
                 ]}}
-            if query == 'timestamp(http_response_result_code{instance_id=~"i1"})':
+            if query == 'timestamp(http_response_result_code{instance_id=~"i1", collect_type!="script"})':
                 return {"data": {"result": [
                     {
                         "metric": {"instance_id": "i1", "result": "connection_failed"},
@@ -306,8 +306,8 @@ def test_query_metric_values_enum_prefers_latest_series_by_timestamp(monkeypatch
 
     assert result == {"('i1',)": "0"}
     assert fake_vm.queries == [
-        'http_response_result_code{instance_id=~"i1"}',
-        'timestamp(http_response_result_code{instance_id=~"i1"})',
+        'http_response_result_code{instance_id=~"i1", collect_type!="script"}',
+        'timestamp(http_response_result_code{instance_id=~"i1", collect_type!="script"})',
     ]
 
 
@@ -405,12 +405,12 @@ def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(m
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [1782888110, "1782888000"]},
             ]}}
-        if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
+        if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1", collect_type!="script"}':
             assert "step" not in kwargs
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1"}, "value": [100, "8.52"]},
             ]}}
-        if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}':
+        if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1", collect_type!="script"}':
             assert "step" not in kwargs
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "host": "remote-host"}, "value": [100, "1.64"]},

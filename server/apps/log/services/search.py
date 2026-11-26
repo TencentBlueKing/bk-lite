@@ -1,9 +1,11 @@
-from django.http import StreamingHttpResponse
-import time
 import asyncio
-from decimal import Decimal, ROUND_HALF_UP
+import time
+from decimal import ROUND_HALF_UP, Decimal
 from typing import AsyncIterator
 
+from django.http import StreamingHttpResponse
+
+from apps.core.logger import log_logger as logger
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.services.log_event_contract import (
     SPECIAL_LOGSQL_FIELDS,
@@ -15,9 +17,8 @@ from apps.log.services.log_event_contract import (
     to_storage_field,
     to_storage_query,
 )
-from apps.log.utils.query_log import TAIL_IDLE, VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
-from apps.core.logger import log_logger as logger
+from apps.log.utils.query_log import TAIL_IDLE, VictoriaMetricsAPI
 
 
 class SearchService:
@@ -371,7 +372,8 @@ class SearchService:
                         yield f"data: {to_logical_json_line(line)}\n\n"
                         data_count += 1
                         last_activity_time = current_time
-                        await asyncio.sleep(0)
+                        # 读线程的 sleep 只放开 GIL。队列里已有数据时，事件循环仍要按批让出。
+                        await asyncio.sleep(0.01 if data_count % 10 == 0 else 0)
                     except Exception as e:
                         logger.info(
                             "检测到客户端断开(数据)",

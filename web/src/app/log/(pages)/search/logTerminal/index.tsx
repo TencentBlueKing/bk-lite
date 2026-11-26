@@ -47,6 +47,9 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const sseParseStateRef = useRef(createSseLogStreamState());
+    const streamGenerationRef = useRef(0);
+    const fetchDataRef = useRef(fetchData);
+    fetchDataRef.current = fetchData;
     const highlightTerms = useMemo(
       () => extractHighlightTerms(highlightQuery ?? query.query),
       [highlightQuery, query.query]
@@ -72,32 +75,21 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       }
     }, [isFullscreen]);
 
-    // 停止日志流
-    const stopLogStream = useCallback((): Promise<void> => {
-      return new Promise((resolve) => {
-        isStreaming.current = false;
-        // 优先使用AbortController来取消请求，这会自动处理reader
-        if (abortControllerRef.current) {
-          try {
-            abortControllerRef.current.abort();
-          } catch {
-            // AbortController可能已经被取消
-          }
-          abortControllerRef.current = null;
-        }
-        // 如果reader还存在，手动清理
-        if (readerRef.current) {
-          try {
-            readerRef.current.releaseLock();
-          } catch {
-            // Lock可能已经被释放
-          }
-          readerRef.current = null;
-        }
-        setTimeout(() => {
-          resolve();
-        }, 0);
-      });
+    // 停止日志流。abort 必须同步发生，调用方才能在发下一个请求前断开上游。
+    const stopLogStream = useCallback(() => {
+      streamGenerationRef.current += 1;
+      isStreaming.current = false;
+      const abortController = abortControllerRef.current;
+      abortControllerRef.current = null;
+      abortController?.abort();
+      const reader = readerRef.current;
+      readerRef.current = null;
+      if (reader) {
+        reader.cancel().catch(() => {
+          // 读取已经结束或锁已释放
+        });
+      }
+      fetchDataRef.current?.(false);
     }, []);
 
     // 清空日志
@@ -112,35 +104,39 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       });
     }, []);
 
+    const streamIsCurrent = (
+      generation: number,
+      abortController: AbortController
+    ) =>
+      generation === streamGenerationRef.current &&
+      !abortController.signal.aborted;
+
     // 开始日志流
     const startLogStream = useCallback(async (preserveLogs = false) => {
-      // 先停止当前流；普通重启清空日志，暂停后继续则保留冻结画面。
-      await stopLogStream();
+      // 先停掉上一条。新的代际在 stop 之后再加，避免把自己作废。
+      const previousGeneration = streamGenerationRef.current;
+      stopLogStream();
+      const generation = previousGeneration + 1;
       setIsPaused(false);
       if (!preserveLogs) {
         setLogs([]);
       }
-      if (!token) return;
-      if (isStreaming.current) return;
+      if (!token || generation !== streamGenerationRef.current) return;
+      const groups = query.log_groups || [];
+      const queryParams = new URLSearchParams({
+        query: query.query || '*',
+        log_groups: groups.join(','),
+      });
+      if (!groups?.length) {
+        message.error(t('log.search.searchError'));
+        return;
+      }
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
       let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-      let streamAbortController: AbortController | null = null;
       try {
         isStreaming.current = true;
-        // 构建查询参数
-        const groups = query.log_groups || [];
-        const queryParams = new URLSearchParams({
-          query: query.query || '*',
-          log_groups: groups.join(','),
-        });
-        if (!groups?.length) {
-          return message.error(t('log.search.searchError'));
-        }
-        // 创建AbortController用于取消请求
-        const abortController = new AbortController();
-        streamAbortController = abortController;
-        abortControllerRef.current = abortController;
-        // 直接使用fetch来处理EventStream，使用GET请求
-        fetchData?.(true);
+        fetchDataRef.current?.(true);
         const response = await fetch(
           `/api/proxy/log/search/tail?${queryParams.toString()}`,
           {
@@ -152,12 +148,13 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
             signal: abortController.signal,
           }
         );
-        fetchData?.(false);
-        // 检查响应状态
+        if (!streamIsCurrent(generation, abortController)) {
+          return;
+        }
+        fetchDataRef.current?.(false);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        // 检查响应是否包含可读流
         if (!response.body) {
           isStreaming.current = false;
           return;
@@ -167,10 +164,10 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         readerRef.current = reader;
         const decoder = new TextDecoder();
         sseParseStateRef.current = createSseLogStreamState();
-        // 持续读取流数据
-        while (!abortController.signal.aborted) {
+        while (streamIsCurrent(generation, abortController)) {
           try {
             const { done, value } = await reader.read();
+            if (!streamIsCurrent(generation, abortController)) break;
             if (done) break;
             const chunk = decoder.decode(value, { stream: true });
             const messages = parseSseLogChunk(chunk, sseParseStateRef.current);
@@ -178,33 +175,32 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
               appendLogs(messages);
             }
           } catch (error: any) {
-            if (error?.name === 'AbortError') {
-              console.log('Log stream was cancelled');
-              break;
+            if (error?.name !== 'AbortError') {
+              console.log(error);
             }
             break;
           }
         }
       } catch (error: any) {
-        console.log(error);
-        fetchData?.(false);
+        if (error?.name !== 'AbortError') {
+          console.log(error);
+        }
+        if (generation === streamGenerationRef.current) {
+          fetchDataRef.current?.(false);
+        }
       } finally {
         if (streamReader && readerRef.current === streamReader) {
-          try {
-            streamReader.releaseLock();
-          } catch {
-            // Reader可能已经被释放
-          }
           readerRef.current = null;
+          streamReader.cancel().catch(() => {
+            // 读取已经结束或锁已释放
+          });
         }
-        if (!streamAbortController) {
-          isStreaming.current = false;
-        } else if (abortControllerRef.current === streamAbortController) {
+        if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null;
           isStreaming.current = false;
         }
       }
-    }, [query, stopLogStream, t, fetchData, token, appendLogs]);
+    }, [query, stopLogStream, t, token, appendLogs]);
 
     // 暂停会真正关闭实时查询；继续时从当前时刻建立新的 tail 连接。
     const togglePause = useCallback(async () => {
@@ -213,7 +209,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         return;
       }
       setIsPaused(true);
-      await stopLogStream();
+      stopLogStream();
     }, [isPaused, startLogStream, stopLogStream]);
 
     // 通过 ref 暴露方法
@@ -221,8 +217,9 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       ref,
       () => ({
         startLogStream,
+        stopLogStream,
       }),
-      [startLogStream]
+      [startLogStream, stopLogStream]
     );
 
     // 自动滚动效果

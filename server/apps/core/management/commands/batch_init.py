@@ -49,6 +49,7 @@ class Command(BaseCommand):
                 "mlops",
                 "patch_mgmt",
                 "workflow",
+                "itsm",
             ]
         else:
             apps_list = [app.strip() for app in apps.split(",")]
@@ -86,6 +87,8 @@ class Command(BaseCommand):
                     self._init_patch_mgmt()
                 elif app == "workflow":
                     self._init_workflow()
+                elif app == "itsm":
+                    self._init_itsm()
                 else:
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
@@ -156,9 +159,7 @@ class Command(BaseCommand):
                 type(error).__name__,
                 exc_info=safe_exception_info(error),
             )
-            self.stdout.write(
-                self.style.WARNING(f"默认域 admin 运行时账号初始化跳过（{type(error).__name__}），首次登录后仍可自动补齐")
-            )
+            self.stdout.write(self.style.WARNING(f"默认域 admin 运行时账号初始化跳过（{type(error).__name__}），首次登录后仍可自动补齐"))
 
     @staticmethod
     def _create_admin_runtime_user() -> None:
@@ -192,7 +193,8 @@ class Command(BaseCommand):
         user_model = django_apps.get_model("system_mgmt", "User")
         # create_user 历史上对任意域的同名用户均 no-op；这里保持同一存量判定，
         # 避免仅有外域 admin 的合法升级环境被新 Secret 门禁意外阻断。
-        return user_model.objects.select_for_update().filter(username="admin").exists()
+        # 不用 exists()：它带 LIMIT 1，达梦不支持 FOR UPDATE 与 LIMIT 同用。
+        return bool(user_model.objects.select_for_update().filter(username="admin").values_list("pk", flat=True))
 
     @staticmethod
     def _has_managed_admin_password() -> bool:
@@ -257,11 +259,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"CMDB UUID 周期任务拆除跳过: {exc}"))
 
     def _schedule_display_field_backfill(self) -> None:
-        """实例 _display 回填是可重建派生数据，启动期只入队，不扫描实例。"""
+        """实例 _display 回填是可重建派生数据。启动期不扫实例；做完后不再投递。"""
         try:
-            from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task
+            from apps.cmdb.tasks.display_field_backfill import (
+                backfill_cmdb_display_fields,
+                disable_display_field_backfill_periodic_task,
+                display_backfill_pending,
+            )
 
-            ensure_display_field_backfill_periodic_task()
+            disable_display_field_backfill_periodic_task()
+            if not display_backfill_pending():
+                self.stdout.write("CMDB 显示字段已回填，跳过投递")
+                return
             try:
                 backfill_cmdb_display_fields.delay(force=False)
             except Exception as exc:
@@ -270,9 +279,9 @@ class Command(BaseCommand):
                     type(exc).__name__,
                     exc_info=safe_exception_info(exc),
                 )
-                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），周期任务会重试"))
+                self.stdout.write(self.style.WARNING(f"CMDB 显示字段回填投递跳过（{type(exc).__name__}），下次启动会再投递"))
             else:
-                self.stdout.write("已注册 CMDB 显示字段回填任务（异步收敛，不阻断启动）")
+                self.stdout.write("已投递 CMDB 显示字段回填（一次性，不阻断启动）")
         except Exception as exc:
             logger.warning(
                 "event=display_backfill_register_failed failed_stage=register error_type=%s",
@@ -426,6 +435,16 @@ class Command(BaseCommand):
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
             logger.warning("内置补丁源初始化失败，可运行 init_patch_sources 重试", exc_info=True)
             self.stdout.write(self.style.WARNING(f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"))
+
+    def _init_itsm(self):
+        """ITSM 内置状态、流转、字典和通知模板。"""
+        self.stdout.write("ITSM 内置数据初始化...")
+        call_command("init_itsm")
+        try:
+            call_command("init_itsm_itil")
+        except Exception as error:  # noqa: BLE001 - Flowable 未就绪时不阻断启动
+            logger.warning("ITSM 预置初始化失败。请在流程管理核对已有草稿及部署结果；重新运行 init_itsm_itil 可补装尚未创建的流程", exc_info=True)
+            self.stdout.write(self.style.WARNING(f"ITSM 事件问题预置跳过（{type(error).__name__}）: {error}"))
 
     def _init_workflow(self):
         """编排中心内置巡检流程（按团队幂等，失败不阻断启动）。"""

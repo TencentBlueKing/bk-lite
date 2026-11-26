@@ -1,0 +1,18 @@
+[
+  [{"logic":"or","items":[{"field":"x","op":">","value":10},{"logic":"and","items":[{"field":"obj.name","op":"=","value":"A"},{"field":"y","op":"is_empty"}]}]},{"x":1,"obj":{"name":"A"},"y":[]},true],
+  [{"field":"x","op":"=","value":1},{"x":"1"},false],
+  [{"field":"x","op":"!=","value":"A"},{"x":"B"},true],
+  [{"field":"x","op":">=","value":2},{"x":2},true],
+  [{"field":"x","op":"<=","value":2},{"x":"2"},false],
+  [{"field":"x","op":"<","value":2},{"x":3},false],
+  [{"field":"x","op":">","value":2},{"x":3},true],
+  [{"field":"x","op":"in","value":["A","B"]},{"x":["A","C"]},true],
+  [{"field":"x","op":"not_in","value":["A"]},{"x":"B"},true],
+  [{"field":"x","op":"contains","value":"a"},{"x":"abc"},true],
+  [{"field":"x","op":"contains","value":"a"},{"x":{"a":1}},true],
+  [{"field":"x","op":"contains","value":1},{"x":4},false],
+  [{"field":"x","op":"not_empty"},{"x":{}},false],
+  [{"field":"x","op":"=","value":true},{"x":1},true],
+  [{"field":"x","op":"<","value":[4,0]},{"x":[3,9]},true],
+  [{"field":"x","op":"unknown"},{},false]
+]

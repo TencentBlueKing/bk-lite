@@ -2,6 +2,7 @@ import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { App } from 'antd';
 import { IntlProvider } from 'react-intl';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -73,6 +74,7 @@ describe('用户信息抽屉上的验证身份弹窗', () => {
     const user = userEvent.setup();
     render(
       <IntlProvider locale="zh" messages={messages}>
+        <App>
         <UserInformation
           visible
           onClose={() => undefined}
@@ -84,6 +86,7 @@ describe('用户信息抽屉上的验证身份弹窗', () => {
             locale: 'zh-Hans',
           })}
         />
+        </App>
       </IntlProvider>,
     );
 

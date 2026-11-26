@@ -647,6 +647,8 @@ def test_unmatchable_cmdb_models_are_not_mapped():
         "storage",
         "security_device",
         "aliyun_ecs",
+        "volcengine_account",
+        "volcengine_ecs",
         "redis_sentinel",
         "docker_container",
         "k8s_cluster",

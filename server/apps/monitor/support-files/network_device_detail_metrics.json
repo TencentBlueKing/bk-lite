@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "object_name": "Firewall",
+      "metric_name": "device_cpu_usage",
+      "capability_id": "dashboard:v1:4d34db2f"
+    },
+    {
+      "object_name": "Firewall",
+      "metric_name": "device_memory_usage",
+      "capability_id": "dashboard:v1:55f055e6"
+    },
+    {
+      "object_name": "Loadbalance",
+      "metric_name": "device_cpu_usage",
+      "capability_id": "dashboard:v1:4d34db2f"
+    },
+    {
+      "object_name": "Loadbalance",
+      "metric_name": "device_memory_usage",
+      "capability_id": "dashboard:v1:9a3b0c2b"
+    },
+    {
+      "object_name": "Router",
+      "metric_name": "device_cpu_usage",
+      "capability_id": "dashboard:v1:4d34db2f"
+    },
+    {
+      "object_name": "Router",
+      "metric_name": "device_memory_usage",
+      "capability_id": "dashboard:v1:8abc1975"
+    },
+    {
+      "object_name": "Switch",
+      "metric_name": "device_cpu_usage",
+      "capability_id": "dashboard:v1:10ddbbf7"
+    },
+    {
+      "object_name": "Switch",
+      "metric_name": "device_memory_usage",
+      "capability_id": "dashboard:v1:6cfc04c8"
+    },
+    {
+      "object_name": "Wanopt",
+      "metric_name": "device_cpu_usage",
+      "capability_id": "dashboard:v1:7a617adb"
+    },
+    {
+      "object_name": "Wanopt",
+      "metric_name": "device_memory_usage",
+      "capability_id": "dashboard:v1:40f715fe"
+    }
+  ]
+}

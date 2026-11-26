@@ -1,0 +1,313 @@
+'use client';
+
+import { ItsmListEntry } from '@/app/itsm/components/list-entry';
+
+import { PlusOutlined } from '@ant-design/icons';
+
+import { ItsmRowActions, ItsmListToolbar, ItsmCreateButton } from '@/app/itsm/components/list-controls';
+
+import { Alert, Button, Input, Select, Switch, message } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { UserSelector } from '../../components/user-selector';
+import { ItsmDrawer as OperateModal, ItsmModal } from '@/app/itsm/components/interaction-surfaces';
+import CustomTable from '@/app/itsm/components/itsm-list-table';
+import { useItsmApi } from '../../api/useItsmApi';
+import { useTranslation } from '@/utils/i18n';
+import { FieldRow } from '../../components/field-row';
+import type { WorkflowListItem } from '../../types';
+
+interface CatalogItem {
+  id: number;
+  name: string;
+  parent_id: number | null;
+}
+
+interface ServiceItem {
+  id: number;
+  name: string;
+  catalog_id: number | null;
+  workflow_id: number;
+  workflow_name?: string;
+  description: string;
+  is_hot: boolean;
+  is_enabled: boolean;
+  visibility: string;
+  visible_users: string[];
+  visible_groups: number[];
+  handler_group: number | null;
+  requires_handler_group: boolean;
+}
+
+interface GroupOption {
+  id: number;
+  name: string;
+}
+
+export default function ServiceManagePage() {
+  const { t } = useTranslation();
+  const api = useItsmApi();
+  const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([]);
+  const [catalogId, setCatalogId] = useState<number | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [editingCatalog, setEditingCatalog] = useState<CatalogItem | null>(null);
+  const [catalogName, setCatalogName] = useState('');
+  const [parentId, setParentId] = useState<number | undefined>();
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [editingService, setEditingService] = useState<ServiceItem | null>(null);
+  const [serviceName, setServiceName] = useState('');
+  const [serviceCatalogId, setServiceCatalogId] = useState<number | undefined>();
+  const [workflowId, setWorkflowId] = useState<number | undefined>();
+  const [description, setDescription] = useState('');
+  const [isHot, setIsHot] = useState(false);
+  const [canManage, setCanManage] = useState<boolean>();
+  const [visibility, setVisibility] = useState('all');
+  const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
+  const [visibleGroups, setVisibleGroups] = useState<number[]>([]);
+  const [groups, setGroups] = useState<GroupOption[]>([]);
+  const [eligibleGroups, setEligibleGroups] = useState<GroupOption[]>([]);
+  const [groupWorkflowIds, setGroupWorkflowIds] = useState<number[]>([]);
+  const [handlerGroup, setHandlerGroup] = useState<number>();
+  const [isEnabled, setIsEnabled] = useState(false);
+  const requiresGroup = workflowId !== undefined && (
+    groupWorkflowIds.includes(workflowId) ||
+    (workflowId === editingService?.workflow_id && editingService.requires_handler_group)
+  );
+  const missingGroup = requiresGroup && isEnabled && !eligibleGroups.some(group => group.id === handlerGroup);
+
+  const load = useCallback(async () => {
+    const access = await api.portal() as { can_manage?: boolean };
+    setCanManage(Boolean(access.can_manage));
+    if (!access.can_manage) return;
+    const [catalogData, serviceData, workflowData, groupData] = await Promise.all([
+      api.listCatalogs() as Promise<{ items?: CatalogItem[] }>,
+      api.listServices() as Promise<{ items: ServiceItem[]; eligible_handler_groups: GroupOption[]; requires_handler_group_workflow_ids: number[] }>,
+      api.listWorkflows() as Promise<{ items?: WorkflowListItem[] }>,
+      api.listWorkflowHandlerGroupOptions(),
+    ]);
+    setGroups(groupData.items || []);
+    setCatalogs(catalogData.items || []);
+    setServices(serviceData.items);
+    setEligibleGroups(serviceData.eligible_handler_groups);
+    setGroupWorkflowIds(serviceData.requires_handler_group_workflow_ids);
+    setWorkflows((workflowData.items || []).filter((item) => item.current_version_id));
+  }, [api.listCatalogs, api.listServices, api.listWorkflows, api.listWorkflowHandlerGroupOptions, api.portal]);
+
+  useEffect(() => {
+    if (!api.ready) {
+      return;
+    }
+    void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
+  }, [api.ready, load]);
+
+  const startCatalog = (item?: CatalogItem) => {
+    setEditingCatalog(item || null);
+    setCatalogName(item?.name || '');
+    setParentId(item?.parent_id || undefined);
+    setCatalogOpen(true);
+  };
+
+  const saveCatalog = async () => {
+    if (!catalogName.trim()) {
+      message.warning(t('itsm.portal.needCatalog'));
+      return;
+    }
+    await api.createCatalog({ id: editingCatalog?.id, name: catalogName.trim(), parent_id: parentId || null });
+    setCatalogOpen(false);
+    await load();
+  };
+
+  const startService = (item?: ServiceItem, enabled = item?.is_enabled ?? true) => {
+    setEditingService(item || null);
+    setHandlerGroup(eligibleGroups.find(group => group.id === item?.handler_group)?.id);
+    setIsEnabled(enabled);
+    setServiceName(item?.name || '');
+    setServiceCatalogId(item?.catalog_id || catalogId || undefined);
+    setWorkflowId(item?.workflow_id);
+    setDescription(item?.description || '');
+    setIsHot(Boolean(item?.is_hot));
+    setVisibility(item?.visibility || "all");
+    setVisibleUsers(item?.visible_users || []);
+    setVisibleGroups(item?.visible_groups || []);
+    setServiceOpen(true);
+  };
+
+  const saveService = async () => {
+    if (!serviceName.trim() || !workflowId) {
+      message.warning(t('itsm.portal.needService'));
+      return;
+    }
+    if (missingGroup) return;
+    await api.createService({
+      id: editingService?.id,
+      name: serviceName.trim(),
+      catalog_id: serviceCatalogId || null,
+      workflow_id: workflowId,
+      description,
+      visibility,
+      visible_users: visibleUsers,
+      visible_groups: visibleGroups,
+      is_hot: isHot,
+      is_enabled: isEnabled,
+      handler_group: requiresGroup ? handlerGroup ?? null : null,
+    });
+    setServiceOpen(false);
+    message.success(editingService ? t('itsm.portal.saved') : t('itsm.portal.created'));
+    await load();
+  };
+
+  const shown = services.filter((item) => {
+    if (catalogId && item.catalog_id !== catalogId) {
+      return false;
+    }
+    return !keyword.trim() || item.name.includes(keyword.trim());
+  });
+
+  if (canManage === false) return <Alert type="warning" message="你没有服务目录管理权限" />;
+  if (canManage === undefined) return null;
+
+  return (
+    <div className="flex min-h-0 gap-4">
+      <div className="flex w-64 shrink-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)]">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
+          <span className="text-sm font-medium text-[var(--color-text-1)]">{t('itsm.portal.catalog')}</span>
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => startCatalog()}>{t('itsm.common.create')}</Button>
+        </div>
+        <button
+          type="button"
+          className={`px-3 py-2 text-left text-sm ${catalogId === null ? 'bg-[var(--color-fill-1)] text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}
+          onClick={() => setCatalogId(null)}
+        >
+          {t('itsm.portal.allServices')}
+        </button>
+        {catalogs.map((item) => (
+          <div key={item.id} className={`flex items-center justify-between px-3 py-2 ${catalogId === item.id ? 'bg-[var(--color-fill-1)]' : ''}`}>
+            <button type="button" className="min-w-0 flex-1 truncate text-left text-sm" onClick={() => setCatalogId(item.id)}>
+              {item.parent_id ? '└ ' : ''}{item.name}
+            </button>
+            <ItsmRowActions items={[
+              {key:'edit',label:t('itsm.common.edit'),kind:'edit',onClick:()=>startCatalog(item)},
+              {key:'delete',label:t('itsm.common.delete'),kind:'delete',danger:true,confirm:{title:t('itsm.portal.deleteCatalog')},onClick:()=>api.deleteCatalog(item.id).then(load).catch((error:unknown)=>message.error(error instanceof Error ? error.message : t('itsm.portal.deleteFailed')))},
+            ]} />
+          </div>
+        ))}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+          <ItsmListToolbar search={{value:keyword,onChange:setKeyword,placeholder:t('itsm.portal.searchService')}}
+            actions={<ItsmCreateButton onClick={() => startService()} />} />
+          <CustomTable queryKey={`${catalogId}:${keyword}`}
+            rowKey="id"
+            dataSource={shown}
+            locale={{ emptyText: t('itsm.portal.emptyServices') }}
+            columns={[
+              { title: t('itsm.portal.name'), dataIndex: 'name', key: 'name', render: (value: string, item: ServiceItem) => <ItsmListEntry onClick={() => startService(item)}>{value}</ItsmListEntry> },
+              { title: t('itsm.ticket.flow'), dataIndex: 'workflow_name', key: 'workflow_name', render: (value: string) => value || '—' },
+              { title: t('itsm.portal.description'), dataIndex: 'description', key: 'description', render: (value: string) => value || '—' },
+              {
+                title: t('itsm.portal.hot'),
+                dataIndex: 'is_hot',
+                key: 'is_hot',
+                render: (value: boolean, item: ServiceItem) => (
+                  <Switch checked={value} onChange={(checked) => { void api.createService({ id: item.id, is_hot: checked }).then(load); }} />
+                ),
+              },
+              {
+                title: t('itsm.portal.enabled'),
+                dataIndex: 'is_enabled',
+                key: 'is_enabled',
+                render: (value: boolean, item: ServiceItem) => (
+                  <Switch aria-label={t('itsm.portal.toggleService', undefined, { name: item.name })} checked={value} onChange={checked => {
+                    if (checked && item.requires_handler_group) {
+                      startService(item, true);
+                      return;
+                    }
+                    void api.createService({ id: item.id, is_enabled: checked }).then(load)
+                      .catch(error => message.error(error instanceof Error ? error.message : t('itsm.ticket.loadFailed')));
+                  }} />
+                ),
+              },
+              { fixed: 'right' as const, width: 120,
+                title: t('itsm.ticket.action'),
+                key: 'actions',
+                render: (_value: unknown, item: ServiceItem) => <ItsmRowActions items={[{key: 'action-0', label: t('itsm.common.edit'), kind: 'edit' as const, onClick: () => startService(item)},
+                  {key: 'action-1', label: t('itsm.common.delete'), kind: 'delete' as const, danger: true, confirm: {title: t('itsm.portal.deleteService'), content: undefined }, onClick: () => { void api.deleteService(item.id).then(load); }}]} />,
+              },
+            ]}
+          />
+        </div>
+      </div>
+      <ItsmModal formValue={{catalogName,parentId}} title={editingCatalog ? t('itsm.portal.editCatalog') : t('itsm.portal.newCatalog')} open={catalogOpen} onCancel={() => setCatalogOpen(false)} onOk={saveCatalog}>
+        <div className="flex flex-col gap-3">
+          <FieldRow label={t('itsm.portal.name')}>
+            <Input placeholder={t('itsm.portal.catalogName')} value={catalogName} onChange={(event) => setCatalogName(event.target.value)} />
+          </FieldRow>
+          <FieldRow label={t('itsm.portal.parentCatalog')}>
+            <Select
+              className="w-full"
+              allowClear
+              placeholder={t('itsm.portal.parentCatalog')}
+              value={parentId}
+              options={catalogs.filter((item) => item.id !== editingCatalog?.id).map((item) => ({ value: item.id, label: item.name }))}
+              onChange={setParentId}
+            />
+          </FieldRow>
+        </div>
+      </ItsmModal>
+      <OperateModal formValue={{serviceName,serviceCatalogId,workflowId,description,isHot,isEnabled,handlerGroup,visibility,visibleUsers,visibleGroups}} okButtonProps={{ disabled: missingGroup }} title={editingService ? t('itsm.common.edit') : t('itsm.portal.newService')} open={serviceOpen} onCancel={() => setServiceOpen(false)} onOk={saveService}>
+        <div className="flex flex-col gap-3">
+          <FieldRow label={t('itsm.portal.name')}>
+            <Input placeholder={t('itsm.portal.serviceName')} value={serviceName} onChange={(event) => setServiceName(event.target.value)} />
+          </FieldRow>
+          <FieldRow label={t('itsm.portal.ownerCatalog')}>
+            <Select
+              className="w-full"
+              allowClear
+              placeholder={t('itsm.portal.ownerCatalog')}
+              value={serviceCatalogId}
+              options={catalogs.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={setServiceCatalogId}
+            />
+          </FieldRow>
+          <FieldRow label={t('itsm.ticket.flow')}>
+            <Select
+              className="w-full"
+              aria-label={t('itsm.ticket.flow')}
+              placeholder={workflows.length ? t('itsm.portal.bindWorkflow') : t('itsm.portal.noWorkflow')}
+              value={workflowId}
+              options={workflows.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={id => { setWorkflowId(id); setHandlerGroup(undefined); }}
+            />
+          </FieldRow>
+          {requiresGroup && <FieldRow label={t('itsm.portal.handlerGroup')} align="start">
+            <Select className="w-full" aria-label={t('itsm.portal.handlerGroup')} showSearch allowClear optionFilterProp="label"
+              placeholder={t('itsm.portal.selectHandlerGroup')} value={handlerGroup} onChange={setHandlerGroup}
+              options={eligibleGroups.map(group => ({ value: group.id, label: group.name }))} />
+            <p className="mt-1 text-xs text-[var(--color-text-3)]">
+              {t(eligibleGroups.length ? 'itsm.portal.handlerGroupHelp' : 'itsm.portal.emptyHandlerGroups')}
+            </p>
+          </FieldRow>}
+          <FieldRow label={t('itsm.portal.description')} align="start">
+            <Input.TextArea rows={3} placeholder={t('itsm.portal.description')} value={description} onChange={(event) => setDescription(event.target.value)} />
+          </FieldRow>
+          <FieldRow label="可见范围">
+            <Select className="w-full" aria-label="服务可见范围" value={visibility} onChange={setVisibility} options={[{ value: 'all', label: '全部用户' }, { value: 'restricted', label: '指定用户或组' }]} />
+          </FieldRow>
+          {visibility === 'restricted' && <>
+            <FieldRow label="用户"><UserSelector ariaLabel="可见用户" value={visibleUsers} onChange={setVisibleUsers} allowClear /></FieldRow>
+            <FieldRow label="用户组"><Select className="w-full" aria-label="可见用户组" mode="multiple" showSearch optionFilterProp="label" value={visibleGroups} onChange={setVisibleGroups} options={groups.map(item => ({ value: item.id, label: item.name }))} /></FieldRow>
+            <p className="text-xs text-[var(--color-text-3)]">用户或组内成员、负责人满足任意一项即可访问。均未选择时，仅超管可见。</p>
+          </>}
+          <FieldRow label={t('itsm.portal.enabled')}>
+            <Switch aria-label={t('itsm.portal.enabled')} checked={isEnabled} onChange={setIsEnabled} />
+          </FieldRow>
+          <FieldRow label={t('itsm.portal.hot')}>
+            <Switch checked={isHot} onChange={setIsHot} />
+          </FieldRow>
+        </div>
+      </OperateModal>
+    </div>
+  );
+}

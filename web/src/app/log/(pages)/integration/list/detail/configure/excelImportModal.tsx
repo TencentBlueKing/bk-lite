@@ -11,7 +11,7 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import type { UploadProps } from 'antd';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { excelCellToText } from '@/utils/excelCellText';
 import {
@@ -65,13 +65,13 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
     const [pluginName, setPluginName] = useState<string>('');
     const { t } = useTranslation();
     const { Dragger } = Upload;
-    const userContext = useUserInfoContext();
+    const operableGroupTree = useOperableGroupTree();
 
-    // Get group list from userContext
+    // Get group list from the current app operable org tree
     const groupList = useMemo(() => {
-      if (!userContext?.groupTree) return [];
+      if (!operableGroupTree?.length) return [];
       const treeSelectData = convertGroupTreeToTreeSelectData(
-        userContext.groupTree
+        operableGroupTree
       );
       // Recursively extract all group nodes with full path
       const flattenTree = (nodes: any[], parentPath = ''): any[] => {
@@ -92,7 +92,7 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         }, [] as any[]);
       };
       return flattenTree(treeSelectData);
-    }, [userContext?.groupTree]);
+    }, [operableGroupTree]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, columns, nodeList = [], pluginName = '' }) => {

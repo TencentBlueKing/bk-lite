@@ -23,10 +23,10 @@ function scriptLang(value: unknown): ScriptLang {
 
 function scriptTemplates(t: (id: string, defaultMessage?: string) => string): Record<ScriptLang, string> {
   return {
-    shell: t('job.scriptTemplateShell', '#!/bin/bash\n\n# 任务正常结束\njob_success() {\n    echo "[INFO] Job completed successfully"\n    exit 0\n}\n\n# 任务异常结束\njob_fail() {\n    echo "[ERROR] Job failed"\n    exit 1\n}\n\n# ---------- 在此处编写脚本逻辑 ----------\n\n\n\n# ---------- 结束 ----------\njob_success'),
-    bat: t('job.scriptTemplateBat', '@echo off\nREM 在此处编写批处理脚本\n'),
-    python: t('job.scriptTemplatePython', '#!/usr/bin/env python3\n# 在此处编写 Python 脚本\n'),
-    powershell: t('job.scriptTemplatePowershell', '# 在此处编写 PowerShell 脚本\n'),
+    shell: t('job.scriptTemplateShell', '#!/bin/bash\n# 仅支持位置参数，按填写顺序传入。\n# 示例：依次填写 prod 和 7，脚本中这样读取：\n# env_name="$1"\n# days="$2"\n\n# 任务正常结束\njob_success() {\n    echo "[INFO] Job completed successfully"\n    exit 0\n}\n\n# 任务异常结束\njob_fail() {\n    echo "[ERROR] Job failed"\n    exit 1\n}\n\n# ---------- 在此处编写脚本逻辑 ----------\n\n\n\n# ---------- 结束 ----------\njob_success'),
+    bat: t('job.scriptTemplateBat', '@echo off\nREM 作业服务和 Windows 执行器均支持 Bat 传参时，仅支持按填写顺序传入位置参数。\nREM 示例：依次填写 prod 和 7，用 %~1 读取 prod，用 %~2 读取 7。\nREM 在此处编写批处理脚本\n'),
+    python: t('job.scriptTemplatePython', '#!/usr/bin/env python3\n# 仅支持位置参数，按填写顺序传入。\n# 示例：依次填写 prod 和 7，脚本中这样读取：\n# import sys\n# env_name, days = sys.argv[1], sys.argv[2]\n# 在此处编写 Python 脚本\n'),
+    powershell: t('job.scriptTemplatePowershell', '# 仅支持位置参数，按填写顺序传入。\n# 示例：依次填写 prod 和 7，脚本中这样读取：\n# $envName = $args[0]\n# $days = $args[1]\n# 在此处编写 PowerShell 脚本\n'),
   };
 }
 

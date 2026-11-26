@@ -91,11 +91,7 @@ class ConfigFileContentLifecycle:
             ).exists()
             if published:
                 return True
-            if (
-                created_formal_object
-                and saved_key
-                and not ConfigFileVersion.objects.filter(content=saved_key).exists()
-            ):
+            if created_formal_object and saved_key and not ConfigFileVersion.objects.filter(content=saved_key).exists():
                 try:
                     storage.delete(saved_key)
                 except Exception:
@@ -207,15 +203,20 @@ class ConfigFileContentLifecycle:
         return stats
 
     @classmethod
-    def _iter_temp_object_keys(cls, storage, *, scan_limit: int):
+    def _iter_temp_object_keys(cls, storage, *, scan_limit: int, start_after: str = ""):
         prefix = cls.TEMP_PREFIX.rstrip("/") + "/"
         client = getattr(storage, "client", None)
         bucket = getattr(storage, "bucket", None)
         if client is not None and bucket:
             listed = 0
-            for obj in client.list_objects(bucket_name=bucket, prefix=prefix, recursive=True):
+            for obj in client.list_objects(
+                bucket_name=bucket,
+                prefix=prefix,
+                recursive=True,
+                start_after=start_after or "",
+            ):
                 object_name = getattr(obj, "object_name", None)
-                if not object_name:
+                if not object_name or (start_after and str(object_name) <= start_after):
                     continue
                 yield str(object_name)
                 listed += 1
@@ -226,8 +227,10 @@ class ConfigFileContentLifecycle:
         if not callable(list_object_keys):
             raise RuntimeError("object storage adapter does not support temp object listing")
         listed = 0
-        for object_name in list_object_keys(prefix):
-            yield str(object_name)
+        for object_name in sorted(str(name) for name in list_object_keys(prefix)):
+            if start_after and object_name <= start_after:
+                continue
+            yield object_name
             listed += 1
             if listed >= scan_limit:
                 return
@@ -237,26 +240,59 @@ class ConfigFileContentLifecycle:
         cls,
         *,
         retention_seconds: int = 86400,
-        batch_size: int = 100,
+        batch_size: int = 1000,
         scan_limit: int = 1000,
         now_time=None,
     ) -> int:
+        from apps.cmdb.models.repair_state import CONFIG_FILE_ORPHAN_TEMP_STAGE, CmdbRepairState
+
         current_time = now_time or now()
         cutoff = current_time - timedelta(seconds=max(1, retention_seconds))
         limit = max(1, min(int(batch_size), 1000))
         max_scan = max(limit, min(int(scan_limit), 5000))
         storage = cls._storage()
+        state, _created = CmdbRepairState.objects.get_or_create(
+            stage=CONFIG_FILE_ORPHAN_TEMP_STAGE,
+            defaults={"cursor": "", "completed": False},
+        )
+        start_after = state.cursor or ""
         deleted = 0
-        for object_key in cls._iter_temp_object_keys(storage, scan_limit=max_scan):
-            if deleted >= limit:
-                break
-            if ConfigFileVersion.objects.filter(temp_content_key=object_key).exists():
-                continue
-            try:
-                if storage.get_modified_time(object_key) >= cutoff:
+        seen = 0
+        last_success = start_after
+        stopped_early = False
+        try:
+            keys = cls._iter_temp_object_keys(storage, scan_limit=max_scan, start_after=start_after)
+            for object_key in keys:
+                seen += 1
+                if deleted >= limit:
+                    stopped_early = True
+                    break
+                if ConfigFileVersion.objects.filter(temp_content_key=object_key).exists():
+                    last_success = object_key
                     continue
-                storage.delete(object_key)
-                deleted += 1
-            except Exception:
-                logger.exception("[ConfigFileContent] 清理孤儿临时对象失败 object_key=%s", object_key)
+                try:
+                    if storage.get_modified_time(object_key) >= cutoff:
+                        last_success = object_key
+                        continue
+                    storage.delete(object_key)
+                    deleted += 1
+                    last_success = object_key
+                except Exception:
+                    logger.exception("[ConfigFileContent] 清理孤儿临时对象失败 object_key=%s", object_key)
+                    stopped_early = True
+                    break
+        except Exception as exc:
+            logger.warning(
+                "event=config_file_orphan_list_failed failed_stage=list error_type=%s",
+                type(exc).__name__,
+            )
+            if last_success != start_after:
+                state.cursor = last_success
+                state.save(update_fields=["cursor", "updated_at"])
+            return deleted
+        if stopped_early or seen >= max_scan:
+            state.cursor = last_success
+        else:
+            state.cursor = ""
+        state.save(update_fields=["cursor", "updated_at"])
         return deleted

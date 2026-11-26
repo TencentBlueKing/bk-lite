@@ -32,7 +32,7 @@ from apps.cmdb.tasks.ci_context import (  # noqa: F401
     rebuild_ci_context_runtime,
     reconcile_ci_context_pending_task,
 )
-from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, ensure_display_field_backfill_periodic_task  # noqa: F401
+from apps.cmdb.tasks.display_field_backfill import backfill_cmdb_display_fields, disable_display_field_backfill_periodic_task  # noqa: F401
 from apps.cmdb.tasks.instance_shape_repair import repair_cmdb_instance_shape  # noqa: F401
 from apps.cmdb.tasks.owner_handover import execute_owner_handover  # noqa: F401
 from apps.cmdb.tasks.transfer import cleanup_transfers, execute_transfer, maintain_transfers  # noqa: F401

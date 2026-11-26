@@ -19,11 +19,12 @@
 | LogGroup / LogGroupOrganization / SearchCondition | `models/log_group.py` | 多租户日志分组、组织权限、保存的搜索条件 |
 | Policy / PolicyOrganization / Alert / Event / EventRawData | `models/policy.py` | 日志告警策略、策略组织、生成时快照组织的告警/事件/原始日志；策略删除 SET_NULL 保留历史告警 |
 | AlertSnapshot | `models/policy.py:127` | 告警生命周期快照（存 S3/MinIO，支持压缩） |
+| SyslogSourceDevice | `models/syslog_source_device.py` | syslog 来源设备投影，唯一键 `cloud_region_id + source_ip + hostname` |
 
 **存储**：PostgreSQL（元数据）；**VictoriaLogs**（日志，`utils/query_log.py` + `constants/victoriametrics.py`，环境变量 `VICTORIALOGS_*`）；MinIO/S3 bucket `log-alert-raw-data`（`EventRawData.data` 与 `AlertSnapshot.snapshots` 均使用 `S3JSONField`，raw data 保存失败会回滚主事务）。
 
 ## 3. 接口【已实现/已存在】
-`collect_types`/`collect_instances`/`collect_configs`/`k8s_collect`/`node_mgmt`/`log_group`/`search`/`search_conditions`/`policy`/`alert`/`event`/`event_raw_data`/`system_mgmt`；开放端点 `open_api/k8s`。
+`collect_types`/`collect_instances`/`collect_configs`/`k8s_collect`/`node_mgmt`/`log_group`/`search`/`search_conditions`/`policy`/`alert`/`event`/`event_raw_data`/`system_mgmt`/`syslog_source_devices`；开放端点 `open_api/k8s`。`syslog_source_devices` 只读，不经 OpenAPI 网关。
 
 ## 4. 依赖与通信【已实现/已存在】
 - 依赖 `apps.core`（logger/异常/权限工具）、`apps.rpc.node_mgmt.NodeMgmt`（K8s 节点）。
@@ -32,8 +33,9 @@
 - 日志时间契约【已实现/已存在】：中心系统 Vector 的 NATS source 使用 `log_namespace: true` 隔离 Vector 元数据与上报负载；消费事件后，把尚未归一化的负载顶层 `timestamp` 原样移动到可选字段 `collect_timestamp`，再以 UTC `now()` 生成唯一的 `timestamp`；已有 `collect_timestamp` 时保留最早值。VictoriaLogs 只以新的 `timestamp` 生成 `_time`，`@timestamp` 与嵌套 `*.timestamp` 不在此契约范围。`timestamp` 和 `collect_timestamp` 都是日志提取器保护字段。
 - 被动接收日志提取器【已实现】：syslog / snmptrap 的提取规则归属采集类型而非日志采集实例，中心 Vector 按 `collect_type` 匹配；其余采集类型仍按实例 `instance_id` 匹配。契约见 `specs/changes/log-extractor-passive-collect/spec.md`。
 - 日志提取器 Grok【已实现】：提取类型 `grok` 由服务端模式库展开成与正则提取相同的 `parse_regex` 规则，不调用 Vector `parse_grok`。整段匹配长度为 0 时视为未命中。已发布模式定义的修正使中心 Vector 配置契约版本为 2，升级后需重新发布快照。只读目录 `GET /api/v1/log/log_extractors/grok_patterns/` 与提取器查看授权相同，无 `current_team` 时拒绝，且不经 OpenAPI 网关。契约见 `specs/changes/log-extractor-grok/spec.md`。
+- syslog 来源设备【已实现】：独立表 `SyslogSourceDevice`，唯一键是 `cloud_region_id + source_ip + hostname`。只读列表是「集成 / 来源设备」独立页，接口 `GET /api/v1/log/syslog_source_devices/` 需要菜单权限 `source_device-View`（超管放行），通过后返回全部行，不按团队拆分，不经 OpenAPI 网关。静态 beat `discover_syslog_source_devices` 每 5 分钟按云区域汇总最近 10 分钟 syslog，只更新已出现的三元组。契约见 `specs/changes/syslog-source-device/spec.md`。
 - Vector 采集配置编辑约定【已实现/已存在】：`file`、`docker` 与 `kafka_subscribe` 三类 Vector 采集器在前端编辑模式中统一读写 `child.content` 扁平结构；保存与回显保持同构，避免订阅、认证和过滤字段在“保存后再次编辑”时丢失。
-- Celery（静态 beat）：仅 `compensate_log_notice_task`（通知补偿，`config.py:5` 静态注册于 `CELERY_BEAT_SCHEDULE`，crontab `*/5` 每 5 分钟一次；实现见 `tasks/policy.py`）。
+- Celery（静态 beat）：`compensate_log_notice_task`（通知补偿，`config.py` 静态注册于 `CELERY_BEAT_SCHEDULE`，crontab `*/5` 每 5 分钟一次；实现见 `tasks/policy.py`）；`discover_syslog_source_devices`（syslog 来源设备发现，同样 `*/5`，实现见 `tasks/syslog_source_device.py`）。
 - 空处理人的活跃告警可认领 / 分派；当前处理人可转派已有处理人的活跃告警。手工关闭：没有处理人时具备操作权限即可关；已有处理人时只有当前处理人（id 或 username）能关，其他人 409 且状态不变。策略删除关闭不看处理人。认领、分派、转派、关闭写入 Event。`my_alert` 在当前可见集合上再筛处理人（主列表、`/all`、stats 同一套），不靠 `operator`。
 - Celery（动态 PeriodicTask）：`tasks/policy.py:scan_log_policy_task(policy_id)` 不在静态 `CELERY_BEAT_SCHEDULE` 中，而是在策略保存/启停时由 `views/policy.py:482` `update_or_create_task` 按策略动态创建 `django-celery-beat` 的 `PeriodicTask`（name=`log_policy_task_<policy_id>`，crontab 调度，`args=[policy_id]`）来周期触发（扫描时间窗，支持补扫，更新 `last_run_time`）。
 - 策略删除路径同事务原子化【已实现/已存在】：`PolicyViewSet.destroy`（`views/policy.py:438-444`）以 `transaction.atomic()` 包裹「先按 `name=log_policy_task_<policy_id>` 删除关联 `PeriodicTask`、再调 `super().destroy` 删除策略本身」两步；任一步抛异常时整体回滚，避免产生周期性漏扫的孤儿策略（issue #3948）。配套静态分析测试 `test_policy_destroy_atomic_3948.py` 校验 `transaction.atomic` 块与 `from django.db import transaction` 同时存在、且包裹顺序敏感（先 `PeriodicTask.delete` 后 `super().destroy`），不依赖 Django/DB，任意环境可跑。

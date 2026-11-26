@@ -8,6 +8,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "cloud_region_id",
     "appname",
     "client_metadata",
     "facility",

@@ -1,0 +1,350 @@
+{
+  "client_id": "itsm",
+  "name": "ITSM",
+  "url": "/itsm/portal",
+  "icon": "itsm",
+  "tags": [
+    "tag.itsm_portal",
+    "tag.itsm_ticket",
+    "tag.itsm_workflow",
+    "tag.itsm_form"
+  ],
+  "description": "app.itsm",
+  "menus": [
+    {
+      "name": "Portal",
+      "children": [
+        {
+          "id": "portal",
+          "name": "Portal",
+          "operation": [
+            "View"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ticket",
+      "children": [
+        {
+          "id": "ticket",
+          "name": "Ticket",
+          "operation": [
+            "View",
+            "Add",
+            "Operate",
+            "Export",
+            "Delete"
+          ]
+        },
+        {
+          "id": "ticket_center_setting",
+          "name": "Ticket Center Setting",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Workflow",
+      "children": [
+        {
+          "id": "workflow",
+          "name": "Workflow",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Draft",
+            "Delete",
+            "Publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Form",
+      "children": [
+        {
+          "id": "form",
+          "name": "Form",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete",
+            "Publish"
+          ]
+        },
+        {
+          "id": "data",
+          "name": "Data",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rule",
+      "children": [
+        {
+          "id": "rule",
+          "name": "Rule",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "status_stage",
+          "name": "Status Stage",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Application",
+      "children": [
+        {
+          "id": "knowledge",
+          "name": "Knowledge",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "duty",
+          "name": "Duty",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "change",
+          "name": "Change",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "survey",
+          "name": "Survey",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "print",
+          "name": "Print",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "handover",
+          "name": "Handover",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "biz_object",
+          "name": "Business Object",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "chat",
+          "name": "Chat",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "ai",
+          "name": "AI",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Setting",
+      "children": [
+        {
+          "id": "org",
+          "name": "Organization",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        },
+        {
+          "id": "notify",
+          "name": "Notification",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        },
+        {
+          "id": "setting",
+          "name": "Setting",
+          "operation": [
+            "View",
+            "Edit"
+          ]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "itsm--admin",
+      "menus": [
+        "portal-View",
+        "ticket-View",
+        "ticket-Add",
+        "ticket-Operate",
+        "ticket-Export",
+        "ticket-Delete",
+        "ticket_center_setting-View",
+        "ticket_center_setting-Edit",
+        "workflow-View",
+        "workflow-Add",
+        "workflow-Edit",
+        "workflow-Draft",
+        "workflow-Delete",
+        "workflow-Publish",
+        "form-View",
+        "form-Add",
+        "form-Edit",
+        "form-Delete",
+        "form-Publish",
+        "data-View",
+        "data-Add",
+        "data-Edit",
+        "data-Delete",
+        "rule-View",
+        "rule-Add",
+        "rule-Edit",
+        "rule-Delete",
+        "status_stage-View",
+        "status_stage-Edit",
+        "knowledge-View",
+        "knowledge-Add",
+        "knowledge-Edit",
+        "knowledge-Delete",
+        "duty-View",
+        "duty-Add",
+        "duty-Edit",
+        "duty-Delete",
+        "change-View",
+        "change-Add",
+        "change-Edit",
+        "change-Delete",
+        "survey-View",
+        "survey-Add",
+        "survey-Edit",
+        "survey-Delete",
+        "print-View",
+        "print-Add",
+        "print-Edit",
+        "print-Delete",
+        "handover-View",
+        "handover-Add",
+        "handover-Edit",
+        "handover-Delete",
+        "biz_object-View",
+        "biz_object-Add",
+        "biz_object-Edit",
+        "biz_object-Delete",
+        "chat-View",
+        "chat-Add",
+        "chat-Edit",
+        "chat-Delete",
+        "ai-View",
+        "ai-Add",
+        "ai-Edit",
+        "ai-Delete",
+        "org-View",
+        "org-Edit",
+        "notify-View",
+        "notify-Edit",
+        "setting-View",
+        "setting-Edit"
+      ]
+    },
+    {
+      "name": "handler",
+      "role_name": "itsm--handler",
+      "menus": [
+        "ticket-View",
+        "ticket-Operate",
+        "knowledge-View"
+      ]
+    },
+    {
+      "name": "user",
+      "role_name": "itsm--user",
+      "menus": [
+        "portal-View",
+        "ticket-View",
+        "ticket-Add"
+      ]
+    },
+    {
+      "name": "designer",
+      "role_name": "itsm--designer",
+      "menus": [
+        "workflow-View",
+        "workflow-Add",
+        "workflow-Draft",
+        "form-View",
+        "form-Add",
+        "form-Edit"
+      ]
+    }
+  ]
+}

@@ -249,7 +249,11 @@ def test_ip_or_hostname_change_does_not_create_new_pc(graph):
 
 
 @pytest.mark.django_db
-def test_create_writes_organization_and_runtime_fields(graph):
+def test_create_writes_organization_and_runtime_fields(graph, monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.handler.DisplayFieldConverter.convert_organization",
+        lambda org_ids: "平台组",
+    )
     task = _task()
 
     result = PCSnapshotReconciler(task).apply(
@@ -262,7 +266,9 @@ def test_create_writes_organization_and_runtime_fields(graph):
     assert result["pc_status"] == "added"
     created = graph.store["WIN-ABC"]
     assert created["organization"] == [7]
+    assert created["organization_display"] == "平台组"
     assert graph.store["SW-AAA"]["organization"] == [7]
+    assert graph.store["SW-AAA"]["organization_display"] == "平台组"
     assert created["model_id"] == "pc"
     assert created["auto_collect"] is True
     assert created["collect_task"] == task.id

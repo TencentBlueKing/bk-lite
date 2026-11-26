@@ -138,6 +138,7 @@ function transformRightTreeRole(
     const isOrgRole = isExplicitlySelected && (forceOrganizationRole || isDisabled || organizationRoleIds.some((key) => String(key) === String(nodeKey)));
     const organizationRoleSource = organizationRoleSourceMap[String(nodeKey)] || '';
     const isLeafNode = !node.children || node.children.length === 0;
+    const isModuleRole = (node as TreeDataNode & { builtin?: string }).builtin === 'module';
     const canDelete = forceOrganizationRole ? isExplicitlySelected : isPersonalRole;
 
     return {
@@ -146,6 +147,11 @@ function transformRightTreeRole(
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
             <span>{resolveRoleTreeLabel(node, t)}</span>
+            {isLeafNode && isModuleRole && (
+              <Tag className="font-mini" color="purple">
+                {t('system.role.moduleRole')}
+              </Tag>
+            )}
             {isLeafNode && isInherited && (
               <Tooltip title={`${t('system.role.inheritedFrom')}：${inheritedRoleSource}`}>
                 <Tag className='font-mini' color="green">
@@ -160,7 +166,7 @@ function transformRightTreeRole(
                 </Tag>
               </Tooltip>
             )}
-            {isLeafNode && isPersonalRole && (
+            {isLeafNode && isPersonalRole && !isModuleRole && (
               <Tag className='font-mini' color="blue">
                 {t('system.role.personalRole')}
               </Tag>

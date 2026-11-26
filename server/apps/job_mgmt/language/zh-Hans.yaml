@@ -125,6 +125,8 @@ error:
   target_path_required_for_distribution: "文件分发时必须指定目标路径"
   playbook_required: "Playbook执行时必须指定Playbook"
   some_targets_missing: "部分目标不存在"
+  bat_argument_invalid: "第 {index} 个 Bat 参数含有不支持的字符（双引号、控制字符或无效 Unicode）"
+  bat_arguments_too_long: "Bat 参数超出 cmd.exe 命令行长度限制"
   params_must_be_list: "参数必须是列表格式"
   params_item_must_be_dict: "第 {index} 个参数必须是字典格式"
   params_item_missing_fields: "第 {index} 个参数缺少字段: {fields}"

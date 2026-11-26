@@ -9,9 +9,11 @@ def create_targeted_notification(
     target_url: str,
     source: str,
     event_key: str,
+    recipient_domain: str = "",
 ) -> Notification | None:
     """创建可重试的定向站内通知。"""
-    recipients = list(dict.fromkeys(username.strip()[:32] for username in recipient_usernames if username.strip()))[:20]
+    max_length = 100 if recipient_domain else 32
+    recipients = list(dict.fromkeys(username.strip()[:max_length] for username in recipient_usernames if username.strip()))[:20]
     if not recipients:
         return None
     notification, _ = Notification.objects.get_or_create(
@@ -20,6 +22,7 @@ def create_targeted_notification(
             "app_module": app_module[:100],
             "content": content,
             "recipient_usernames": recipients,
+            "recipient_domain": recipient_domain,
             "target_url": target_url[:512],
             "source": source[:100],
         },

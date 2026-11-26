@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { cardListLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Alert } from 'antd';
 import DataLinkHoverMark from '@/app/ops-analysis/components/dataLinkHoverMark';
 import ChartSurface from '@/components/chart-surface';
-import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { rowScrollRead, startRowAutoScroll } from '@/app/ops-analysis/utils/rowAutoScroll';
 import {
   DEFAULT_CARD_LIST_MAX_ITEMS,
   parseCardListItems,
@@ -16,6 +17,7 @@ interface ComCardListProps {
   rawData: unknown;
   loading?: boolean;
   config?: ValueConfig;
+  screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
 }
 
@@ -23,6 +25,7 @@ const ComCardList: React.FC<ComCardListProps> = ({
   rawData,
   loading = false,
   config,
+  screenRenderContext,
   onReady,
 }) => {
   const { t } = useTranslation();
@@ -37,6 +40,8 @@ const ComCardList: React.FC<ComCardListProps> = ({
     [parsed.items],
   );
   const layout = cardListConfig?.layout === 'grid' ? 'grid' : 'list';
+  const frameRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const hasData = parsed.status === 'ready' && parsed.items.length > 0;
   const leadingStyle = cardListConfig?.leading?.style;
   const badgeStyle = cardListConfig?.badgeStyle;
@@ -47,8 +52,19 @@ const ComCardList: React.FC<ComCardListProps> = ({
     }
   }, [hasData, loading, onReady]);
 
+  useEffect(() => {
+    const viewport = listRef.current;
+    if (!viewport) return undefined;
+    return startRowAutoScroll(
+      viewport,
+      () => rowScrollRead(config, screenRenderContext?.enabled === true),
+      'article',
+      frameRef.current ?? viewport,
+    );
+  }, [config, hasData, loading, parsed.items.length, screenRenderContext?.enabled]);
+
   return (
-    <div className="h-full min-h-0 w-full">
+    <div ref={frameRef} className="h-full min-h-0 w-full">
       <ChartSurface
         loading={loading}
         hasData={hasData}
@@ -64,7 +80,7 @@ const ComCardList: React.FC<ComCardListProps> = ({
           message={`${t('dashboard.cardListOverflowWarning')} (${parsed.total}/${DEFAULT_CARD_LIST_MAX_ITEMS})`}
         />
       ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div
           data-layout={layout}
           className={

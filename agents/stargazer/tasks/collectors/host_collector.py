@@ -42,6 +42,13 @@ _UNREACHABLE_MARKERS = (
     "no route to host",
     "name or service not known",
 )
+# Ansible 把 SSH 算法协商失败标成 UNREACHABLE。这些片段必须先于该状态识别。
+_SSH_ALGORITHM_MISMATCH_MARKERS = (
+    "no matching key exchange method",
+    "no matching host key type",
+    "no matching cipher",
+    "no matching mac found",
+)
 
 
 def encode_ansible_raw_module_args(command: str) -> str:
@@ -87,6 +94,15 @@ HOST_REMOTE_OS_TYPES = frozenset({"aix", "freebsd", "hpux", "solaris"})
 SUPPORTED_OS_TYPES = {"linux", "windows", *HOST_REMOTE_OS_TYPES}
 SSH_OS_TYPES = frozenset({"linux", *HOST_REMOTE_OS_TYPES})
 DEBUG_SCRAPE_OS_TYPES = frozenset({"freebsd", "hpux", "solaris"})
+# 现场 Solaris 10 已验证的三项。前缀 "+" 追加到客户端默认列表末尾。
+# 不带未验证的 group1、ssh-dss 或 CBC。公钥选项用旧名，ansible-executor 会按本机 ssh
+# 改写成 PubkeyAcceptedAlgorithms。私钥登录不走密码 SSH 默认参数，仍靠这里带上算法。
+_SOLARIS_SSH_LEGACY_OPTIONS = (
+    "KexAlgorithms=+diffie-hellman-group14-sha1",
+    "HostKeyAlgorithms=+ssh-rsa",
+    "PubkeyAcceptedKeyTypes=+ssh-rsa",
+)
+SOLARIS_SSH_EXTRA_ARGS = " ".join(f"-o {option}" for option in _SOLARIS_SSH_LEGACY_OPTIONS)
 # module, wrap_attr, parse_attr — 名称对齐各 Remote 采集模块导出。
 _REMOTE_OS_MONITOR_SPECS: Dict[str, Tuple[str, str, str]] = {
     "aix": ("aix_os_monitor", "wrap_ksh_collect", "parse_aix_metrics_to_prometheus"),
@@ -157,6 +173,8 @@ def extract_ansible_failure_summary(result: Dict[str, Any], host: str) -> Dict[s
 def classify_ansible_failure(summary: Dict[str, Any]) -> str:
     host_status = str(summary.get("host_status") or "").upper()
     text = " ".join(str(summary.get(key) or "") for key in ("error", "stderr", "host_status")).lower()
+    if any(marker in text for marker in _SSH_ALGORITHM_MISMATCH_MARKERS):
+        return "ssh_algorithm_mismatch"
     if host_status.startswith("UNREACHABLE"):
         return "target_unreachable"
     if any(marker in text for marker in _AUTH_FAILURE_MARKERS):
@@ -620,6 +638,8 @@ class HostCollector(BaseCollector):
                 self.params.get("winrm_cert_validation"),
                 default=False,
             )
+        if os_type == "solaris":
+            host_credential["ssh_extra_args"] = SOLARIS_SSH_EXTRA_ARGS
 
         host_credentials = [host_credential]
 

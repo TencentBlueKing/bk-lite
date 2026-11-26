@@ -1,0 +1,48 @@
+# 本地验收用。JDBC 主机名固定为 postgres，与计划中的
+# jdbc:postgresql://postgres:5432/flowable 一致。
+# 平台已有 PostgreSQL 时，不要再起这里的 postgres，把 initdb 脚本挂进现有实例，
+# 并让 flowable 加入那个实例所在网络。
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${FLOWABLE_DB_USER:-flowable}
+      POSTGRES_PASSWORD: ${FLOWABLE_DB_PASSWORD:-flowable}
+      POSTGRES_DB: flowable
+    volumes:
+      - flowable_pg:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FLOWABLE_DB_USER:-flowable} -d flowable"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - flowable
+
+  flowable:
+    image: flowable/flowable-rest:7.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/flowable
+      SPRING_DATASOURCE_USERNAME: ${FLOWABLE_DB_USER:-flowable}
+      SPRING_DATASOURCE_PASSWORD: ${FLOWABLE_DB_PASSWORD:-flowable}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      FLOWABLE_REST_APP_ADMIN_USER_ID: ${FLOWABLE_USER:-admin}
+      FLOWABLE_REST_APP_ADMIN_PASSWORD: ${FLOWABLE_PASSWORD:-flowable}
+      FLOWABLE_FORM_ENABLED: "false"
+      FLOWABLE_CONTENT_ENABLED: "false"
+      FLOWABLE_CMMN_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${FLOWABLE_PORT:-8088}:8080"
+    networks:
+      - flowable
+
+networks:
+  flowable:
+    name: bklite-flowable
+
+volumes:
+  flowable_pg:

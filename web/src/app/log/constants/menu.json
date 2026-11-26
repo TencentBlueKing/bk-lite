@@ -62,6 +62,11 @@
                   "url": "/log/integration/list/detail/extractor",
                   "name": "integration_extractor",
                   "isNotMenuItem": true
+                },
+                {
+                  "url": "/log/integration/list/detail/source-device",
+                  "name": "integration_source_device",
+                  "isNotMenuItem": true
                 }
               ]
             },
@@ -78,6 +83,12 @@
           "icon": "caijiqi",
           "url": "/log/integration/receive",
           "name": "receive"
+        },
+        {
+          "title": "来源设备",
+          "icon": "jiedianguanli",
+          "url": "/log/integration/source-device",
+          "name": "source_device"
         },
         {
           "title": "日志分组",
@@ -151,6 +162,11 @@
                   "url": "/log/integration/list/detail/extractor",
                   "name": "integration_extractor",
                   "isNotMenuItem": true
+                },
+                {
+                  "url": "/log/integration/list/detail/source-device",
+                  "name": "integration_source_device",
+                  "isNotMenuItem": true
                 }
               ]
             },
@@ -167,6 +183,12 @@
           "icon": "caijiqi",
           "url": "/log/integration/receive",
           "name": "receive"
+        },
+        {
+          "title": "Source devices",
+          "icon": "jiedianguanli",
+          "url": "/log/integration/source-device",
+          "name": "source_device"
         },
         {
           "title": "Log Grouping",

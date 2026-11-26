@@ -159,6 +159,33 @@ export const getDeepestMatchedMenuItems = (
 };
 
 /**
+ * Children of the section that owns this path.
+ * A directory only groups pages: the sidebar stays on the page that has the
+ * section links, including when that page sits under a folder without its own url.
+ */
+export const findSectionMenuChildren = (
+  menus: MenuItem[],
+  pathname: string,
+): MenuItem[] => {
+  const visit = (items: MenuItem[]): MenuItem[] | null => {
+    for (const item of items) {
+      if (item.url && isMenuPathMatch(item.url, pathname) && !item.isDirectory) {
+        return item.children ?? [];
+      }
+    }
+    for (const item of items) {
+      if (!item.children?.length) continue;
+      if (!item.url || item.isDirectory || !isMenuPathMatch(item.url, pathname)) {
+        const nested = visit(item.children);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+  return visit(menus) ?? [];
+};
+
+/**
  * Get the first-layer siblings of the matched menu item for the current path.
  * If the matched item is at the first layer, returns its siblings.
  * If the matched item is deeper, returns the children of the first-layer ancestor.
@@ -251,7 +278,8 @@ export const resolveSegmentedSelectedUrl = (
   const exact = items.find((menu) => menu.url === pathname)?.url;
   if (exact) return exact;
 
-  const prefix = items.find((menu) => menu.url && pathname.startsWith(menu.url))?.url;
+  const prefix = items.filter((menu) => menu.url && isMenuPathMatch(menu.url, pathname))
+    .reduce<string | undefined>((best, menu) => !best || menu.url.length > best.length ? menu.url : best, undefined);
   if (prefix) return prefix;
 
   const lastSegment = pathname.split('/').filter(Boolean).pop();

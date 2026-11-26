@@ -169,6 +169,21 @@ describe('UserDetailDrawer', () => {
     expect(screen.queryByText('Inherited from Default')).not.toBeNull();
   });
 
+  it('shows app-specific module role labels without renaming ordinary roles', async () => {
+    mockGetUserDetail.mockResolvedValue({
+      ...mockPayload,
+      effective_roles: ['module_admin', 'module_auditor', 'normal'].map((name, index) => ({
+        id: index + 1, name, app: 'cmdb', sources: [{ kind: 'direct' }],
+      })),
+    });
+    render(<UserDetailDrawer open={true} userId="1" onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('配置平台管理员')).not.toBeNull());
+    expect(screen.queryByText('配置平台审计员')).not.toBeNull();
+    expect(screen.queryByText('normal')).not.toBeNull();
+    expect(screen.queryByText('module_admin')).toBeNull();
+    expect(screen.queryByText('module_auditor')).toBeNull();
+  });
+
   it('shows an auditor chip instead of the role table', async () => {
     mockGetUserDetail.mockResolvedValue({
       ...mockPayload,

@@ -27,6 +27,7 @@ ACCESS_CHECK_MODEL_IDS = frozenset(
         "aliyun_account",
         "qcloud",
         "hwcloud",
+        "volcengine_account",
         "fusioninsight",
         "vmware_vc",
         "hyperv_host",

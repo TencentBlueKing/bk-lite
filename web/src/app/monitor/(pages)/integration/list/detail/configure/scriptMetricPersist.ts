@@ -820,6 +820,15 @@ export const findDuplicateDisplayNames = (
   return found;
 };
 
+/** 目录短名保持 stdout 名；定义查询同时覆盖历史 name 与采集写出的 name_value。 */
+export const buildScriptBusinessMetricQuery = (name: string): string => {
+  const text = String(name || '').trim();
+  if (!text) {
+    return '';
+  }
+  return `(${text}{__$labels__} or ${text}_value{__$labels__})`;
+};
+
 export const buildScriptMetricRegisterPayload = (
   item: BusinessMetricItem,
   targetObjectId: string | number,
@@ -831,7 +840,7 @@ export const buildScriptMetricRegisterPayload = (
   metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
   name: item.name,
   display_name: item.name,
-  query: `${item.name}{__$labels__}`,
+  query: buildScriptBusinessMetricQuery(item.name),
   unit: resolvePersistCatalogUnitId(item.unit),
   data_type: inferCatalogDataType(),
   description: resolveCatalogDescription(item.description),

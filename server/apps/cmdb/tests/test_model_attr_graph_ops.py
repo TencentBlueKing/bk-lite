@@ -79,6 +79,7 @@ def test_create_model_attr_writes_attr_and_change_record(monkeypatch):
 def test_create_model_attr_tag_and_enum_public_library(monkeypatch):
     graph = _Graph()
     monkeypatch.setattr("apps.cmdb.services.model.create_change_record", lambda **kw: None)
+    monkeypatch.setattr(ModelManage, "_request_display_instance_backfill", lambda: None)
     monkeypatch.setattr(
         "apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change",
         lambda model_id: None,

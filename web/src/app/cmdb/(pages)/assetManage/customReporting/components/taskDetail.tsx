@@ -6,7 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import type {
   CustomReportingBatch,
   CustomReportingCredential,
@@ -47,7 +47,7 @@ export default function TaskDetail({
   onOpenBatchReview,
 }: TaskDetailProps) {
   const { t } = useTranslation();
-  const { groupTree } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const {
     getTaskDetail,
     getOnboardingDocument,

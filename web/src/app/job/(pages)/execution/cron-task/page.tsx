@@ -7,11 +7,13 @@ import {
   message,
   Popconfirm,
   Tag,
+  Tooltip,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { describeCron } from '@/app/job/utils/scheduleDescription';
 import useJobApi from '@/app/job/api';
 import { ScheduledTask } from '@/app/job/types';
 import { ColumnItem } from '@/types';
@@ -163,9 +165,16 @@ const CronTaskPage = () => {
       width: 220,
       render: (text: string, record: ScheduledTask) => {
         if (record.schedule_type === 'once') {
-          return <span>{record.scheduled_time ? dayjs(record.scheduled_time).format('YYYY-MM-DD HH:mm:ss') : '-'}</span>;
+          return record.scheduled_time
+            ? t('job.scheduleOnce', undefined, { time: formatTime(record.scheduled_time) })
+            : '-';
         }
-        return <span>{text || '-'}</span>;
+        if (!text?.trim()) return '-';
+        return (
+          <Tooltip title={text}>
+            <span>{describeCron(text, t)}</span>
+          </Tooltip>
+        );
       },
     },
     {

@@ -12,6 +12,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -102,6 +103,7 @@ def _build_actor_context(request):
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": request.user.is_superuser,
     }
@@ -320,7 +322,9 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         target = self.get_object()
         user = request.user
         team = self._validate_current_team_permission(request)
-        if not has_unrestricted_org_scope(user):
+        from apps.core.utils.module_scope import client_id_from_module
+
+        if not has_unrestricted_org_scope(user, client_id_from_module(self.__class__.__module__)):
             include_children = request.COOKIES.get("include_children") == "1"
             if not self.get_has_permission(user, target, team, is_check=True, include_children=include_children):
                 raise PermissionDenied()

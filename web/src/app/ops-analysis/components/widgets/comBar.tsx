@@ -3,6 +3,7 @@ import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { applyBarLineGuides, withoutReferenceGuideSeries } from '@/app/ops-analysis/utils/barLineGuides';
 import {
   CHART_DISPLAY_I18N,
   presentBar,
@@ -345,32 +346,14 @@ const BarChart: React.FC<BarChartProps> = ({
       ];
     }
 
-    // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
-    // 跳过基线 0，只挂在第一条系列上。
-    const thresholdLines = (config?.thresholdColors || [])
-      .map((th) => ({ value: Number(th.value), color: th.color }))
-      .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
-    if (thresholdLines.length > 0 && built.series.length > 0) {
-      built.series[0].markLine = {
-        symbol: 'none',
-        silent: true,
-        data: thresholdLines.map((th) => ({
-          yAxis: th.value,
-          lineStyle: {
-            color: th.color,
-            type: 'dashed',
-            width: scaleScreenMetricFloat(1.5, screenRenderContext),
-          },
-          label: {
-            show: true,
-            position: 'insideEndTop',
-            formatter: String(th.value),
-            color: th.color,
-            fontSize: scaleScreenMetric(10, screenRenderContext),
-          },
-        })),
-      };
-    }
+    applyBarLineGuides(built, {
+      chart: 'bar',
+      display: readChartDisplay(config),
+      data: chartData,
+      thresholdColors: config?.thresholdColors,
+      scale: (px) => scaleScreenMetric(px, screenRenderContext),
+      scaleFloat: (px) => scaleScreenMetricFloat(px, screenRenderContext),
+    });
 
     return built;
   }, [
@@ -392,7 +375,7 @@ const BarChart: React.FC<BarChartProps> = ({
     yAxisName,
   ]);
 
-  const legendData = option.series.map((item: { name?: string }) => ({
+  const legendData = withoutReferenceGuideSeries(option.series).map((item: { id?: string; name?: string }) => ({
     name: item.name || t('topology.treeValueTitle'),
   }));
 

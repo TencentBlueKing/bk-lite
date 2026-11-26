@@ -29,7 +29,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         audience_query = Q(recipient_usernames=[])
         if username:
             audience_query |= build_json_membership_query(queryset, "recipient_usernames", [username])
-        return queryset.filter(audience_query)
+        return queryset.filter(audience_query, recipient_domain__in=["", getattr(self.request.user, "domain", "")])
 
     def _annotate_user_read(self, queryset):
         """为 queryset 标注当前用户的已读状态"""

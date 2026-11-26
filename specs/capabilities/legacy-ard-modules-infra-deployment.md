@@ -13,7 +13,7 @@
 | KingbaseES 兼容补丁【已实现】 | 当 `DB_ENGINE=postgresql` 且 `PG_COMPAT=kingbase` 时启用 KingbaseES 兼容补丁 | `database.py:199,213,219` |
 | Vastbase G100 兼容补丁【已实现】 | 当 `DB_ENGINE=postgresql` 且 `PG_COMPAT=vastbase` 时启用 Vastbase B(MySQL)兼容模式补丁；openGauss 内核、上报 PG 9.2.4，覆盖版本门 / introspection PG12+ 语法 / IDENTITY 退化 serial / `ON CONFLICT` 无 target / 序列重置 / 两种驱动的 timestamptz | `database.py:234` |
 | Redis / LocMem | 缓存：`REDIS_CACHE_URL` 非空时 `default`=Redis，否则=LocMem；另预置 `db`(DatabaseCache)/`dummy` 命名别名 | `cache.py:6-25` |
-| RabbitMQ | Celery broker（默认 `amqp://admin:password@rabbitmq.lite/`） | `celery.py` |
+| Redis | Celery broker（默认 `redis://127.0.0.1:6379/1`，可用 `CELERY_BROKER_URL` 覆盖） | `celery.py` |
 | NATS | RPC / pub-sub / 权限同步（namespace `bklite`，JetStream 默认关闭）；支持 TLS（`_create_ssl_context()`）与 user/password/token 认证、重连参数【已实现】 | `nats.py:10-72` |
 | MinIO / S3 | 对象存储；private buckets：`rewind-private`、`munchkin-private`、`log-alert-raw-data`、`monitor-alert-raw-data`、`apm-alert-snapshots`、`job-mgmt-private`、`cmdb-config-file`、`patch-mgmt-private`、`patch-mgmt-packages`、`operation-analysis-private`；public buckets：`rewind-public`、`munchkin-public`【已实现】 | `minio.py:19-31` |
 | VictoriaMetrics | 指标时序 | `monitor/utils/victoriametrics_api.py` |
@@ -55,7 +55,7 @@
 ## 5. 风险 / 待确认
 - 完整部署清单与编排（除采集器外）【待确认】。
 - MinIO 内置默认凭据已移除（BL-NEW-006）：`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` 默认空字符串，仅从 env 读取，未配置即因凭据无效连接失败，不再以众所周知的默认账户访问对象存储（`minio.py:11-15`）。【已实现】
-- 默认凭据风险聚焦 RabbitMQ：`CELERY_BROKER_URL` 默认 `amqp://admin:password@rabbitmq.lite/`，生产需加固（`celery.py:13`）。【已实现风险】
+- Celery broker 默认本机 Redis `redis://127.0.0.1:6379/1`，不再内置 RabbitMQ 账号。生产用 `CELERY_BROKER_URL` 覆盖（`celery.py`）。
 - JetStream 生产启用与否影响 job 日志/安装【已实现风险】。
 
 ## 2026-07-01 Code-ARD 校准

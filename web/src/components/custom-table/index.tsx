@@ -367,6 +367,7 @@ const CustomTable = <T extends object>({
             showSizeChanger={pagination?.showSizeChanger ?? true}
             current={pagination?.current}
             pageSize={pagination?.pageSize}
+            pageSizeOptions={pagination?.pageSizeOptions ?? [10, 20, 50, 100]}
             onChange={handlePageChange}
             showTotal={(total) => (
               <div className="flex items-center">

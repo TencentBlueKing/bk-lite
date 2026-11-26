@@ -1,0 +1,4 @@
+message:
+  health_ok: "Flowable is reachable"
+error:
+  flowable_unreachable: "Flowable is unreachable"

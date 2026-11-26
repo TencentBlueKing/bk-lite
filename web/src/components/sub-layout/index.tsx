@@ -172,7 +172,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
         </>
       ) : (
         <div className={`flex h-full min-h-0 min-w-0 w-full flex-col ${sideMenuStyle.segmented}`}>
-          {menuItems.length > 0 && !screenMode ? (
+          {menuItems.length > 1 && !screenMode ? (
             <>
               <div className={sideMenuStyle.segmentedNav}>
                 <Segmented

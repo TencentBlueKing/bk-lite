@@ -180,6 +180,7 @@ FILE_HANDLER_FILES = {
     "patch-mgmt": "patch-mgmt.log",
     "workflow": "workflow.log",
     "module-link": "module-link.log",
+    "itsm": "itsm.log",
 }
 
 APP_LOGGER_FILE_HANDLERS = {
@@ -203,6 +204,7 @@ APP_LOGGER_FILE_HANDLERS = {
     "patch-mgmt": "patch-mgmt",
     "workflow": "workflow",
     "module-link": "module-link",
+    "itsm": "itsm",
 }
 
 

@@ -1178,6 +1178,83 @@ class TestAnsibleFailureSummary:
         assert summary["exit_code"] == "4"
         assert classify_ansible_failure(summary) == "target_unreachable"
 
+    @pytest.mark.parametrize(
+        ("stderr", "expected"),
+        [
+            (
+                "Failed to connect to the host via ssh: Unable to negotiate with the host port 22: "
+                "no matching key exchange method found. Their offer: gss-group1-sha1-toWM5Slw5",
+                "ssh_algorithm_mismatch",
+            ),
+            (
+                "Unable to negotiate with the host port 22: no matching host key type found. Their offer: ssh-rsa,ssh-dss",
+                "ssh_algorithm_mismatch",
+            ),
+            (
+                "Unable to negotiate with the host port 22: no matching cipher found. Their offer: aes128-cbc,3des-cbc",
+                "ssh_algorithm_mismatch",
+            ),
+            (
+                "Unable to negotiate with the host port 22: no matching MAC found. Their offer: hmac-sha1",
+                "ssh_algorithm_mismatch",
+            ),
+            ("Failed to connect to the host via ssh: Connection timed out", "target_unreachable"),
+            ("Failed to connect to the host via ssh: Connection refused", "target_unreachable"),
+            ("Failed to connect to the host via ssh: No route to host", "target_unreachable"),
+        ],
+    )
+    def test_algorithm_mismatch_wins_over_unreachable_status(self, stderr, expected):
+        summary = {
+            "error": "ansible adhoc failed with exit code 4",
+            "host_status": "UNREACHABLE",
+            "stderr": stderr,
+        }
+
+        assert classify_ansible_failure(summary) == expected
+
+    def test_logs_ssh_algorithm_mismatch_without_rewriting_unreachable_status(self, caplog):
+        stderr = (
+            "Failed to connect to the host via ssh: Unable to negotiate with the host port 22: "
+            "no matching key exchange method found. Their offer: gss-group1-sha1-toWM5Slw5"
+        )
+        result = {
+            "success": False,
+            "error": "ansible adhoc failed with exit code 4",
+            "result": [
+                {
+                    "host": "10.233.2.31",
+                    "raw_status": "UNREACHABLE",
+                    "exit_code": 4,
+                    "stderr": f"password={self.SENTINEL_PASSWORD} {stderr}",
+                }
+            ],
+        }
+
+        with caplog.at_level("ERROR", logger="stargazer.host_collector"):
+            with pytest.raises(RuntimeError) as exc_info:
+                self._collector().process_adhoc_result(result)
+
+        message = str(exc_info.value)
+        assert isinstance(exc_info.value, RuntimeError)
+        assert message.startswith("Host collection failed: ansible adhoc failed with exit code 4")
+        assert "host_status=UNREACHABLE" in message
+        assert "no matching key exchange method found" in message
+        assert self.SENTINEL_PASSWORD not in message
+        summary = extract_ansible_failure_summary(result, "10.233.2.31")
+        assert summary["host_status"] == "UNREACHABLE"
+        assert classify_ansible_failure(summary) == "ssh_algorithm_mismatch"
+        records = [item for item in caplog.records if item.name == "stargazer.host_collector"]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == ANSIBLE_ADHOC_FAILED_LOG_TEMPLATE
+        assert record.args[2] == "UNREACHABLE"
+        assert record.args[-1] == "ssh_algorithm_mismatch"
+        rendered = record.getMessage()
+        assert "error_type=ssh_algorithm_mismatch" in rendered
+        assert "host_status=UNREACHABLE" in rendered
+        assert self.SENTINEL_PASSWORD not in rendered
+        assert self.SENTINEL_PASSWORD not in "".join(map(str, record.args))
+
 
 class TestHostCollectorHelpers:
     def test_extract_json_payload_returns_first_complete_json_object(self):
@@ -1310,6 +1387,58 @@ class TestHostCollectorCredentialDecoding:
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "literal%23password"
+
+
+SOLARIS_LEGACY_SSH_EXTRA_ARGS = (
+    "-o KexAlgorithms=+diffie-hellman-group14-sha1 "
+    "-o HostKeyAlgorithms=+ssh-rsa "
+    "-o PubkeyAcceptedKeyTypes=+ssh-rsa"
+)
+
+
+class TestSolarisLegacySshArgs:
+    def _collector(self, os_type, **extra):
+        params = {
+            "host": "10.1.1.1",
+            "os_type": os_type,
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "node1",
+        }
+        params.update(extra)
+        return HostCollector(params)
+
+    def test_solaris_password_auth_carries_legacy_ssh_args_and_env_ksh(self):
+        config = self._collector("solaris")._resolve_execution_config()
+        credential = config["host_credentials"][0]
+
+        assert credential["ssh_extra_args"] == SOLARIS_LEGACY_SSH_EXTRA_ARGS
+        assert "+diffie-hellman-group14-sha1" in credential["ssh_extra_args"]
+        assert "HostKeyAlgorithms=+ssh-rsa" in credential["ssh_extra_args"]
+        assert "PubkeyAcceptedKeyTypes=+ssh-rsa" in credential["ssh_extra_args"]
+        assert "diffie-hellman-group1-sha1" not in credential["ssh_extra_args"]
+        assert "ssh-dss" not in credential["ssh_extra_args"]
+        command = json.loads(config["module_args"])["_raw_params"]
+        assert command.startswith("/usr/bin/env LC_ALL=C LANG=C /usr/bin/ksh <<'")
+
+    def test_solaris_private_key_auth_carries_the_same_ssh_args(self):
+        config = self._collector(
+            "solaris",
+            auth_type="private_key",
+            private_key_content="line1%0Aline2",
+            password="",
+        )._resolve_execution_config()
+        credential = config["host_credentials"][0]
+
+        assert credential["ssh_extra_args"] == SOLARIS_LEGACY_SSH_EXTRA_ARGS
+        assert "password" not in credential
+        assert credential["private_key_content"] == "line1\nline2"
+
+    @pytest.mark.parametrize("os_type", ["linux", "windows", "aix", "freebsd", "hpux"])
+    def test_other_os_does_not_carry_solaris_ssh_args(self, os_type):
+        credential = self._collector(os_type)._resolve_execution_config()["host_credentials"][0]
+
+        assert "ssh_extra_args" not in credential
 
 
 @pytest.mark.asyncio

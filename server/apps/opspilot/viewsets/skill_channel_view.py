@@ -10,6 +10,7 @@ from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.models import LLMSkill, SkillChannel
 from apps.opspilot.serializers.skill_channel_serializer import SkillChannelSerializer
+from apps.opspilot.services.history_analysis import channel_types_field
 from apps.opspilot.services.skill_channel_account_association import list_account_association_options
 from apps.opspilot.services.skill_channel_chat_service import (
     SkillChannelChatError,
@@ -157,9 +158,12 @@ class SkillChannelViewSet(HistoryAnalysisActions, LanguageViewSet):
             page_size = int(request.query_params.get("page_size") or 10)
             person = (request.query_params.get("person") or "").strip()
             title = (request.query_params.get("title") or "").strip()
+            raw_types = request.query_params.get("channel_types")
+            channel_types = None if raw_types is None else channel_types_field().run_validation(raw_types.split(",") if raw_types else [])
             data = list_skill_conversations_for_admin(
                 skill_id=skill_id_int,
                 channel_id=channel_id,
+                channel_types=channel_types,
                 person=person,
                 title=title,
                 start_time=request.query_params.get("start_time") or "",

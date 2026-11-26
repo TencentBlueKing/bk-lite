@@ -3,6 +3,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
@@ -30,6 +31,7 @@ def _build_actor_context(request, *, require_current_team=False):
         "username": getattr(user, "username", None),
         "domain": getattr(user, "domain", "domain.com"),
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": bool(getattr(user, "is_superuser", False)),
         "group_list": normalize_user_group_ids(getattr(user, "group_list", [])),

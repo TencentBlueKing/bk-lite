@@ -129,7 +129,7 @@ from apps.monitor.services.nats_query_contract import normalize_positive_int as 
 from apps.monitor.services.nats_query_contract import normalize_step as _normalize_step
 from apps.monitor.services.nats_query_contract import normalize_time_value as _normalize_time_value
 from apps.monitor.services.nats_query_contract import paginate_items as _paginate_items
-from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
+from apps.monitor.services.network_device_resource_top import CPU_MEMORY_OBJECT_NAMES, NETWORK_DEVICE_TYPE_ID, NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
 from apps.monitor.services.range_step import explicit_range_step as _explicit_range_step
 from apps.monitor.services.range_step import resolve_range_step as _resolve_range_step
@@ -663,6 +663,9 @@ def _get_authorized_monitor_instances(
     scope_ids,
     monitor_obj_id: Optional[str] = None,
     requested_ids: list[str] | None = None,
+    *,
+    monitor_object_type_id: str | None = None,
+    monitor_object_names=None,
 ):
     instance_permissions, cur_team, error = _get_global_monitor_instance_permissions(
         user_info,
@@ -680,6 +683,10 @@ def _get_authorized_monitor_instances(
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
     if requested_ids:
         instance_queryset = _limit_queryset_to_requested_instances(instance_queryset, requested_ids)
+    if monitor_object_type_id:
+        instance_queryset = instance_queryset.filter(monitor_object__type_id=monitor_object_type_id)
+    if monitor_object_names:
+        instance_queryset = instance_queryset.filter(monitor_object__name__in=list(monitor_object_names))
     instance_queryset = instance_queryset.select_related("monitor_object").prefetch_related("monitorinstanceorganization_set").distinct()
 
     authorized_instances = {}
@@ -1197,11 +1204,16 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
         end_sec = int(end_time) / 1000
         step_seconds = Metrics.parse_step_to_seconds(step)
         for metric, dimensions, instance_id_keys in metric_queries:
-            query = _build_metric_label_query(
-                metric.query,
-                instance_ids=instance_ids,
-                dimensions=dimensions,
-                instance_id_keys=instance_id_keys,
+            from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+            query = isolate_metric_query(
+                _build_metric_label_query(
+                    metric.query,
+                    instance_ids=instance_ids,
+                    dimensions=dimensions,
+                    instance_id_keys=instance_id_keys,
+                ),
+                metric,
             )
             result = Metrics.get_metrics_range(
                 query,
@@ -1455,7 +1467,11 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
     if not instance:
         return {"result": False, "data": [], "message": unresolved_monitor_instance_message([instance_id])}
 
-    metrics = Metric.objects.filter(monitor_object=monitor_obj).select_related("metric_group").order_by("metric_group__sort_order", "sort_order")
+    metrics = (
+        Metric.objects.filter(monitor_object=monitor_obj)
+        .select_related("metric_group", "monitor_plugin")
+        .order_by("metric_group__sort_order", "sort_order")
+    )
     if only_with_data:
         total_count = metrics.count()
         start = (page - 1) * page_size
@@ -1473,9 +1489,14 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
         for metric in metrics:
             if metric.query:
-                query_by_metric_id[metric.id] = _build_metric_label_query(
-                    metric.query,
-                    instance_ids=[instance.id],
+                from apps.monitor.utils.script_series_isolation import isolate_metric_query
+
+                query_by_metric_id[metric.id] = isolate_metric_query(
+                    _build_metric_label_query(
+                        metric.query,
+                        instance_ids=[instance.id],
+                    ),
+                    metric,
                 )
         vm_api = VictoriaMetricsAPI()
 
@@ -3102,9 +3123,15 @@ def get_zombie_host_report(  # noqa: C901
     return {"result": True, "data": _zombie_page_data(display_rows, page, page_size), "message": ""}
 
 
+def _network_device_rank_deadline():
+    from apps.monitor.utils.query_deadline import resolve_nats_deadline
+
+    return resolve_nats_deadline(None)
+
+
 @nats_client.register
 def get_network_device_resource_top(metric_type: str, *args, **kwargs):
-    """Return the latest authorized network-device CPU, memory, or traffic Top10."""
+    """Return the latest authorized network-device CPU, memory, or traffic Top N."""
     try:
         metric_type = validate_network_metric_type(metric_type)
     except ValueError as exc:
@@ -3120,7 +3147,13 @@ def get_network_device_resource_top(metric_type: str, *args, **kwargs):
     _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
     if error:
         return error
-    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    object_names = CPU_MEMORY_OBJECT_NAMES if metric_type in {"cpu", "memory"} else None
+    authorized_instances, error = _get_authorized_monitor_instances(
+        user_info,
+        scope_ids,
+        monitor_object_type_id=NETWORK_DEVICE_TYPE_ID,
+        monitor_object_names=object_names,
+    )
     if error:
         return error
     if not authorized_instances:
@@ -3131,6 +3164,7 @@ def get_network_device_resource_top(metric_type: str, *args, **kwargs):
             metric_type,
             list(authorized_instances.values()),
             limit=limit,
+            deadline=_network_device_rank_deadline(),
         )
     except Exception:
         logger.exception("network device resource top query failed metric_type=%s", metric_type)
@@ -3316,6 +3350,7 @@ def _get_nats_actor_scope(user_info):
         "username": username,
         "domain": domain,
         "current_team": current_team,
+        "app": "monitor",
     }
     try:
         scope_result = SystemMgmt().get_authorized_groups_scoped(
@@ -3899,6 +3934,7 @@ def get_monitor_effective_plugins(monitor_object_id=None, instance_id=None, user
         "is_superuser": scope.is_superuser,
         "group_list": [],
         "data_scope": scope,
+        "app": "monitor",
     }
     try:
         data = load_authorized_effective_plugins(

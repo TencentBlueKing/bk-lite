@@ -297,6 +297,7 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                         stream_publish=windows_publish,
                         stream_log_topic=windows_topic,
                         execution_id=windows_execution_id,
+                        bat_args=(request.extra_vars or {}).get("bklite_secret_bat_args"),
                         windows_interpreter=_windows_python_executable(_resolve_python_interpreter(request.extra_vars)),
                     )
                     workspace = None

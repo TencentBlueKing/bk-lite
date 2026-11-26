@@ -706,6 +706,80 @@ class TestSkillConversationHistory:
         assert "plat-1" not in sessions
         assert "wx-other" not in sessions
 
+    def test_platform_answer_feedback_is_persisted_and_owner_scoped(self):
+        from apps.opspilot.services.skill_channel_chat_service import saas_external_user_id
+
+        skill = _skill()
+        channel = self._web_channel(skill, channel_type=SkillChannelChoices.PLATFORM)
+        other_channel = self._web_channel(_skill(name="other"), channel_type=SkillChannelChoices.PLATFORM)
+        owner = _superuser("feedback_owner")
+        other = _superuser("feedback_other")
+        conv = SkillConversation.objects.create(session_id="feedback", skill=skill, channel=channel, external_user_id=saas_external_user_id(owner))
+        question = conv.messages.create(role="user", content="问题")
+        answer = conv.messages.create(role="assistant", content="回答")
+        factory = APIRequestFactory()
+
+        def vote(value, *, user=owner, row=answer, session=conv.session_id, channel_id=channel.id, team="1", **fields):
+            request = factory.post(f"/?channel_id={channel_id}", {"feedback": value, "session_id": session, **fields}, format="json")
+            request.user = user
+            request.COOKIES["current_team"] = team
+            return opspilot_views.set_platform_answer_feedback(request, row.id).status_code
+
+        def saved_feedback():
+            request = factory.get("/", {"session_id": conv.session_id})
+            request.user = owner
+            messages = json.loads(opspilot_views.list_skill_channel_session_messages(request).content)["data"]["messages"]
+            return messages[-1]["feedback"]
+
+        assert saved_feedback() is None
+        for value in ("like", "like", "dislike", None, "like"):
+            assert vote(value) == 200
+            assert saved_feedback() == value
+        assert vote("dislike", user=other) == 404
+        assert vote("dislike", user=None) == 401
+        assert vote("dislike", session="other") == 404
+        assert vote("dislike", channel_id=other_channel.id) == 404
+        assert vote("dislike", row=question) == 404
+        assert vote("dislike", team="2") == 403
+        assert vote("invalid") == 400
+        assert saved_feedback() == "like"
+
+        detail = {"reason": "inaccurate", "comment": "阈值不对"}
+        assert vote("dislike", feedback_detail=detail) == 404
+        assert vote("dislike") == 200
+        assert vote("dislike", feedback_detail=detail, user=other) == 404
+        assert vote("dislike", feedback_detail={"comment": "x" * 501}) == 400
+        assert vote("dislike", feedback_detail={"reason": "unknown"}) == 400
+        assert vote("dislike", feedback_detail=detail) == 200
+        assert vote("dislike") == 200
+        history = factory.get("/", {"session_id": conv.session_id})
+        history.user = owner
+        rows = json.loads(opspilot_views.list_skill_channel_session_messages(history).content)["data"]["messages"]
+        assert rows[-1]["feedback_detail"] == {**detail, "reasons": ["inaccurate"]}
+        for value in ("like", None):
+            assert vote("dislike") == 200
+            assert vote("dislike", feedback_detail=detail) == 200
+            assert vote(value) == 200
+            assert vote("dislike", feedback_detail=detail) == 404
+            answer.refresh_from_db()
+            assert answer.feedback == value
+            assert (answer.feedback_reasons, answer.feedback_comment) == ([], "")
+
+        for rating, tags in (("like", ["good_content", "fast"]), ("dislike", ["wrong_length", "inaccurate"])):
+            assert vote(rating) == 200
+            assert vote(rating, feedback_detail={"reasons": tags, "comment": "说明"}) == 200
+            assert vote(rating) == 200
+            assert vote(rating, feedback_detail={"reasons": tags * 2}) == 400
+            assert vote(rating, feedback_detail={"reasons": ["invalid"]}) == 400
+            rows = json.loads(opspilot_views.list_skill_channel_session_messages(history).content)["data"]["messages"]
+            assert rows[-1]["feedback_detail"]["reasons"] == tags
+            assert rows[-1]["feedback_detail"]["comment"] == "说明"
+            other_rating = "dislike" if rating == "like" else "like"
+            assert vote(other_rating) == 200
+            assert vote(rating, feedback_detail={"reasons": tags}) == 404
+            answer.refresh_from_db()
+            assert answer.feedback_reasons == [] and answer.feedback_comment == ""
+
     def test_messages_and_delete_are_owner_scoped(self):
         skill = _skill()
         web = self._web_channel(skill)

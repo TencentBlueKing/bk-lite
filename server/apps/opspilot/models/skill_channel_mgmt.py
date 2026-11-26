@@ -81,6 +81,7 @@ class SkillConversation(TimeInfo):
         blank=True,
     )
     external_user_id = models.CharField(max_length=255, blank=True, default="", verbose_name="外部用户标识", db_index=True)
+    flow_name = models.CharField(max_length=255, blank=True, default="", verbose_name="来源流程名称")
     title = models.CharField(max_length=255, blank=True, default="", verbose_name="会话标题")
     is_active = models.BooleanField(default=True, verbose_name="是否活跃")
     memory_written_message_id = models.BigIntegerField(default=0, verbose_name="已写入记忆的最后消息ID")
@@ -101,6 +102,29 @@ class SkillConversation(TimeInfo):
 class SkillConversationMessage(models.Model):
     """智能体会话消息。"""
 
+    class Feedback(models.TextChoices):
+        LIKE = "like", "点赞"
+        DISLIKE = "dislike", "点踩"
+
+    FEEDBACK_REASONS = {
+        Feedback.LIKE: ("good_content", "well_written", "good_format", "followed_instructions", "fast"),
+        Feedback.DISLIKE: (
+            "wrong_length",
+            "poor_writing",
+            "poor_format",
+            "off_topic",
+            "missed_instructions",
+            "wrong_template",
+            "inaccurate",
+            "safety",
+            "incomplete",
+            "hard_to_use",
+        ),
+    }
+
+    feedback_reasons = models.JSONField(default=list, blank=True, verbose_name="评价标签")
+    feedback_comment = models.CharField(max_length=500, blank=True, default="", verbose_name="评价说明")
+
     ROLE_USER = "user"
     ROLE_ASSISTANT = "assistant"
     ROLE_CHOICES = [
@@ -114,6 +138,7 @@ class SkillConversationMessage(models.Model):
         related_name="messages",
         verbose_name="会话",
     )
+    feedback = models.CharField(max_length=7, choices=Feedback.choices, null=True, blank=True, verbose_name="回答评价")
     role = models.CharField(max_length=32, choices=ROLE_CHOICES, verbose_name="角色")
     content = models.TextField(verbose_name="内容")
     organization_id = models.IntegerField(null=True, blank=True, verbose_name="对话时的组织ID")

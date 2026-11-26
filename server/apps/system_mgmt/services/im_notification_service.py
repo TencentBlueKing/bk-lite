@@ -351,19 +351,6 @@ def execute_im_notification_sync_run(run_id: int):
         manifest = runtime_service.get_provider_manifest(config_snapshot.get("provider_key") or instance.provider_key)
         template = manifest.business_templates.get("im_notification_form")
         external_users = list(result.payload.get("external_users") or [])
-        matched_relations, unmatched_issues, conflict_issues = _match_external_users(
-            external_users=external_users,
-            platform_match_field=config_snapshot.get("platform_match_field") or run.account_association.platform_match_field,
-            external_match_field=config_snapshot.get("external_match_field") or run.account_association.external_match_field,
-            external_receive_field=config_snapshot.get("external_receive_field") or run.account_association.external_receive_field,
-            identity_fields=(template.identity_fields if template else []) or [],
-            snapshot_fields=_resolve_external_snapshot_fields(template),
-        )
-
-        matched_count = len(matched_relations)
-        unmatched_count = len(unmatched_issues)
-        conflict_count = len(conflict_issues)
-        status = _completed_sync_run_status(matched_count, unmatched_count, conflict_count)
         summary = ""
         now = timezone.now()
         result_applied = False
@@ -377,15 +364,33 @@ def execute_im_notification_sync_run(run_id: int):
             locked_run = _locked_running_sync_run(run_id)
             if locked_run is None:
                 return {"result": False, "message": UPDATE_NO_LONGER_RUNNING}
-            if _snapshot_still_current(association, config_snapshot):
+            current = _snapshot_still_current(association, config_snapshot)
+            manual_mappings = _manual_mappings_for_association(association) if current else []
+            protected_ids = {str(mapping.external_snapshot[mapping.external_receive_key]).strip() for mapping in manual_mappings}
+            remaining_users = [item for item in external_users if str(item.get(association.external_receive_field) or "").strip() not in protected_ids]
+            matched_relations, unmatched_issues, conflict_issues = _match_external_users(
+                external_users=remaining_users,
+                platform_match_field=config_snapshot.get("platform_match_field") or association.platform_match_field,
+                external_match_field=config_snapshot.get("external_match_field") or association.external_match_field,
+                external_receive_field=config_snapshot.get("external_receive_field") or association.external_receive_field,
+                identity_fields=(template.identity_fields if template else []) or [],
+                snapshot_fields=_resolve_external_snapshot_fields(template),
+            )
+
+            matched_relations = _exclude_manual_mapping_conflicts(matched_relations, manual_mappings, conflict_issues)
+            matched_count = len(matched_relations) + len(external_users) - len(remaining_users)
+            unmatched_count = len(unmatched_issues)
+            conflict_count = len(conflict_issues)
+            status = _completed_sync_run_status(matched_count, unmatched_count, conflict_count)
+            if current:
                 result_applied = True
-                IMNotificationUserMapping.objects.filter(account_association=association).delete()
+                association.user_mappings.exclude(pk__in=[mapping.pk for mapping in manual_mappings]).delete()
                 if matched_relations:
                     IMNotificationUserMapping.objects.bulk_create(
                         [IMNotificationUserMapping(account_association=association, synced_at=now, **relation) for relation in matched_relations],
                         batch_size=200,
                     )
-                association.status = ASSOCIATION_STATUS_READY if matched_count > 0 else ASSOCIATION_STATUS_NEEDS_RESYNC
+                association.status = ASSOCIATION_STATUS_READY if manual_mappings or matched_count > 0 else ASSOCIATION_STATUS_NEEDS_RESYNC
                 association.save(update_fields=["status", "updated_at"])
                 refresh_notification_channel_status(association)
             else:
@@ -445,6 +450,36 @@ def execute_im_notification_sync_run(run_id: int):
             conflict_count,
         )
     return {"result": True, "message": summary, "data": {"run_id": run.id}}
+
+
+def _manual_mappings_for_association(association):
+    candidates = association.user_mappings.filter(match_context__source="manual", external_receive_key=association.external_receive_field)
+    source_run_ids = {mapping.match_context.get("sync_run_id") for mapping in candidates}
+    origins = association.sync_runs.filter(pk__in=source_run_ids, locked_config_snapshot__integration_instance_id=association.integration_instance_id)
+    identity = _identity_values(association.integration_instance)
+    compatible_run_ids = {pk for pk, snapshot in origins.values_list("pk", "locked_config_snapshot") if snapshot.get("identity", identity) == identity}
+    return [
+        mapping
+        for mapping in candidates
+        if mapping.match_context.get("sync_run_id") in compatible_run_ids
+        and str((mapping.external_snapshot or {}).get(mapping.external_receive_key) or "").strip()
+    ]
+
+
+def _exclude_manual_mapping_conflicts(relations, manual_mappings, conflict_issues):
+    manual_user_ids = {mapping.user_id for mapping in manual_mappings}
+    manual_external_ids = {(mapping.external_identity_key, mapping.external_identity_value) for mapping in manual_mappings}
+    accepted = []
+    for relation in relations:
+        user_id = relation["user"].id
+        identity = (relation["external_identity_key"], relation["external_identity_value"])
+        if user_id in manual_user_ids or identity in manual_external_ids:
+            conflict_issues.append(
+                {"reason": "manual_mapping_conflict", "external_user": relation["external_snapshot"], "platform_user_ids": [user_id]}
+            )
+        else:
+            accepted.append(relation)
+    return accepted
 
 
 def send_im_notification(channel_id: int, title: str, content: str, receivers):
@@ -521,10 +556,10 @@ def _receive_ids_for_requested_users(association: IMAccountAssociation, receiver
         if user.disabled:
             skipped.append({"receiver": user.username, "reason": "disabled"})
             continue
-        if user.id in conflict_user_ids:
+        mapping = mappings.get(user.id)
+        if user.id in conflict_user_ids and not (mapping and (mapping.match_context or {}).get("source") == "manual"):
             skipped.append({"receiver": user.username, "reason": "conflict"})
             continue
-        mapping = mappings.get(user.id)
         receive_id = str((mapping.external_snapshot or {}).get(receive_field) or "").strip() if mapping else ""
         if not receive_id:
             skipped.append({"receiver": user.username, "reason": "unassociated"})

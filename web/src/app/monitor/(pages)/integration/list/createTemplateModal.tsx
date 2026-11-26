@@ -11,11 +11,7 @@ import { Button, Form, Input, Radio, Select, Alert, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ObjectItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
-
-const OS_MONITOR_OBJECT_TYPE = 'OS';
-
-const isOsMonitorObjectType = (type: unknown) =>
-  String(type || '').trim().toUpperCase() === OS_MONITOR_OBJECT_TYPE;
+import { isSingleKeyInstanceObject } from '@/app/monitor/utils/scriptAttach';
 
 interface CreateTemplateModalProps {
   objects: ObjectItem[];
@@ -53,7 +49,11 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
       return Array.from(typeMap.entries()).map(([value, label]) => ({
         value,
         label,
-        disabled: isScriptTemplate && !isOsMonitorObjectType(value)
+        disabled:
+          isScriptTemplate &&
+          !objects.some(
+            (item) => item.type === value && isSingleKeyInstanceObject(item)
+          )
       }));
     }, [objects, isScriptTemplate]);
 
@@ -61,8 +61,8 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
       () =>
         objects
           .filter((item) => {
-            if (isScriptTemplate) {
-              return isOsMonitorObjectType(item.type);
+            if (isScriptTemplate && !isSingleKeyInstanceObject(item)) {
+              return false;
             }
             return !selectedObjectType || item.type === selectedObjectType;
           })
@@ -78,17 +78,21 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
         return false;
       }
       let clearedObject = false;
-      const currentType = form.getFieldValue('monitor_object_type');
-      if (!isOsMonitorObjectType(currentType)) {
-        form.setFieldValue('monitor_object_type', OS_MONITOR_OBJECT_TYPE);
-        setSelectedObjectType(OS_MONITOR_OBJECT_TYPE);
-      }
       const currentObject = form.getFieldValue('monitor_object');
       const objectOk = objects.some(
-        (item) => item.id === currentObject && isOsMonitorObjectType(item.type)
+        (item) => item.id === currentObject && isSingleKeyInstanceObject(item)
       );
       if (currentObject && !objectOk) {
         form.setFieldValue('monitor_object', undefined);
+        clearedObject = true;
+      }
+      const currentType = form.getFieldValue('monitor_object_type');
+      const typeOk = objects.some(
+        (item) => item.type === currentType && isSingleKeyInstanceObject(item)
+      );
+      if (currentType && !typeOk) {
+        form.setFieldValue('monitor_object_type', undefined);
+        setSelectedObjectType(undefined);
         clearedObject = true;
       }
       return clearedObject;
@@ -259,12 +263,15 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
                 validator: async (_, value) => {
                   if (
                     form.getFieldValue('template_type') === 'script' &&
-                    !isOsMonitorObjectType(value)
+                    value &&
+                    !objects.some(
+                      (item) => item.type === value && isSingleKeyInstanceObject(item)
+                    )
                   ) {
                     throw new Error(
                       t(
-                        'monitor.integrations.scriptTemplateOsOnly',
-                        '仅操作系统可创建脚本采集模板'
+                        'monitor.integrations.scriptAttachUnsupported',
+                        '这类对象暂不支持添加脚本采集。'
                       )
                     );
                   }

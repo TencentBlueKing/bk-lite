@@ -339,7 +339,9 @@ class ExecutionTaskBaseService(object):
         return region, selected
 
     @classmethod
-    def _execute_script_via_ansible(cls, execution: JobExecution, target_list: list, script_content: str, script_type: str) -> None:
+    def _execute_script_via_ansible(
+        cls, execution: JobExecution, target_list: list, script_content: str, script_type: str, bat_args: list[str] | None = None
+    ) -> None:
         """
         通过 Ansible 执行脚本（异步方式）
 
@@ -429,7 +431,7 @@ class ExecutionTaskBaseService(object):
         module_args = script_content
 
         # Linux raw 模块：sh/bash 由流式执行器选择解释器，其他解释器走 heredoc 包装
-        extra_vars = {}
+        extra_vars = {"bklite_secret_bat_args": bat_args} if bat_args else {}
         if module == "raw":
             if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
                 extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"

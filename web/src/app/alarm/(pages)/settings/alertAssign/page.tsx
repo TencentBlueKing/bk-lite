@@ -19,7 +19,7 @@ import { useTranslation } from '@/utils/i18n';
 import { weekMap } from '@/app/alarm/constants/settings';
 import { suppressionPeriodLabel, suppressionWeekdayLabel } from '@/app/alarm/utils/shieldDisplay';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import {
   getNotificationTargetFormValue,
   getOrganizationTargetLabels,
@@ -27,7 +27,7 @@ import {
 
 const AlertAssign: React.FC = () => {
   const { t } = useTranslation();
-  const { groupTree } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const { getAssignmentList, deleteAssignment, patchAssignment } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import { useUserInfoContext } from '@/context/userInfo';
+import { canAssignModuleRoles, extractModuleRoleIds } from '@/app/system-manager/utils/moduleRoles';
 import type { FormInstance } from 'antd';
 import { message } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
@@ -104,6 +106,10 @@ export function useUserModalData(): UseUserModalDataReturn {
   const privileged = isSuperuser || isAuditor;
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
+  const { isSuperUser: currentUserIsSuperUser } = useUserInfoContext();
+  const canEditModuleRoles = canAssignModuleRoles(currentUserIsSuperUser);
+  const allModuleRoleIdsRef = useRef<Set<number>>(new Set());
+  const initialPersonalRoleIdsRef = useRef<number[]>([]);
   const { batchGetGroupDetailWithRoles } = useGroupApi();
 
   const sensitiveBehavior = useSensitiveFieldEditBehavior(formRef);
@@ -114,7 +120,8 @@ export function useUserModalData(): UseUserModalDataReturn {
       try {
         setRoleLoading(true);
         const roleData = await getRoleList({ client_list: clientData });
-        const processedRoleData = processRoleTreeData(roleData, t('common.externalApp'));
+        allModuleRoleIdsRef.current = new Set(extractModuleRoleIds(roleData));
+        const processedRoleData = processRoleTreeData(roleData, t('common.externalApp'), canEditModuleRoles);
         setRoleTreeData(processedRoleData);
       } catch {
         message.error(t('common.fetchFailed'));
@@ -122,7 +129,7 @@ export function useUserModalData(): UseUserModalDataReturn {
         setRoleLoading(false);
       }
     },
-    [getRoleList, clientData, t]
+    [getRoleList, clientData, t, canEditModuleRoles]
   );
 
   const fetchOrganizationRoleIds = useCallback(
@@ -184,6 +191,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           setSelectedGroups(userGroupIds);
 
           const personalRoles = extractPersonalRoleIds(userDetail);
+          initialPersonalRoleIdsRef.current = personalRoles;
           const orgRoleIds = await fetchOrganizationRoleIds(userGroupIds);
           const allRoles = mergeRoles(personalRoles, orgRoleIds);
 
@@ -217,6 +225,7 @@ export function useUserModalData(): UseUserModalDataReturn {
       formRef.current?.resetFields();
       setUserKind('normal');
       setIsSyncedUser(false);
+      initialPersonalRoleIdsRef.current = [];
 
       if (modalType === 'edit' && userId) {
         setOrganizationRoleIds([]);
@@ -292,7 +301,12 @@ export function useUserModalData(): UseUserModalDataReturn {
             is_superuser: isSuperuser,
             is_auditor: isAuditor,
           },
-          personalRoleIds,
+          canEditModuleRoles
+            ? personalRoleIds
+            : Array.from(new Set([
+              ...personalRoleIds.filter((id) => !allModuleRoleIdsRef.current.has(id)),
+              ...initialPersonalRoleIdsRef.current.filter((id) => allModuleRoleIdsRef.current.has(id)),
+            ])),
           groupRules,
           isSuperuser,
           isAuditor
@@ -338,6 +352,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     [
       addUser,
       cleanPayload,
+      canEditModuleRoles,
       currentUserId,
       editUser,
       groupRules,

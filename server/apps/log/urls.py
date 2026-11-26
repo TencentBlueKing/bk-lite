@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework import routers
 
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet, CollectTypeViewSet
@@ -8,6 +9,7 @@ from apps.log.views.node import NodeViewSet
 from apps.log.views.open_api_k8s import K8sOpenAPIViewSet
 from apps.log.views.policy import AlertViewSet, EventRawDataViewSet, EventViewSet, PolicyViewSet
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
+from apps.log.views.syslog_source_device import SyslogSourceDeviceViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 from apps.log.views.system_vector import SystemVectorConfigViewSet
 from apps.log.views.user_habit import UserHabitViewSet
@@ -34,4 +36,11 @@ router.register(r"open_api/system_vector", SystemVectorConfigViewSet, basename="
 router.register(r"log_extractors", LogExtractorViewSet, basename="log-extractor")
 router.register(r"user_habits", UserHabitViewSet, basename="log-user-habit")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path(
+        "syslog_source_devices/",
+        SyslogSourceDeviceViewSet.as_view({"get": "list"}),
+        name="syslog-source-device-list",
+    ),
+]
+urlpatterns += router.urls

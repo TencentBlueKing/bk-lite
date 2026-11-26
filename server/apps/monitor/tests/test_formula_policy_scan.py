@@ -97,7 +97,10 @@ def test_metric_query_path_supports_or_filter_without_formula():
     service = MetricQueryService(policy, {})
     service.metric = SimpleNamespace(query="http_requests_total{__$labels__}")
 
-    assert service.format_pmq() == ('(http_requests_total{service="checkout"}) or ' '(http_requests_total{status="500"})')
+    assert service.format_pmq() == (
+        '(http_requests_total{service="checkout", collect_type!="script"}) or '
+        '(http_requests_total{status="500", collect_type!="script"})'
+    )
 
 
 def test_formula_metric_name_template_uses_result_name():
@@ -235,7 +238,7 @@ def test_metric_query_path_still_uses_policy_group_by(mocker):
     service.metric = SimpleNamespace(query="cpu{__$labels__}", data_type="Number", unit="")
     service.query_comparison_metrics(policy.period)
 
-    assert "cpu{}" in captured["query"]
+    assert 'cpu{collect_type!="script"}' in captured["query"]
     assert "by (instance_id)" in captured["query"]
 
 

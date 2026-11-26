@@ -31,6 +31,14 @@ _PC_METRIC_NAMES = frozenset({PC_METRIC_NAME, "pc_info"})
 _PC_SOFTWARE_METRIC_NAMES = frozenset({PC_SOFTWARE_METRIC_NAME, "pc_software_info"})
 
 
+def _attach_organization_display(payload: dict) -> None:
+    if "organization" not in payload:
+        return
+    from apps.cmdb.display_field.handler import DisplayFieldConverter
+
+    payload["organization_display"] = DisplayFieldConverter.convert_organization(payload.get("organization"))
+
+
 def vm_query_metric_name(name: str) -> str:
     """把逻辑指标名换成 VictoriaMetrics 中的序列名。"""
     return PC_QUERY_METRIC_NAMES.get(name, name)
@@ -317,6 +325,7 @@ class PCSnapshotReconciler:
                     **runtime,
                 )
                 create_payload = prepare_new_instance_identity(create_payload)
+                _attach_organization_display(create_payload)
                 result["pc_entity"] = ag.create_entity(INSTANCE, create_payload, {}, [])
                 result["pc_status"] = "added"
             sw_counts = self._upsert_software(ag, snapshot, result["pc_entity"])
@@ -459,6 +468,7 @@ class PCSnapshotReconciler:
                         collect_time=collect_time,
                     )
                     create_payload = prepare_new_instance_identity(create_payload)
+                    _attach_organization_display(create_payload)
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
                     created_this_round = True
                     identity_index[payload["inst_name"]] = sw_entity

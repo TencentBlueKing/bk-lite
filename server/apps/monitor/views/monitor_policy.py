@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, scope_permission_queryset, validate_assignable_organizations
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -44,6 +45,7 @@ def _build_actor_context(request):
         "username": scope.username,
         "domain": scope.domain,
         "current_team": scope.current_team,
+        "app": client_id_from_request(request),
         "include_children": scope.include_children,
         "is_superuser": scope.is_superuser,
         "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),

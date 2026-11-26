@@ -24,6 +24,7 @@ RACK_DEVICE_MODELS = frozenset(
 CLOUD_PLATFORM_MODELS = frozenset(
     {
         "aliyun_account",
+        "volcengine_account",
         "qcloud",
         "hwcloud",
         "manageone_cloud",

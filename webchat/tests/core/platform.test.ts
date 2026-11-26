@@ -118,6 +118,18 @@ test('session history envelope maps bubbles without turning usage into a message
   assert.equal(messages[0].content, 'hello');
 });
 
+test('reopens feedback on its saved answer only', () => {
+  const messages = mapPlatformMessages([
+    { id: 50, conversation_role: 'user', conversation_content: '问题', feedback: 'like' },
+    { id: 51, conversation_role: 'assistant', conversation_content: '回答', feedback: 'dislike', feedback_detail: { reason: 'inaccurate', comment: '阈值不对' } },
+    { id: 52, conversation_role: 'assistant', conversation_content: '回答', feedback: null },
+  ]);
+  assert.deepEqual(messages[1].feedbackDetail, { reasons: ['inaccurate'], comment: '阈值不对' });
+  assert.deepEqual(messages.map(msg => [msg.persistedMessageId, msg.feedback]), [
+    [undefined, undefined], [51, 'dislike'], [52, null],
+  ]);
+});
+
 test('maps published platform skill channels and restores last selection', () => {
   const apps = mapPlatformApplications([
     {
@@ -433,6 +445,7 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
   assert.equal(isSilentCustomEvent('planned_execution_status'), true);
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
+  assert.equal(isSilentCustomEvent('wiki_material_write'), true);
   assert.equal(isSilentCustomEvent('llm_context_usage'), true);
   assert.equal(isSilentCustomEvent('approval_request'), true);
   assert.equal(isSilentCustomEvent('config_analysis_report'), true);
@@ -455,6 +468,43 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
     },
   ]);
   assert.equal(planned[0].content, '现在是下午两点');
+});
+
+test('wiki material write stays inside the tool call, not the chat bubble', () => {
+  const replayed = mapPlatformMessages([
+    {
+      id: 22,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'TOOL_CALL_START', toolCallId: 'tc-w', toolCallName: 'save_wiki_material' },
+        { type: 'TOOL_CALL_END', toolCallId: 'tc-w' },
+        {
+          type: 'TOOL_CALL_RESULT',
+          toolCallId: 'tc-w',
+          content: '正在写入，请在此等待结果',
+        },
+        {
+          type: 'CUSTOM',
+          name: 'wiki_material_write',
+          value: { material_id: 22, phase: 'writing', summary: '正在写入，请在此等待结果' },
+        },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(replayed[0].content, '');
+  assert.equal(String(replayed[0].content).includes('wiki_material_write'), false);
+  const chunks = replayed[0].metadata?.contentChunks as Array<{ type: string; toolCalls?: Array<{ result?: string }> }>;
+  assert.equal(chunks[0].toolCalls?.[0].result, '正在写入，请在此等待结果');
+  assert.deepEqual(replayed[0].metadata?.wikiMaterialWrites, [
+    {
+      material_id: 22,
+      phase: 'writing',
+      summary: '正在写入，请在此等待结果',
+      received_at: 0,
+    },
+  ]);
 });
 
 test('history replay restores tool call args for webchat display', () => {

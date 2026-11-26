@@ -1,0 +1,262 @@
+{
+  "zh": [
+    {
+      "title": "服务门户",
+      "icon": "home",
+      "url": "/itsm/portal",
+      "name": "portal",
+      "children": [
+        {
+          "title": "服务目录",
+          "url": "/itsm/portal",
+          "name": "portal"
+        },
+        {
+          "title": "服务管理",
+          "url": "/itsm/portal/services",
+          "name": "portal",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "提单",
+          "url": "/itsm/portal/apply",
+          "name": "portal",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "工单中心",
+      "icon": "renwu",
+      "url": "/itsm/tickets",
+      "name": "ticket",
+      "children": [
+        {
+          "title": "工单列表",
+          "url": "/itsm/tickets",
+          "name": "ticket"
+        },
+        {
+          "title": "工单详情",
+          "url": "/itsm/tickets/detail",
+          "name": "ticket",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "流程管理",
+      "icon": "jiqiren2",
+      "url": "/itsm/workflow",
+      "name": "workflow",
+      "children": [
+        {
+          "title": "流程设计",
+          "url": "/itsm/workflow",
+          "name": "workflow"
+        },
+        {
+          "title": "流程类型",
+          "url": "/itsm/workflow/types",
+          "name": "workflow",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "流程变量",
+          "url": "/itsm/workflow/variables",
+          "name": "workflow",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "表单与数据",
+      "icon": "weihuzuoyemoban",
+      "url": "/itsm/form",
+      "name": "form",
+      "children": [
+        {
+          "title": "表单模型",
+          "url": "/itsm/form",
+          "name": "form"
+        },
+        {
+          "title": "视图模板",
+          "url": "/itsm/form/view-templates",
+          "name": "form",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "数据字典",
+          "url": "/itsm/form/dictionaries",
+          "name": "data"
+        },
+        {
+          "title": "数据表",
+          "url": "/itsm/form/tables",
+          "name": "data"
+        },
+        {
+          "title": "集成",
+          "url": "/itsm/form/integrations",
+          "name": "data"
+        }
+      ]
+    },
+    {
+      "title": "规则与时效",
+      "icon": "mubiaoguanli",
+      "url": "/itsm/rule",
+      "name": "rule",
+      "children": [
+        {
+          "title": "SLA",
+          "url": "/itsm/rule/sla",
+          "name": "rule"
+        },
+        {
+          "title": "服务日历",
+          "url": "/itsm/rule/calendars",
+          "name": "rule"
+        },
+        {
+          "title": "触发器",
+          "url": "/itsm/rule/triggers",
+          "name": "rule"
+        },
+        {
+          "title": "定时任务",
+          "url": "/itsm/rule/schedules",
+          "name": "rule"
+        },
+        {
+          "title": "决策表",
+          "url": "/itsm/rule/decisions",
+          "name": "rule"
+        },
+        {
+          "title": "状态管理",
+          "url": "/itsm/rule/status",
+          "name": "status_stage"
+        }
+      ]
+    },
+    {
+      "title": "应用",
+      "icon": "job",
+      "url": "/itsm/apps",
+      "name": "knowledge",
+      "children": [
+        {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
+        {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
+        {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"}
+      ]
+    },
+    {
+      "title": "设置",
+      "icon": "settings-fill",
+      "url": "/itsm/settings",
+      "name": "setting",
+      "children": [
+        {"title": "处理组", "url": "/itsm/settings/handler-groups", "name": "org"},
+        {"title": "代理", "url": "/itsm/settings/proxies", "name": "org"},
+        {"title": "VIP", "url": "/itsm/settings/vips", "name": "org"},
+        {"title": "通知模板", "url": "/itsm/settings/notify-templates", "name": "notify"},
+        {"title": "满意度模板", "url": "/itsm/settings/survey-templates", "name": "survey"},
+        {"title": "打印预览", "url": "/itsm/settings/print-templates", "name": "print"},
+        {"title": "公告", "url": "/itsm/settings/announcements", "name": "notify"},
+        {"title": "基础配置", "url": "/itsm/settings", "name": "setting"}
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Portal",
+      "icon": "home",
+      "url": "/itsm/portal",
+      "name": "portal",
+      "children": [
+        {"title": "Catalog", "url": "/itsm/portal", "name": "portal"},
+        {"title": "Services", "url": "/itsm/portal/services", "name": "portal", "isNotMenuItem": true},
+        {"title": "Apply", "url": "/itsm/portal/apply", "name": "portal", "isNotMenuItem": true}
+      ]
+    },
+    {
+      "title": "Tickets",
+      "icon": "renwu",
+      "url": "/itsm/tickets",
+      "name": "ticket",
+      "children": [
+        {"title": "Ticket list", "url": "/itsm/tickets", "name": "ticket"},
+        {"title": "Ticket detail", "url": "/itsm/tickets/detail", "name": "ticket", "isNotMenuItem": true}
+      ]
+    },
+    {
+      "title": "Workflows",
+      "icon": "jiqiren2",
+      "url": "/itsm/workflow",
+      "name": "workflow",
+      "children": [
+        {"title": "Designer", "url": "/itsm/workflow", "name": "workflow"},
+        {"title": "Types", "url": "/itsm/workflow/types", "name": "workflow", "isNotMenuItem": true},
+        {"title": "Variables", "url": "/itsm/workflow/variables", "name": "workflow", "isNotMenuItem": true}
+      ]
+    },
+    {
+      "title": "Forms and data",
+      "icon": "weihuzuoyemoban",
+      "url": "/itsm/form",
+      "name": "form",
+      "children": [
+        {"title": "Forms", "url": "/itsm/form", "name": "form"},
+        {"title": "View templates", "url": "/itsm/form/view-templates", "name": "form", "isNotMenuItem": true},
+        {"title": "Dictionaries", "url": "/itsm/form/dictionaries", "name": "data"},
+        {"title": "Tables", "url": "/itsm/form/tables", "name": "data"},
+        {"title": "Integrations", "url": "/itsm/form/integrations", "name": "data"}
+      ]
+    },
+    {
+      "title": "Rules",
+      "icon": "mubiaoguanli",
+      "url": "/itsm/rule",
+      "name": "rule",
+      "children": [
+        {"title": "SLA", "url": "/itsm/rule/sla", "name": "rule"},
+        {"title": "Calendars", "url": "/itsm/rule/calendars", "name": "rule"},
+        {"title": "Triggers", "url": "/itsm/rule/triggers", "name": "rule"},
+        {"title": "Schedules", "url": "/itsm/rule/schedules", "name": "rule"},
+        {"title": "Decisions", "url": "/itsm/rule/decisions", "name": "rule"},
+        {"title": "Status", "url": "/itsm/rule/status", "name": "status_stage"}
+      ]
+    },
+    {
+      "title": "Applications",
+      "icon": "job",
+      "url": "/itsm/apps",
+      "name": "knowledge",
+      "children": [
+        {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
+        {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
+        {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"}
+      ]
+    },
+    {
+      "title": "Settings",
+      "icon": "settings-fill",
+      "url": "/itsm/settings",
+      "name": "setting",
+      "children": [
+        {"title": "Handler groups", "url": "/itsm/settings/handler-groups", "name": "org"},
+        {"title": "Proxies", "url": "/itsm/settings/proxies", "name": "org"},
+        {"title": "VIP", "url": "/itsm/settings/vips", "name": "org"},
+        {"title": "Notification templates", "url": "/itsm/settings/notify-templates", "name": "notify"},
+        {"title": "Satisfaction templates", "url": "/itsm/settings/survey-templates", "name": "survey"},
+        {"title": "Print preview", "url": "/itsm/settings/print-templates", "name": "print"},
+        {"title": "Announcements", "url": "/itsm/settings/announcements", "name": "notify"},
+        {"title": "System settings", "url": "/itsm/settings", "name": "setting"}
+      ]
+    }
+  ]
+}

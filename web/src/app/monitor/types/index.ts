@@ -223,6 +223,8 @@ export interface InstanceParam {
   order?: 'asc' | 'desc';
   /** 超级用户未归属目录，替换当前组织列表 */
   unassigned?: boolean;
+  /** 脚本接入下拉：排除只有脚本配置的存量独立实例 */
+  script_attach_candidates?: boolean | 1;
 }
 
 export interface GroupInfo {

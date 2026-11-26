@@ -18,6 +18,12 @@ def collect_tasks():
             for target in node.targets
             if isinstance(target, ast.Name)
         }
+        imports = {
+            alias.asname or alias.name: (statement.module, alias.name)
+            for statement in tree.body
+            if isinstance(statement, ast.ImportFrom) and not statement.level and (statement.module or "").startswith("apps.")
+            for alias in statement.names
+        }
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -37,6 +43,14 @@ def collect_tasks():
                         return expression.value
                     if isinstance(expression, ast.Name) and expression.id in constants:
                         return constants[expression.id]
+                    if isinstance(expression, ast.Name) and expression.id in imports:
+                        module, symbol = imports[expression.id]
+                        path = apps.parent.joinpath(*module.split(".")).with_suffix(".py")
+                        if path.is_file():
+                            for assignment in ast.parse(path.read_text()).body:
+                                if isinstance(assignment, ast.Assign) and isinstance(assignment.value, ast.Constant):
+                                    if any(isinstance(target, ast.Name) and target.id == symbol for target in assignment.targets):
+                                        return assignment.value.value
                     raise AssertionError(f"需人工解析 {source}:{node.lineno} 的 {key}")
 
                 module = ".".join(source.relative_to(apps.parent).with_suffix("").parts)

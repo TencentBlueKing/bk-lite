@@ -36,7 +36,7 @@ def test_launcher_atomically_generates_configuration_and_checks(monkeypatch, tmp
     assert list(tmp_path.iterdir()) == [target]
     monkeypatch.setattr("sys.argv", ["launcher", "--check"])
     launcher.main()
-    assert "最大并发=15" in capsys.readouterr().out
+    assert "最大并发=17" in capsys.readouterr().out
 
 
 def test_launcher_rejects_bad_config_without_replacing_file(monkeypatch, tmp_path):
@@ -52,7 +52,7 @@ def test_launcher_rejects_bad_config_without_replacing_file(monkeypatch, tmp_pat
 
 def test_launcher_reads_dotenv_like_django_without_overriding_exported_values(tmp_path):
     root = Path(__file__).resolve().parents[3]
-    values = runtime_env(CELERY_CRITICAL_MAX="3", CELERY_TOTAL_CONCURRENCY_LIMIT="16")
+    values = runtime_env(CELERY_CRITICAL_MAX="3", CELERY_TOTAL_CONCURRENCY_LIMIT="18")
     (tmp_path / ".env").write_text("\n".join(f"{key}={value}" for key, value in values.items()))
     env = {key: value for key, value in os.environ.items() if not key.startswith(("CELERY_", "ENABLE_CELERY", "AUTOSCALE_"))}
     env.update(PYTHONPATH=str(root), INSTALL_APPS="", CELERY_CRITICAL_MAX="2")
@@ -61,7 +61,7 @@ def test_launcher_reads_dotenv_like_django_without_overriding_exported_values(tm
     )
     assert result.returncode == 0
     assert "执行池数=4" in result.stdout
-    assert "最大并发=15" in result.stdout
+    assert "最大并发=17" in result.stdout
 
 
 @pytest.mark.parametrize("legacy", [None, "100"])
@@ -116,7 +116,7 @@ def test_readonly_report_has_effective_routes_and_strict_failure(monkeypatch):
     output = io.StringIO()
     call_command(celery_runtime_report.Command(), stdout=output)
     report = json.loads(output.getvalue())
-    assert report["config"]["total_limit"] == 15
+    assert report["config"]["total_limit"] == 17
     assert "broker_url" not in report
     monkeypatch.setattr(celery_runtime_report, "worker_report", lambda _: {"workers": {}, "queue_consumers": {}, "unavailable": ["stats"]})
     with pytest.raises(CommandError, match="未通过"):

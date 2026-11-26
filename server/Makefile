@@ -15,6 +15,8 @@ migrate:
 
 server-init:
 	uv run python manage.py batch_init
+	uv run python manage.py init_itsm
+	uv run python manage.py init_itsm_itil
 
 system-init:
 	uv run python manage.py parse_tools_yml
