@@ -2,7 +2,7 @@
 
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
@@ -135,6 +135,11 @@ interface ThinTimeSeriesProps {
    * 全图都是 0 时改走统一上移，不再叠在轴上。
    */
   stackId?: string;
+  /**
+   * 卡面状态。不传时沿用原来的加载和空态。
+   * error 只显示加载失败和重试，不把失败画成 0 或暂无数据。
+   */
+  status?: 'loading' | 'error' | 'empty' | 'ready';
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -486,7 +491,8 @@ export default function ThinTimeSeries({
   formatReading,
   plotHeight,
   floorStrokeLiftPx,
-  stackId
+  stackId,
+  status
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -678,8 +684,8 @@ export default function ThinTimeSeries({
       tooltip: {
         show: true,
         trigger: 'axis' as const,
-        appendToBody: true,
-        confine: false,
+        appendToBody: false,
+        confine: true,
         backgroundColor: panelColor,
         borderColor: axisColor,
         borderWidth: 1,
@@ -908,12 +914,27 @@ export default function ThinTimeSeries({
         className={styles.chartBody}
         style={plotHeight ? { height: plotHeight, minHeight: plotHeight, flex: 'none' } : undefined}
       >
-        {suspend || !plotted.length ? (
+        {status === 'error' ? (
           <div className={styles.chartEmpty}>
-            {suspend || loading ? <ProDashLoading /> : (
-              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">{emptyText}</span>
+            <span className="inline-flex flex-col items-center gap-2 text-[14px] text-[var(--color-text-3)]">
+              <ExclamationCircleOutlined className="text-[20px]" />
+              加载失败
+              {onRetry ? (
+                <button type="button" className="text-[var(--color-primary)]" onClick={onRetry}>重试</button>
+              ) : null}
+            </span>
+          </div>
+        ) : status === 'loading' || status === 'empty' || suspend || !plotted.length ? (
+          <div className={styles.chartEmpty}>
+            {status === 'loading' || suspend || (status !== 'empty' && loading) ? <ProDashLoading /> : (
+              <span className={status === 'empty'
+                ? 'text-[14px] text-[var(--color-text-3)]'
+                : 'text-[13px] font-semibold text-[var(--color-text-2)]'}
+              >
+                {emptyText}
+              </span>
             )}
-            {!loading && onRetry ? (
+            {!loading && status !== 'loading' && status !== 'empty' && onRetry ? (
               <button
                 type="button"
                 className="ml-2 text-[var(--color-primary)]"

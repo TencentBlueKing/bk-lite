@@ -109,6 +109,7 @@ export function DashboardInstanceCard({
         ) : null}
         <InstanceSelector
           styles={styles}
+          wide
           value={selectorValue}
           loading={selectorLoading}
           options={selectorOptions}

@@ -870,6 +870,13 @@
       "template": "min by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_status_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:19d55247",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "increase(nginx_vts_filter_requests{__$labels__}[__$window__])"
+    },
+    {
       "id": "dashboard:v1:1a1c8bea",
       "object_names": [
         "K3SCluster"
@@ -1389,6 +1396,13 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:2b303f26",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(sum by (upstream) (increase(nginx_vts_upstream_response_4xx_count{__$labels__}[__$window__])), \"code\", \"4xx\", \"\", \".*\") or label_replace(sum by (upstream) (increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__])), \"code\", \"5xx\", \"\", \".*\")"
     },
     {
       "id": "dashboard:v1:2b409bd1",
@@ -2253,6 +2267,13 @@
       "template": "win_exchange_adaccess_LDAP_Read_Time{instance_type=\"exchange\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:46853d10",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_server_in_bytes{__$labels__,zone!=\"*\"}[__$window__]), \"direction\", \"in\", \"\", \".*\") or label_replace(increase(nginx_vts_server_out_bytes{__$labels__,zone!=\"*\"}[__$window__]), \"direction\", \"out\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:469730f4",
       "object_names": [
         "MongoDB"
@@ -2535,6 +2556,13 @@
       "template": "redis_mem_replication_backlog{__$labels__}"
     },
     {
+      "id": "dashboard:v1:4e1f900e",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_server_response_1xx_count{__$labels__,zone=\"*\"}[__$step__]), \"code\", \"1xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_2xx_count{__$labels__,zone=\"*\"}[__$step__]), \"code\", \"2xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_3xx_count{__$labels__,zone=\"*\"}[__$step__]), \"code\", \"3xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_4xx_count{__$labels__,zone=\"*\"}[__$step__]), \"code\", \"4xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_5xx_count{__$labels__,zone=\"*\"}[__$step__]), \"code\", \"5xx\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:4e1fe209",
       "object_names": [
         "MongoDB"
@@ -2785,6 +2813,13 @@
         "Pod"
       ],
       "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:56d9c1c4",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "increase(nginx_vts_upstream_requests{__$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:56e84f9a",
@@ -3433,6 +3468,13 @@
       "template": "clamp_max(100 * (zookeeper_open_file_descriptor_count{__$labels__} / clamp_min(zookeeper_max_file_descriptor_count{__$labels__}, 1)), 100)"
     },
     {
+      "id": "dashboard:v1:6c5a6b98",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_server_response_1xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"1xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_2xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"2xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_3xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"3xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_4xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"4xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_5xx_count{__$labels__,zone=\"*\"}[__$window__]), \"code\", \"5xx\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:6c81433a",
       "object_names": [
         "IIS"
@@ -3901,6 +3943,13 @@
         "Tomcat"
       ],
       "template": "tomcat_connector_current_thread_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7f4a6f2a",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_filter_response_2xx_count{__$labels__}[__$window__]), \"code\", \"2xx\", \"\", \".*\") or label_replace(increase(nginx_vts_filter_response_4xx_count{__$labels__}[__$window__]), \"code\", \"4xx\", \"\", \".*\") or label_replace(increase(nginx_vts_filter_response_5xx_count{__$labels__}[__$window__]), \"code\", \"5xx\", \"\", \".*\")"
     },
     {
       "id": "dashboard:v1:7fa081b4",
@@ -4559,6 +4608,13 @@
       "template": "max by (name) (redfish_temperature_celsius_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"degrees_c\", __$labels__})"
     },
     {
+      "id": "dashboard:v1:93cd2201",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(sum(increase(nginx_vts_upstream_response_1xx_count{__$labels__}[__$step__])), \"code\", \"1xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_2xx_count{__$labels__}[__$step__])), \"code\", \"2xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_3xx_count{__$labels__}[__$step__])), \"code\", \"3xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_4xx_count{__$labels__}[__$step__])), \"code\", \"4xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$step__])), \"code\", \"5xx\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:93ce27f9",
       "object_names": [
         "Nginx"
@@ -4683,6 +4739,13 @@
         "MongoDB"
       ],
       "template": "mongodb_repl_oplog_window_sec{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:97d638fe",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_filter_in_bytes{__$labels__}[__$window__]), \"direction\", \"in\", \"\", \".*\") or label_replace(increase(nginx_vts_filter_out_bytes{__$labels__}[__$window__]), \"direction\", \"out\", \"\", \".*\")"
     },
     {
       "id": "dashboard:v1:97e48533",
@@ -5231,6 +5294,13 @@
       "template": "max by (instance_id) (oracledb_up_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:a8f8f95d",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_server_response_1xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"1xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_2xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"2xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_3xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"3xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_4xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"4xx\", \"\", \".*\") or label_replace(increase(nginx_vts_server_response_5xx_count{__$labels__,zone!=\"*\"}[__$window__]), \"code\", \"5xx\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:a9a7f076",
       "object_names": [
         "SGLang"
@@ -5463,6 +5533,13 @@
         "MongoDB"
       ],
       "template": "clamp_max(100 * max by (instance_id) (mongodb_wtcache_tracked_dirty_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}), 1), 100)"
+    },
+    {
+      "id": "dashboard:v1:b4a9bc58",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_upstream_in_bytes{__$labels__}[__$window__]), \"direction\", \"in\", \"\", \".*\") or label_replace(increase(nginx_vts_upstream_out_bytes{__$labels__}[__$window__]), \"direction\", \"out\", \"\", \".*\")"
     },
     {
       "id": "dashboard:v1:b4ad06b2",
@@ -6241,6 +6318,13 @@
       "template": "avg(ping_result_code{__$labels__} == bool 1) * 100"
     },
     {
+      "id": "dashboard:v1:ce836a12",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_server_in_bytes{__$labels__,zone=\"*\"}[__$window__]), \"direction\", \"in\", \"\", \".*\") or label_replace(increase(nginx_vts_server_out_bytes{__$labels__,zone=\"*\"}[__$window__]), \"direction\", \"out\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:ce8c83e1",
       "object_names": [
         "Loadbalance",
@@ -6311,6 +6395,13 @@
         "Postgres"
       ],
       "template": "sum without (db) (rate(postgresql_tup_fetched{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:d007f570",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "increase(nginx_vts_server_requests{__$labels__,zone!=\"*\"}[__$window__])"
     },
     {
       "id": "dashboard:v1:d01a4fc2",
@@ -6416,6 +6507,13 @@
         "Redis"
       ],
       "template": "redis_blocked_clients{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d38dbd8e",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum(increase(nginx_vts_upstream_requests{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:d3d41906",
@@ -7136,6 +7234,13 @@
       "template": "count({instance_type='mssql', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:eff28866",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(sum by (upstream) (increase(nginx_vts_upstream_in_bytes{__$labels__}[__$window__])), \"direction\", \"in\", \"\", \".*\") or label_replace(sum by (upstream) (increase(nginx_vts_upstream_out_bytes{__$labels__}[__$window__])), \"direction\", \"out\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:f09fb174",
       "object_names": [
         "Nginx"
@@ -7176,6 +7281,13 @@
         "Cluster"
       ],
       "template": "sum(prometheus_remote_write_kube_node_status_condition{instance_type=\"k8s\",condition=\"Ready\",status=\"true\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f1a6f79a",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(increase(nginx_vts_upstream_response_4xx_count{__$labels__}[__$window__]), \"code\", \"4xx\", \"\", \".*\") or label_replace(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]), \"code\", \"5xx\", \"\", \".*\")"
     },
     {
       "id": "dashboard:v1:f1d6e75b",
@@ -7260,6 +7372,13 @@
         "Postgres"
       ],
       "template": "sum without (db) (rate(postgresql_tup_updated{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:f372f267",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:f3819851",
@@ -7358,6 +7477,13 @@
         "Nginx"
       ],
       "template": "nginx_writing{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f5cdb8f9",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "sum by (upstream) (increase(nginx_vts_upstream_requests{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:f619de15",
@@ -7563,6 +7689,13 @@
         "Switch"
       ],
       "template": "max(device_temperature_celsius{__$labels__}) by (instance_id) or max(snmp_device_temperature_celsius{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:fe7ed8b1",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "increase(nginx_vts_server_requests{__$labels__,zone=\"*\"}[__$window__])"
     },
     {
       "id": "dashboard:v1:fea6f24d",

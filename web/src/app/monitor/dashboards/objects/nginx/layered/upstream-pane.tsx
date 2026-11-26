@@ -1,162 +1,214 @@
 'use client';
 
-import { useState } from 'react';
-import { ProSection } from '../../host/layered/pro-chrome';
-import { formatBytesPerSecond, formatDuration, formatPerSecond, formatPlain } from './format';
+import { Fragment, useState } from 'react';
+import { Switch } from 'antd';
+import { durationUnitLabel, formatBytes, formatCount, formatDuration, formatPerSecond, formatPlain } from './format';
 import { NGINX_HINTS } from './hints';
-import { NginxDimensionalChart } from './dimensional-chart';
+import { NginxChartCard, NginxRetryBanner, NginxTile } from './nginx-card';
 import { NginxHint } from './nginx-hint';
-import { upstreamColumns, type NginxDashboardModel, type UpstreamMemberRow } from './model';
+import type { NginxDashboardModel, NginxSeriesItem, UpstreamGroupRow, UpstreamMemberRow } from './model';
+import { NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from './query-phase';
 
-const cell = (value: number | null, text: string) => (value == null ? '--' : text);
+const topSeries = (items: readonly NginxSeriesItem[]) => [...items]
+  .sort((left, right) => (right.points[right.points.length - 1]?.value ?? 0) - (left.points[left.points.length - 1]?.value ?? 0))
+  .slice(0, 5);
 
-const flagText = (value: number | null, on: string, off: string) => {
-  if (value == null) return '--';
-  return value === 1 ? on : off;
+const cell = (value: number | null | undefined, text: string) => (value == null ? '--' : text);
+
+const memberState = (member: UpstreamMemberRow) => {
+  if (member.down === 1) return { label: '已下线', className: 'bg-[color-mix(in_srgb,var(--color-fail)_14%,transparent)] text-[var(--color-fail)]' };
+  if (member.backup === 1) return { label: '备份', className: 'bg-[var(--color-fill-2)] text-[var(--color-text-3)]' };
+  return { label: '在线', className: 'bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] text-[var(--color-success)]' };
 };
 
 export default function UpstreamPane({
   model,
-  loading,
-  emptyText
+  phases,
+  emptyText,
+  onRetry,
+  onRetryFailed
 }: {
   model: NginxDashboardModel;
-  loading: boolean;
+  phases: Readonly<Record<string, NginxQueryPhase>>;
   emptyText: string;
+  onRetry: (keys: readonly string[]) => void;
+  onRetryFailed: () => void;
 }) {
   const [downOnly, setDownOnly] = useState(false);
-  const scale = { div: model.byteScaleDiv, suffix: model.byteSuffix };
-  const columns = upstreamColumns(model.upstreamGroups);
-  const tableColSpan = 2 + Object.values(columns).filter(Boolean).length;
+  const board = model.board;
+  const kpiPhase = phaseOf(NGINX_CARD_QUERIES.upstreamKpi, phases);
+  const trendPhase = phaseOf(NGINX_CARD_QUERIES.upstreamTrend, phases);
+  const statusPhase = phaseOf(NGINX_CARD_QUERIES.upstreamStatus, phases);
+  const timePhase = phaseOf(NGINX_CARD_QUERIES.upstreamTime, phases);
+  const tablePhase = phaseOf(NGINX_CARD_QUERIES.upstreamTable, phases);
+  const failures = [kpiPhase, kpiPhase, kpiPhase, kpiPhase, trendPhase, statusPhase, timePhase, timePhase, tablePhase]
+    .filter((item) => item === 'error').length;
   const groups = model.upstreamGroups
     .map((group) => ({
       ...group,
       members: downOnly ? group.members.filter((member) => member.down === 1) : group.members
     }))
     .filter((group) => !downOnly || group.members.length > 0);
-  const rateText = (value: number | null) => cell(value, formatPerSecond(value ?? 0, '次'));
-  const byteText = (value: number | null) => cell(value, formatBytesPerSecond(value ?? 0, scale));
   const timeText = (value: number | null) => cell(value, formatDuration(value ?? 0, model.upstreamTimeUnit));
-  const memberCells = (member: UpstreamMemberRow) => (
+  const renderMember = (member: UpstreamMemberRow) => {
+    const state = memberState(member);
+    const address = member.addressLabel || member.address;
+    return (
+      <tr key={`${member.upstream}|${member.address}|${address}`} data-nginx-upstream-member={address}>
+        <td className="px-2 py-2">
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[12px] ${state.className}`}>{state.label}</span>
+        </td>
+        <td className="max-w-[220px] truncate px-2 py-2" title={address}>{address}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.weight, formatPlain(member.weight ?? 0))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.requestRate, formatPerSecond(member.requestRate ?? 0, '次'))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.windowRequests ?? null, formatCount(member.windowRequests ?? 0, '次'))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.windowCodes?.['4xx'] ?? null, formatCount(member.windowCodes?.['4xx'] ?? 0, '次'))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.windowCodes?.['5xx'] ?? null, formatCount(member.windowCodes?.['5xx'] ?? 0, '次'))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.windowBytesIn ?? null, formatBytes(member.windowBytesIn ?? 0))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.windowBytesOut ?? null, formatBytes(member.windowBytesOut ?? 0))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{timeText(member.requestMs)}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{timeText(member.responseMs)}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.maxFails, formatPlain(member.maxFails ?? 0, '次'))}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{cell(member.failTimeout, formatPlain(member.failTimeout ?? 0, '秒'))}</td>
+      </tr>
+    );
+  };
+  const groupCells = (group: UpstreamGroupRow) => (
     <>
-      {columns.request ? <td className="px-2 py-2 tabular-nums">{rateText(member.requestRate)}</td> : null}
-      {columns.c4 ? <td className="px-2 py-2 tabular-nums">{rateText(member.codes['4xx'])}</td> : null}
-      {columns.c5 ? <td className="px-2 py-2 tabular-nums">{rateText(member.codes['5xx'])}</td> : null}
-      {columns.bytesIn ? <td className="px-2 py-2 tabular-nums">{byteText(member.bytesIn)}</td> : null}
-      {columns.bytesOut ? <td className="px-2 py-2 tabular-nums">{byteText(member.bytesOut)}</td> : null}
-      {columns.requestMs ? <td className="px-2 py-2 tabular-nums">{timeText(member.requestMs)}</td> : null}
-      {columns.responseMs ? <td className="px-2 py-2 tabular-nums">{timeText(member.responseMs)}</td> : null}
-      {columns.down ? <td className="px-2 py-2">{flagText(member.down, '已下线', '在线')}</td> : null}
-      {columns.backup ? <td className="px-2 py-2">{flagText(member.backup, '备份', '否')}</td> : null}
-      {columns.weight ? <td className="px-2 py-2 tabular-nums">{cell(member.weight, formatPlain(member.weight ?? 0))}</td> : null}
-      {columns.maxFails ? <td className="px-2 py-2 tabular-nums">{cell(member.maxFails, formatPlain(member.maxFails ?? 0, '次'))}</td> : null}
-      {columns.failTimeout ? <td className="px-2 py-2 tabular-nums">{cell(member.failTimeout, formatPlain(member.failTimeout ?? 0, '秒'))}</td> : null}
+      <td />
+      <td className="px-2 py-2 font-semibold">{group.upstream}<span className="ml-2 font-normal text-[var(--color-text-3)]">{group.members.length} 个成员</span></td>
+      <td />
+      <td className="px-2 py-2 text-right tabular-nums">{cell(group.requestRate, formatPerSecond(group.requestRate ?? 0, '次'))}</td>
+      <td className="px-2 py-2 text-right tabular-nums">{cell(group.windowRequests ?? null, formatCount(group.windowRequests ?? 0, '次'))}</td>
+      <td className="px-2 py-2 text-right tabular-nums">{cell(group.windowCodes?.['4xx'] ?? null, formatCount(group.windowCodes?.['4xx'] ?? 0, '次'))}</td>
+      <td className="px-2 py-2 text-right tabular-nums">{cell(group.windowCodes?.['5xx'] ?? null, formatCount(group.windowCodes?.['5xx'] ?? 0, '次'))}</td>
+      <td /><td /><td /><td /><td /><td />
     </>
   );
 
   return (
     <div className="flex flex-col gap-4" data-nginx-pane="upstream">
-      <NginxDimensionalChart
-        title="上游请求速率"
-        hint={NGINX_HINTS.request}
-        items={model.upstreamRequest}
-        floor={1}
-        formatReading={(value) => formatPerSecond(value, '次')}
-        loading={loading}
-        emptyText={emptyText}
-      />
-      <NginxDimensionalChart
-        title="请求处理时间"
-        hint={NGINX_HINTS.upstreamTime}
-        items={model.upstreamRequestTime}
-        floor={10}
-        formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
-        loading={loading}
-        emptyText={emptyText}
-      />
-      <NginxDimensionalChart
-        title="响应时间"
-        hint={NGINX_HINTS.upstreamTime}
-        items={model.upstreamResponseTime}
-        floor={10}
-        formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
-        loading={loading}
-        emptyText={emptyText}
-      />
-      <NginxDimensionalChart
-        title="状态码"
-        hint={NGINX_HINTS.codes}
-        items={model.upstreamStatus}
-        floor={1}
-        stack
-        formatReading={(value) => formatPerSecond(value, '次')}
-        loading={loading}
-        emptyText={emptyText}
-      />
-      <ProSection title="上游" hint={<NginxHint copy={NGINX_HINTS.upstreamDown} />}>
-        {model.upstreamDownOnly ? (
-          <label className="mb-2 inline-flex items-center gap-2 text-[13px] text-[var(--color-text-1)]">
-            <input type="checkbox" checked={downOnly} onChange={(event) => setDownOnly(event.target.checked)} />
-            仅看已下线
-          </label>
-        ) : null}
-        <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
-          <table className="w-full border-collapse text-left text-[13px]">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-[var(--color-text-3)]">
-                <th className="px-2 py-2 font-semibold">上游</th>
-                <th className="px-2 py-2 font-semibold">地址</th>
-                {columns.request ? <th className="px-2 py-2 font-semibold">请求速率</th> : null}
-                {columns.c4 ? <th className="px-2 py-2 font-semibold">4xx</th> : null}
-                {columns.c5 ? <th className="px-2 py-2 font-semibold">5xx</th> : null}
-                {columns.bytesIn ? <th className="px-2 py-2 font-semibold">入站速率</th> : null}
-                {columns.bytesOut ? <th className="px-2 py-2 font-semibold">出站速率</th> : null}
-                {columns.requestMs ? <th className="px-2 py-2 font-semibold">请求时间</th> : null}
-                {columns.responseMs ? <th className="px-2 py-2 font-semibold">响应时间</th> : null}
-                {columns.down ? <th className="px-2 py-2 font-semibold">下线标记</th> : null}
-                {columns.backup ? <th className="px-2 py-2 font-semibold">备份标记</th> : null}
-                {columns.weight ? <th className="px-2 py-2 font-semibold">权重</th> : null}
-                {columns.maxFails ? <th className="px-2 py-2 font-semibold">最大失败次数</th> : null}
-                {columns.failTimeout ? <th className="px-2 py-2 font-semibold">失败暂停时长</th> : null}
-              </tr>
-            </thead>
-            {groups.map((group) => (
-              <tbody key={group.upstream || 'group'} data-nginx-upstream-group={group.upstream}>
-                <tr className="bg-[var(--color-fill-1)]">
-                  <td className="px-2 py-2 font-semibold text-[var(--color-text-1)]">{group.upstream || '--'}</td>
-                  <td className="px-2 py-2 text-[var(--color-text-3)]">--</td>
-                  {columns.request ? <td className="px-2 py-2 tabular-nums">{rateText(group.requestRate)}</td> : null}
-                  {columns.c4 ? <td className="px-2 py-2 tabular-nums">{rateText(group.codes['4xx'])}</td> : null}
-                  {columns.c5 ? <td className="px-2 py-2 tabular-nums">{rateText(group.codes['5xx'])}</td> : null}
-                  {columns.bytesIn ? <td className="px-2 py-2 tabular-nums">{byteText(group.bytesIn)}</td> : null}
-                  {columns.bytesOut ? <td className="px-2 py-2 tabular-nums">{byteText(group.bytesOut)}</td> : null}
-                  {columns.requestMs ? <td className="px-2 py-2">--</td> : null}
-                  {columns.responseMs ? <td className="px-2 py-2">--</td> : null}
-                  {columns.down ? <td className="px-2 py-2">--</td> : null}
-                  {columns.backup ? <td className="px-2 py-2">--</td> : null}
-                  {columns.weight ? <td className="px-2 py-2">--</td> : null}
-                  {columns.maxFails ? <td className="px-2 py-2">--</td> : null}
-                  {columns.failTimeout ? <td className="px-2 py-2">--</td> : null}
+      <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
+      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+        <div className="min-[1100px]:col-span-3">
+          <NginxTile label="上游请求速率" hint={NGINX_HINTS.upRate} unit="次/秒" figure={board.upRate} spark={board.upstreamGroupTrend[0]?.points} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
+        </div>
+        <div className="min-[1100px]:col-span-3">
+          <NginxTile label="上游 5xx 比例" hint={NGINX_HINTS.up5xx} figure={board.up5xx} sub={board.up5xxSub} tone={board.up5xx !== '暂无数据' && board.up5xx !== '0.0%' ? 'var(--color-fail)' : undefined} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
+        </div>
+        <div className="min-[1100px]:col-span-3">
+          <NginxTile label="平均响应时间" hint={NGINX_HINTS.upTime} figure={board.upTime} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
+        </div>
+        <div className="min-[1100px]:col-span-3">
+          <NginxTile
+            label="在线成员"
+            hint={NGINX_HINTS.upOnline}
+            figure={board.upOnline}
+            phase={kpiPhase}
+            emptyText={emptyText}
+            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)}
+            extra={board.upDown > 0 ? <span className="rounded-full bg-[color-mix(in_srgb,var(--color-fail)_14%,transparent)] px-2 py-0.5 text-[12px] text-[var(--color-fail)]">已下线 {board.upDown}</span> : null}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
+        <NginxChartCard
+          title="上游请求速率"
+          hint={NGINX_HINTS.upRate}
+          unit="次/秒"
+          items={board.upstreamGroupTrend}
+          floor={1}
+          formatReading={(value) => formatPerSecond(value, '次')}
+          phase={trendPhase}
+          emptyText={emptyText}
+          onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTrend)}
+        />
+        <NginxChartCard
+          title="上游状态码分布"
+          hint={NGINX_HINTS.upStatus}
+          unit="次"
+          items={board.upstreamStatusSteps}
+          floor={1}
+          kind="bar"
+          formatReading={(value) => formatCount(value, '次')}
+          phase={statusPhase}
+          emptyText={emptyText}
+          onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamStatus)}
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
+        <NginxChartCard
+          title="响应时间"
+          hint={NGINX_HINTS.upResponse}
+          unit={durationUnitLabel(model.upstreamTimeUnit)}
+          items={topSeries(model.upstreamResponseTime)}
+          floor={10}
+          formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
+          phase={timePhase}
+          emptyText={emptyText}
+          onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
+        />
+        <NginxChartCard
+          title="请求处理时间"
+          hint={NGINX_HINTS.upRequestTime}
+          unit={durationUnitLabel(model.upstreamTimeUnit)}
+          items={topSeries(model.upstreamRequestTime)}
+          floor={10}
+          formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
+          phase={timePhase}
+          emptyText={emptyText}
+          onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
+        />
+      </div>
+      <section id="nginx-upstream-table" className="flex h-[360px] flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]" data-nginx-upstream-table="">
+        <div className="flex items-center justify-between gap-3 px-3 pt-3">
+          <div className="inline-flex items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
+            上游
+            <NginxHint copy={NGINX_HINTS.upstream} />
+          </div>
+          {model.upstreamDownOnly ? (
+            <label className="inline-flex items-center gap-2 text-[13px] text-[var(--color-text-1)]">
+              仅看已下线
+              <Switch size="small" checked={downOnly} onChange={setDownOnly} />
+            </label>
+          ) : null}
+        </div>
+        {tablePhase !== 'ready' ? (
+          <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={tablePhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTable)} height={300} />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="w-full text-[13px]">
+              <thead className="sticky top-0 bg-[var(--color-bg)] text-right text-[var(--color-text-2)]">
+                <tr>
+                  <th className="px-2 py-2 text-left">状态</th>
+                  <th className="min-w-[160px] px-2 py-2 text-left">地址</th>
+                  <th className="px-2 py-2">权重</th>
+                  <th className="px-2 py-2">请求速率</th>
+                  <th className="px-2 py-2">窗口请求数</th>
+                  <th className="px-2 py-2">4xx</th>
+                  <th className="px-2 py-2">5xx</th>
+                  <th className="px-2 py-2">入站</th>
+                  <th className="px-2 py-2">出站</th>
+                  <th className="px-2 py-2">请求处理时间</th>
+                  <th className="px-2 py-2">响应时间</th>
+                  <th className="px-2 py-2">最大失败次数</th>
+                  <th className="px-2 py-2">失败暂停时长</th>
                 </tr>
-                {group.members.map((member) => (
-                  <tr key={`${member.upstream}|${member.address}`}>
-                    <td className="px-2 py-2 text-[var(--color-text-3)]">{member.upstream}</td>
-                    <td className="px-2 py-2">{member.address || '--'}</td>
-                    {memberCells(member)}
-                  </tr>
+              </thead>
+              <tbody>
+                {groups.map((group) => (
+                  <Fragment key={group.upstream}>
+                    <tr className="bg-[var(--color-fill-1)]" data-nginx-upstream-group={group.upstream}>
+                      {groupCells(group)}
+                    </tr>
+                    {group.members.map((member) => renderMember(member))}
+                  </Fragment>
                 ))}
               </tbody>
-            ))}
-            {!groups.length ? (
-              <tbody>
-                <tr>
-                  <td className="px-2 py-6 text-center font-semibold text-[var(--color-text-2)]" colSpan={tableColSpan}>{emptyText}</td>
-                </tr>
-              </tbody>
-            ) : null}
-          </table>
-        </div>
-      </ProSection>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

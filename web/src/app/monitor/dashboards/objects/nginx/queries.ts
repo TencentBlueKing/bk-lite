@@ -17,6 +17,27 @@ const bytesRate = (prefix: string, selector: string) => (
   `label_replace(rate(${prefix}_in_bytes${selector}[__$rate_window__]), "direction", "in", "__name__", ".*") or label_replace(rate(${prefix}_out_bytes${selector}[__$rate_window__]), "direction", "out", "__name__", ".*")`
 );
 
+/** increase / sum 之后 __name__ 可能是空的，源标签用空串配 ".*"，不依赖 __name__。 */
+const tag = (query: string, key: string, value: string) => (
+  `label_replace(${query}, "${key}", "${value}", "", ".*")`
+);
+
+const statusIncrease = (prefix: string, selector: string, span: '__$window__' | '__$step__', codes: readonly string[] = CODES) => (
+  codes.map((code) => tag(`increase(${prefix}_response_${code}_count${selector}[${span}])`, 'code', code)).join(' or ')
+);
+
+const bytesIncrease = (prefix: string, selector: string) => (
+  `${tag(`increase(${prefix}_in_bytes${selector}[__$window__])`, 'direction', 'in')} or ${tag(`increase(${prefix}_out_bytes${selector}[__$window__])`, 'direction', 'out')}`
+);
+
+const summedStatusIncrease = (prefix: string, span: '__$window__' | '__$step__', by: string, codes: readonly string[] = CODES) => (
+  codes.map((code) => tag(
+    `sum by (${by}) (increase(${prefix}_response_${code}_count{__$labels__}[${span}]))`,
+    'code',
+    code
+  )).join(' or ')
+);
+
 const totalRate = (metric: string, selector: string) => (
   `label_replace(rate(${metric}${selector}[__$rate_window__]), "code", "total", "__name__", ".*")`
 );
@@ -151,7 +172,30 @@ export const NGINX_PRO_QUERIES: readonly NginxQuerySpec[] = [
   range('filterRequestRate', totalRate('nginx_vts_filter_requests', ANY)),
   range('filterStatusRate', statusRate('nginx_vts_filter', ANY)),
   range('filterBytes', bytesRate('nginx_vts_filter', ANY)),
-  range('filterTime', `nginx_vts_filter_request_time${ANY}`)
+  range('filterTime', `nginx_vts_filter_request_time${ANY}`),
+  instant('starWindowRequests', `increase(nginx_vts_server_requests${ZONE_STAR}[__$window__])`),
+  instant('zoneWindowRequests', `increase(nginx_vts_server_requests${ZONE_DETAIL}[__$window__])`),
+  instant('starWindowStatus', statusIncrease('nginx_vts_server', ZONE_STAR, '__$window__')),
+  instant('zoneWindowStatus', statusIncrease('nginx_vts_server', ZONE_DETAIL, '__$window__')),
+  instant('starWindowBytes', bytesIncrease('nginx_vts_server', ZONE_STAR)),
+  instant('zoneWindowBytes', bytesIncrease('nginx_vts_server', ZONE_DETAIL)),
+  range('starStatusStep', statusIncrease('nginx_vts_server', ZONE_STAR, '__$step__')),
+  instant('upWindowRequests', 'sum(increase(nginx_vts_upstream_requests{__$labels__}[__$window__]))'),
+  instant('upWindow5xx', 'sum(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]))'),
+  instant('upMemberWindowRequests', `increase(nginx_vts_upstream_requests${ANY}[__$window__])`),
+  instant('upMemberWindowStatus', statusIncrease('nginx_vts_upstream', ANY, '__$window__', ['4xx', '5xx'])),
+  instant('upMemberWindowBytes', bytesIncrease('nginx_vts_upstream', ANY)),
+  instant('upGroupWindowRequests', 'sum by (upstream) (increase(nginx_vts_upstream_requests{__$labels__}[__$window__]))'),
+  instant('upGroupWindowStatus', summedStatusIncrease('nginx_vts_upstream', '__$window__', 'upstream', ['4xx', '5xx'])),
+  instant('upGroupWindowBytes', `${tag('sum by (upstream) (increase(nginx_vts_upstream_in_bytes{__$labels__}[__$window__]))', 'direction', 'in')} or ${tag('sum by (upstream) (increase(nginx_vts_upstream_out_bytes{__$labels__}[__$window__]))', 'direction', 'out')}`),
+  range('upStatusStep', CODES.map((code) => tag(
+    `sum(increase(nginx_vts_upstream_response_${code}_count{__$labels__}[__$step__]))`,
+    'code',
+    code
+  )).join(' or ')),
+  instant('filterWindowRequests', `increase(nginx_vts_filter_requests${ANY}[__$window__])`),
+  instant('filterWindowStatus', statusIncrease('nginx_vts_filter', ANY, '__$window__', ['2xx', '4xx', '5xx'])),
+  instant('filterWindowBytes', bytesIncrease('nginx_vts_filter', ANY))
 ];
 
 export const nginxQueryByKey = (key: string) => (

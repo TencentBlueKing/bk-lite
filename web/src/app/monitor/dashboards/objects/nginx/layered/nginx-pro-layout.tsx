@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -9,6 +9,7 @@ import type { TimeValuesProps } from '@/app/monitor/types';
 import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
 import { nginxCollectionIntervalSeconds } from '../rate-window';
 import { selectProChartWindow } from '../../../shared/utils/pro-chart-window';
+import { type NginxQueryPhase } from './query-phase';
 import HostAlertDrawer from '../../host/layered/host-alert-drawer';
 import { hostAlertRailEvents, type HostAlertRailEvent } from '../../host/layered/events-rail';
 import { overviewHostAlertParams } from '../../host/layered/host-alert-list';
@@ -35,7 +36,9 @@ export default function NginxProLayout({
   queryTimeRange,
   instanceLoading = false,
   intervalSeconds,
-  reloadKey = 0
+  reloadKey = 0,
+  linkedNodeId = '',
+  linkedIp = ''
 }: {
   instanceId: string;
   monitorObjectId: string | number;
@@ -44,18 +47,21 @@ export default function NginxProLayout({
   instanceLoading?: boolean;
   intervalSeconds?: number;
   reloadKey?: number;
+  linkedNodeId?: string;
+  linkedIp?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getInstanceQuery, getInstanceInstantQuery } = useViewApi();
   const { getMonitorAlert } = useMonitorApi();
   const [bundle, setBundle] = useState<NginxQueryResult>(EMPTY_RESULT);
-  const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
+  const [phases, setPhases] = useState<Record<string, NginxQueryPhase>>({});
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
   const [tab, setTab] = useState<NginxTabKey>('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
-  const [eventsPhase, setEventsPhase] = useState<'loading' | 'ready'>('loading');
+  const [eventsPhase, setEventsPhase] = useState<NginxQueryPhase>('loading');
+  const [alertRetry, setAlertRetry] = useState(0);
   const eventsScopeRef = useRef<string | null>(null);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const alertDrawerOpenRef = useRef(false);
@@ -66,7 +72,7 @@ export default function NginxProLayout({
   if (instanceId !== seenInstance) {
     setSeenInstance(instanceId);
     setBundle(EMPTY_RESULT);
-    setPhase('loading');
+    setPhases({});
     setAlertCount(null);
     setAlertEvents([]);
     setFocusAlertId('');
@@ -80,20 +86,32 @@ export default function NginxProLayout({
 
   const timeValuesRef = useRef(timeValues);
   timeValuesRef.current = timeValues;
+  const flightRef = useRef(0);
   const timeKey = `${timeValues.timeRange.join(',')}|${timeValues.originValue ?? ''}|${reloadKey}`;
-  useEffect(() => {
+  const loadQueries = useCallback((keys?: readonly string[]) => {
     if (instanceLoading) return undefined;
     if (!monitorObjectId || !instanceId) {
       setBundle(EMPTY_RESULT);
-      setPhase('ready');
+      setPhases(Object.fromEntries(NGINX_PRO_QUERIES.map((item) => [item.key, 'ready' as const])));
       return undefined;
     }
-    let active = true;
-    setPhase('loading');
+    const specs = keys
+      ? NGINX_PRO_QUERIES.filter((item) => keys.includes(item.key))
+      : [...NGINX_PRO_QUERIES];
+    const ticket = keys ? flightRef.current : (flightRef.current + 1);
+    if (!keys) flightRef.current = ticket;
+    let cancelled = false;
+    setPhases((current) => {
+      const next = keys ? { ...current } : {};
+      specs.forEach((item) => {
+        next[item.key] = 'loading';
+      });
+      return next;
+    });
     const context = { monitorObjectId, instanceId };
     const currentTime = timeValuesRef.current;
     const interval = nginxCollectionIntervalSeconds(intervalSeconds);
-    runWithConcurrency([...NGINX_PRO_QUERIES], 4, async (spec) => {
+    runWithConcurrency(specs, 4, async (spec) => {
       const params = buildSearchParams(
         spec.query,
         'none',
@@ -108,26 +126,48 @@ export default function NginxProLayout({
       );
       try {
         const result = spec.instant ? await getInstanceInstantQuery(params) : await getInstanceQuery(params);
-        return { spec, result };
+        return { spec, result, failed: false };
       } catch {
-        return { spec, result: null };
+        return { spec, result: null, failed: true };
       }
     }).then((rows) => {
-      if (!active) return;
-      const next: NginxQueryResult = { range: {}, instant: {} };
-      rows.forEach((row) => {
-        if (!row) return;
-        if (row.spec.instant) next.instant[row.spec.key] = row.result ? readInstantSamples(row.result) : [];
-        else next.range[row.spec.key] = row.result ? readRangeSeries(row.result) : [];
+      if (cancelled || flightRef.current !== ticket) return;
+      setBundle((current) => {
+        const next: NginxQueryResult = keys
+          ? { range: { ...current.range }, instant: { ...current.instant } }
+          : { range: {}, instant: {} };
+        rows.forEach((row) => {
+          if (!row || row.failed) return;
+          if (row.spec.instant) next.instant[row.spec.key] = row.result ? readInstantSamples(row.result) : [];
+          else next.range[row.spec.key] = row.result ? readRangeSeries(row.result) : [];
+        });
+        return next;
       });
-      setBundle(next);
+      setPhases((current) => {
+        const next = { ...current };
+        rows.forEach((row) => {
+          if (!row) return;
+          next[row.spec.key] = row.failed || row.result == null ? 'error' : 'ready';
+        });
+        return next;
+      });
       setNowSeconds(Date.now() / 1000);
-      setPhase('ready');
     });
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [getInstanceInstantQuery, getInstanceQuery, instanceId, instanceLoading, intervalSeconds, monitorObjectId, timeKey]);
+  }, [getInstanceInstantQuery, getInstanceQuery, instanceId, instanceLoading, intervalSeconds, monitorObjectId]);
+  useEffect(() => {
+    const stop = loadQueries();
+    return () => stop?.();
+  }, [loadQueries, timeKey]);
+  const retryKeys = (keys: readonly string[]) => {
+    loadQueries(keys);
+  };
+  const retryFailed = () => {
+    const failed = Object.entries(phases).filter(([, value]) => value === 'error').map(([key]) => key);
+    if (failed.length) loadQueries(failed);
+  };
 
   const model = useMemo(() => buildNginxDashboard({
     onboarded: Boolean(instanceId) && !instanceLoading,
@@ -164,6 +204,7 @@ export default function NginxProLayout({
       return undefined;
     }
     let active = true;
+    setEventsPhase('loading');
     getMonitorAlert(overviewHostAlertParams(instanceId))
       .then((data) => {
         if (!active) return;
@@ -176,22 +217,23 @@ export default function NginxProLayout({
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
-        setEventsPhase('ready');
+        setEventsPhase('error');
         if (!alertDrawerOpenRef.current) setAlertCount(null);
       });
     return () => {
       active = false;
     };
-  }, [chartWindowKey, getMonitorAlert, instanceId, instanceLoading]);
+  }, [alertRetry, chartWindowKey, getMonitorAlert, instanceId, instanceLoading]);
 
-  const selectTab = (next: NginxTabKey) => {
+  const [anchor, setAnchor] = useState('');
+  const selectTab = (next: NginxTabKey, nextAnchor?: string) => {
     setTab(next);
+    setAnchor(nextAnchor || '');
     const params = new URLSearchParams(searchParams.toString());
     params.set(TAB_QUERY, next);
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
-  const loading = phase === 'loading' || instanceLoading;
   const emptyText = model.collection.kind === 'not_onboarded' ? '尚未接入采集' : '暂无数据';
   const tabs: Array<{ key: NginxTabKey; label: string }> = [
     { key: 'overview', label: '概览' },
@@ -200,9 +242,16 @@ export default function NginxProLayout({
   if (model.tabs.sites) tabs.push({ key: 'sites', label: '请求与站点' });
   if (model.tabs.upstream) tabs.push({ key: 'upstream', label: '上游' });
   const activeTab = tabs.some((item) => item.key === tab) ? tab : 'overview';
+  useEffect(() => {
+    if (!anchor) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [anchor, activeTab]);
 
   return (
-    <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange} suspend={loading}>
+    <ProTimeWindowProvider timeValues={timeValues} queryTimeRange={queryTimeRange} suspend={instanceLoading}>
       <div className={layered.root} data-nginx-pro="category" data-nginx-collection={model.collection.kind}>
         <div className={layered.tabBand}>
           <Tabs
@@ -219,12 +268,13 @@ export default function NginxProLayout({
           {activeTab === 'overview' ? (
             <OverviewPane
               model={model}
-              loading={loading}
+              phases={phases}
+              alertPhase={eventsPhase}
               emptyText={emptyText}
               alertCount={alertCount}
-              alertsOpen={alertDrawerOpen}
               alertEvents={alertEvents}
-              eventsLoading={eventsPhase === 'loading'}
+              nodeId={linkedNodeId}
+              ip={linkedIp}
               onOpenAlerts={() => {
                 setFocusAlertId('');
                 setAlertDrawerOpen(true);
@@ -236,16 +286,37 @@ export default function NginxProLayout({
                 setAlertRefreshKey((key) => key + 1);
               }}
               onOpen={selectTab}
+              onRetry={retryKeys}
+              onRetryFailed={retryFailed}
+              onRetryAlerts={() => setAlertRetry((value) => value + 1)}
             />
           ) : null}
           {activeTab === 'connections' ? (
-            <ConnectionsPane model={model} loading={loading} emptyText={emptyText} />
+            <ConnectionsPane
+              model={model}
+              phases={phases}
+              emptyText={emptyText}
+              onRetry={retryKeys}
+              onRetryFailed={retryFailed}
+            />
           ) : null}
           {activeTab === 'sites' ? (
-            <SitesPane model={model} loading={loading} emptyText={emptyText} />
+            <SitesPane
+              model={model}
+              phases={phases}
+              emptyText={emptyText}
+              onRetry={retryKeys}
+              onRetryFailed={retryFailed}
+            />
           ) : null}
           {activeTab === 'upstream' ? (
-            <UpstreamPane model={model} loading={loading} emptyText={emptyText} />
+            <UpstreamPane
+              model={model}
+              phases={phases}
+              emptyText={emptyText}
+              onRetry={retryKeys}
+              onRetryFailed={retryFailed}
+            />
           ) : null}
         </div>
         <HostAlertDrawer

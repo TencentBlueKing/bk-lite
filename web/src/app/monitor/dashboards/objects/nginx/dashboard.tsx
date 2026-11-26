@@ -70,6 +70,8 @@ export default function NginxDashboardPage() {
           instanceLoading={dashboard.instanceLoading}
           intervalSeconds={dashboard.currentInstanceInterval}
           reloadKey={dashboard.loadTick}
+          linkedNodeId={dashboard.linkedNodeId}
+          linkedIp={dashboard.linkedIp}
         />
       )}
       dashboardContent={

@@ -7,10 +7,12 @@ import {
   formatBytesPerSecond,
   formatCount,
   formatDuration,
+  formatDecimal,
   formatPercent,
   formatPerSecond,
   NOT_ONBOARDED,
   pickDurationUnit,
+  pickUpstreamDurationUnit,
   type DurationUnit
 } from './format';
 import {
@@ -158,6 +160,10 @@ export interface ZoneTableRow {
   bytesIn: number | null;
   bytesOut: number | null;
   timeMs: number | null;
+  windowRequests?: number | null;
+  windowCodes?: Record<string, number | null>;
+  windowBytesIn?: number | null;
+  windowBytesOut?: number | null;
 }
 
 export interface UpstreamMemberRow {
@@ -174,6 +180,11 @@ export interface UpstreamMemberRow {
   weight: number | null;
   maxFails: number | null;
   failTimeout: number | null;
+  windowRequests?: number | null;
+  windowCodes?: Record<string, number | null>;
+  windowBytesIn?: number | null;
+  windowBytesOut?: number | null;
+  addressLabel?: string;
 }
 
 export interface UpstreamGroupRow {
@@ -182,6 +193,10 @@ export interface UpstreamGroupRow {
   codes: Record<string, number | null>;
   bytesIn: number | null;
   bytesOut: number | null;
+  windowRequests?: number | null;
+  windowCodes?: Record<string, number | null>;
+  windowBytesIn?: number | null;
+  windowBytesOut?: number | null;
   members: UpstreamMemberRow[];
 }
 
@@ -193,6 +208,10 @@ export interface FilterTableRow {
   bytesIn: number | null;
   bytesOut: number | null;
   timeMs: number | null;
+  windowRequests?: number | null;
+  windowCodes?: Record<string, number | null>;
+  windowBytesIn?: number | null;
+  windowBytesOut?: number | null;
 }
 
 export interface NginxDashboardModel {
@@ -252,7 +271,100 @@ export interface NginxDashboardModel {
   upstreamDownOnly: boolean;
   filterRequest: NginxSeriesItem[];
   filterRows: FilterTableRow[];
+  board: NginxBoard;
 }
+
+export interface NginxStatusPart {
+  code: string;
+  count: number | null;
+}
+
+export interface NginxRankRow {
+  zone: string;
+  count: number | null;
+}
+
+export interface NginxBoard {
+  collectionSub: string;
+  requestFigure: string;
+  requestSub: string;
+  activeFigure: string;
+  activeSub: string;
+  readingFigure: string;
+  writingFigure: string;
+  waitingFigure: string;
+  busyFigure: string;
+  busyShare: number | null;
+  droppedFigure: string;
+  handledFigure: string;
+  focusRequestSub: string;
+  focusThirdTitle: string;
+  focusThirdFigure: string;
+  focusThirdSub: string;
+  focusThirdTab: 'sites' | 'upstream' | 'connections';
+  focusThirdAnchor: string;
+  windowRequests: string;
+  ratio4xx: string;
+  count4xx: string;
+  ratio5xx: string;
+  count5xx: string;
+  ratio5xxHot: boolean;
+  avgTime: string;
+  upRate: string;
+  up5xx: string;
+  up5xxSub: string;
+  upTime: string;
+  upOnline: string;
+  upDown: number;
+  statusSteps: NginxSeriesItem[];
+  statusParts: NginxStatusPart[];
+  trafficSeries: NginxSeriesItem[];
+  siteTrend: NginxSeriesItem[];
+  siteRank: NginxRankRow[];
+  upstreamGroupTrend: NginxSeriesItem[];
+  upstreamStatusSteps: NginxSeriesItem[];
+}
+
+const EMPTY_BOARD: NginxBoard = {
+  collectionSub: '',
+  requestFigure: EMPTY_READING,
+  requestSub: '',
+  activeFigure: EMPTY_READING,
+  activeSub: '',
+  readingFigure: EMPTY_READING,
+  writingFigure: EMPTY_READING,
+  waitingFigure: EMPTY_READING,
+  busyFigure: EMPTY_READING,
+  busyShare: null,
+  droppedFigure: EMPTY_READING,
+  handledFigure: EMPTY_READING,
+  focusRequestSub: '',
+  focusThirdTitle: '连接结构',
+  focusThirdFigure: EMPTY_READING,
+  focusThirdSub: '',
+  focusThirdTab: 'connections',
+  focusThirdAnchor: 'nginx-conn-mix',
+  windowRequests: EMPTY_READING,
+  ratio4xx: EMPTY_READING,
+  count4xx: '',
+  ratio5xx: EMPTY_READING,
+  count5xx: '',
+  ratio5xxHot: false,
+  avgTime: EMPTY_READING,
+  upRate: EMPTY_READING,
+  up5xx: EMPTY_READING,
+  up5xxSub: '',
+  upTime: EMPTY_READING,
+  upOnline: EMPTY_READING,
+  upDown: 0,
+  statusSteps: [],
+  statusParts: [],
+  trafficSeries: [],
+  siteTrend: [],
+  siteRank: [],
+  upstreamGroupTrend: [],
+  upstreamStatusSteps: []
+};
 
 const EMPTY_FOCUS = {
   requestValue: EMPTY_READING,
@@ -312,7 +424,8 @@ const emptyModel = (kind: CollectionKind, label: string): NginxDashboardModel =>
   upstreamGroups: [],
   upstreamDownOnly: false,
   filterRequest: [],
-  filterRows: []
+  filterRows: [],
+  board: EMPTY_BOARD
 });
 
 const alignBinary = (
@@ -347,6 +460,32 @@ const seriesItem = (
   points: Point[],
   reading: string
 ): NginxSeriesItem => ({ id, label, color, points, reading });
+
+const clockOf = (unix: number | null) => {
+  if (unix == null) return '';
+  const date = new Date(unix * 1000);
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+const staleNote = (stale: boolean, source: number | null) => (
+  stale && source != null ? `最近读数 ${clockOf(source)}` : ''
+);
+
+const figureOf = (value: number | null) => (value == null ? EMPTY_READING : formatDecimal(value));
+
+const countFigure = (value: number | null) => (value == null ? EMPTY_READING : formatCount(value, ''));
+
+const sampleValue = (
+  samples: readonly InstantSample[] | undefined,
+  match: (labels: Record<string, string>) => boolean
+) => {
+  const found = samples?.find((sample) => match(sample.labels));
+  return found ? found.value : null;
+};
+
+const CODE_ORDER = ['1xx', '2xx', '3xx', '4xx', '5xx'];
 
 const durationItems = (
   rows: ReadonlyArray<{ id: string; label: string; points: Point[]; fresh: boolean }>,
@@ -410,9 +549,8 @@ export const buildNginxDashboard = ({
   const kind = collectionKind(true, activeSource, nowSeconds, limit);
   const collectionLabel = kind === 'success'
     ? COLLECTION_OK
-    : kind === 'expired'
-      ? '暂无数据（已过期）'
-      : EMPTY_READING;
+    : EMPTY_READING;
+  const collectionSub = kind === 'expired' ? staleNote(true, activeSource) : '';
 
   const conn = data.range.conn ?? [];
   const gauge = (status: string) => pointsOf(byLabel(conn, 'status', status));
@@ -578,7 +716,7 @@ export const buildNginxDashboard = ({
   });
   timeRows.forEach((item) => zones.add(item.id));
 
-  const zoneRows = Array.from(zones).map((zone) => {
+  const zoneRows: ZoneTableRow[] = Array.from(zones).map((zone) => {
     const request = zoneRequestSeries.find((item) => labelOf(item.labels, 'zone') === zone);
     const time = timeRows.find((item) => item.id === zone);
     return {
@@ -600,7 +738,7 @@ export const buildNginxDashboard = ({
   const summaryZone = '*';
   const summaryRequest = (data.range.starRequestRate ?? []).find((item) => labelOf(item.labels, 'zone') === '*' || !labelOf(item.labels, 'zone'));
   const summaryTime = starTime[0];
-  const zoneSummary = (summaryRequest || summaryTime || (data.range.starStatusRate?.length ?? 0) > 0)
+  const zoneSummary: ZoneTableRow | null = (summaryRequest || summaryTime || (data.range.starStatusRate?.length ?? 0) > 0)
     ? {
       zone: summaryZone,
       requestRate: summaryRequest && zoneFresh('nginx_vts_server_requests', '*') ? latestPoint(summaryRequest.points) : null,
@@ -616,6 +754,22 @@ export const buildNginxDashboard = ({
       timeMs: summaryTime && starTimeFresh ? latestPoint(summaryTime.points) : null
     }
     : null;
+  const fillZoneWindow = (row: ZoneTableRow, star: boolean) => {
+    const zone = star ? '*' : row.zone;
+    const requests = star ? data.instant.starWindowRequests : data.instant.zoneWindowRequests;
+    const status = star ? data.instant.starWindowStatus : data.instant.zoneWindowStatus;
+    const bytes = star ? data.instant.starWindowBytes : data.instant.zoneWindowBytes;
+    const zoneMatch = (labels: Record<string, string>) => labelOf(labels, 'zone') === zone;
+    row.windowRequests = sampleValue(requests, zoneMatch);
+    row.windowCodes = Object.fromEntries(CODE_ORDER.map((code) => [
+      code,
+      sampleValue(status, (labels) => zoneMatch(labels) && labelOf(labels, 'code') === code)
+    ]));
+    row.windowBytesIn = sampleValue(bytes, (labels) => zoneMatch(labels) && labelOf(labels, 'direction') === 'in');
+    row.windowBytesOut = sampleValue(bytes, (labels) => zoneMatch(labels) && labelOf(labels, 'direction') === 'out');
+  };
+  zoneRows.forEach((row) => fillZoneWindow(row, false));
+  if (zoneSummary) fillZoneWindow(zoneSummary, true);
 
   const memberKey = (labels: Record<string, string>) => (
     `${labelOf(labels, 'upstream')}|${labelOf(labels, 'upstream_address')}`
@@ -638,7 +792,7 @@ export const buildNginxDashboard = ({
     (data.range[key] ?? []).forEach((item) => rememberMember(item.labels));
   });
 
-  const members = Array.from(memberNames.values()).map((member) => {
+  const members: UpstreamMemberRow[] = Array.from(memberNames.values()).map((member) => {
     const request = (data.range.upRequestRate ?? []).find((item) => memberKey(item.labels) === `${member.upstream}|${member.address}`);
     const time = (data.range.upRequestTime ?? []).find((item) => memberKey(item.labels) === `${member.upstream}|${member.address}`);
     const response = (data.range.upResponseTime ?? []).find((item) => memberKey(item.labels) === `${member.upstream}|${member.address}`);
@@ -688,8 +842,26 @@ export const buildNginxDashboard = ({
       weight: flag('weight'),
       maxFails: flag('maxFails'),
       failTimeout: flag('failTimeout')
-    } satisfies UpstreamMemberRow;
+    };
   });
+  members.forEach((member) => {
+    const matchMember = (labels: Record<string, string>) => (
+      labelOf(labels, 'upstream') === member.upstream && labelOf(labels, 'upstream_address') === member.address
+    );
+    member.windowRequests = sampleValue(data.instant.upMemberWindowRequests, matchMember);
+    member.windowCodes = {
+      '4xx': sampleValue(data.instant.upMemberWindowStatus, (labels) => matchMember(labels) && labelOf(labels, 'code') === '4xx'),
+      '5xx': sampleValue(data.instant.upMemberWindowStatus, (labels) => matchMember(labels) && labelOf(labels, 'code') === '5xx')
+    };
+    member.windowBytesIn = sampleValue(data.instant.upMemberWindowBytes, (labels) => matchMember(labels) && labelOf(labels, 'direction') === 'in');
+    member.windowBytesOut = sampleValue(data.instant.upMemberWindowBytes, (labels) => matchMember(labels) && labelOf(labels, 'direction') === 'out');
+  });
+
+  const visibleMembers = (rows: UpstreamMemberRow[]) => {
+    const addressed = rows.filter((member) => member.address);
+    if (addressed.length) return addressed;
+    return rows.slice(0, 1).map((member) => ({ ...member, addressLabel: '地址未上报' }));
+  };
 
   const groupNames = new Set<string>(members.map((member) => member.upstream).filter(Boolean));
   (data.range.upRequestSum ?? []).forEach((item) => {
@@ -716,10 +888,16 @@ export const buildNginxDashboard = ({
     },
     bytesIn: groupStale(upstreamName, 'nginx_vts_upstream_in_bytes') ? null : sumLatest(data.range.upBytesSum ?? [], upstreamName, (labels) => labelOf(labels, 'direction') === 'in'),
     bytesOut: groupStale(upstreamName, 'nginx_vts_upstream_out_bytes') ? null : sumLatest(data.range.upBytesSum ?? [], upstreamName, (labels) => labelOf(labels, 'direction') === 'out'),
-    members: members
-      .filter((member) => member.upstream === upstreamName)
-      .sort((left, right) => sortNullLast(left.codes['5xx'], right.codes['5xx']) || sortNullLast(left.responseMs, right.responseMs))
-  })).sort((left, right) => sortNullLast(left.codes['5xx'], right.codes['5xx']) || sortNullLast(left.requestRate, right.requestRate));
+    windowRequests: sampleValue(data.instant.upGroupWindowRequests, (labels) => labelOf(labels, 'upstream') === upstreamName),
+    windowCodes: {
+      '4xx': sampleValue(data.instant.upGroupWindowStatus, (labels) => labelOf(labels, 'upstream') === upstreamName && labelOf(labels, 'code') === '4xx'),
+      '5xx': sampleValue(data.instant.upGroupWindowStatus, (labels) => labelOf(labels, 'upstream') === upstreamName && labelOf(labels, 'code') === '5xx')
+    },
+    windowBytesIn: sampleValue(data.instant.upGroupWindowBytes, (labels) => labelOf(labels, 'upstream') === upstreamName && labelOf(labels, 'direction') === 'in'),
+    windowBytesOut: sampleValue(data.instant.upGroupWindowBytes, (labels) => labelOf(labels, 'upstream') === upstreamName && labelOf(labels, 'direction') === 'out'),
+    members: visibleMembers(members.filter((member) => member.upstream === upstreamName))
+      .sort((left, right) => sortNullLast(left.windowCodes?.['5xx'] ?? left.codes['5xx'], right.windowCodes?.['5xx'] ?? right.codes['5xx']) || sortNullLast(left.responseMs, right.responseMs))
+  })).sort((left, right) => left.upstream.localeCompare(right.upstream, 'zh'));
 
   const upstreamRequest = (data.range.upRequestRate ?? [])
     .filter((item) => labelOf(item.labels, 'code') === 'total' || labelOf(item.labels, 'code') === '')
@@ -766,10 +944,10 @@ export const buildNginxDashboard = ({
   const upstreamPeak = [...requestTimeRows, ...responseTimeRows].reduce((peak, item) => (
     Math.max(peak, ...item.points.map((point) => Math.abs(point.value)))
   ), 0);
-  const upstreamTimeUnit = pickDurationUnit(upstreamPeak);
+  const upstreamTimeUnit = pickUpstreamDurationUnit(upstreamPeak);
   const upstreamRequestTime = durationItems(requestTimeRows, upstreamTimeUnit);
   const upstreamResponseTime = durationItems(responseTimeRows, upstreamTimeUnit);
-  const upstreamDownOnly = members.some((member) => member.down === 1);
+  const upstreamDownOnly = upstreamGroups.some((group) => group.members.some((member) => member.down === 1));
 
   const filterNames = new Map<string, { filterName: string; filterKey: string }>();
   const rememberFilter = (labels: Record<string, string>) => {
@@ -788,7 +966,7 @@ export const buildNginxDashboard = ({
     metric,
     (labels) => labelOf(labels, 'filter_name') === filterName && labelOf(labels, 'filter_key') === filterKey
   );
-  const filterRows = Array.from(filterNames.values()).map((filter) => {
+  const filterRows: FilterTableRow[] = Array.from(filterNames.values()).map((filter) => {
     const id = `${filter.filterName}|${filter.filterKey}`;
     const request = (data.range.filterRequestRate ?? []).find((item) => `${labelOf(item.labels, 'filter_name')}|${labelOf(item.labels, 'filter_key')}` === id);
     const time = (data.range.filterTime ?? []).find((item) => `${labelOf(item.labels, 'filter_name')}|${labelOf(item.labels, 'filter_key')}` === id);
@@ -823,6 +1001,19 @@ export const buildNginxDashboard = ({
       timeMs: time && filterFreshEnough('nginx_vts_filter_request_time', filter.filterName, filter.filterKey) ? latestPoint(time.points) : null
     };
   }).sort((left, right) => sortNullLast(left.requestRate, right.requestRate));
+  filterRows.forEach((row) => {
+    const matchFilter = (labels: Record<string, string>) => (
+      labelOf(labels, 'filter_name') === row.filterName && labelOf(labels, 'filter_key') === row.filterKey
+    );
+    row.windowRequests = sampleValue(data.instant.filterWindowRequests, matchFilter);
+    row.windowCodes = {
+      '2xx': sampleValue(data.instant.filterWindowStatus, (labels) => matchFilter(labels) && labelOf(labels, 'code') === '2xx'),
+      '4xx': sampleValue(data.instant.filterWindowStatus, (labels) => matchFilter(labels) && labelOf(labels, 'code') === '4xx'),
+      '5xx': sampleValue(data.instant.filterWindowStatus, (labels) => matchFilter(labels) && labelOf(labels, 'code') === '5xx')
+    };
+    row.windowBytesIn = sampleValue(data.instant.filterWindowBytes, (labels) => matchFilter(labels) && labelOf(labels, 'direction') === 'in');
+    row.windowBytesOut = sampleValue(data.instant.filterWindowBytes, (labels) => matchFilter(labels) && labelOf(labels, 'direction') === 'out');
+  });
   const filterRequest = (data.range.filterRequestRate ?? []).map((item, index) => {
     const filterName = labelOf(item.labels, 'filter_name');
     const filterKey = labelOf(item.labels, 'filter_key');
@@ -831,6 +1022,151 @@ export const buildNginxDashboard = ({
     const label = filterKey ? `${filterName} ${filterKey}` : filterName;
     return seriesItem(`${filterName}|${filterKey}`, label, colorAt(index), item.points, value == null ? EMPTY_READING : formatPerSecond(value, '次'));
   });
+
+  const codeSteps = (series: readonly RangeSeries[]) => sumByCode(series)
+    .sort((left, right) => CODE_ORDER.indexOf(left.code) - CODE_ORDER.indexOf(right.code))
+    .map((item) => seriesItem(item.code, item.code, CODE_COLORS[item.code] || colorAt(0), item.points, ''));
+  const statusSteps = codeSteps(data.range.starStatusStep ?? []);
+  const upstreamStatusSteps = codeSteps(data.range.upStatusStep ?? []);
+  const starCode = (code: string) => sampleValue(
+    data.instant.starWindowStatus,
+    (labels) => labelOf(labels, 'code') === code && labelOf(labels, 'zone') === '*'
+  );
+  const starWindowTotal = sampleValue(data.instant.starWindowRequests, (labels) => labelOf(labels, 'zone') === '*');
+  const ratioText = (part: number | null, total: number | null) => {
+    if (total == null || total === 0) return EMPTY_READING;
+    return formatPercent((part ?? 0) / total);
+  };
+  const statusParts = CODE_ORDER.map((code) => ({
+    code,
+    count: starCode(code)
+  }));
+  const directionSeries = (direction: string, label: string, color: string) => {
+    const found = (data.range.starBytes ?? []).find((item) => (
+      labelOf(item.labels, 'direction') === direction && (labelOf(item.labels, 'zone') === '*' || !labelOf(item.labels, 'zone'))
+    ));
+    return seriesItem(direction, label, color, found?.points ?? [], '');
+  };
+  const trafficSeries = [
+    directionSeries('in', '入站', '#2f6bff'),
+    directionSeries('out', '出站', '#27c274')
+  ].filter((item) => item.points.length > 0);
+  const mergePoints = (rows: readonly NginxSeriesItem[]) => {
+    const bucket = new Map<number, number>();
+    rows.forEach((row) => row.points.forEach((point) => {
+      bucket.set(point.time, (bucket.get(point.time) ?? 0) + point.value);
+    }));
+    return Array.from(bucket.entries()).map(([time, value]) => ({ time, value })).sort((left, right) => left.time - right.time);
+  };
+  const rankedZones = [...zoneRequest]
+    .map((item) => ({
+      item,
+      zone: item.id,
+      count: zoneRows.find((row) => row.zone === item.id)?.windowRequests ?? null
+    }))
+    .sort((left, right) => sortNullLast(left.count, right.count) || left.zone.localeCompare(right.zone, 'zh'));
+  zoneRows.forEach((row) => {
+    if (!rankedZones.some((item) => item.zone === row.zone)) {
+      rankedZones.push({ item: seriesItem(row.zone, row.zone, colorAt(rankedZones.length), [], ''), zone: row.zone, count: row.windowRequests ?? null });
+    }
+  });
+  rankedZones.sort((left, right) => sortNullLast(left.count, right.count) || left.zone.localeCompare(right.zone, 'zh'));
+  const siteHead = rankedZones.slice(0, 5);
+  const siteRest = rankedZones.slice(5).map((item) => item.item).filter((item) => item.points.length);
+  const siteTrend = [
+    ...siteHead.map((item) => item.item),
+    ...(siteRest.length ? [seriesItem('__other__', '其他', '#8c8c8c', mergePoints(siteRest), '')] : [])
+  ];
+  const siteRank = rankedZones.map((item) => ({ zone: item.zone, count: item.count }));
+  const requestMean = requestPoints.length
+    ? requestPoints.reduce((sum, point) => sum + point.value, 0) / requestPoints.length
+    : null;
+  const focusRequestSub = requestNow != null && requestMean != null && requestMean !== 0
+    ? `${requestNow - requestMean >= 0 ? '升' : '降'} ${formatPercent(Math.abs(requestNow - requestMean) / requestMean)}`
+    : '';
+  const shownMembers = upstreamGroups.flatMap((group) => group.members);
+  const upDown = shownMembers.filter((member) => member.down === 1).length;
+  const upTotal = sampleValue(data.instant.upWindowRequests, () => true);
+  const upFive = sampleValue(data.instant.upWindow5xx, () => true);
+  const up5xx = upTotal == null || upTotal === 0 ? EMPTY_READING : formatPercent((upFive ?? 0) / upTotal);
+  const up5xxSub = upTotal == null || upTotal === 0 ? '窗口内上游没有请求' : '';
+  const responseSamples = shownMembers.flatMap((member) => (member.responseMs == null ? [] : [member]));
+  const responseWeight = responseSamples.reduce((sum, member) => sum + Math.max(member.windowRequests ?? 0, 0), 0);
+  const responseAvg = responseSamples.length === 0
+    ? null
+    : responseWeight > 0
+      ? responseSamples.reduce((sum, member) => sum + (member.responseMs ?? 0) * Math.max(member.windowRequests ?? 0, 0), 0) / responseWeight
+      : responseSamples.reduce((sum, member) => sum + (member.responseMs ?? 0), 0) / responseSamples.length;
+  const groupRateTotal = upstreamGroups.reduce((sum, group) => sum + (group.requestRate ?? 0), 0);
+  const groupRateKnown = upstreamGroups.some((group) => group.requestRate != null);
+  const upstreamGroupTrend = [...(data.range.upRequestSum ?? [])]
+    .map((item, index) => {
+      const name = labelOf(item.labels, 'upstream') || '上游';
+      return seriesItem(name, name, colorAt(index), item.points, '');
+    })
+    .sort((left, right) => sortNullLast(latestPoint(left.points), latestPoint(right.points)))
+    .slice(0, 5);
+  const hasVts = sites || upstream;
+  const fiveCount = starCode('5xx');
+  const focusThird = !hasVts
+    ? {
+      title: '连接结构',
+      figure: readingNow == null && writingNow == null
+        ? EMPTY_READING
+        : countFigure((readingNow ?? 0) + (writingNow ?? 0)),
+      sub: waitingNow == null ? '' : `等待 ${formatCount(waitingNow, '')}`,
+      tab: 'connections' as const,
+      anchor: 'nginx-conn-mix'
+    }
+    : {
+      title: '站点与上游异常',
+      figure: starWindowTotal != null && starWindowTotal > 0 ? formatPercent((fiveCount ?? 0) / starWindowTotal) : '0.0%',
+      sub: `已下线 ${upDown}`,
+      tab: (fiveCount ?? 0) > 0 && sites ? 'sites' as const : upstream ? 'upstream' as const : 'sites' as const,
+      anchor: (fiveCount ?? 0) > 0 && sites ? 'nginx-status-dist' : 'nginx-upstream-table'
+    };
+  const requestSource = sourceTime(stubFresh, nowSeconds, (labels) => matchesMetric(labels, 'nginx_requests'));
+  const activeNote = staleNote(activeStale, activeSource);
+  const board: NginxBoard = {
+    collectionSub,
+    requestFigure: figureOf(requestNow),
+    requestSub: staleNote(requestStale, requestSource),
+    activeFigure: countFigure(activeNow),
+    activeSub: activeNote,
+    readingFigure: countFigure(readingNow),
+    writingFigure: countFigure(writingNow),
+    waitingFigure: countFigure(waitingNow),
+    busyFigure: formatPercent(busyNow),
+    busyShare: busyNow == null ? null : busyNow * 100,
+    droppedFigure: figureOf(droppedNow),
+    handledFigure: formatPercent(handledShare),
+    focusRequestSub,
+    focusThirdTitle: focusThird.title,
+    focusThirdFigure: focusThird.figure,
+    focusThirdSub: focusThird.sub,
+    focusThirdTab: focusThird.tab,
+    focusThirdAnchor: focusThird.anchor,
+    windowRequests: countFigure(starWindowTotal),
+    ratio4xx: ratioText(starCode('4xx'), starWindowTotal),
+    count4xx: starCode('4xx') == null ? '' : `${formatCount(starCode('4xx') ?? 0, '次')}`,
+    ratio5xx: ratioText(starCode('5xx'), starWindowTotal),
+    count5xx: starCode('5xx') == null ? '' : `${formatCount(starCode('5xx') ?? 0, '次')}`,
+    ratio5xxHot: (starCode('5xx') ?? 0) > 0 && (starWindowTotal ?? 0) > 0,
+    avgTime: showRequestTime && starTimeFresh ? formatDuration(latestPoint(starTimePoints) ?? Number.NaN, requestTimeUnit) : EMPTY_READING,
+    upRate: groupRateKnown ? figureOf(groupRateTotal) : EMPTY_READING,
+    up5xx,
+    up5xxSub,
+    upTime: responseAvg == null ? EMPTY_READING : formatDuration(responseAvg, pickUpstreamDurationUnit(responseAvg)),
+    upOnline: shownMembers.length ? `${shownMembers.filter((member) => member.down !== 1).length} / ${shownMembers.length}` : EMPTY_READING,
+    upDown,
+    statusSteps,
+    statusParts,
+    trafficSeries,
+    siteTrend,
+    siteRank,
+    upstreamGroupTrend,
+    upstreamStatusSteps
+  };
 
   const has5xx = zoneRows.some((row) => (row.codes['5xx'] ?? 0) > 0) || (zoneSummary?.codes['5xx'] ?? 0) > 0;
   const shape = requestShape(requestPoints, requestStale);
@@ -916,7 +1252,8 @@ export const buildNginxDashboard = ({
     upstreamGroups,
     upstreamDownOnly,
     filterRequest,
-    filterRows
+    filterRows,
+    board
   };
 };
 
