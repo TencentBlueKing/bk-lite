@@ -7,7 +7,7 @@ import { formatCount, formatPerSecond } from './format';
 import { NGINX_HINTS } from './hints';
 import { NginxChartCard, NginxFocusTile, NginxRetryBanner, NginxTile } from './nginx-card';
 import type { NginxDashboardModel } from './model';
-import { NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from './query-phase';
+import { NGINX_CARD_QUERIES, focusCardQueries, phaseOf, type NginxQueryPhase } from './query-phase';
 
 export type NginxTabKey = 'overview' | 'connections' | 'sites' | 'upstream';
 
@@ -51,7 +51,8 @@ export default function OverviewPane({
   const activePhase = phaseOf(NGINX_CARD_QUERIES.active, phases);
   const acceptPhase = phaseOf(NGINX_CARD_QUERIES.accept, phases);
   const collectionPhase = phaseOf(NGINX_CARD_QUERIES.collection, phases);
-  const thirdPhase = board.focusThirdTab === 'connections' ? activePhase : phaseOf(NGINX_CARD_QUERIES.sitesKpi, phases);
+  const thirdKeys = focusCardQueries(board.focusThirdTab);
+  const thirdPhase = phaseOf(thirdKeys, phases);
   const failures = [collectionPhase, requestPhase, activePhase, alertPhase, requestPhase, acceptPhase, thirdPhase, requestPhase, acceptPhase]
     .filter((item) => item === 'error').length;
   const alertFigure = alertCount == null ? '暂无数据' : formatCount(Math.max(0, alertCount), '');
@@ -161,7 +162,7 @@ export default function OverviewPane({
             sub={board.focusThirdSub}
             phase={thirdPhase}
             emptyText={emptyText}
-            onRetry={() => onRetry(board.focusThirdTab === 'connections' ? NGINX_CARD_QUERIES.active : NGINX_CARD_QUERIES.sitesKpi)}
+            onRetry={() => onRetry(thirdKeys)}
             onOpen={() => onOpen(board.focusThirdTab, board.focusThirdAnchor)}
           />
         </div>

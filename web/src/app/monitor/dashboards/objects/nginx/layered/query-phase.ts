@@ -30,3 +30,10 @@ export const NGINX_CARD_QUERIES = {
   upstreamTime: ['upResponseTime', 'upRequestTime', 'upstreamFresh'],
   upstreamTable: ['upRequestRate', 'upMemberWindowRequests', 'upMemberWindowStatus', 'upMemberWindowBytes', 'upGroupWindowRequests', 'upGroupWindowStatus', 'upGroupWindowBytes', 'upRequestTime', 'upResponseTime', 'upFlags', 'upstreamFresh']
 } as const;
+
+/** 概览第三张焦点卡用的查询。VTS 探测失败时把探测键算进去，卡面走加载失败而不是当成 stub。 */
+export const focusCardQueries = (tab: 'sites' | 'upstream' | 'connections'): readonly string[] => {
+  if (tab === 'connections') return NGINX_CARD_QUERIES.active;
+  if (tab === 'upstream') return [...NGINX_CARD_QUERIES.upstreamKpi, 'upstreamCap'];
+  return [...NGINX_CARD_QUERIES.sitesKpi, 'serverCap'];
+};

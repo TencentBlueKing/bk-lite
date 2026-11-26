@@ -26,6 +26,7 @@ import {
   waitingRatio,
   type CollectionKind
 } from './freshness';
+import type { NginxQueryPhase } from './query-phase';
 
 export interface Point {
   time: number;
@@ -322,6 +323,8 @@ export interface NginxBoard {
   siteTrend: NginxSeriesItem[];
   siteRank: NginxRankRow[];
   upstreamGroupTrend: NginxSeriesItem[];
+  /** 上游请求速率迷你趋势，全部上游组按时间合计，与 upRate 同口径。 */
+  upstreamRateSpark: Point[];
   upstreamStatusSteps: NginxSeriesItem[];
 }
 
@@ -363,6 +366,7 @@ const EMPTY_BOARD: NginxBoard = {
   siteTrend: [],
   siteRank: [],
   upstreamGroupTrend: [],
+  upstreamRateSpark: [],
   upstreamStatusSteps: []
 };
 
@@ -524,13 +528,25 @@ const sortNullLast = (left: number | null, right: number | null) => {
   return (right as number) - (left as number);
 };
 
+const vtsProbeEnabled = (
+  samples: readonly InstantSample[] | undefined,
+  phase: NginxQueryPhase | undefined,
+  override: boolean | undefined
+) => {
+  if (override != null) return override;
+  if ((samples?.length ?? 0) > 0) return true;
+  // 探测还没成功回来时，失败不能当成「没有 VTS」。成功且样本为空才是 stub。
+  return samples == null && phase === 'error';
+};
+
 export const buildNginxDashboard = ({
   onboarded,
   nowSeconds,
   intervalSeconds,
   data,
   sitesEnabled,
-  upstreamEnabled
+  upstreamEnabled,
+  capabilityPhases
 }: {
   onboarded: boolean;
   nowSeconds: number;
@@ -538,6 +554,7 @@ export const buildNginxDashboard = ({
   data: NginxQueryResult;
   sitesEnabled?: boolean;
   upstreamEnabled?: boolean;
+  capabilityPhases?: Readonly<Record<string, NginxQueryPhase>>;
 }): NginxDashboardModel => {
   const limit = freshLimitSeconds(intervalSeconds);
   if (!onboarded) return emptyModel('not_onboarded', NOT_ONBOARDED);
@@ -608,8 +625,8 @@ export const buildNginxDashboard = ({
     value == null ? EMPTY_READING : formatCount(value as number, String(unit))
   ));
 
-  const sites = sitesEnabled ?? (data.instant.serverCap?.length ?? 0) > 0;
-  const upstream = upstreamEnabled ?? (data.instant.upstreamCap?.length ?? 0) > 0;
+  const sites = vtsProbeEnabled(data.instant.serverCap, capabilityPhases?.serverCap, sitesEnabled);
+  const upstream = vtsProbeEnabled(data.instant.upstreamCap, capabilityPhases?.upstreamCap, upstreamEnabled);
   const showFilter = (data.instant.filterCap?.length ?? 0) > 0;
 
   const zoneFresh = (metric: string, zone: string) => !namedFresh(
@@ -1051,7 +1068,7 @@ export const buildNginxDashboard = ({
     directionSeries('in', '入站', '#2f6bff'),
     directionSeries('out', '出站', '#27c274')
   ].filter((item) => item.points.length > 0);
-  const mergePoints = (rows: readonly NginxSeriesItem[]) => {
+  const mergePoints = (rows: readonly { points: readonly Point[] }[]) => {
     const bucket = new Map<number, number>();
     rows.forEach((row) => row.points.forEach((point) => {
       bucket.set(point.time, (bucket.get(point.time) ?? 0) + point.value);
@@ -1099,6 +1116,7 @@ export const buildNginxDashboard = ({
       : responseSamples.reduce((sum, member) => sum + (member.responseMs ?? 0), 0) / responseSamples.length;
   const groupRateTotal = upstreamGroups.reduce((sum, group) => sum + (group.requestRate ?? 0), 0);
   const groupRateKnown = upstreamGroups.some((group) => group.requestRate != null);
+  const upstreamRateSpark = mergePoints(data.range.upRequestSum ?? []);
   const upstreamGroupTrend = [...(data.range.upRequestSum ?? [])]
     .map((item, index) => {
       const name = labelOf(item.labels, 'upstream') || '上游';
@@ -1120,7 +1138,7 @@ export const buildNginxDashboard = ({
     }
     : {
       title: '站点与上游异常',
-      figure: starWindowTotal != null && starWindowTotal > 0 ? formatPercent((fiveCount ?? 0) / starWindowTotal) : '0.0%',
+      figure: starWindowTotal != null && starWindowTotal > 0 ? formatPercent((fiveCount ?? 0) / starWindowTotal) : EMPTY_READING,
       sub: `已下线 ${upDown}`,
       tab: (fiveCount ?? 0) > 0 && sites ? 'sites' as const : upstream ? 'upstream' as const : 'sites' as const,
       anchor: (fiveCount ?? 0) > 0 && sites ? 'nginx-status-dist' : 'nginx-upstream-table'
@@ -1165,6 +1183,7 @@ export const buildNginxDashboard = ({
     siteTrend,
     siteRank,
     upstreamGroupTrend,
+    upstreamRateSpark,
     upstreamStatusSteps
   };
 

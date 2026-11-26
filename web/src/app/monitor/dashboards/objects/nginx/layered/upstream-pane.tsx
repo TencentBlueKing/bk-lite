@@ -91,7 +91,7 @@ export default function UpstreamPane({
       <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
         <div className="min-[1100px]:col-span-3">
-          <NginxTile label="上游请求速率" hint={NGINX_HINTS.upRate} unit="次/秒" figure={board.upRate} spark={board.upstreamGroupTrend[0]?.points} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
+          <NginxTile label="上游请求速率" hint={NGINX_HINTS.upRate} unit="次/秒" figure={board.upRate} spark={board.upstreamRateSpark} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
         </div>
         <div className="min-[1100px]:col-span-3">
           <NginxTile label="上游 5xx 比例" hint={NGINX_HINTS.up5xx} figure={board.up5xx} sub={board.up5xxSub} tone={board.up5xx !== '暂无数据' && board.up5xx !== '0.0%' ? 'var(--color-fail)' : undefined} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />

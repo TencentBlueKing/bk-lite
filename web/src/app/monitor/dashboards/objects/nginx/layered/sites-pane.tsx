@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { byteScale, durationUnitLabel, formatBytes, formatBytesPerSecond, formatCount, formatDecimal, formatDuration, formatPerSecond, formatPercent } from './format';
+import { byteScale, durationUnitLabel, formatBytes, formatBytesPerSecond, formatCount, formatDecimal, formatDuration, formatPerSecond, formatPercent, pickDurationUnit } from './format';
 import { NGINX_HINTS } from './hints';
 import { NginxChartCard, NginxRankCard, NginxRetryBanner, NginxTile } from './nginx-card';
 import { NginxHint } from './nginx-hint';
@@ -140,6 +140,12 @@ export default function SitesPane({
       <button type="button" className="font-semibold text-[var(--color-text-2)]" onClick={() => chooseSort(key)}>{label}</button>
     </th>
   );
+  const tableTimeUnit = pickDurationUnit([
+    ...model.zoneRows.map((row) => row.timeMs),
+    model.zoneSummary?.timeMs
+  ].reduce((peak, value) => (
+    value != null && Number.isFinite(value) ? Math.max(peak, Math.abs(value)) : peak
+  ), 0));
   const ratioOf = (row: ZoneTableRow) => {
     const total = row.windowRequests;
     const five = row.windowCodes?.['5xx'];
@@ -275,7 +281,7 @@ export default function SitesPane({
                     <td className="px-2 py-2 text-right tabular-nums">{ratioOf(row)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesIn ?? null, formatBytes(row.windowBytesIn ?? 0))}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesOut ?? null, formatBytes(row.windowBytesOut ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.timeMs, formatDuration(row.timeMs ?? 0, model.zoneTimeUnit))}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.timeMs, formatDuration(row.timeMs ?? 0, tableTimeUnit))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -292,7 +298,7 @@ export default function SitesPane({
                     <td className="px-2 py-2 text-right tabular-nums">{ratioOf(model.zoneSummary)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowBytesIn ?? null, formatBytes(model.zoneSummary.windowBytesIn ?? 0))}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowBytesOut ?? null, formatBytes(model.zoneSummary.windowBytesOut ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.timeMs, formatDuration(model.zoneSummary.timeMs ?? 0, model.requestTimeUnit))}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.timeMs, formatDuration(model.zoneSummary.timeMs ?? 0, tableTimeUnit))}</td>
                   </tr>
                 </tfoot>
               ) : null}

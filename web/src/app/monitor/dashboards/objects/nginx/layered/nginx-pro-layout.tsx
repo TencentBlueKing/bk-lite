@@ -173,8 +173,9 @@ export default function NginxProLayout({
     onboarded: Boolean(instanceId) && !instanceLoading,
     nowSeconds,
     intervalSeconds,
-    data: bundle
-  }), [bundle, instanceId, instanceLoading, intervalSeconds, nowSeconds]);
+    data: bundle,
+    capabilityPhases: phases
+  }), [bundle, instanceId, instanceLoading, intervalSeconds, nowSeconds, phases]);
 
   useEffect(() => {
     if (tab === 'sites' && !model.tabs.sites) setTab('overview');
