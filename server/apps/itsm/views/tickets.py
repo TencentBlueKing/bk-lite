@@ -43,12 +43,13 @@ def _http_creation_key(value):
 
 
 def _service(request=None):
+    from apps.core.utils.team_utils import get_current_team
     from apps.itsm.services.integrations import request_identity
 
     identity = request_identity(request) if request is not None else None
-    if not settings.FLOWABLE_PASSWORD:
-        return TicketService(None, identity=identity)
-    return TicketService(FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD), identity=identity)
+    team = get_current_team(request) if request is not None else None
+    client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD) if settings.FLOWABLE_PASSWORD else None
+    return TicketService(client, identity=identity, current_team=team)
 
 
 def _user(request):

@@ -163,7 +163,7 @@ def _recover_interrupted_actions(limit):
             ):
                 execution.status = "failed"
                 reason = "原流程已结束或切换，请核对历史执行记录"
-            elif (node.get("auto") or {}).get("kind") == "vmware_provision":
+            elif (node.get("auto") or {}).get("kind") in {"vmware_provision", "job_template"}:
                 execution.status = "awaiting_job"
                 reason = "等待按交付编号核对作业状态"
             elif _local_action(node):
@@ -384,6 +384,8 @@ def process_job(client, job):
                             machine.pop("job")
                             machine["generation"] = machine.get("generation", 1) + 1
                 detail["delivery"] = delivery
+            if "job_template" in execution.detail:
+                detail["job_template"] = execution.detail["job_template"]
             execution.status = "running"
             execution.detail = detail
             execution.save(update_fields=["status", "detail", "updated_at"])
@@ -397,6 +399,10 @@ def process_job(client, job):
             from apps.itsm.services.vmware_delivery import process_delivery
 
             process_delivery(ticket, execution, node["auto"].get("profile", ""))
+        elif (node.get("auto") or {}).get("kind") == "job_template":
+            from apps.itsm.services.job_template_delivery import process_template
+
+            process_template(ticket, execution, node["auto"])
         else:
             _execute(ticket, execution, node, detail)
         if execution.status != "executed":

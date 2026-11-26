@@ -38,9 +38,30 @@ class TransferRejected(ValueError):
 
 
 class TicketService:
-    def __init__(self, client: FlowableClient | None = None, identity=None):
+    def __init__(self, client: FlowableClient | None = None, identity=None, current_team=None):
         self.client = client
         self.identity = identity
+        self.current_team = current_team
+
+    def _job_execution_team(self, workflow_version, creator):
+        bindings = [
+            node["auto"].get("binding") or {}
+            for node in workflow_version.design.get("nodes", [])
+            if (node.get("auto") or {}).get("kind") == "job_template"
+        ]
+        if not bindings:
+            return []
+        from apps.system_mgmt.services.credential_scope import is_current_team_authorized
+
+        identity = self.identity
+        if not identity or identity.domain != workflow_version.domain or identity.user != creator:
+            raise PermissionError("作业申请缺少有效的提单身份")
+        if not is_current_team_authorized(self.current_team, identity.team_ids, identity.is_superuser):
+            raise PermissionError("无权在当前组织申请作业")
+        team = int(self.current_team)
+        if any(binding.get("team_id") != team for binding in bindings):
+            raise PermissionError("工单当前组织与流程作业绑定组织不一致")
+        return [team]
 
     def create(
         self,
@@ -60,6 +81,8 @@ class TicketService:
         key = {"domain": workflow_version.domain, "creator": creator, "creation_key": creation_key or uuid4().hex}
         ticket = Ticket.objects.filter(**key).first()
         schema = workflow_schema(workflow_version)
+        test_ticket = is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test"))
+        selected_team = [] if test_ticket else self._job_execution_team(workflow_version, creator)
         if ticket is None:
             if has_legacy_preset_handlers(workflow_version):
                 raise NodeActionValidationError(LEGACY_PRESET_MESSAGE)
@@ -89,7 +112,8 @@ class TicketService:
                         "service": service,
                         "status": TicketStatus.objects.filter(key="new").first(),
                         "form_data": form_data,
-                        "is_test": is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
+                        "team": selected_team,
+                        "is_test": test_ticket,
                         "created_by": creator,
                         "updated_by": creator,
                         "creation_state": "prepared",
@@ -102,6 +126,10 @@ class TicketService:
                     TicketLog.objects.create(
                         ticket=ticket, domain=ticket.domain, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator
                     )
+        if test_ticket and not ticket.is_test:
+            selected_team = self._job_execution_team(workflow_version, creator)
+        if selected_team and ticket.team != selected_team:
+            raise PermissionError("申请标识不属于当前组织")
         if ticket.workflow_version_id != workflow_version.pk or ticket.service_id != (service.pk if service else None):
             raise ValueError("申请标识已用于其他服务或版本")
         if ticket.creation_state == "complete":
