@@ -208,8 +208,12 @@ class TeamSecretRequestSerializer(serializers.Serializer):
     team_id = serializers.IntegerField(min_value=1)
 
 
+class K8sCloudRegionSerializer(serializers.Serializer):
+    cloud_region_id = serializers.IntegerField(min_value=1)
+
+
 class K8sRenderRequestSerializer(TeamSecretRequestSerializer):
-    server_url = serializers.CharField(required=False, allow_blank=True, default="")
+    cloud_region_id = serializers.IntegerField(min_value=1)
     cluster_name = serializers.CharField(required=False, allow_blank=True, default="")
     push_source_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     insecure_skip_verify = serializers.BooleanField(required=False, default=False)

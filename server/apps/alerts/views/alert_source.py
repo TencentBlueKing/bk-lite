@@ -21,6 +21,7 @@ from apps.alerts.serializers import (
     AlertSourceDetailSerializer,
     AlertSourceOptionSerializer,
     AlertSourceOverviewSerializer,
+    K8sCloudRegionSerializer,
     K8sRenderRequestSerializer,
     TeamSecretRequestSerializer,
 )
@@ -29,7 +30,7 @@ from apps.alerts.service.alert_source_credential import AlertSourceCredentialSer
 from apps.alerts.service.k8s_install import K8sInstallService
 from apps.alerts.utils.permission_scope import filter_event_queryset_for_request, get_query_group_ids
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
@@ -213,6 +214,17 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
             raise
         return temp_file
 
+    @staticmethod
+    def _region_server_url(cloud_region_id: int) -> str:
+        config = NodeMgmt().get_cloud_region_public_config(cloud_region_id)
+        raw = config.get("NODE_SERVER_URL") if isinstance(config, dict) else ""
+        try:
+            return K8sInstallService.normalize_base_url(raw or "")
+        except BaseAppException as exc:
+            if not (raw or "").strip():
+                raise ValidationAppException("当前云区域未配置 NODE_SERVER_URL，无法生成上报地址") from exc
+            raise ValidationAppException("NODE_SERVER_URL 配置不合法，无法生成上报地址") from exc
+
     @classmethod
     def _build_k8s_render_payload(cls, request, source: AlertSource):
         request_serializer = K8sRenderRequestSerializer(data=request.data)
@@ -227,12 +239,24 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
             source_id=source.source_id,
             source_secret=team_secret,
             receiver_path=source.config.get("url", ""),
-            server_url=data["server_url"],
+            server_url=cls._region_server_url(data["cloud_region_id"]),
             cluster_name=data["cluster_name"],
             push_source_id=data.get("push_source_id"),
         )
         payload["insecure_skip_verify"] = data["insecure_skip_verify"]
         return payload
+
+    def _k8s_material_payload(self, request):
+        source = self._get_k8s_source()
+        if not source:
+            return None, WebUtils.response_error(
+                error_message="K8s alert source not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            return self._build_k8s_render_payload(request, source), None
+        except ValidationAppException as exc:
+            return None, WebUtils.response_error(error_message=exc.message, status_code=status.HTTP_400_BAD_REQUEST)
 
     @HasPermission("Integration-Detail")
     @action(methods=["get"], detail=False, url_path="k8s_meta")
@@ -297,16 +321,37 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
         )
 
     @HasPermission("Integration-Detail")
-    @action(methods=["post"], detail=False, url_path="k8s_render")
-    def k8s_render(self, request):
+    @action(methods=["get"], detail=False, url_path="k8s_cloud_regions")
+    def k8s_cloud_regions(self, request):
+        regions = NodeMgmt().cloud_region_list() or []
+        if not isinstance(regions, list):
+            regions = []
+        return WebUtils.response_success(regions)
+
+    @HasPermission("Integration-Detail")
+    @action(methods=["post"], detail=False, url_path="k8s_receiver_endpoint")
+    def k8s_receiver_endpoint(self, request):
         source = self._get_k8s_source()
         if not source:
             return WebUtils.response_error(
                 error_message="K8s alert source not found",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        request_serializer = K8sCloudRegionSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        try:
+            server_url = self._region_server_url(request_serializer.validated_data["cloud_region_id"])
+        except ValidationAppException as exc:
+            return WebUtils.response_error(error_message=exc.message, status_code=status.HTTP_400_BAD_REQUEST)
+        receiver_path = source.config.get("url", "") if isinstance(source.config, dict) else ""
+        return WebUtils.response_success({"receiver_url": K8sInstallService.join_receiver_url(server_url, receiver_path)})
 
-        payload = self._build_k8s_render_payload(request, source)
+    @HasPermission("Integration-Detail")
+    @action(methods=["post"], detail=False, url_path="k8s_render")
+    def k8s_render(self, request):
+        payload, error = self._k8s_material_payload(request)
+        if error:
+            return error
         yaml_content = self._build_k8s_deploy_yaml(
             receiver_url=payload["receiver_url"],
             secret=payload["secret"],
@@ -319,14 +364,9 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     @HasPermission("Integration-Detail")
     @action(methods=["post"], detail=False, url_path="k8s_install_command")
     def k8s_install_command(self, request):
-        source = self._get_k8s_source()
-        if not source:
-            return WebUtils.response_error(
-                error_message="K8s alert source not found",
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
-
-        payload = self._build_k8s_render_payload(request, source)
+        payload, error = self._k8s_material_payload(request)
+        if error:
+            return error
         token = K8sInstallService.generate_install_token(payload)
         command = K8sInstallService.build_install_command(payload["server_url"], token)
         return WebUtils.response_success({"command": command, "token": token})
@@ -345,13 +385,9 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
                 return WebUtils.response_file(self._build_k8s_image_tar_file(), file_meta["file_name"])
             except RuntimeError as error:
                 return WebUtils.response_error(error_message=str(error), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        source = self._get_k8s_source()
-        if not source:
-            return WebUtils.response_error(
-                error_message="K8s alert source not found",
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
-        payload = self._build_k8s_render_payload(request, source)
+        payload, error = self._k8s_material_payload(request)
+        if error:
+            return error
         yaml_content = self._build_k8s_deploy_yaml(
             receiver_url=payload["receiver_url"],
             secret=payload["secret"],

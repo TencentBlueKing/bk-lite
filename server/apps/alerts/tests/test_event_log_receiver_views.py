@@ -106,9 +106,7 @@ def test_operator_log_list_scoped(superuser):
     from apps.alerts.models.models import Alert
 
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
-    OperatorLog.objects.create(
-        action="add", target_type=LogTargetType.ALERT, operator="u", target_id="A1", overview="x"
-    )
+    OperatorLog.objects.create(action="add", target_type=LogTargetType.ALERT, operator="u", target_id="A1", overview="x")
     request = _api_request("get", "/log/", superuser, team="1")
     response = SystemLogModelViewSet.as_view({"get": "list"})(request)
     payload = _render(response)
@@ -122,9 +120,7 @@ def test_operator_log_list_scoped(superuser):
 def test_operator_log_list_no_team_returns_empty(superuser):
     from apps.alerts.constants.constants import LogTargetType
 
-    OperatorLog.objects.create(
-        action="add", target_type=LogTargetType.SYSTEM, operator="u", target_id="X", overview="x"
-    )
+    OperatorLog.objects.create(action="add", target_type=LogTargetType.SYSTEM, operator="u", target_id="X", overview="x")
     # 不带 current_team → 范围过滤返回空
     factory = APIRequestFactory()
     request = factory.get("/log/")
@@ -293,9 +289,7 @@ def test_receiver_full_flow_success(monkeypatch):
         def main(self):
             return None
 
-    monkeypatch.setattr(
-        receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapter)
-    )
+    monkeypatch.setattr(receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapter))
 
     request = _post_body({"source_id": "src-1"}, secret="sec")
     response = receiver_module.receiver_data(request)
@@ -389,6 +383,73 @@ def test_receiver_real_adapter_preserves_partial_response_and_safe_log(caplog):
 
 
 @pytest.mark.django_db
+def test_k8s_exporter_payload_ingests_without_using_request_host():
+    """K8s 报文仍走原接收口。请求 Host 不参与认证和入库。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.constants.init_data import build_k8s_source_config
+    from apps.alerts.models.models import Level
+    from apps.alerts.utils.util import encode_team_secret
+    from apps.alerts.views import receiver as receiver_module
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    team_secret = encode_team_secret("source-secret", "1")
+    _make_source(
+        source_id="k8s",
+        source_type="restful",
+        secret="source-secret",
+        team_secrets={"1": team_secret},
+        config=build_k8s_source_config(),
+    )
+    request = APIRequestFactory().post(
+        "/api/v1/alerts/api/receiver_data/",
+        data=json.dumps(
+            {
+                "source_id": "k8s",
+                "events": [
+                    {
+                        "title": "K8s Warning BackOff on Pod/default/api",
+                        "description": "Back-off restarting failed container",
+                        "level": "2",
+                        "item": "BackOff",
+                        "start_time": "1700000000000",
+                        "external_id": "event-uid-1",
+                        "push_source_id": "k8s",
+                        "resource_id": "pod-uid-1",
+                        "resource_name": "api",
+                        "resource_type": "k8s_pod",
+                        "service": "kubernetes",
+                        "location": "k8s_cluster",
+                        "action": "created",
+                        "tags": {"cluster": "k8s_cluster"},
+                        "labels": {"cluster_name": "k8s_cluster"},
+                    }
+                ],
+            }
+        ),
+        content_type="application/json",
+        HTTP_SECRET=team_secret,
+        HTTP_HOST="console.example",
+    )
+    response = receiver_module.receiver_data(request)
+    payload = json.loads(response.content)
+    event = Event.objects.get(external_id="event-uid-1")
+
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["ingestion"]["accepted"] == 1
+    assert event.title == "K8s Warning BackOff on Pod/default/api"
+    assert event.push_source_id == "k8s"
+    assert event.location == "k8s_cluster"
+    assert event.team == [1]
+
+
+@pytest.mark.django_db
 def test_receiver_invalid_secret(monkeypatch):
     from apps.alerts.views import receiver as receiver_module
 
@@ -407,9 +468,7 @@ def test_receiver_invalid_secret(monkeypatch):
         def main(self):
             return None
 
-    monkeypatch.setattr(
-        receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapter)
-    )
+    monkeypatch.setattr(receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapter))
 
     request = _post_body({"source_id": "src-1"}, secret="wrong")
     response = receiver_module.receiver_data(request)
@@ -441,9 +500,7 @@ def test_receiver_authentication_source_error_returns_403(monkeypatch):
         def main(self):
             return None
 
-    monkeypatch.setattr(
-        receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapterAuthError)
-    )
+    monkeypatch.setattr(receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapterAuthError))
 
     request = _post_body({"source_id": "src-auth-err"}, secret="bad-key")
     response = receiver_module.receiver_data(request)

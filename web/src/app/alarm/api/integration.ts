@@ -37,6 +37,12 @@ export const useSourceApi = () => {
 
   const getK8sMeta = async () => get('/alerts/api/alert_source/k8s_meta/');
 
+  const getK8sCloudRegions = async (): Promise<{ id: number; name: string }[]> =>
+    get('/alerts/api/alert_source/k8s_cloud_regions/');
+
+  const getK8sReceiverEndpoint = async (cloudRegionId: number): Promise<{ receiver_url: string }> =>
+    post('/alerts/api/alert_source/k8s_receiver_endpoint/', { cloud_region_id: cloudRegionId });
+
   const getAlertSnmpTrapNodeList = async (data: {
     cloud_region_id?: number;
     page?: number;
@@ -76,6 +82,8 @@ export const useSourceApi = () => {
     getAlertSourceIntegrationGuide,
     getAlertSourceIntegrationMaterial,
     getK8sMeta,
+    getK8sCloudRegions,
+    getK8sReceiverEndpoint,
     getAlertSnmpTrapNodeList,
     downloadK8sFile,
     listTeamSecrets,

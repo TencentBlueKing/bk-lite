@@ -30,8 +30,13 @@ export interface K8sMeta {
   notes: string[];
 }
 
+export interface K8sCloudRegion {
+  id: number;
+  name: string;
+}
+
 export interface K8sRenderParams {
-  server_url: string;
+  cloud_region_id?: number;
   cluster_name: string;
   push_source_id?: string;
   team_id?: string;

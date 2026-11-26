@@ -775,9 +775,122 @@ def test_snmp_trap_nodes(permission_user, monkeypatch):
     assert payload["data"]["count"] == 1
 
 
+class _RegionNodeMgmt:
+    def __init__(self, config):
+        self.config = config
+
+    def get_cloud_region_public_config(self, cloud_region_id):
+        assert cloud_region_id == 9
+        return self.config
+
+    def cloud_region_list(self):
+        return [{"id": 1, "name": "default"}, {"id": 9, "name": "edge"}]
+
+
+def _patch_region_node_mgmt(monkeypatch, config):
+    from apps.alerts.views import alert_source as alert_source_module
+
+    monkeypatch.setattr(alert_source_module, "NodeMgmt", lambda: _RegionNodeMgmt(config))
+
+
 @pytest.mark.django_db
-def test_k8s_install_command(permission_user):
+def test_k8s_download_uses_region_address_and_keeps_monitor_source(permission_user, monkeypatch):
+    _patch_region_node_mgmt(monkeypatch, {"NODE_SERVER_URL": "https://9.9.9.9:443/"})
+    _make_source(
+        "k8s",
+        source_type="webhook",
+        config={"url": "/api/v1/alerts/api/receiver_data/"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+    request = _request(
+        "post",
+        "/alert_source/k8s_download/deploy_yaml/",
+        permission_user,
+        data={
+            "cloud_region_id": 9,
+            "cluster_name": "prod-a",
+            "push_source_id": "payment",
+            "team_id": 1,
+            "server_url": "https://evil.example",
+        },
+    )
+    response = AlertSourceModelViewSet.as_view({"post": "k8s_download"})(request, file_key="deploy_yaml")
+    body = b"".join(response.streaming_content).decode("utf-8")
+    assert response.status_code == status.HTTP_200_OK
+    assert "BK_LITE_RECEIVER_URL: https://9.9.9.9:443/api/v1/alerts/api/receiver_data/" in body
+    assert "CLUSTER_NAME: prod-a" in body
+    assert "BK_LITE_PUSH_SOURCE_ID: payment" in body
+    assert "evil.example" not in body
+
+
+@pytest.mark.django_db
+def test_k8s_download_rejects_region_without_server_url(permission_user, monkeypatch):
+    _patch_region_node_mgmt(monkeypatch, {})
+    _make_source(
+        "k8s",
+        source_type="webhook",
+        config={"url": "/api/v1/alerts/api/receiver_data/"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+    request = _request(
+        "post",
+        "/alert_source/k8s_download/deploy_yaml/",
+        permission_user,
+        data={"cloud_region_id": 9, "cluster_name": "prod-a", "push_source_id": "k8s", "team_id": 1},
+    )
+    response = AlertSourceModelViewSet.as_view({"post": "k8s_download"})(request, file_key="deploy_yaml")
+    payload = _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "NODE_SERVER_URL" in payload["message"]
+
+
+@pytest.mark.django_db
+def test_k8s_download_rejects_illegal_region_server_url(permission_user, monkeypatch):
+    _patch_region_node_mgmt(monkeypatch, {"NODE_SERVER_URL": "not-a-url"})
+    _make_source(
+        "k8s",
+        source_type="webhook",
+        config={"url": "/api/v1/alerts/api/receiver_data/"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+    request = _request(
+        "post",
+        "/alert_source/k8s_download/deploy_yaml/",
+        permission_user,
+        data={"cloud_region_id": 9, "cluster_name": "prod-a", "push_source_id": "k8s", "team_id": 1},
+    )
+    response = AlertSourceModelViewSet.as_view({"post": "k8s_download"})(request, file_key="deploy_yaml")
+    payload = _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "NODE_SERVER_URL" in payload["message"]
+
+
+@pytest.mark.django_db
+def test_k8s_receiver_endpoint_and_region_catalog(permission_user, monkeypatch):
+    _patch_region_node_mgmt(monkeypatch, {"NODE_SERVER_URL": "https://9.9.9.9:443"})
+    _make_source("k8s", source_type="webhook", config={"url": "/api/v1/alerts/api/receiver_data/"})
+    permission_user.permission = {"alarm": {"Integration-Detail"}}
+
+    catalog = AlertSourceModelViewSet.as_view({"get": "k8s_cloud_regions"})(_request("get", "/alert_source/k8s_cloud_regions/", permission_user))
+    catalog_payload = _render(catalog)
+    assert catalog.status_code == status.HTTP_200_OK
+    assert catalog_payload["data"] == [{"id": 1, "name": "default"}, {"id": 9, "name": "edge"}]
+
+    endpoint = AlertSourceModelViewSet.as_view({"post": "k8s_receiver_endpoint"})(
+        _request("post", "/alert_source/k8s_receiver_endpoint/", permission_user, data={"cloud_region_id": 9})
+    )
+    endpoint_payload = _render(endpoint)
+    assert endpoint.status_code == status.HTTP_200_OK
+    assert endpoint_payload["data"]["receiver_url"] == "https://9.9.9.9:443/api/v1/alerts/api/receiver_data/"
+
+
+@pytest.mark.django_db
+def test_k8s_install_command(permission_user, monkeypatch):
     # K8s 接入只接收组织 ID，由服务端在授权后解析组织密钥。
+    _patch_region_node_mgmt(monkeypatch, {"NODE_SERVER_URL": "https://host:8000"})
     _make_source(
         "k8s",
         source_type="webhook",
@@ -785,12 +898,18 @@ def test_k8s_install_command(permission_user):
         team_secrets={"1": "team-sec-1"},
     )
     permission_user.permission = {"alarm": {"Integration-Detail"}}
-    data = {"server_url": "https://host:8000", "cluster_name": "prod", "team_id": 1}
+    data = {
+        "cloud_region_id": 9,
+        "cluster_name": "prod",
+        "team_id": 1,
+        "server_url": "https://evil.example",
+    }
     request = _request("post", "/alert_source/k8s_install_command/", permission_user, data=data)
     response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
     payload = _render(response)
     assert response.status_code == status.HTTP_200_OK
-    assert payload["data"]["command"]
+    assert "https://host:8000/api/v1/alerts/open_api/k8s/render/" in payload["data"]["command"]
+    assert "evil.example" not in payload["data"]["command"]
     assert payload["data"]["token"]
 
 
@@ -806,7 +925,7 @@ def _k8s_token_yaml(token):
 
 
 @pytest.mark.django_db
-def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, settings):
+def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, settings, monkeypatch):
     """安装命令写入的 insecure_skip_verify 必须进入 token 渲染；false 和旧载荷保持校验。"""
     settings.K8S_INSTALL_TOKEN_DB_ENABLED = True
     _make_source(
@@ -816,6 +935,7 @@ def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, se
         team_secrets={"1": "team-sec-1"},
     )
     permission_user.permission = {"alarm": {"Integration-Detail"}}
+    _patch_region_node_mgmt(monkeypatch, {"NODE_SERVER_URL": "https://host:8000"})
 
     def render_from_install(insecure_skip_verify):
         request = _request(
@@ -823,7 +943,7 @@ def test_k8s_install_token_render_keeps_insecure_skip_verify(permission_user, se
             "/alert_source/k8s_install_command/",
             permission_user,
             data={
-                "server_url": "https://host:8000",
+                "cloud_region_id": 9,
                 "cluster_name": "prod",
                 "team_id": 1,
                 "insecure_skip_verify": insecure_skip_verify,
@@ -862,7 +982,7 @@ def test_k8s_install_command_requires_team_id(permission_user):
         team_secrets={"1": "team-sec-1"},
     )
     permission_user.permission = {"alarm": {"Integration-Detail"}}
-    data = {"server_url": "https://host:8000", "cluster_name": "prod"}
+    data = {"cloud_region_id": 9, "cluster_name": "prod"}
     request = _request("post", "/alert_source/k8s_install_command/", permission_user, data=data)
     response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -881,7 +1001,7 @@ def test_k8s_install_command_rejects_foreign_team(permission_user):
         "post",
         "/alert_source/k8s_install_command/",
         permission_user,
-        data={"server_url": "https://host:8000", "cluster_name": "prod", "team_id": 5},
+        data={"cloud_region_id": 9, "cluster_name": "prod", "team_id": 5},
     )
     response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
     assert response.status_code == status.HTTP_403_FORBIDDEN
