@@ -102,24 +102,46 @@ const instantQueries = () => {
 /** 20 分钟源时间、24 小时能力、仪表原值。窗口写在原始选择器上。 */
 export const ES_INSTANT_QUERIES: Record<string, string> = instantQueries();
 
-/** 趋势。时间窗只替换 __$window__，不拿来判断采集新鲜度。 */
-export const ES_RANGE_QUERIES = {
-  heapNodes: 'topk(8, max by (node_name) (elasticsearch_jvm_mem_heap_used_percent{__$labels__}))',
+/**
+ * 进程 CPU。elasticsearch_process_cpu_percent 在现场恒为 0，不再给专业盘读数。
+ * 原始序列是 Telegraf process 统计里的累计毫秒，与 elasticsearch_process_cpu_percent、
+ * elasticsearch_process_open_file_descriptors 同一套扁平命名。
+ * rate 得到毫秒/秒，除以 1000 再乘 100，是按单核计的百分比，多核可以超过 100。
+ * 不按 node_name 聚合，节点标签留在序列上。
+ */
+export const ES_CPU_RATE_QUERY =
+  'rate(elasticsearch_process_cpu_total_in_millis{__$labels__}[__$rate_window__]) / 1000 * 100';
+
+/** 仍登记、专业盘不再拉取。传统盘和旧百分比序列保持原查询。 */
+export const ES_LEGACY_RANGE_QUERIES = {
   cpuNodes: 'topk(8, max by (node_name) (elasticsearch_process_cpu_percent{__$labels__}))',
   diskNodes: 'bottomk(8, min by (node_name) (elasticsearch_fs_data_0_available_in_bytes{__$labels__}))',
   fdNodes: 'topk(8, max by (node_name) (elasticsearch_process_open_file_descriptors{__$labels__}))',
-  writeNodes: 'topk(8, max by (node_name) (rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[__$window__]) * 1024))',
   deletedNodes: 'topk(8, max by (node_name) (elasticsearch_indices_docs_deleted{__$labels__}))',
-  gcNodes: 'topk(8, max by (node_name) (rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$window__])))',
+  writeQueueNodes: 'topk(8, max by (node_name) (elasticsearch_thread_pool_write_queue{__$labels__}))',
+  searchQueueNodes: 'topk(8, max by (node_name) (elasticsearch_thread_pool_search_queue{__$labels__}))'
+} as const;
+
+/** 这段时间的次数。整段范围仍用 __$window__，不改成速率窗口。 */
+export const ES_WINDOW_COUNT_QUERIES = {
+  breakerField: 'sum by (instance_id) (increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__]))',
+  breakerRequest: 'sum by (instance_id) (increase(elasticsearch_breakers_request_tripped{__$labels__}[__$window__]))',
+  breakerParent: 'sum by (instance_id) (increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$window__]))'
+} as const;
+
+/** 趋势。速率用 __$rate_window__，每步次数用 __$step__。 */
+export const ES_RANGE_QUERIES = {
+  heapNodes: 'topk(8, max by (node_name) (elasticsearch_jvm_mem_heap_used_percent{__$labels__}))',
+  writeNodes: 'topk(8, max by (node_name) (rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[__$rate_window__]) * 1024))',
+  gcNodes: 'topk(8, max by (node_name) (rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$rate_window__])))',
   writeQueueAgg: 'max by (instance_id) (elasticsearch_thread_pool_write_queue{__$labels__})',
   searchQueueAgg: 'max by (instance_id) (elasticsearch_thread_pool_search_queue{__$labels__})',
-  writeQueueNodes: 'topk(8, max by (node_name) (elasticsearch_thread_pool_write_queue{__$labels__}))',
-  searchQueueNodes: 'topk(8, max by (node_name) (elasticsearch_thread_pool_search_queue{__$labels__}))',
   httpOpenAgg: 'sum by (instance_id) (elasticsearch_http_current_open{__$labels__})',
-  httpRateAgg: 'sum by (instance_id) (rate(elasticsearch_http_total_opened{__$labels__}[__$window__]))',
-  breakerField: 'sum by (instance_id) (rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__]))',
-  breakerRequest: 'sum by (instance_id) (rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__]))',
-  breakerParent: 'sum by (instance_id) (rate(elasticsearch_breakers_parent_tripped{__$labels__}[__$window__]))'
+  httpRateAgg: 'sum by (instance_id) (rate(elasticsearch_http_total_opened{__$labels__}[__$rate_window__]))',
+  breakerFieldStep: 'sum by (instance_id)(increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$step__]))',
+  breakerRequestStep: 'sum by (instance_id)(increase(elasticsearch_breakers_request_tripped{__$labels__}[__$step__]))',
+  breakerParentStep: 'sum by (instance_id)(increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$step__]))',
+  cpuRateNodes: ES_CPU_RATE_QUERY
 } as const;
 
 export type EsRangeQueryId = keyof typeof ES_RANGE_QUERIES;

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState, type Key } from 'react';
+import { useCallback, useEffect, useMemo, useState, type Key } from 'react';
 import useViewApi from '@/app/monitor/api/view';
 import type { TimeValuesProps } from '@/app/monitor/types';
 import { buildSearchParams, runWithConcurrency } from '../../../shared/utils';
-import { ES_INSTANT_QUERIES, ES_RANGE_QUERIES } from '../queries';
+import { ES_INSTANT_QUERIES, ES_RANGE_QUERIES, ES_WINDOW_COUNT_QUERIES } from '../queries';
 import { assembleElasticsearch, pendingElasticsearchView, type EsView } from './assemble';
 import { freshWindowSeconds } from './model';
 import {
@@ -49,6 +49,8 @@ export function useElasticsearchProData({
   const [range, setRange] = useState<Record<string, RangeOutcome>>({});
   const [pending, setPending] = useState(true);
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
+  const [retryTick, setRetryTick] = useState(0);
+  const retry = useCallback(() => setRetryTick((tick) => tick + 1), []);
   const idKey = idValues.join('\u0001');
   const keyList = instanceIdKeys.join('\u0001');
   const timeKey = `${timeValues.originValue ?? ''}|${timeValues.timeRange.join(',')}`;
@@ -77,9 +79,26 @@ export function useElasticsearchProData({
     };
     const values = idKey ? idKey.split('\u0001') : [];
     const keys = keyList ? keyList.split('\u0001') : [];
-    const instantTasks = Object.entries(ES_INSTANT_QUERIES).map(([key, query]) => ({ key, query, instant: true as const }));
-    const rangeTasks = Object.entries(ES_RANGE_QUERIES).map(([key, query]) => ({ key, query, instant: false as const }));
-    const tasks = [...instantTasks, ...rangeTasks];
+    const stepFloor = typeof intervalSeconds === 'number' && intervalSeconds > 0 ? intervalSeconds : 60;
+    const instantTasks = Object.entries(ES_INSTANT_QUERIES).map(([key, query]) => ({
+      key,
+      query,
+      instant: true as const,
+      clock: FRESHNESS_CLOCK
+    }));
+    const windowTasks = Object.entries(ES_WINDOW_COUNT_QUERIES).map(([key, query]) => ({
+      key,
+      query,
+      instant: true as const,
+      clock: timeValues
+    }));
+    const rangeTasks = Object.entries(ES_RANGE_QUERIES).map(([key, query]) => ({
+      key,
+      query,
+      instant: false as const,
+      clock: timeValues
+    }));
+    const tasks = [...instantTasks, ...windowTasks, ...rangeTasks];
     const nextInstant: Record<string, InstantOutcome> = {};
     const nextRange: Record<string, RangeOutcome> = {};
     let newest = 0;
@@ -89,10 +108,10 @@ export function useElasticsearchProData({
         'none',
         values,
         keys,
-        task.instant ? FRESHNESS_CLOCK : timeValues,
+        task.clock,
         undefined,
         false,
-        intervalSeconds,
+        stepFloor,
         context
       );
       if (task.instant) {
@@ -135,21 +154,24 @@ export function useElasticsearchProData({
     keyList,
     loadTick,
     monitorObjectId,
+    retryTick,
     timeKey,
     timeValues
   ]);
 
   return useMemo(() => {
-    if (!enabled || !instanceReady || pending) return pendingElasticsearchView();
-    return assembleElasticsearch({
-      pending: false,
-      hasInstance: idValues.length > 0,
-      nowSeconds,
-      freshSeconds: freshWindowSeconds(intervalSeconds),
-      instant,
-      range,
-      alertCount,
-      alertPending
-    });
-  }, [alertCount, alertPending, enabled, idValues.length, instant, instanceReady, intervalSeconds, nowSeconds, pending, range]);
+    const view = !enabled || !instanceReady || pending
+      ? pendingElasticsearchView()
+      : assembleElasticsearch({
+        pending: false,
+        hasInstance: idValues.length > 0,
+        nowSeconds,
+        freshSeconds: freshWindowSeconds(intervalSeconds),
+        instant,
+        range,
+        alertCount,
+        alertPending
+      });
+    return { ...view, retry };
+  }, [alertCount, alertPending, enabled, idValues.length, instant, instanceReady, intervalSeconds, nowSeconds, pending, range, retry]);
 }

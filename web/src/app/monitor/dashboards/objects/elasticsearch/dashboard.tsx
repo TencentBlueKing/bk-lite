@@ -157,6 +157,9 @@ export default function ElasticsearchDashboardPage() {
         <ElasticsearchCategoryLayout
           instanceId={dashboard.instanceId}
           monitorObjectId={dashboard.monitorObjectId}
+          linkedNodeId={dashboard.linkedNodeId}
+          linkedIp={dashboard.linkedIp}
+          instanceLoading={dashboard.instanceLoading}
           timeValues={dashboard.timeValues}
           queryTimeRange={dashboard.queryTimeRange}
           view={proView}

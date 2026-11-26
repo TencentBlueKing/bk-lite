@@ -683,6 +683,13 @@
       "template": "mem_shared{instance_type=\"k3s\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:1459c875",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[__$rate_window__]) * 1024))"
+    },
+    {
       "id": "dashboard:v1:145e9382",
       "object_names": [
         "TCPPort"
@@ -945,13 +952,6 @@
         "Docker"
       ],
       "template": "topk(8, max by (container_name) (docker_container_mem_usage_percent{__$labels__}))"
-    },
-    {
-      "id": "dashboard:v1:1b4e69a3",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "sum by (instance_id) (rate(elasticsearch_breakers_parent_tripped{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:1b678d73",
@@ -1445,6 +1445,13 @@
         "Pod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:2c07adc1",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:2c32e586",
@@ -2899,6 +2906,13 @@
       "template": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__} * 1000"
     },
     {
+      "id": "dashboard:v1:593323ca",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_request_tripped{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:59661395",
       "object_names": [
         "Nginx"
@@ -3030,13 +3044,6 @@
         "Tomcat"
       ],
       "template": "tomcat_connector_max_threads{__$labels__}"
-    },
-    {
-      "id": "dashboard:v1:5d37be49",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "topk(8, max by (node_name) (rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$window__])))"
     },
     {
       "id": "dashboard:v1:5da4cdb8",
@@ -3191,6 +3198,13 @@
         "Cluster"
       ],
       "template": "topk(10, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])))"
+    },
+    {
+      "id": "dashboard:v1:6287e453",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$step__]))"
     },
     {
       "id": "dashboard:v1:62ad801a",
@@ -3733,6 +3747,13 @@
         "Host"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
+      "id": "dashboard:v1:75c512bc",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (rate(elasticsearch_http_total_opened{__$labels__}[__$rate_window__]))"
     },
     {
       "id": "dashboard:v1:76ff4618",
@@ -4440,6 +4461,13 @@
       "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k8s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
     },
     {
+      "id": "dashboard:v1:8d9f371d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$step__]))"
+    },
+    {
       "id": "dashboard:v1:8e9c1f97",
       "object_names": [
         "IIS"
@@ -4480,13 +4508,6 @@
         "Host"
       ],
       "template": "(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) or host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} or cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or cpu_usage_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:8f7c2f0d",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "sum by (instance_id) (rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:8f9b0dcb",
@@ -4720,13 +4741,6 @@
       "template": "max by (instance_id) (minio_system_memory_used_perc_gauge{__$labels__}) or max by (instance_id) (minio_node_mem_used_perc_gauge{__$labels__})"
     },
     {
-      "id": "dashboard:v1:976f0812",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "topk(8, max by (node_name) (rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[__$window__]) * 1024))"
-    },
-    {
       "id": "dashboard:v1:9788b1ef",
       "object_names": [
         "Oracle"
@@ -4739,13 +4753,6 @@
         "MongoDB"
       ],
       "template": "mongodb_repl_oplog_window_sec{__$labels__}"
-    },
-    {
-      "id": "dashboard:v1:97e07179",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "sum by (instance_id) (rate(elasticsearch_http_total_opened{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:97e48533",
@@ -4851,6 +4858,13 @@
         "Docker"
       ],
       "template": "sum(rate(docker_container_net_tx_errors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:9abc6bf9",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_process_cpu_total_in_millis{__$labels__}[__$rate_window__]) / 1000 * 100"
     },
     {
       "id": "dashboard:v1:9ad0f351",
@@ -5306,6 +5320,13 @@
         "Hardware Server"
       ],
       "template": "max by (name) (redfish_fan_speed_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"rpm\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:aa210a4b",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:aa39e9d2",
@@ -5955,6 +5976,13 @@
         "Apache"
       ],
       "template": "apache_IdleWorkers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c2904c26",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_request_tripped{__$labels__}[__$step__]))"
     },
     {
       "id": "dashboard:v1:c29c1921",
@@ -7080,13 +7108,6 @@
       "template": "rabbitmq_overview_consumers{__$labels__}"
     },
     {
-      "id": "dashboard:v1:e7172fa8",
-      "object_names": [
-        "ElasticSearch"
-      ],
-      "template": "sum by (instance_id) (rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__]))"
-    },
-    {
       "id": "dashboard:v1:e823e064",
       "object_names": [
         "Host"
@@ -7738,6 +7759,13 @@
         "Hardware Server"
       ],
       "template": "max by (instance_id) (redfish_memory_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:fed75804",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$rate_window__])))"
     },
     {
       "id": "dashboard:v1:fed85ec2",
