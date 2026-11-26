@@ -9,6 +9,7 @@ import ApmSloPage from '../page';
 const api = {
   createSlo: vi.fn(),
   deleteSlo: vi.fn(),
+  getServiceRed: vi.fn(),
   getServices: vi.fn(),
   getSlos: vi.fn(),
   setSloEnabled: vi.fn(),
@@ -60,6 +61,7 @@ beforeEach(() => {
       data_state: 'available',
     },
   ]);
+  api.getServiceRed.mockResolvedValue({ top_endpoints: [] });
 });
 
 afterEach(() => {
@@ -231,6 +233,55 @@ describe('APM SLO 列表布局', () => {
     renderWithApmIntl(<ApmSloPage />);
 
     expect(await screen.findByText('自然月（UTC）')).not.toBeNull();
+  });
+
+  it('窗口内无请求时提示核对端点名称', async () => {
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-no-samples',
+        name: 'sloTest',
+        service_id: 'service-checkout',
+        environment: 'local',
+        endpoint: '/api/checkout',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'rolling7d',
+        is_enabled: true,
+        service_namespace: 'apm-demo-shop',
+        service_name: 'demo-storefront',
+        latency_threshold_ms: null,
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+        reason: 'no_samples',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+
+    const tag = await screen.findByText('暂无数据');
+    expect(tag.closest('[title]')?.getAttribute('title')).toBe('评估窗内没有匹配的请求，请核对环境和端点名称');
+  });
+
+  it('端点可从所选服务近 24 小时已上报的端点中选择', async () => {
+    const user = userEvent.setup();
+    api.getServiceRed.mockResolvedValue({
+      top_endpoints: [
+        { endpoint: 'GET /api/products' },
+        { endpoint: 'POST /api/checkout' },
+      ],
+    });
+
+    renderWithApmIntl(<ApmSloPage />);
+    await user.click(await screen.findByRole('button', { name: '新建' }));
+    const endpointInput = await screen.findByLabelText(/^端点/);
+    await user.type(endpointInput, 'checkout');
+
+    expect(await screen.findByTitle('POST /api/checkout')).not.toBeNull();
+    expect(screen.queryByTitle('GET /api/products')).toBeNull();
+    const [serviceId, environment, startedAt, endedAt] = api.getServiceRed.mock.calls.at(-1)!;
+    expect([serviceId, environment]).toEqual(['service-checkout', 'local']);
+    expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
   it('编辑归档服务的 SLO 时展示服务名称而不是 UUID', async () => {

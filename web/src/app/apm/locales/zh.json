@@ -1037,7 +1037,7 @@
       "environmentHint": "SLO 在单个部署环境内评估。",
       "environmentRequired": "请选择环境",
       "endpoint": "端点",
-      "endpointHint": "留空时按整个服务计算。",
+      "endpointHint": "留空时按整个服务计算；填写时需与调用链里的端点名称完全一致，通常带请求方法。",
       "endpointPlaceholder": "例如：POST /api/checkout",
       "sliRequired": "请选择 SLI 类型",
       "latencyThreshold": "时延阈值",
@@ -1059,6 +1059,7 @@
       "retentionTooShort": "明细保留期不足",
       "retentionInvalid": "明细保留期配置无效",
       "capacityExceeded": "评估窗超出明细单次查询容量",
+      "noSamples": "评估窗内没有匹配的请求，请核对环境和端点名称",
       "thresholdMs": "阈值 {duration}",
       "archivedServiceOption": "{name}（已归档）"
     },

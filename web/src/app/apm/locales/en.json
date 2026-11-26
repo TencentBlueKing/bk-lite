@@ -1037,7 +1037,7 @@
       "environmentHint": "The SLO is evaluated within a single deployment environment.",
       "environmentRequired": "Please select an environment",
       "endpoint": "Endpoint",
-      "endpointHint": "Leave empty to calculate for the entire service.",
+      "endpointHint": "Leave empty to calculate for the entire service. Otherwise it must exactly match the endpoint name in traces, usually including the HTTP method.",
       "endpointPlaceholder": "Example: POST /api/checkout",
       "sliRequired": "Please select an SLI type",
       "latencyThreshold": "Latency threshold",
@@ -1059,6 +1059,7 @@
       "retentionTooShort": "Trace retention is shorter than this window",
       "retentionInvalid": "Trace retention setting is invalid",
       "capacityExceeded": "Evaluation window exceeds the per-query trace capacity",
+      "noSamples": "No matching requests in the evaluation window. Check the environment and endpoint name.",
       "thresholdMs": "Threshold {duration}",
       "archivedServiceOption": "{name} (archived)"
     },

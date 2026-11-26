@@ -270,6 +270,34 @@ describe('ApmHomePage', () => {
     expect(screen.queryByText('加载失败，点击重试')).toBeNull();
   });
 
+  it('lists a configured SLO without samples instead of the empty-config copy', async () => {
+    api.getDashboard.mockResolvedValue({
+      ...loadedDashboard,
+      slos: {
+        status: 'ok',
+        data: {
+          items: [{
+            id: 'slo-no-samples',
+            service_id: 'svc-pay',
+            service_name: 'cct-upp-pay',
+            environment: 'testing',
+            objective: 99.9,
+            current_rate: null,
+            met: null,
+            reason: 'no_samples',
+          }],
+        },
+      },
+    });
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText('cct-upp-pay')).not.toBeNull();
+    expect(screen.getByText('评估窗内没有匹配的请求，请核对环境和端点名称')).not.toBeNull();
+    expect(screen.getByText('无数据')).not.toBeNull();
+    expect(screen.queryByText('未达成')).toBeNull();
+    expect(screen.queryByText('暂无 SLO 配置')).toBeNull();
+  });
+
   it('shows retry when a section failed', async () => {
     api.getDashboard.mockResolvedValue(failedAlertsDashboard);
     renderWithApmIntl(<ApmHomePage />);

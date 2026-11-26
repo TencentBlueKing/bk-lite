@@ -2,6 +2,7 @@
 
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
+  AutoComplete,
   Button,
   Drawer,
   Form,
@@ -62,6 +63,8 @@ const windowI18n: Record<ApmSloEvaluationWindow, { id: string; fallback: string 
   calendarMonth: { id: 'apm.slo.calendarMonth', fallback: '自然月（UTC）' },
 };
 
+const ENDPOINT_SUGGESTION_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
 function BudgetProgress({ value }: { value: number | null }) {
   if (value === null) return <Typography.Text type="secondary">—</Typography.Text>;
   const color = value >= 80
@@ -83,7 +86,10 @@ function EvaluationTag({ row }: { row: ApmSlo }) {
   if (!row.is_enabled) return <Tag bordered={false}>{t('apm.slo.disabledTag', '已停用')}</Tag>;
   if (row.data_state === 'unavailable') return <Tag bordered={false} color="error">{t('apm.slo.evalError', '评估异常')}</Tag>;
   if (retention) return <Tag bordered={false} color="warning" title={retention}>{retention}</Tag>;
-  if (row.data_state === 'no_data' || row.current_rate === null) return <Tag bordered={false} color="warning">{t('common.noData', '暂无数据')}</Tag>;
+  if (row.data_state === 'no_data' || row.current_rate === null) {
+    const hint = row.reason === 'no_samples' ? t('apm.slo.noSamples', '评估窗内没有匹配的请求，请核对环境和端点名称') : undefined;
+    return <Tag bordered={false} color="warning" title={hint}>{t('common.noData', '暂无数据')}</Tag>;
+  }
   return row.current_rate >= Number(row.objective)
     ? <Tag bordered={false} color="success">{t('apm.services.met', '达标')}</Tag>
     : <Tag bordered={false} color="error">{t('apm.services.unmet', '未达标')}</Tag>;
@@ -92,8 +98,11 @@ function EvaluationTag({ row }: { row: ApmSlo }) {
 export default function ApmSloPage() {
   const { t } = useTranslation();
   const screens = Grid.useBreakpoint();
-  const { createSlo, deleteSlo, getServices, getSlos, setSloEnabled, updateSlo } = useApmApi();
+  const { createSlo, deleteSlo, getServiceRed, getServices, getSlos, setSloEnabled, updateSlo } = useApmApi();
   const [form] = Form.useForm<SloFormValues>();
+  const formServiceId = Form.useWatch('service_id', form);
+  const formEnvironment = Form.useWatch('environment', form);
+  const [endpointNames, setEndpointNames] = useState<string[]>([]);
   const [rows, setRows] = useState<ApmSlo[]>([]);
   const [services, setServices] = useState<ApmService[]>([]);
   const [state, setState] = useState<PageState>('loading');
@@ -120,6 +129,22 @@ export default function ApmSloPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setEndpointNames([]);
+    if (!drawerOpen || !formServiceId || !formEnvironment) return;
+    let cancelled = false;
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - ENDPOINT_SUGGESTION_LOOKBACK_MS);
+    getServiceRed(formServiceId, formEnvironment, startedAt.toISOString(), endedAt.toISOString())
+      .then((red) => {
+        if (!cancelled) setEndpointNames((red.top_endpoints ?? []).map((item) => item.endpoint).filter(Boolean));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [drawerOpen, formEnvironment, formServiceId, getServiceRed]);
 
   const editingRow = useMemo(
     () => editingId ? rows.find((row) => row.id === editingId) : undefined,
@@ -462,7 +487,13 @@ export default function ApmSloPage() {
             <Select showSearch optionFilterProp="label" placeholder={t('apm.common.selectEnvironment', '选择环境')} options={environmentOptions} />
           </Form.Item>
           <Form.Item label={t('apm.slo.endpoint', '端点')} name="endpoint" extra={t('apm.slo.endpointHint', '留空时按整个服务计算。')}>
-            <Input maxLength={512} placeholder={t('apm.slo.endpointPlaceholder', '例如：POST /api/checkout')} />
+            <AutoComplete
+              allowClear
+              maxLength={512}
+              placeholder={t('apm.slo.endpointPlaceholder', '例如：POST /api/checkout')}
+              options={endpointNames.map((value) => ({ value }))}
+              filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.trim().toLowerCase())}
+            />
           </Form.Item>
           <Form.Item label={t('apm.slo.sliType', 'SLI 类型')} name="sli_type" rules={[{ required: true, message: t('apm.slo.sliRequired', '请选择 SLI 类型') }]}>
             <Select options={Object.entries(sliI18n).map(([value, item]) => ({ value, label: t(item.id, item.fallback) }))} />
