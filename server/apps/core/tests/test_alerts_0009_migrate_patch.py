@@ -1,16 +1,19 @@
-"""alerts.0009 信创补丁：FakeAddIndex 必须配对可重入删除。
+"""alerts.0009 信创补丁：FakeAddIndex 必须配对，删除必须能从任意中断点重跑。
 
-达梦空库在 0005 用 FakeAddIndex 跳过 alerts_sess_event_i_5ab59a_idx，
-0009 若按原名 DROP INDEX 会得到 -2139；DDL 已提交则重跑再报缺表 -2106。
+0005 补丁用 FakeAddIndex 跳过 alerts_sess_event_i_5ab59a_idx，原始 0009 按名删除会失败；
+达梦和 MySQL 系 DDL 自动提交，失败前的删除已经生效，重跑时对象已经不在。
 """
 
 from __future__ import annotations
 
 import importlib.util
+import logging
+from importlib import import_module
 from pathlib import Path
 
 import pytest
-from django.db import migrations
+from django.db import DatabaseError, connection, migrations
+from django.db.migrations.loader import MigrationLoader
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PATCH_ROOT = SERVER_ROOT / "migrate_patch" / "patches"
@@ -18,11 +21,14 @@ ENGINES = ("dameng", "mysql", "gaussdb", "goldendb", "oceanbase")
 FK_INDEX = "alerts_sess_event_i_5ab59a_idx"
 SESSION_INDEX = "alerts_sess_session_76b0b9_idx"
 PATCH_0005 = "0005_sessioneventrelation_aggregationrules_image_and_more.py"
-PATCH_0009 = "0009_remove_correlationrules_aggregation_rules_and_more.py"
+MIGRATION_0009 = "0009_remove_correlationrules_aggregation_rules_and_more"
+PATCH_0009 = f"{MIGRATION_0009}.py"
+PREVIOUS = ("alerts", "0008_alarmstrategy_and_more")
+LEGACY_MODELS = ("AggregationRules", "CorrelationRules", "SessionWindow", "SessionEventRelation")
 
 
 def _load_module(path: Path):
-    spec = importlib.util.spec_from_file_location(path.stem, path)
+    spec = importlib.util.spec_from_file_location(f"{path.parent.parent.name}_{path.stem}", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -58,82 +64,146 @@ def test_engine_that_skips_fk_index_in_0005_patches_0009(engine):
     path = PATCH_ROOT / engine / "alerts" / PATCH_0009
     assert path.exists(), f"{engine} 缺少 alerts/0009 补丁，空库会在 DROP INDEX {FK_INDEX} 失败"
 
-    rows = _index_ops(_operations(path))
-    fk_ops = [row for row in rows if row[1] == FK_INDEX]
-    assert fk_ops, f"{engine} 0009 补丁未声明 {FK_INDEX}"
-    assert all(type_name == "FakeRemoveIndex" and kind == "remove" for type_name, _, kind in fk_ops), fk_ops
+    operations = _operations(path)
+    rows = _index_ops(operations)
+    assert [row for row in rows if row[1] == FK_INDEX] == [("FakeRemoveIndex", FK_INDEX, "remove")]
+    assert [row for row in rows if row[1] == SESSION_INDEX] == [("RemoveIndexIfExists", SESSION_INDEX, "remove")]
 
-    session_ops = [row for row in rows if row[1] == SESSION_INDEX]
-    assert session_ops, f"{engine} 0009 补丁未处理 {SESSION_INDEX}"
-    assert all(not type_name.startswith("Fake") and kind == "remove" for type_name, _, kind in session_ops), session_ops
+    original = import_module(f"apps.alerts.migrations.{MIGRATION_0009}").Migration.operations
+    assert [op.describe() for op in operations] == [op.describe() for op in original]
+    assert all(type(op).__name__ == "FakeRemoveIndex" or type(op).__name__.endswith("IfExists") for op in operations)
 
 
-def test_missing_object_error_accepts_dameng_codes():
-    from django.db.utils import ProgrammingError
+def _legacy_state():
+    return MigrationLoader(connection, ignore_no_migrations=True).project_state(PREVIOUS)
 
-    from migrate_patch.patches.compat_ops import missing_object_error
 
-    class _Arg:
-        def __init__(self, code):
-            self.code = code
+def _legacy_tables(state) -> set[str]:
+    tables = set()
+    for name in LEGACY_MODELS:
+        model = state.apps.get_model("alerts", name)
+        tables.add(model._meta.db_table)
+        for field in model._meta.local_many_to_many:
+            if field.remote_field.through._meta.auto_created:
+                tables.add(field.remote_field.through._meta.db_table)
+    return tables
 
-    class _Driver(Exception):
+
+def _existing(tables: set[str]) -> set[str]:
+    return tables & set(connection.introspection.table_names())
+
+
+def _drop_remaining_legacy_tables(state):
+    # delete_model(CorrelationRules) 会连带删自动中间表；中间表可能已不在，所以逐表判断。
+    through = state.apps.get_model("alerts", "CorrelationRules")._meta.get_field("aggregation_rules").remote_field.through
+    without_m2m = state.clone()
+    migrations.RemoveField(model_name="correlationrules", name="aggregation_rules").state_forwards("alerts", without_m2m)
+    models = [through, *(without_m2m.apps.get_model("alerts", name) for name in reversed(LEGACY_MODELS))]
+    existing = set(connection.introspection.table_names())
+    with connection.schema_editor() as editor:
+        for model in models:
+            if model._meta.db_table in existing:
+                editor.delete_model(model)
+
+
+@pytest.fixture
+def legacy_alerts_tables():
+    """在测试库上按 0008 的模型建出 0009 要删的旧表，用完全部清掉。"""
+    state = _legacy_state()
+    tables = _legacy_tables(state)
+    assert not _existing(tables)
+    with connection.schema_editor() as editor:
+        for name in LEGACY_MODELS:
+            editor.create_model(state.apps.get_model("alerts", name))
+    try:
+        yield state, tables
+    finally:
+        _drop_remaining_legacy_tables(state)
+
+
+def _apply(migration, state):
+    with connection.schema_editor() as editor:
+        migration.apply(state.clone(), editor)
+
+
+def _patched_0009(engine: str):
+    return _load_module(PATCH_ROOT / engine / "alerts" / PATCH_0009).Migration(MIGRATION_0009, "alerts")
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("engine", ENGINES)
+def test_patched_0009_drops_legacy_tables_and_can_run_again(engine, legacy_alerts_tables):
+    state, tables = legacy_alerts_tables
+
+    _apply(_patched_0009(engine), state)
+    assert not _existing(tables)
+
+    _apply(_patched_0009(engine), state)
+    assert not _existing(tables)
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("engine", ENGINES)
+def test_patched_0009_resumes_after_original_0009_stopped_midway(engine, legacy_alerts_tables):
+    state, tables = legacy_alerts_tables
+    original = import_module(f"apps.alerts.migrations.{MIGRATION_0009}").Migration(MIGRATION_0009, "alerts")
+    # 达梦和 MySQL 系上，原始 0009 在第 3 步 DROP INDEX 失败前，已经提交了前两步。
+    stopped = migrations.Migration("0009_stopped_before_drop_index", "alerts")
+    stopped.operations = original.operations[:2]
+    _apply(stopped, state)
+
+    with pytest.raises(DatabaseError):
+        _apply(original, state)
+
+    _apply(_patched_0009(engine), state)
+    assert not _existing(tables)
+
+
+def test_dameng_schema_editor_skips_only_duplicate_plain_index(monkeypatch, caplog):
+    from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+
+    from migrate_patch.patches.compat_ops import install_idempotent_schema_editor
+
+    class DuplicateIndex(Exception):
         pass
 
-    table_missing = _Driver(_Arg(-2106), "invalid table or view name")
-    index_missing = _Driver(_Arg(-2139), "Index not exists")
-    other = _Driver(_Arg(-3236), "此列列表已索引")
-    wrapped = ProgrammingError("Index not exists")
-    wrapped.__cause__ = index_missing
+    def original(self, sql, params=()):
+        raise DuplicateIndex("[CODE:-3236]此列列表已索引")
 
-    assert missing_object_error(table_missing) is True
-    assert missing_object_error(index_missing) is True
-    assert missing_object_error(wrapped) is True
-    assert missing_object_error(other) is False
+    features_class = type(connection.features)
+    monkeypatch.setattr(BaseDatabaseSchemaEditor, "execute", original)
+    monkeypatch.setattr(features_class, "can_rollback_ddl", features_class.can_rollback_ddl)
 
+    execute = install_idempotent_schema_editor()
 
-def test_run_ignoring_missing_object_swallows_dameng_table_missing():
-    from migrate_patch.patches.compat_ops import run_ignoring_missing_object
+    assert features_class.can_rollback_ddl is True
+    with caplog.at_level(logging.WARNING, logger="app"):
+        assert execute(None, 'CREATE INDEX "alerts_dup_idx" ON "alerts_t" ("c")') is None
+    record = next(r for r in caplog.records if r.msg.startswith("event=dameng_duplicate_index_skipped"))
+    assert record.args == ("alerts_dup_idx", "DuplicateIndex")
+    assert record.getMessage() == "event=dameng_duplicate_index_skipped index=alerts_dup_idx failed_stage=migrate error_type=DuplicateIndex"
 
-    class _Arg:
-        def __init__(self, code):
-            self.code = code
-
-    class _Driver(Exception):
-        pass
-
-    def boom():
-        raise _Driver(_Arg(-2106), "invalid table or view name")
-
-    assert run_ignoring_missing_object(boom) is None
+    with pytest.raises(DuplicateIndex):
+        execute(None, 'CREATE UNIQUE INDEX "alerts_uniq" ON "alerts_t" ("c")')
+    with pytest.raises(DuplicateIndex):
+        execute(None, 'ALTER TABLE "alerts_t" ADD CONSTRAINT "alerts_uniq" UNIQUE ("c")')
 
 
-def test_run_ignoring_missing_object_reraises_unrelated_errors():
-    from migrate_patch.patches.compat_ops import run_ignoring_missing_object
+def test_dameng_schema_editor_reraises_unrelated_errors(monkeypatch):
+    from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
-    def boom():
+    from migrate_patch.patches.compat_ops import install_idempotent_schema_editor
+
+    def original(self, sql, params=()):
         raise RuntimeError("disk full")
 
+    features_class = type(connection.features)
+    monkeypatch.setattr(BaseDatabaseSchemaEditor, "execute", original)
+    monkeypatch.setattr(features_class, "can_rollback_ddl", features_class.can_rollback_ddl)
+
+    execute = install_idempotent_schema_editor()
+
     with pytest.raises(RuntimeError, match="disk full"):
-        run_ignoring_missing_object(boom)
-
-
-def test_already_indexed_error_accepts_dameng_duplicate_index():
-    from migrate_patch.patches.compat_ops import already_indexed_error
-
-    class _Arg:
-        def __init__(self, code):
-            self.code = code
-
-    class _Driver(Exception):
-        pass
-
-    assert already_indexed_error(_Driver(_Arg(-3236), "such column list already indexed")) is True
-    assert already_indexed_error(_Driver(_Arg(-2139), "Index not exists")) is False
-
-
-def test_dameng_0009_makes_already_applied_drops_idempotent():
-    ops = _operations(PATCH_ROOT / "dameng" / "alerts" / PATCH_0009)
-    assert type(ops[0]).__name__ == "RemoveFieldIfExists"
-    assert ops[0].name == "aggregation_rules"
-    assert type(ops[1]).__name__ == "AlterUniqueTogetherIfExists"
+        execute(None, 'CREATE INDEX "alerts_dup_idx" ON "alerts_t" ("c")')

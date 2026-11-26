@@ -3,14 +3,20 @@
 # 问题:
 #   1. 0005 补丁对 alerts_sess_event_i_5ab59a_idx 使用 FakeAddIndex（FK 已有索引，
 #      再 AddIndex 会 -3236）。0009 按该名字 DROP INDEX 得到 -2139，迁移未登记。
-#   2. 达梦 DDL 自动提交。关联表已删、0009 未登记时重跑会先 -2106 缺表。
+#   2. 达梦 DDL 自动提交。失败前的删除已经生效，重跑原始 0009 会因对象已不在而失败。
 # 方案:
 #   - FakeRemoveIndex 跳过从未创建的命名索引
-#   - 已执行过的删除改为不存在则跳过，保证半成功 schema 可恢复
+#   - 其余删除先查库，对象已不在就跳过，任意中断点都能重跑做完
 
 from django.db import migrations
 
-from migrate_patch.patches.compat_ops import AlterUniqueTogetherIfExists, FakeRemoveIndex, RemoveFieldIfExists, RemoveIndexIfExists
+from migrate_patch.patches.compat_ops import (
+    AlterUniqueTogetherIfExists,
+    DeleteModelIfExists,
+    FakeRemoveIndex,
+    RemoveFieldIfExists,
+    RemoveIndexIfExists,
+)
 
 
 class Migration(migrations.Migration):
@@ -29,28 +35,28 @@ class Migration(migrations.Migration):
         ),
         FakeRemoveIndex(model_name="sessioneventrelation", name="alerts_sess_event_i_5ab59a_idx"),
         RemoveIndexIfExists(model_name="sessioneventrelation", name="alerts_sess_session_76b0b9_idx"),
-        migrations.RemoveField(
+        RemoveFieldIfExists(
             model_name="sessioneventrelation",
             name="event",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfExists(
             model_name="sessioneventrelation",
             name="session",
         ),
-        migrations.RemoveField(
+        RemoveFieldIfExists(
             model_name="sessionwindow",
             name="events",
         ),
-        migrations.DeleteModel(
+        DeleteModelIfExists(
             name="AggregationRules",
         ),
-        migrations.DeleteModel(
+        DeleteModelIfExists(
             name="CorrelationRules",
         ),
-        migrations.DeleteModel(
+        DeleteModelIfExists(
             name="SessionEventRelation",
         ),
-        migrations.DeleteModel(
+        DeleteModelIfExists(
             name="SessionWindow",
         ),
     ]
