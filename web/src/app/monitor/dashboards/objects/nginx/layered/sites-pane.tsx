@@ -235,7 +235,7 @@ export default function SitesPane({
             title="状态码分布"
             hint={NGINX_HINTS.statusDist}
             unit="次"
-            items={board.statusSteps}
+            items={statusBlocked ? [] : board.statusSteps}
             floor={1}
             kind="bar"
             countAxis

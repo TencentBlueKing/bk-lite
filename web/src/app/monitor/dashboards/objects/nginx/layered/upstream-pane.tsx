@@ -286,7 +286,7 @@ export default function UpstreamPane({
             title="上游状态码分布"
             hint={NGINX_HINTS.upStatus}
             unit="次"
-            items={board.upstreamStatusSteps}
+            items={statusBlocked ? [] : board.upstreamStatusSteps}
             floor={1}
             kind="bar"
             countAxis
