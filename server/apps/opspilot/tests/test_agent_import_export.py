@@ -6,6 +6,7 @@ import shutil
 import uuid
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -14,6 +15,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.base.models import User
 from apps.opspilot.models import LLMModel, LLMSkill, MemorySpace, SkillChannel, SkillConversation, SkillPackage, SkillTools, WikiKnowledgeBase
 from apps.opspilot.models.bot_mgmt import Bot
+from apps.opspilot.services import agent_transfer
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT
 from apps.opspilot.viewsets.llm_view import LLMViewSet
 
@@ -41,18 +43,23 @@ def _user(*, superuser=False, permissions=None, groups=None, domain="domain.com"
     return user
 
 
-def _export(pk, user):
+def _export(pk, user, *, cookie="1"):
     factory = APIRequestFactory()
     request = factory.get("/")
     force_authenticate(request, user=user)
-    request.COOKIES["current_team"] = "1"
+    if cookie is not None:
+        request.COOKIES["current_team"] = cookie
     return LLMViewSet.as_view({"get": "export_agent"})(request, pk=pk)
 
 
-def _import(payload, user, *, cookie="1"):
+def _import(payload, user, *, cookie="1", upload=None):
     factory = APIRequestFactory()
-    upload = SimpleUploadedFile("agent.zip", payload, content_type="application/zip")
-    request = factory.post("/", {"file": upload}, format="multipart")
+    if upload is None:
+        upload = SimpleUploadedFile("agent.zip", payload, content_type="application/zip")
+        request = factory.post("/", {"file": upload}, format="multipart")
+    else:
+        request = factory.post("/")
+        request.FILES["file"] = upload
     force_authenticate(request, user=user)
     if cookie is not None:
         request.COOKIES["current_team"] = cookie
@@ -502,6 +509,16 @@ def test_conversation_skill_round_trips_and_same_domain_name_gets_a_suffix():
 
 def test_stale_package_binding_exports_by_manifest_id():
     user = _user(superuser=True)
+    foreign = SkillPackage.objects.create(
+        package_id="foreign-ad",
+        name="别域技能",
+        version="0.1.0",
+        domain="other.example",
+        is_build_in=False,
+        storage_path="",
+        skill_markdown="FOREIGN-PACKAGE-BODY",
+        manifest={"id": "foreign-ad", "name": "别域技能"},
+    )
     SkillPackage.objects.create(
         package_id="566aa12464824402924fb09576c686ba",
         name="AD 域运维",
@@ -518,7 +535,7 @@ def test_stale_package_binding_exports_by_manifest_id():
         domain="domain.com",
         skill_packages=[
             {
-                "id": 1,
+                "id": foreign.id,
                 "package_id": "ad-domain-ops",
                 "name": "AD 域运维",
                 "version": "0.1.0",
@@ -527,10 +544,45 @@ def test_stale_package_binding_exports_by_manifest_id():
     )
     exported = _export(skill.id, user)
     assert exported.status_code == 200
-    assert "AD-BODY" in _zip_text(exported.content)
+    text = _zip_text(exported.content)
+    assert "AD-BODY" in text
+    assert "FOREIGN-PACKAGE-BODY" not in text
     document = json.loads(zipfile.ZipFile(io.BytesIO(exported.content)).read("agent.json"))
     assert document["omitted_packages"] == []
     assert document["packages"][0]["source_name"] == "AD 域运维"
+
+
+def test_stale_package_id_from_another_domain_is_omitted():
+    user = _user(superuser=True)
+    foreign = SkillPackage.objects.create(
+        package_id="foreign-only",
+        name="外域包",
+        version="0.1.0",
+        domain="other.example",
+        is_build_in=False,
+        storage_path="",
+        skill_markdown="FOREIGN-ONLY-BODY",
+        manifest={"id": "foreign-only", "name": "外域包"},
+    )
+    skill = LLMSkill.objects.create(
+        name="只挂了外域包",
+        team=[1],
+        domain="domain.com",
+        skill_packages=[
+            {
+                "id": foreign.id,
+                "package_id": foreign.package_id,
+                "name": foreign.name,
+                "version": foreign.version,
+            }
+        ],
+    )
+    exported = _export(skill.id, user)
+    assert exported.status_code == 200
+    assert "FOREIGN-ONLY-BODY" not in _zip_text(exported.content)
+    document = json.loads(zipfile.ZipFile(io.BytesIO(exported.content)).read("agent.json"))
+    assert document["packages"] == []
+    assert document["omitted_packages"] == ["外域包"]
 
 
 def test_export_requires_setting_edit_permission():
@@ -539,4 +591,184 @@ def test_export_requires_setting_edit_permission():
     response = _export(skill.id, user)
     assert response.status_code == 403
     assert _body(response)["message"] == "缺少设置编辑权限"
+    assert not response.content.startswith(b"PK")
+
+
+def _rules(team=None, instance=None):
+    return {"team": team or [], "instance": instance or []}
+
+
+def test_export_rejects_other_org_or_missing_instance_operate():
+    editor = _user(permissions=["skill_setting-Edit"], groups=[{"id": 1, "name": "T1"}])
+    other = LLMSkill.objects.create(name="别的组织", team=[2], domain="domain.com", skill_prompt="OTHER-ORG-PROMPT")
+    response = _export(other.id, editor)
+    assert response.status_code == 403
+    assert _body(response)["result"] is False
+    assert not response.content.startswith(b"PK")
+    assert b"OTHER-ORG-PROMPT" not in response.content
+
+    local = LLMSkill.objects.create(name="本组织", team=[1], domain="domain.com", skill_prompt="LOCAL-PROMPT")
+    view_only = [{"id": local.id, "permission": ["View"]}]
+    with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=_rules(instance=view_only)):
+        response = _export(local.id, editor)
+    assert response.status_code == 403
+    assert _body(response)["result"] is False
+    assert _body(response)["message"] == "You do not have permission to update this instance"
+    assert not response.content.startswith(b"PK")
+    assert b"LOCAL-PROMPT" not in response.content
+
+
+def test_export_rejects_current_team_cookie_outside_user_groups():
+    editor = _user(permissions=["skill_setting-Edit"], groups=[{"id": 1, "name": "T1"}])
+    skill = LLMSkill.objects.create(name="伪造组织", team=[9], domain="domain.com", skill_prompt="COOKIE-PROMPT")
+    with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=_rules(team=[9])):
+        response = _export(skill.id, editor, cookie="9")
+    assert response.status_code == 403
+    assert _body(response)["result"] is False
+    assert not response.content.startswith(b"PK")
+    assert b"COOKIE-PROMPT" not in response.content
+
+
+def test_export_allows_editor_with_instance_operate():
+    editor = _user(permissions=["skill_setting-Edit"])
+    skill = LLMSkill.objects.create(name="可导出", team=[1], domain="domain.com", skill_prompt="ALLOWED-PROMPT")
+    operate = [{"id": skill.id, "permission": ["Operate"]}]
+    with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=_rules(instance=operate)):
+        response = _export(skill.id, editor)
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/zip"
+    assert "ALLOWED-PROMPT" in _zip_text(response.content)
+
+
+def test_export_skips_other_org_tool_and_names_missing_custom_tool():
+    user = _user(superuser=True)
+    foreign = SkillTools.objects.create(
+        name="foreign-mcp",
+        description="FOREIGN-TOOL-DESC",
+        is_build_in=False,
+        domain="domain.com",
+        team=[2],
+        params={"url": "https://mcp.example/FOREIGN-MCP-URL", "transport": "sse", "auth_token": "FOREIGN-TOKEN"},
+    )
+    skill = LLMSkill.objects.create(
+        name="工具边界",
+        team=[1],
+        domain="domain.com",
+        tools=[
+            {"id": foreign.id, "name": foreign.name, "kwargs": []},
+            {"id": 999999, "name": "LOST-MCP", "kwargs": []},
+        ],
+    )
+    exported = _export(skill.id, user)
+    assert exported.status_code == 200
+    text = _zip_text(exported.content)
+    assert "FOREIGN-MCP-URL" not in text
+    assert "FOREIGN-TOKEN" not in text
+    assert "FOREIGN-TOOL-DESC" not in text
+    document = json.loads(zipfile.ZipFile(io.BytesIO(exported.content)).read("agent.json"))
+    assert document["builtin_tools"] == []
+    assert document["mcp"] == []
+    assert document["omitted_tools"] == ["foreign-mcp", "LOST-MCP"]
+    imported = _import(exported.content, user)
+    assert imported.status_code == 200
+    notes = "\n".join(_body(imported)["data"]["notes"])
+    assert "foreign-mcp" in notes
+    assert "LOST-MCP" in notes
+    created = LLMSkill.objects.get(id=_body(imported)["data"]["id"])
+    assert created.tools == []
+
+
+def test_import_does_not_read_an_oversized_upload():
+    class Probe:
+        name = "agent.zip"
+        size = 10**12
+
+        def read(self, n=-1):
+            raise AssertionError(n)
+
+        def chunks(self, chunk_size=None):
+            raise AssertionError("chunks")
+
+    user = _user(permissions=["skill_list-Add"])
+    before = _counts()
+    response = _import(b"", user, upload=Probe())
+    assert response.status_code == 400
+    assert "超过大小限制" in _body(response)["message"]
+    assert _counts() == before
+
+
+def _zip_with_extra(document):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("agent.json", json.dumps(document, ensure_ascii=False))
+        archive.writestr("extra.txt", "EXTRA")
+    return buffer.getvalue()
+
+
+def test_import_rejects_agent_zip_over_entry_or_uncompressed_limit(monkeypatch):
+    user = _user(superuser=True)
+    before = _counts()
+    monkeypatch.setattr(agent_transfer, "MAX_AGENT_ENTRIES", 1)
+    response = _import(_zip_with_extra(_recipe()), user)
+    assert response.status_code == 400
+    assert "条目过多" in _body(response)["message"]
+    assert _counts() == before
+
+    monkeypatch.setattr(agent_transfer, "MAX_AGENT_ENTRIES", 128)
+    monkeypatch.setattr(agent_transfer, "MAX_AGENT_UNCOMPRESSED_BYTES", 8)
+    response = _import(_agent_zip(_recipe()), user)
+    assert response.status_code == 400
+    assert "解压后超过大小限制" in _body(response)["message"]
+    assert _counts() == before
+
+
+def test_import_rejects_inner_package_over_limit(monkeypatch):
+    user = _user(superuser=True)
+    document = _recipe(packages=[{"archive": "packages/0.zip", "source_name": "大包"}])
+    payload = _agent_zip(document, [_skill_zip()])
+    before = _counts()
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_ENTRIES", 0)
+    response = _import(payload, user)
+    assert response.status_code == 400
+    assert "技能包条目过多" in _body(response)["message"]
+    assert _counts() == before
+
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_ENTRIES", 2000)
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_UNCOMPRESSED_BYTES", 8)
+    response = _import(payload, user)
+    assert response.status_code == 400
+    assert "技能包解压后超过大小限制" in _body(response)["message"]
+    assert _counts() == before
+
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_UNCOMPRESSED_BYTES", 64 * 1024 * 1024)
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_ARCHIVE_BYTES", 8)
+    response = _import(payload, user)
+    assert response.status_code == 400
+    assert "技能包超过大小限制" in _body(response)["message"]
+    assert _counts() == before
+
+
+def test_export_fails_when_skill_package_exceeds_encoded_limit(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_transfer, "MAX_PACKAGE_ARCHIVE_BYTES", 16)
+    user = _user(superuser=True)
+    storage = tmp_path / "pkg" / "1.0.0"
+    storage.mkdir(parents=True)
+    (storage / "original.zip").write_bytes(b"x" * 32)
+    package = SkillPackage.objects.create(
+        package_id="fat-package",
+        name="大包",
+        version="1.0.0",
+        is_build_in=False,
+        storage_path=str(storage),
+        domain="domain.com",
+    )
+    skill = LLMSkill.objects.create(
+        name="带大包",
+        team=[1],
+        domain="domain.com",
+        skill_packages=[{"id": package.id, "package_id": package.package_id, "name": package.name, "version": package.version}],
+    )
+    response = _export(skill.id, user)
+    assert response.status_code == 400
+    assert "技能包超过大小限制" in _body(response)["message"]
     assert not response.content.startswith(b"PK")
