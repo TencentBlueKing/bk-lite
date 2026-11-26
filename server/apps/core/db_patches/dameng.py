@@ -110,9 +110,10 @@ def apply_early_patches():
     # 3. 抑制缓存错误日志
     _patch_cursor_wrapper_suppress_cache_error()
 
-    # 4. 只在 migrate / batch_init 进程里去掉 LIMIT + FOR UPDATE。常驻进程保留原报错，
-    #    避免 .first() 这类 [:1] 查询把行锁静默拿掉。
+    # 4. 常驻进程按主键重写带 LIMIT 的 select_for_update。编译器去掉 FOR UPDATE 只在
+    #    migrate / batch_init，避免 .first() 把行锁静默拿掉。
     _patch_select_for_update_with_limit()
+    _patch_select_for_update_window()
 
     logger.info("DamengDB early patches applied (cursor lock, DatabaseCache, CursorWrapper)")
 
@@ -259,6 +260,13 @@ def _patch_select_for_update_with_limit():
 
     if install_select_for_update_limit_compat_for_schema_init():
         logger.info("SQLCompiler.as_sql patched to skip FOR UPDATE when combined with LIMIT during schema init")
+
+
+def _patch_select_for_update_window():
+    """Page select_for_update() by primary key on every Dameng process."""
+    from apps.core.utils.queryset_lock import install_select_for_update_window_compat
+
+    install_select_for_update_window_compat()
 
 
 def patch():
