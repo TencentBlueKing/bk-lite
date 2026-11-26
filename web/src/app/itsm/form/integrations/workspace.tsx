@@ -8,15 +8,18 @@ import { useRouter } from 'next/navigation';
 import { usePageLeave } from '../../components/interaction-surfaces';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiOutlined, CheckCircleOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { ApiOutlined, ClusterOutlined, CheckCircleOutlined, CodeOutlined, InboxOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { Alert, Button, Checkbox, Input, Select, Space, Spin, Switch, Tabs, Tag, Typography, Upload, message as antdMessage } from 'antd';
 import CustomTable from '../../components/itsm-list-table';
+import { JobCatalog } from './job-catalog';
 import { FieldRow } from '../../components/field-row';
 import { useItsmApi } from '../../api/useItsmApi';
 import OpenApiDocsDetail from '@/app/system-manager/(pages)/settings/openapi-docs/OpenApiDocsDetail';
 import { flattenOpenApiCatalog, generateSamplePayload } from '@/app/system-manager/utils/openapiDocs';
 import type { OpenAPIDocsCatalog } from '@/app/system-manager/api/settings';
 import { parseInputs, PYTHON_EXAMPLE, readPythonFile, type IntegrationItem, type IntegrationKind, type IntegrationResult } from './helpers';
+
+type IntegrationTab = IntegrationKind | 'job';
 
 const statuses: Record<string, string> = { running: '执行中', pending: '待投递', failed: '失败', unknown: '待核对', done: '成功', superseded: '已被新状态替代' };
 
@@ -29,8 +32,8 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
   const notifyError = useCallback((error: unknown) => { void message.error(error instanceof Error ? error.message : '操作失败'); }, [message]);
   const [items, setItems] = useState<IntegrationItem[]>([]);
   const [catalog, setCatalog] = useState<OpenAPIDocsCatalog>();
-  const [kind, setKind] = useState<IntegrationKind>('api');
-  useEffect(()=>{const saved=sessionStorage.getItem('itsm:integration:kind');if(saved && ['api','python','todo'].includes(saved))setKind(saved as IntegrationKind);setKeyword(sessionStorage.getItem('itsm:integration:search')||'');},[]);
+  const [kind, setKind] = useState<IntegrationTab>('api');
+  useEffect(()=>{const saved=sessionStorage.getItem('itsm:integration:kind');if(saved && ['api','python','job','todo'].includes(saved))setKind(saved as IntegrationTab);setKeyword(sessionStorage.getItem('itsm:integration:search')||'');},[]);
   const [keyword, setKeyword] = useState('');
   const [permissions, setPermissions] = useState({ can_add: false, can_edit: false });
   const [draft, setDraft] = useState<IntegrationItem>();
@@ -146,22 +149,24 @@ export default function IntegrationWorkspace({ integrationId, mode = "configure"
 
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
     {contextHolder}
-    {!integrationId && <><ItsmListToolbar leading={<ItsmListTabs activeKey={kind} onChange={value => {setKind(value as IntegrationKind);sessionStorage.setItem('itsm:integration:kind',value);}} items={[
+    {!integrationId && <><ItsmListToolbar leading={<ItsmListTabs activeKey={kind} onChange={value => {setKind(value as IntegrationTab);sessionStorage.setItem('itsm:integration:kind',value);}} items={[
       { key: 'api', label: <Space><ApiOutlined />API 集成</Space> },
       { key: 'python', label: <Space><CodeOutlined />Python 脚本</Space> },
+      { key: 'job', label: <Space><ClusterOutlined aria-hidden="true" />作业平台</Space> },
       { key: 'todo', label: <Space><InboxOutlined />待办对接</Space> },
-    ]} />} search={{value: keyword, onChange: value=>{setKeyword(value);sessionStorage.setItem('itsm:integration:search',value);}, label: '搜索集成', placeholder: '搜索名称或标识'}} actions={<>
+    ]} />} search={{value: keyword, onChange: value=>{setKeyword(value);sessionStorage.setItem('itsm:integration:search',value);}, label: kind === 'job' ? '搜索作业' : '搜索集成', placeholder: '搜索名称或标识'}} actions={<>
 {kind === 'api' && <Button href="/system-manager/settings/openapi-docs" target="_blank">平台 API 文档</Button>}
-{permissions.can_add && <ItsmCreateButton onClick={() => router.push(`/itsm/form/integrations/new-${kind}/configure`)}>新建</ItsmCreateButton>}
+{kind === 'job' && <><Button href="/job/template/script-library" target="_blank" rel="noopener noreferrer">脚本库</Button><Button href="/job/execution/job-record" target="_blank" rel="noopener noreferrer">执行记录</Button></>}
+{kind !== 'job' && permissions.can_add && <ItsmCreateButton onClick={() => router.push(`/itsm/form/integrations/new-${kind}/configure`)}>新建</ItsmCreateButton>}
 </>} />
-    <CustomTable storageKey="itsm:integration:position" queryKey={`${kind}:${keyword}`} rowKey="id" dataSource={items.filter(item => item.kind === kind && `${item.name} ${item.config.path || ''}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
+    {kind === 'job' ? <JobCatalog keyword={keyword} /> : <CustomTable storageKey="itsm:integration:position" queryKey={`${kind}:${keyword}`} rowKey="id" dataSource={items.filter(item => item.kind === kind && `${item.name} ${item.config.path || ''}`.toLowerCase().includes(keyword.trim().toLowerCase()))} columns={[
       { title: '名称', dataIndex: 'name', key: 'name', render: (value: string, item: IntegrationItem) => <ItsmListEntry href={`/itsm/form/integrations/${item.id}/configure`}>{value}</ItsmListEntry> },
       { title: kind === 'api' ? '接口地址' : kind === 'python' ? '文件' : '接收地址', key: 'target', render: (_: unknown, item: IntegrationItem) => item.config.path ? <span className="font-mono text-xs">{item.config.method} {item.config.path}</span> : item.config.filename || item.config.url },
       { title: '状态', key: 'enabled', render: (_: unknown, item: IntegrationItem) => <Tag color={item.is_enabled ? 'green' : 'default'}>{item.is_enabled ? '启用' : '停用'}</Tag> },
       { title: '维护人', dataIndex: 'updated_by', key: 'owner' },
       { fixed: 'right' as const, width: 120, title: '操作', key: 'actions', render: (_: unknown, item: IntegrationItem) => <ItsmRowActions items={[{key: 'action-0', label: permissions.can_edit ? '配置' : '查看', kind: 'configure' as const, onClick: () => router.push(`/itsm/form/integrations/${item.id}/configure`)},
         {key: 'action-1', label: permissions.can_edit ? '调试 / 记录' : '记录', kind: 'history' as const, onClick: () => router.push(`/itsm/form/integrations/${item.id}/records`)}]} /> },
-    ]} />
+    ]} />}
     </>}
     {integrationId && <>
       <div className="sticky top-0 z-10 mb-4 flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg)] pb-3">
