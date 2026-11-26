@@ -59,7 +59,7 @@ const sliI18n: Record<ApmSliType, { id: string; fallback: string }> = {
 const windowI18n: Record<ApmSloEvaluationWindow, { id: string; fallback: string }> = {
   rolling7d: { id: 'apm.slo.rolling7d', fallback: '滚动 7 天' },
   rolling30d: { id: 'apm.slo.rolling30d', fallback: '滚动 30 天' },
-  calendarMonth: { id: 'apm.slo.calendarMonth', fallback: '自然月' },
+  calendarMonth: { id: 'apm.slo.calendarMonth', fallback: '自然月（UTC）' },
 };
 
 function BudgetProgress({ value }: { value: number | null }) {

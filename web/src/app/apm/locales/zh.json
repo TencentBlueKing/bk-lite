@@ -1051,7 +1051,7 @@
       "latencyP99": "时延（P99 小于阈值）",
       "rolling7d": "滚动 7 天",
       "rolling30d": "滚动 30 天",
-      "calendarMonth": "自然月",
+      "calendarMonth": "自然月（UTC）",
       "serviceLevel": "服务级",
       "list": "SLO 列表",
       "disabledTag": "已停用",

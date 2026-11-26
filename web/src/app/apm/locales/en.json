@@ -1051,7 +1051,7 @@
       "latencyP99": "Latency (P99 below threshold)",
       "rolling7d": "Rolling 7 days",
       "rolling30d": "Rolling 30 days",
-      "calendarMonth": "Calendar month",
+      "calendarMonth": "Calendar month (UTC)",
       "serviceLevel": "Service-level",
       "list": "SLO list",
       "disabledTag": "Disabled",

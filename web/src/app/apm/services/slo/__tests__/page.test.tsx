@@ -206,6 +206,33 @@ describe('APM SLO 列表布局', () => {
     expect(screen.queryByText('暂无数据')).toBeNull();
   });
 
+  it('自然月窗口注明按 UTC 切月', async () => {
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-month',
+        name: '月度可用性',
+        service_id: 'service-checkout',
+        environment: 'local',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'calendarMonth',
+        is_enabled: true,
+        service_namespace: 'apm-demo-shop',
+        service_name: 'demo-storefront',
+        latency_threshold_ms: null,
+        current_rate: 99.95,
+        budget_remaining: 50,
+        data_state: 'available',
+        reason: '',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+
+    expect(await screen.findByText('自然月（UTC）')).not.toBeNull();
+  });
+
   it('编辑归档服务的 SLO 时展示服务名称而不是 UUID', async () => {
     const user = userEvent.setup();
     api.getServices.mockResolvedValue([]);
