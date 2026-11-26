@@ -3,7 +3,7 @@ import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import FormPage from '../form/designer/[id]/page';
 import WorkflowPage from '../workflow/designer/[id]/page';
-import type { FormFieldSchema } from '../types';
+import type { FormFieldSchema, FormSchema } from '../types';
 
 const state = vi.hoisted(() => ({ id: '1' }));
 const api = vi.hoisted(() => ({ ready: true, getForm: vi.fn(), getDesign: vi.fn(), saveDesign: vi.fn(), saveForm: vi.fn(), publishForm: vi.fn() }));
@@ -13,7 +13,10 @@ vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => ke
 vi.mock('./interaction-surfaces', () => ({ ItsmDrawer: () => null, ItsmModal: () => null, usePageLeave: () => {} }));
 vi.mock('./flow-designer', () => ({ FlowDesigner: () => null }));
 vi.mock('./workflow-preview', () => ({ WorkflowPreview: () => null }));
-vi.mock('./form-renderer', () => ({ FormRenderer: () => null }));
+vi.mock('./form-renderer', () => ({
+  FormRenderer: ({ fetchContext }: { fetchContext?: { preview?: boolean; schema?: FormSchema } }) =>
+    <output>{fetchContext?.preview && fetchContext.schema?.fields.map(field => field.label).join('、')}</output>,
+}));
 vi.mock('./node-settings', () => ({ flattenNodeFields: () => [] }));
 vi.mock('./form-designer', () => ({
   FormDesigner: ({ fields, onChange }: { fields: FormFieldSchema[]; onChange: (value: FormFieldSchema[]) => void }) =>
@@ -51,6 +54,14 @@ it('切换流程后等待对应表单读完，旧请求迟到不会覆盖当前�
   await act(async () => finish({ schema: { fields: [] } }));
   expect(screen.queryByText('旧流程')).toBeNull();
   expect(screen.getByRole('button', { name: '原名' })).toBeTruthy();
+});
+
+it('预览使用编辑中的表单配置取数', async () => {
+  api.getForm.mockResolvedValue({ schema, versions: [] });
+  render(<FormPage />);
+  fireEvent.click(await screen.findByRole('button', { name: '原名' }));
+  fireEvent.click(screen.getByText('itsm.design.previewForm'));
+  expect(screen.getByRole('status').textContent).toBe('变更');
 });
 
 it('从发布版本新建草稿后继续显示版本快照中的字段', async () => {

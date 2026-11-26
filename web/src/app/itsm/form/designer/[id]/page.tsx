@@ -89,7 +89,7 @@ function FormEditor({ formId }: { formId: number }) {
       </div>
       {preview ? (
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-6">
-          <FormRenderer schema={schema} onSubmit={() => message.success(t('itsm.design.previewSubmitted'))} />
+          <FormRenderer schema={schema} fetchContext={{ preview: true, schema }} onSubmit={() => message.success(t('itsm.design.previewSubmitted'))} />
         </div>
       ) : (
         <FormDesigner fields={fields} onChange={setFields} />
