@@ -179,6 +179,7 @@ export type ScriptParamType = 'text' | 'enum';
 
 export interface ScriptParam {
   name: string;
+  label?: string;
   description?: string;
   default?: string;
   is_encrypted?: boolean;

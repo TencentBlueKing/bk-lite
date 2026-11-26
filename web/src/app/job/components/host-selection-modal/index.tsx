@@ -63,6 +63,7 @@ export interface JobHostSelectionModalProps {
   open: boolean;
   selectedKeys: string[];
   selectedHosts?: HostItem[];
+  singleSelect?: boolean;
   source?: TargetSourceType;
   onConfirm: (keys: string[], hosts: HostItem[]) => void;
   onCancel: () => void;
@@ -75,6 +76,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
   open,
   selectedKeys: initialKeys,
   selectedHosts = [],
+  singleSelect = false,
   source = 'target_manager',
   onConfirm,
   onCancel,
@@ -322,9 +324,9 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
                 onChange={handleFilterChange}
               />
               <div className="flex gap-2">
-                <Button size="small" onClick={handleSelectAllCurrent}>
+                {!singleSelect && <Button size="small" onClick={handleSelectAllCurrent}>
                   {t('job.selectAllCurrent')}
-                </Button>
+                </Button>}
                 <Button size="small" onClick={handleDeselectAll}>
                   {t('job.deselectAll')}
                 </Button>
@@ -347,6 +349,7 @@ const JobHostSelectionModal: React.FC<JobHostSelectionModalProps> = ({
                     t('job.totalItems').replace('{total}', String(count)),
                 }}
                 rowSelection={{
+                  type: singleSelect ? 'radio' : 'checkbox',
                   selectedRowKeys,
                   onChange: handleRowSelectionChange,
                   preserveSelectedRowKeys: true,
