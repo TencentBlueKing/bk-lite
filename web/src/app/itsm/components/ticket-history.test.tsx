@@ -60,3 +60,13 @@ it('核对动作必须选择下游结果、说明依据，成功后才推进', a
     review_token: 'attempt-token', outcome: 'executed', note: '下游流水 42 已成功', result_value: '42',
   }));
 });
+
+it('逐行打开对应的作业平台执行记录', () => {
+  render(<TicketHistory nodes={[]} items={[{
+    id: 'auto-1', node_id: 'job', name: '只读检查', operator: '系统', state: 'done',
+    action_label: '自动处理', started_at: '', finished_at: '', message: '',
+    job_records: [{ row: 1, job_id: 41 }, { row: 2, job_id: 67 }],
+  }]} />);
+  expect(screen.getByRole('link', { name: '第 1 行 · 作业 #41' }).getAttribute('href')).toBe('/job/execution/job-record?id=41');
+  expect(screen.getByRole('link', { name: '第 2 行 · 作业 #67' }).getAttribute('href')).toBe('/job/execution/job-record?id=67');
+});

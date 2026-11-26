@@ -69,6 +69,10 @@ export function TicketHistory({ items, nodes, retry, reconcile, busy }: TicketHi
           {item.action === 'auto_retry' || item.action === 'return' || item.action === 'auto_reconcile' ? <Tag>{item.action_label}</Tag> : null}
         </div>
         {note ? <span className="whitespace-pre-wrap break-words text-xs text-[var(--color-text-2)]">{note}</span> : null}
+        {item.job_records?.map(record => <a key={record.job_id} className="self-start text-xs" target="_blank" rel="noopener noreferrer"
+          href={`/job/execution/job-record?id=${record.job_id}`}>
+          第 {record.row} 行 · 作业 #{record.job_id}
+        </a>)}
         {item.review_token && executionId && reconcile && <Button size="small" className="self-start" disabled={busy} onClick={() => setReview(item)}>核对执行结果</Button>}
         {item.can_retry && executionId && retry ? (
           <Popconfirm title={`重试「${item.name}」？`} description="系统会根据执行记录恢复此节点。" okText="确认重试" onConfirm={() => retry(executionId)}>

@@ -235,6 +235,7 @@ export interface AutoExecutionReview {
 }
 
 export interface TicketHistoryItem {
+  job_records?: { row: number; job_id: number }[];
   executing?: boolean;
   id: string;
   node_id: string;

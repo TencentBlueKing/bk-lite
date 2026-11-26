@@ -81,6 +81,11 @@ def ticket_history(ticket, tasks, design):
                 "finished_at": execution.updated_at.isoformat() if execution.status == "done" or failed else "",
                 "message": execution.detail.get("reason") or ("执行结果未确认，请先核对外部系统" if failed else ""),
                 "execution_id": execution.id,
+                "job_records": [
+                    {"row": record["row"], "job_id": record["job_id"]}
+                    for record in (execution.detail.get("job_template") or {}).get("rows", [])
+                    if record.get("job_id")
+                ],
             }
         )
     rows.sort(key=lambda row: row["finished_at"] or row["started_at"])

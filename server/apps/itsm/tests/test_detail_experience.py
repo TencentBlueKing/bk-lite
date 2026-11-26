@@ -221,3 +221,26 @@ def test_reopen_resets_progress_but_preserves_history(sample):
     TicketLog.objects.create(ticket=ticket, task=submit, action="submit", operator="owner")
     detail = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
     assert next(node for node in detail["nodes"] if node["id"] == "submit")["state"] == "done"
+
+
+def test_ticket_history_exposes_only_row_and_job_record_reference(sample):
+    from apps.itsm.models import AutoExecution
+
+    ticket, _ = sample
+    execution = AutoExecution.objects.create(
+        ticket=ticket,
+        kind="external",
+        status="done",
+        detail={
+            "node_id": "inventory",
+            "job_template": {
+                "rows": [
+                    {"row": 1, "job_id": 94, "params": "private"},
+                    {"row": 2, "job_id": 95},
+                ]
+            },
+        },
+    )
+    data = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
+    step = next(item for item in data["history"] if item.get("execution_id") == execution.id)
+    assert step["job_records"] == [{"row": 1, "job_id": 94}, {"row": 2, "job_id": 95}]
