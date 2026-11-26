@@ -52,14 +52,10 @@ def _export(pk, user, *, cookie="1"):
     return LLMViewSet.as_view({"get": "export_agent"})(request, pk=pk)
 
 
-def _import(payload, user, *, cookie="1", upload=None):
+def _import(payload, user, *, cookie="1"):
     factory = APIRequestFactory()
-    if upload is None:
-        upload = SimpleUploadedFile("agent.zip", payload, content_type="application/zip")
-        request = factory.post("/", {"file": upload}, format="multipart")
-    else:
-        request = factory.post("/")
-        request.FILES["file"] = upload
+    upload = SimpleUploadedFile("agent.zip", payload, content_type="application/zip")
+    request = factory.post("/", {"file": upload}, format="multipart")
     force_authenticate(request, user=user)
     if cookie is not None:
         request.COOKIES["current_team"] = cookie
@@ -678,22 +674,47 @@ def test_export_skips_other_org_tool_and_names_missing_custom_tool():
     assert created.tools == []
 
 
-def test_import_does_not_read_an_oversized_upload():
+def test_read_bounded_upload_caps_the_read(monkeypatch):
+    monkeypatch.setattr(agent_transfer, "MAX_AGENT_ARCHIVE_BYTES", 8)
+
     class Probe:
-        name = "agent.zip"
-        size = 10**12
+        def __init__(self, size):
+            self.size = size
+            self.calls = []
 
         def read(self, n=-1):
-            raise AssertionError(n)
+            self.calls.append(n)
+            if n is None or n < 0:
+                return b"x" * 64
+            return b"x" * n
 
-        def chunks(self, chunk_size=None):
-            raise AssertionError("chunks")
+    oversized = Probe(100)
+    with pytest.raises(agent_transfer.AgentArchiveError, match="智能体文件超过大小限制"):
+        agent_transfer.read_bounded_upload(oversized)
+    assert oversized.calls == []
 
-    user = _user(permissions=["skill_list-Add"])
+    unknown_size = Probe(None)
+    with pytest.raises(agent_transfer.AgentArchiveError, match="智能体文件超过大小限制"):
+        agent_transfer.read_bounded_upload(unknown_size)
+    assert unknown_size.calls == [9]
+
+
+def test_import_rejects_upload_over_encoded_limit(monkeypatch):
+    user = _user(superuser=True)
     before = _counts()
-    response = _import(b"", user, upload=Probe())
+    monkeypatch.setattr(agent_transfer, "MAX_AGENT_ARCHIVE_BYTES", 8)
+    response = _import(_agent_zip(_recipe()), user)
     assert response.status_code == 400
-    assert "超过大小限制" in _body(response)["message"]
+    assert _body(response)["message"] == "智能体文件超过大小限制"
+    assert _counts() == before
+
+    def boom(upload):
+        raise agent_transfer.AgentArchiveError("BOUNDED-READER")
+
+    monkeypatch.setattr("apps.opspilot.viewsets.llm_view.read_bounded_upload", boom)
+    response = _import(_agent_zip(_recipe()), user)
+    assert response.status_code == 400
+    assert _body(response)["message"] == "BOUNDED-READER"
     assert _counts() == before
 
 
