@@ -1,7 +1,7 @@
 from django.db import migrations, transaction
 
 from apps.core.utils.crypto.aes_crypto import AESCryptor
-
+from apps.core.utils.queryset_lock import list_locked_batch
 
 INSTALLER_PASSWORD_KEY = "NATS_INSTALLER_PASSWORD"
 SECRET_TYPE = "secret"
@@ -16,13 +16,14 @@ def encrypt_installer_passwords(apps, schema_editor):
     last_pk = 0
     while True:
         with transaction.atomic(using=database_alias):
-            rows = list(
+            rows = list_locked_batch(
                 sidecar_env.objects.using(database_alias)
-                .select_for_update()
                 .filter(key=INSTALLER_PASSWORD_KEY, pk__gt=last_pk)
                 .exclude(type=SECRET_TYPE)
                 .exclude(value="")
-                .order_by("pk")[:BATCH_SIZE]
+                .order_by("pk"),
+                BATCH_SIZE,
+                schema_editor.connection,
             )
             if not rows:
                 return
