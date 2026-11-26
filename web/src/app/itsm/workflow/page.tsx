@@ -6,8 +6,9 @@ import { ItsmListToolbar, ItsmListTabs, ItsmCreateButton, ItsmRowActions } from 
 
 import { Alert, Button, Empty, Popconfirm, Spin, Tag, Tooltip, message } from 'antd';
 import { ImportDialog } from '../components/import-dialog';
-import { PlayCircleOutlined } from '@ant-design/icons';
+import { CopyOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { ItsmDrawer as OperateModal } from '@/app/itsm/components/interaction-surfaces';
+import { useTranslation } from '@/utils/i18n';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import CustomTable from '@/app/itsm/components/itsm-list-table';
@@ -21,6 +22,7 @@ const report = (error: unknown) => message.error(error instanceof Error ? error.
 export default function WorkflowListPage() {
   const api = useItsmApi();
   const router = useRouter();
+  const { t } = useTranslation();
   const requestId = useRef(0);
   const [data, setData] = useState<ListResult>({});
   const [keyword, setKeyword] = useState('');
@@ -46,6 +48,14 @@ export default function WorkflowListPage() {
     setBusy(true);
     try { const created = await api.createWorkflow({name:'新建流程',key:`flow_${Date.now()}`}) as {id:number}; router.push(`/itsm/workflow/designer/${created.id}`); }
     catch(error) { report(error); } finally { setBusy(false); }
+  };
+  const duplicate = async (record: WorkflowListItem) => {
+    if (!record.published_version_no || busy) return;
+    setBusy(true);
+    try {
+      const copy = await api.duplicateWorkflow(record.id, record.published_version_no) as { id: number };
+      router.push(`/itsm/workflow/designer/${copy.id}`);
+    } catch (error) { report(error); } finally { setBusy(false); }
   };
   const importFile = async (file: File) => {
     setBusy(true);
@@ -86,6 +96,7 @@ export default function WorkflowListPage() {
       {title:'操作',key:'action',fixed:'right',width:120,render:(_,row:WorkflowListItem)=><ItsmRowActions items={[
         {key:'design',label:'设计',kind:'edit',hidden:!data.can_edit,onClick:()=>router.push(`/itsm/workflow/designer/${row.id}`)},
         {key:'versions',label:'版本管理',kind:'history',onClick:()=>void loadVersions(row)},
+        {key:'copy',label:t('itsm.design.copyFlow'),icon:<CopyOutlined />,more:true,hidden:!data.can_add || !data.can_edit || !row.published_version_no,disabled:busy,onClick:()=>void duplicate(row)},
         {key:'export',label:'导出',kind:'export',more:true,onClick:()=>void exportFile(row)},
       ]} />}
 

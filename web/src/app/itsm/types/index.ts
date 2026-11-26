@@ -136,6 +136,7 @@ export interface HandoverCandidate {
 }
 
 export interface WorkflowListItem extends NamedItem {
+  published_version_no?: number | null;
   current_version_no?: number | null;
   form_id: number | null;
   current_version_id: number | null;

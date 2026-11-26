@@ -26,11 +26,11 @@ from apps.itsm.models import (
 )
 
 
-def identity(key, name):
+def identity(key, name, suffix_label="导入副本"):
     if not isinstance(key, str) or not key.strip() or not isinstance(name, str) or not name.strip():
         raise ValueError("名称和标识不能为空")
     suffix = uuid4().hex[:12]
-    return {"key": f"{key.strip()[:51]}_{suffix}", "name": f"{name.strip()[:110]}（导入副本）"}
+    return {"key": f"{key.strip()[:51]}_{suffix}", "name": f"{name.strip()[:110]}（{suffix_label}）"}
 
 
 def actor(request):
@@ -82,14 +82,14 @@ def copy_dictionaries(request, rows):
 
 
 @transaction.atomic
-def copy_workflow(request, payload):
+def copy_workflow(request, payload, *, suffix_label="导入副本"):
     if not isinstance(payload, dict):
         raise ValueError("流程文件必须是 JSON 对象")
     design = payload.get("design")
     if not isinstance(design, dict) or not isinstance(design.get("nodes"), list) or not isinstance(design.get("edges", []), list):
         raise ValueError("流程设计格式无效")
     clone = Workflow.objects.create(
-        **identity(payload.get("key", "imported_flow"), payload.get("name", "导入流程")),
+        **identity(payload.get("key", "imported_flow"), payload.get("name", "导入流程"), suffix_label),
         description=str(payload.get("description", ""))[:500],
         **actor(request),
     )
@@ -98,7 +98,7 @@ def copy_workflow(request, payload):
         schema = form.get("schema")
         if not isinstance(schema, dict) or not isinstance(schema.get("fields"), list):
             raise ValueError("流程表单格式无效")
-        copied_form = FormModel.objects.create(**identity(form["key"], form["name"]), **actor(request))
+        copied_form = FormModel.objects.create(**identity(form["key"], form["name"], suffix_label), **actor(request))
         fv = FormVersion.objects.create(form=copied_form, version_no=1, schema=schema, **actor(request))
         copied_form.current_version = fv
         copied_form.save(update_fields=["current_version"])

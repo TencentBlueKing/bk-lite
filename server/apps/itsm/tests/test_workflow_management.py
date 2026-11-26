@@ -30,6 +30,7 @@ def test_list_displays_version_number_and_permissions():
     response = workflows(request(permissions=["workflow-View"]))
     payload = json.loads(response.content)["data"]
     assert payload["items"][0]["current_version_no"] == 3
+    assert payload["items"][0]["published_version_no"] == 3
     assert payload["can_publish"] is False
     assert enable_version(request(permissions=["workflow-Publish"]), workflow.id, version.id).status_code == 405
     assert enable_version(request("post", permissions=["workflow-View"]), workflow.id, version.id).status_code == 403
@@ -80,3 +81,25 @@ def test_snapshot_only_workflow_recovers_missing_draft_schema_but_keeps_explicit
     draft.design["form_schema"] = {"version": 1, "fields": []}
     draft.save()
     assert json.loads(workflow_design(read, workflow.pk).content)["data"]["form_schema"]["fields"] == []
+
+
+def test_copy_published_version_to_independent_editable_workflow():
+    from apps.itsm.views.api import duplicate_workflow_version
+
+    original = Workflow.objects.create(key="published", name="原流程")
+    schema = {"fields": [{"key": "cost", "label": "费用", "type": "number"}]}
+    version = WorkflowVersion.objects.create(
+        workflow=original, version_no=4, is_published=True, design={"nodes": [], "edges": [], "form_schema": schema}
+    )
+    original.current_version = version
+    original.save()
+    assert duplicate_workflow_version(request("post", permissions=["workflow-Edit"]), original.pk, 4).status_code == 403
+    assert duplicate_workflow_version(request("post", permissions=["workflow-Add"]), original.pk, 4).status_code == 403
+    response = duplicate_workflow_version(request("post", permissions=["workflow-Add", "workflow-Edit"]), original.pk, 4)
+    assert response.status_code == 200
+    clone = Workflow.objects.get(pk=json.loads(response.content)["data"]["id"])
+    assert clone.name == "原流程（副本）" and clone.current_version_id is None
+    assert clone.form.current_version.schema == schema
+    assert clone.versions.get().version_no == 1 and not clone.versions.get().is_published
+    original.refresh_from_db()
+    assert original.current_version_id == version.id and original.versions.count() == 1

@@ -3,6 +3,7 @@ import json
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.db.models import Max, Q
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -285,7 +286,12 @@ def import_dictionaries(request):
 @method_permission("workflow-View", "workflow-Add")
 def workflows(request):
     if request.method == "GET":
-        current = _page(request, Workflow.objects.filter(domain=domain_of(request)).select_related("current_version"))
+        rows = (
+            Workflow.objects.filter(domain=domain_of(request))
+            .select_related("current_version")
+            .annotate(published_version_no=Max("versions__version_no", filter=Q(versions__is_published=True)))
+        )
+        current = _page(request, rows)
         return WebUtils.response_success(
             {
                 "count": current.paginator.count,
@@ -300,6 +306,7 @@ def workflows(request):
                         "form_id": item.form_id,
                         "current_version_id": item.current_version_id,
                         "current_version_no": item.current_version.version_no if item.current_version_id else None,
+                        "published_version_no": item.published_version_no,
                     }
                     for item in current
                 ],
@@ -377,6 +384,35 @@ def workflow_design(request, workflow_id):
         updated_by=_user(request),
     )
     return WebUtils.response_success({"id": version.id, "version_no": version_no, "locked": False})
+
+
+@csrf_exempt
+@require_POST
+@api_errors
+@HasPermission("workflow-Edit")
+@HasPermission("workflow-Add")
+@transaction.atomic
+def duplicate_workflow_version(request, workflow_id, version_no):
+    from apps.itsm.services.import_copy import copy_workflow
+    from apps.itsm.services.ticket.service import workflow_schema
+
+    version = WorkflowVersion.objects.select_related("workflow__form__current_version").get(
+        workflow_id=workflow_id, workflow__domain=domain_of(request), version_no=version_no, is_published=True
+    )
+    source = version.workflow
+    schema = workflow_schema(version)
+    bundle = {
+        "key": source.key,
+        "name": source.name,
+        "description": source.description,
+        "design": version.design,
+        "variables": list(source.variables.values("key", "name", "value_type", "source", "default")),
+    }
+    if source.form_id or schema.get("fields"):
+        form = source.form or source
+        bundle["form"] = {"key": form.key, "name": form.name, "schema": schema}
+    copied = copy_workflow(request, bundle, suffix_label="副本")
+    return WebUtils.response_success(copied)
 
 
 @csrf_exempt

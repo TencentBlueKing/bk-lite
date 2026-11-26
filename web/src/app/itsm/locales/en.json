@@ -664,7 +664,7 @@
       "draft": "Draft",
       "backDesign": "Back to design",
       "preview": "Preview",
-      "copyFlow": "Copy workflow",
+      "copyFlow": "Copy as new workflow",
       "publish": "Publish",
       "lockedHint": "Create a draft to edit the next version of this workflow.",
       "formTab": "Form",

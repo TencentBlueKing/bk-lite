@@ -664,7 +664,7 @@
       "draft": "草稿",
       "backDesign": "返回设计",
       "preview": "预览",
-      "copyFlow": "复制流程",
+      "copyFlow": "复制为新流程",
       "publish": "发布",
       "lockedHint": "当前版本已启用。点击「新建草稿」可在原流程中编辑下一版本。",
       "formTab": "表单设计",

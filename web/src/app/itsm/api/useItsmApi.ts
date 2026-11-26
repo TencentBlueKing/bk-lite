@@ -194,6 +194,7 @@ export function useItsmApi() {
   const saveSla = useCallback((body: { policy_id?: number; category?: string; is_enabled?: boolean; kind?: string; name?: string; id?: number; work_days?: number[]; work_start?: string; work_end?: string; timezone?: string; target?: string; minutes?: number; calendar_id?: number; workflow_id?: number; warning_minutes?: number; escalation_users?: string[] }) => post('/itsm/api/sla/', body), [post]);
   const listViewTemplates = useCallback((formId?: number) => get('/itsm/api/view_templates/', formId ? { params: { form_id: formId } } : undefined), [get]);
   const createViewTemplate = useCallback((body: { form_id: number; name: string; layout?: { fields?: string[] }; match_rules?: { status?: string } }) => post('/itsm/api/view_templates/', body), [post]);
+  const duplicateWorkflow = useCallback((id: number, version: number) => post(`/itsm/api/workflows/${id}/versions/${version}/copy/`, {}), [post]);
   const exportWorkflow = useCallback((id: number) => get(`/itsm/api/workflows/${id}/export/`), [get]);
   const importWorkflow = useCallback((bundle: Record<string, unknown>) => post('/itsm/api/workflows/import/', bundle), [post]);
   const testVariable = useCallback((body: { workflow_id: number; key: string; form_data?: Record<string, unknown> }) => post('/itsm/api/workflow_variables/test/', body), [post]);
@@ -339,6 +340,7 @@ export function useItsmApi() {
     saveSla,
     listViewTemplates,
     createViewTemplate,
+    duplicateWorkflow,
     exportWorkflow,
     importWorkflow,
     testVariable,

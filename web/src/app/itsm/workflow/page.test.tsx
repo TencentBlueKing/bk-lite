@@ -1,11 +1,11 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Page from './page';
-const api = vi.hoisted(() => ({ ready: true, listWorkflows: vi.fn(), listWorkflowVersions: vi.fn(), enableWorkflowVersion: vi.fn(), importWorkflow: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, listWorkflows: vi.fn(), listWorkflowVersions: vi.fn(), enableWorkflowVersion: vi.fn(), importWorkflow: vi.fn(), duplicateWorkflow: vi.fn(), push: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: api.push }) }));
+vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key === "itsm.design.copyFlow" ? "复制为新流程" : key }) }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: () => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() }) });
 afterEach(cleanup);
 beforeEach(() => {
@@ -56,3 +56,18 @@ it('发布状态按当前启用版本分组，与关键词共同筛选并回到�
   expect(screen.getByText('草稿流程')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'新建流程'})).toBeNull();
 });
+
+it.each([[true,true,3,true],[true,false,3,false],[false,true,3,false],[true,true,null,false]])(
+  '复制入口遵循新增、编辑权限及发布状态 %s/%s/%s', async (add,edit,version,visible) => {
+    api.listWorkflows.mockResolvedValue({can_add:add,can_edit:edit,items:[{id:1,name:'采购流程',key:'purchase',current_version_no:1,published_version_no:version}]});
+    api.duplicateWorkflow.mockResolvedValue({id:17});
+    render(<Page />);
+    fireEvent.click(await screen.findByRole('button',{name:'更多操作'}));
+    await screen.findByRole('menuitem',{name:/导出/});
+    const item = screen.queryByRole('menuitem',{name:/复制为新流程/});
+    if (!visible) { expect(item).toBeNull(); return; }
+    fireEvent.click(item!);
+    await waitFor(() => expect(api.push).toHaveBeenCalledWith('/itsm/workflow/designer/17'));
+    expect(api.duplicateWorkflow).toHaveBeenCalledWith(1,3);
+  }
+);
