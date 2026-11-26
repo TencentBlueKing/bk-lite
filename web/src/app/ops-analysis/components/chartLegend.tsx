@@ -4,7 +4,8 @@ import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { shouldEmitLegendReset } from '@/components/chart-legend/selection';
 
-const VERTICAL_LEGEND_WIDTH_PX = 120;
+const VERTICAL_LEGEND_MIN_WIDTH_PX = 120;
+const VERTICAL_LEGEND_MAX_WIDTH_PX = 180;
 
 interface LegendItem {
   name: string;
@@ -132,14 +133,18 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
     );
   }
 
-  // vertical layout (right side)
+  // 竖排图例：按最长文案加宽，超过上限仍省略
   return (
     <div
-      className="flex h-full min-h-0 shrink-0 min-w-0"
-      style={{ width: VERTICAL_LEGEND_WIDTH_PX * scale }}
+      className="inline-grid h-full min-h-0 shrink-0"
+      style={{
+        width: 'max-content',
+        minWidth: VERTICAL_LEGEND_MIN_WIDTH_PX * scale,
+        maxWidth: VERTICAL_LEGEND_MAX_WIDTH_PX * scale,
+      }}
     >
       <div
-        className="h-full min-h-0 w-full min-w-0 overflow-y-auto"
+        className="h-full min-h-0 max-w-full min-w-0 overflow-y-auto"
         data-testid="chart-legend-scroll"
         style={{
           paddingBottom: 4 * scale,
