@@ -84,7 +84,9 @@ def _fill_dashboard_placeholders(
 ) -> str:
     """__$window__ 仍是整段范围，稀疏计数桶只改这一处。
 
-    __$step__ 是本次请求的步长。__$rate_window__ 是 max(4×采集间隔, step)。
+    有步长时 __$step__ 跟请求步长，__$rate_window__ 是 max(4×采集间隔, step)。
+    没有步长（即时查询、prepare）时 __$step__ 用采集间隔，__$rate_window__ 用
+    4×采集间隔，不退回整段 __$window__。采集间隔缺失或非法时按 60 秒。
     没有这两个占位的模板不读采集间隔，替换结果与原来一致。
     """
     window = _query_window(start, end)
@@ -93,11 +95,13 @@ def _fill_dashboard_placeholders(
     query = query.replace("__$window__", window)
     if "__$step__" not in query and "__$rate_window__" not in query:
         return query
-    if not step_seconds:
-        return query
-    step_text = _format_duration(int(step_seconds))
     interval = _collection_interval_seconds(interval_seconds)
-    rate_window = max(4 * interval, int(step_seconds))
+    if step_seconds:
+        step_text = _format_duration(int(step_seconds))
+        rate_window = max(4 * interval, int(step_seconds))
+    else:
+        step_text = _format_duration(interval)
+        rate_window = 4 * interval
     query = query.replace("__$step__", step_text)
     return query.replace("__$rate_window__", _format_duration(rate_window))
 
