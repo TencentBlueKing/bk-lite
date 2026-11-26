@@ -85,7 +85,7 @@ def test_two_rows_use_real_job_records_and_wait_for_all(flow, lost_ack):
 
 @pytest.mark.parametrize(
     "invalid",
-    ["domain", "target_team", "approval", "test", "last_row", "permission", "template_change", "non_scalar", "multiline", "nul", "template_syntax"],
+    ["domain", "target_team", "approval", "test", "last_row", "permission", "template_change", "non_scalar", "multiline", "template_syntax"],
 )
 def test_refuses_invalid_batch_before_dispatch(flow, invalid):
     ticket, script, target, client, job = flow
@@ -100,8 +100,8 @@ def test_refuses_invalid_batch_before_dispatch(flow, invalid):
         Ticket.objects.filter(pk=ticket.pk).update(is_test=True)
     elif invalid == "template_change":
         Script.objects.filter(pk=script.pk).update(content="date")
-    elif invalid in {"non_scalar", "multiline", "nul", "template_syntax"}:
-        bad = {"non_scalar": [12, 13], "multiline": "multi\nline", "nul": "a\0b", "template_syntax": "{{ spec }}"}[invalid]
+    elif invalid in {"non_scalar", "multiline", "template_syntax"}:
+        bad = {"non_scalar": [12, 13], "multiline": "multi\nline", "template_syntax": "{{ spec }}"}[invalid]
         Ticket.objects.filter(pk=ticket.pk).update(form_data={"machines": [{"size": "yes"}, {"size": bad}]})
     elif invalid == "last_row":
         Ticket.objects.filter(pk=ticket.pk).update(form_data={"machines": [{"size": "yes"}, {}]})
@@ -112,6 +112,13 @@ def test_refuses_invalid_batch_before_dispatch(flow, invalid):
         assert not process_job(client, job)
     assert not JobExecution.objects.exists()
     assert ticket.auto_executions.get().status == "failed"
+
+
+def test_job_parameter_rejects_null_character():
+    from apps.itsm.services.job_template_delivery import row_parameters
+
+    with pytest.raises(ValueError, match="控制字符"):
+        row_parameters([{"name": "spec"}], {"spec": "size"}, {"size": "a\0b"})
 
 
 def test_terminal_failure_keeps_original_jobs_and_blocks_ack(flow):
