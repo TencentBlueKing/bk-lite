@@ -10,6 +10,8 @@ from service.ansible_runner import (
     AdhocRequest,
     PlaybookRequest,
     _build_host_credentials_inventory,
+    _legacy_password_ssh_common_args,
+    _legacy_pubkey_accepted_option,
     _quote_inventory_value,
     _redact_cli_command,
     _safe_extract_zip,
@@ -646,11 +648,16 @@ def test_host_credentials_inventory_without_ssh_extra_args_is_unchanged(tmp_path
 
     inventory = _build_host_credentials_inventory(tmp_path, [_password_ssh_host()])
 
+    common_args = _legacy_password_ssh_common_args()
+    assert "KexAlgorithms=+diffie-hellman-group14-sha1" in common_args
+    assert "HostKeyAlgorithms=+ssh-rsa" in common_args
+    assert f"{_legacy_pubkey_accepted_option()}=+ssh-rsa" in common_args
+    assert "diffie-hellman-group1-sha1" not in common_args
     assert inventory == (
         "[all]\n"
         "10.0.0.8 ansible_user=root ansible_port=22 ansible_connection=ssh "
         "ansible_password=credential "
-        'ansible_ssh_common_args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"\n'
+        f'ansible_ssh_common_args="{common_args}"\n'
     )
     assert "ansible_ssh_extra_args" not in inventory
 
@@ -659,6 +666,7 @@ def test_host_credentials_inventory_writes_ssh_extra_args_for_password_and_key(t
     import shlex
 
     monkeypatch.delenv("SSH_KNOWN_HOSTS_FILE", raising=False)
+    monkeypatch.setattr(ansible_runner, "_legacy_pubkey_accepted_option", lambda: "PubkeyAcceptedAlgorithms")
     password_inventory = _build_host_credentials_inventory(
         tmp_path,
         [_password_ssh_host(ssh_extra_args=SOLARIS_LEGACY_SSH_EXTRA_ARGS)],
@@ -697,7 +705,7 @@ def test_host_credentials_inventory_accepts_pubkey_accepted_key_types_alias(tmp_
         [_password_ssh_host(ssh_extra_args=legacy_alias)],
     )
 
-    assert "PubkeyAcceptedKeyTypes=+ssh-rsa" in inventory
+    assert f"{_legacy_pubkey_accepted_option()}=+ssh-rsa" in inventory
     assert "KexAlgorithms=+diffie-hellman-group14-sha1" in inventory
 
 

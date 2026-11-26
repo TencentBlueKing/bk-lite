@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import functools
 import importlib
 import json
 import os
@@ -9,6 +10,7 @@ import shutil
 import signal
 import ssl
 import stat
+import subprocess
 import uuid
 import zipfile
 from codecs import decode as codecs_decode
@@ -45,7 +47,11 @@ _SENSITIVE_INVENTORY_PATTERNS = (
 )
 
 _SSH_KNOWN_HOSTS_FILE_ENV = "SSH_KNOWN_HOSTS_FILE"
-_LEGACY_PASSWORD_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# 未配置 known_hosts 时的主机密钥策略。旧算法另附在后面，不改变这项策略。
+_LEGACY_HOST_KEY_POLICY_ARGS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# 现场 Solaris 10 已验证。前缀 "+" 追加到客户端默认列表末尾，不替换更强的默认算法。
+# 不写入未验证的 diffie-hellman-group1-sha1、ssh-dss 或 CBC。
+_LEGACY_KEX_AND_HOSTKEY_ARGS = "-o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa"
 _SSH_EXTRA_ARGS_MAX_CHARS = 1024
 _SSH_EXTRA_OPTION_CANONICAL = {
     "kexalgorithms": "KexAlgorithms",
@@ -497,6 +503,51 @@ def _mask_sensitive_inventory_content(content: str) -> str:
     return masked
 
 
+def _ssh_accepts_option(option: str) -> bool:
+    """本机 ssh 是否接受该选项。探测失败时视为不接受，避免把未知选项写进连接参数。"""
+    ssh_bin = shutil.which("ssh")
+    if not ssh_bin:
+        return False
+    try:
+        completed = subprocess.run(
+            [ssh_bin, "-G", "-o", f"{option}=+ssh-rsa", "-o", "BatchMode=yes", "option-probe"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if completed.returncode != 0:
+        return False
+    stdout = completed.stdout.decode("utf-8", errors="replace").lower()
+    prefix = option.lower() + " "
+    return any(line.startswith(prefix) for line in stdout.splitlines())
+
+
+@functools.lru_cache(maxsize=1)
+def _legacy_pubkey_accepted_option() -> str:
+    """OpenSSH 8.5 起的正式名称是 PubkeyAcceptedAlgorithms。更旧的客户端只有 PubkeyAcceptedKeyTypes。"""
+    if _ssh_accepts_option("PubkeyAcceptedAlgorithms"):
+        return "PubkeyAcceptedAlgorithms"
+    return "PubkeyAcceptedKeyTypes"
+
+
+def _legacy_ssh_algorithm_args() -> str:
+    return f"{_LEGACY_KEX_AND_HOSTKEY_ARGS} -o {_legacy_pubkey_accepted_option()}=+ssh-rsa"
+
+
+def _legacy_password_ssh_common_args() -> str:
+    return f"{_LEGACY_HOST_KEY_POLICY_ARGS} {_legacy_ssh_algorithm_args()}"
+
+
+def _canonicalize_pubkey_option(option: str) -> str:
+    if option in {"PubkeyAcceptedAlgorithms", "PubkeyAcceptedKeyTypes"}:
+        return _legacy_pubkey_accepted_option()
+    return option
+
+
 def _get_explicit_ssh_common_args(item: dict[str, Any]) -> str | None:
     explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
     if explicit_args:
@@ -519,8 +570,8 @@ def _normalize_ssh_extra_args(raw: Any) -> str | None:
     """只允许把遗留 SSH 算法写进 ansible_ssh_extra_args。
 
     允许的 -o 仅限密钥交换、主机密钥、公钥、加密和 MAC。PubkeyAcceptedKeyTypes
-    是 PubkeyAcceptedAlgorithms 的旧别名，两者都接受。ProxyCommand 以及其它选项拒绝。
-    未提供该字段时返回 None，inventory 保持原样。
+    与 PubkeyAcceptedAlgorithms 都会改写成当前 ssh 接受的那个名称。ProxyCommand
+    以及其它选项拒绝。未提供该字段时返回 None，inventory 保持原样。
     """
     if raw is None:
         return None
@@ -547,7 +598,7 @@ def _normalize_ssh_extra_args(raw: Any) -> str | None:
             raise ValueError("ssh_extra_args contains an option that is not allowed")
         if _SSH_EXTRA_OPTION_VALUE_RE.fullmatch(value) is None:
             raise ValueError("ssh_extra_args contains an option value that is not allowed")
-        normalized.append(f"-o {canonical}={value}")
+        normalized.append(f"-o {_canonicalize_pubkey_option(canonical)}={value}")
     return " ".join(normalized)
 
 
@@ -557,10 +608,11 @@ def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
         return explicit_args
 
     known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
+    algorithm_args = _legacy_ssh_algorithm_args()
     if known_hosts_file:
-        return f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={shlex.quote(known_hosts_file)}"
+        return f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={shlex.quote(known_hosts_file)} {algorithm_args}"
 
-    return _LEGACY_PASSWORD_SSH_COMMON_ARGS
+    return _legacy_password_ssh_common_args()
 
 
 def _normalize_ansible_host_status(raw_status: str) -> str:
@@ -826,7 +878,7 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
                 ssh_common_args = _get_password_auth_ssh_common_args(item)
                 parts.append(f"ansible_ssh_common_args={_quote_inventory_value(ssh_common_args)}")
                 explicit_args = _get_explicit_ssh_common_args(item)
-                if not explicit_args and ssh_common_args == _LEGACY_PASSWORD_SSH_COMMON_ARGS:
+                if not explicit_args and ssh_common_args == _legacy_password_ssh_common_args():
                     legacy_password_ssh_host_count += 1
 
         private_key_file = item.get("private_key_file")
