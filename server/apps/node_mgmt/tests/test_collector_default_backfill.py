@@ -14,12 +14,7 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, CollectorDefaultBackfill, Node
 from apps.node_mgmt.services.collector_default_backfill import NODE_FAILED_LOG
-from apps.node_mgmt.tasks.collector_default_backfill import (
-    COMPLETED_LOG,
-    EXHAUSTED_LOG,
-    TASK_FAILED_LOG,
-    backfill_collector_default_configs,
-)
+from apps.node_mgmt.tasks.collector_default_backfill import COMPLETED_LOG, EXHAUSTED_LOG, TASK_FAILED_LOG, backfill_collector_default_configs
 
 SECRET_SENTINEL = "password=BACKFILL-SECRET-SENTINEL"
 pytestmark = pytest.mark.django_db
@@ -87,13 +82,12 @@ def test_new_builtin_collector_backfills_matching_managed_nodes_only():
     assert CollectorConfiguration.objects.count() == 5
 
 
-def test_update_existing_collector_does_not_schedule_backfill_or_rewrite_config():
+def test_update_existing_collector_does_not_schedule_backfill_but_rewrites_preset():
     region = _region()
     node = _node(region, 1)
     import_collector([_payload()])
     backfill_collector_default_configs()
     config = CollectorConfiguration.objects.get(nodes=node)
-    original = config.config_template
     CollectorDefaultBackfill.objects.all().delete()
 
     updated = _payload(default_config={"nats": "interval = 99"})
@@ -101,7 +95,8 @@ def test_update_existing_collector_does_not_schedule_backfill_or_rewrite_config(
 
     assert CollectorDefaultBackfill.objects.count() == 0
     config.refresh_from_db()
-    assert config.config_template == original
+    assert config.config_template == "interval = 99"
+    assert Collector.objects.get(id="telegraf-linux-x64").default_config == {"nats": "interval = 99"}
 
 
 def test_custom_and_existing_pre_configs_stay_unchanged():
@@ -407,7 +402,7 @@ def test_commit_clears_catalog_etag_and_enqueues_only_for_backfill(django_captur
         patch("apps.node_mgmt.tasks.collector_default_backfill.cache.delete") as delete_cache,
         django_capture_on_commit_callbacks(execute=True),
     ):
-            import_collector([_payload("plain-linux", name="Plain", controller_default_run=False, default_config={})])
+        import_collector([_payload("plain-linux", name="Plain", controller_default_run=False, default_config={})])
     delay.assert_not_called()
     delete_cache.assert_not_called()
 

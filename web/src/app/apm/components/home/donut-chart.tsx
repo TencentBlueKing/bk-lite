@@ -49,7 +49,7 @@ export default function DonutChart({ data, size = 180, innerRatio = 0.62 }: Donu
   });
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+    <svg className="block h-full w-full" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
       {paths.map(
         (p, i) =>
           p && (
