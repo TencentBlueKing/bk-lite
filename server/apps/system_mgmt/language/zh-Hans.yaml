@@ -47,6 +47,7 @@ error:
   invalid_time_format: 时间格式无效,请使用ISO 8601格式
   domain_required_for_login_module: 创建登录模块需要提供域名。
   module_not_found: 未找到模块
+  data_object_api_unavailable: 该应用没有可用的数据对象接口
   cannot_delete_menu_group_with_menus: 无法删除包含菜单的菜单组
   delete_failed: 删除失败
   cannot_delete_builtin_menu_group: 内置菜单组不允许删除
