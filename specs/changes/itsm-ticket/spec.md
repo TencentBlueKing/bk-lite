@@ -1,48 +1,25 @@
-# ITSM 工单
+# ITSM 工单中心与流程执行
 
-Status: ready
+Status: done
 
-## Problem Statement
+## 查找和处理工单
 
-工单创建之后，处理人需要能认领、退回、转单、挂起、终止、关闭和重开。这些动作如果只改本地记录，流程实例会停在原处，认领后的待办还会从列表里消失。
+- 列表支持按用户保存展示列、恢复默认、分页、排序和筛选。内置视图包括我的待办、我关注的和我的历史；保存分组后按当前数据重新求值。动态表单筛选绑定流程版本，最多八个条件。文本支持包含或等于，数值支持等于及上下界，日期和单选支持等于。隐藏或受可见条件限制的字段不能用于反推工单内容。[列表与分组](list-workbench.md) · [筛选契约](../../../server/apps/itsm/services/ticket/form_filters.py)
+- 详情展示当前节点、表单、流转和协作记录。用户可以复制单号、关注或取消关注、管理彩色标签、按关键字搜索有权关联的工单。普通关联双向展示，解除后两端同步消失；禁止自关联、重复关联以及用普通解绑移除子流程关系。[详情交互](detail-experience.md) · [协作用例](../../../server/apps/itsm/tests/test_ticket_social.py)
+- 处理时先合并已有表单值，再校验本节点字段权限、必填项和意见。认领后待办仍保留；转交按节点配置限定接收范围；历史回退目标须经服务端确认。重开已结束实例时建立新一轮启动记录，重新进入提单环节。[节点操作用例](../../../server/apps/itsm/tests/test_node_action_options.py) · [转交范围](../../../server/apps/itsm/tests/test_transfer_scope.py)
+- 批量预检接受 1–50 个工单 ID，取当前用户在每张工单上可用操作的交集。流程版本或活动节点集合不同，只可关注或取消关注；选择中有不可见或已不存在的工单时，可用操作为空。实际办理仍逐单检查节点、权限与必填意见并报告结果。[批量处理实现](../../../server/apps/itsm/services/ticket/batch.py)
 
-## Solution
+## 后台导出
 
-工单动作都作用到同一条 Flowable 流程实例。认领保留待办并改写引擎处理人。退回、转单、挂起和终态动作改变待办或状态。重新打开会按已发布流程从提单再启动。
+导出沿用列表的可见范围、分组及筛选条件。可选择系统列和指定流程版本的表单字段，保留工单号，其他流程的行仅填适用列。单次后台任务最多 5,000 行、30 个表单字段，生成文件上限 8 MiB。创建人可以查看自己的任务状态；生成和下载时重新检查权限与字段可见性。过期文件由清理任务回收。[导出验收](../../../server/apps/itsm/tests/test_ticket_export_jobs.py)
 
-## User Stories
+## 异常恢复
 
-1. As a 处理人, I want a later node to submit only the fields I changed without clearing fields already saved, so that a partial update does not fail required checks.
-2. As a 处理人, I want 认领 to keep the task on the ticket and update the engine assignee, so that the task does not disappear from the list.
-3. As a 处理人, I want 退回提单 and 退回上一节点, 转单, 挂起 and 恢复, 驳回, 终止, 关闭 and 撤回 to move the same ticket, so that I do not leave a stuck task.
-4. As a 处理人, I want 重新打开 on a finished, cancelled, or terminated ticket to start the published process again at 提单, so that I can continue instead of seeing a local placeholder task.
-5. As a 处理人, I want 通知, 决策, 知识发布 and 自动派单 to complete through the external job, and a 子流程 to wait for the child user task, so that those nodes are not dead ends.
-6. As a 处理人, I want a 认领 button on a pending task in the ticket detail, so that I can take the task from the page.
+| 场景 | 可观察结果与允许的后续操作 |
+| --- | --- |
+| 首次发起或重开时丢失启动回执 | 按本次轮次、业务标识和已部署定义查找引擎实例。唯一匹配才绑定；出现多个候选时禁止重发。明确未发送可重试，结果未知须先核对。人工确认未启动须满足等待时间、匹配发送记录、无实例证据并填写原因。 |
+| 审批等人工动作已发送，结果未知 | 同一待办的竞争操作被阻止；依据引擎任务和历史恢复原操作，表单、意见和日志只落一次。恢复人须有工单查看及操作权限，且为原操作者或超级管理员；只有超级管理员可凭未变化的证据放弃记录。 |
+| 自动节点执行失败，或已成功但引擎未确认 | 记录节点、阶段、错误原因和执行状态。区分重试业务动作与补交引擎回执；已确认成功的外部动作不可重复执行。结果未知须先核对。手动启动恢复、自动节点重试或核对均要求工单在可见范围，并具有工单操作和流程编辑权限。 |
+| 无实时任务且引擎历史证据不足 | 保留待核对状态，不能仅凭空任务列表把工单判定为已完成。 |
 
-## Implementation Decisions
-
-- 节点提交先合并已保存的表单值，再按表单规格校验。
-- 用户任务的处理人变量覆盖审批、处理、手动节点和子流程处理。
-- 认领把任务标为已认领，并改写引擎处理人。列表和详情仍展示已认领任务，催办包含认领人。
-- 重新打开时，若原流程实例已结束或已删除，按已发布的流程定义重新启动，并把待办同步回提单节点。实例仍在运行时只恢复状态，不另起一条流程。
-- 通知节点使用通知外部作业。决策、知识发布、自动派单使用自动外部作业。子流程是调用活动，待办来自子流程里的用户任务。
-- 没有流程引擎时，重新打开才允许落一条本地待办。有引擎时不制造无法继续的本地节点。
-
-## Testing Decisions
-
-- 只看待办节点、处理人和工单状态。
-- 最高缝是工单服务加上本机 Flowable。
-- 一条十节点流程覆盖提单、审批、分支、并行、汇聚、通知和结束。
-- 另一条覆盖认领、退回上一节点、催办、终止、重开后再次提交、关闭、自动作业链和子流程。
-
-## Out of Scope
-
-- 重开后从终止前的中间节点继续。
-- 认领、转单、退回之外的新工单动作。
-- 表单画布交互和资源列表。
-- 把本规格标成 M1 或 M2 已验收。
-
-## Further Notes
-
-- 十节点验收和补测已经在本机 Flowable 上通过。
-- Flowable REST 前缀是 `/flowable-rest/service`。外部作业的领取和完成不走 `/flowable-rest/service/external-worker`。
+验收时分别模拟请求未发出、引擎执行后响应丢失、本地写回失败，再重复执行恢复。每一轮最多绑定一个已确认的引擎实例；正常操作和恢复路径不得各写一次意见、各推进一次节点或各产生一次已确认的外部效果。[启动恢复](../../../server/apps/itsm/tests/test_start_recovery.py) · [人工操作恢复](../../../server/apps/itsm/tests/test_manual_recovery.py) · [自动节点恢复](../../../server/apps/itsm/tests/test_auto_recovery.py) · [外部作业回执](../../../server/apps/itsm/tests/test_external_ack_receipt.py)
