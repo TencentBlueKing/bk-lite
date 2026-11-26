@@ -11,6 +11,7 @@ from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.constants import CredentialSource, ExecutorDriver, OSType, SSHCredentialType, WinRMScheme, WinRMTransport
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.validators import validate_manual_credentials
+from apps.job_mgmt.services.resource_organizations import organization_ids
 from apps.job_mgmt.services.target_vault import describe_target_credential, describe_target_credentials, request_credential_actor
 from apps.job_mgmt.utils.i18n import serializer_message
 from apps.node_mgmt.models import CloudRegion
@@ -119,8 +120,12 @@ class TargetSerializer(TeamSerializer):
         except ValueError:
             return {}
 
+    def get_team_name(self, instance):
+        return [self.group_map[pk] for pk in organization_ids(instance.team) if pk in self.group_map]
+
     def to_representation(self, instance):
         result = super().to_representation(instance)
+        result["team"] = organization_ids(instance.team)
         name, available = "", None
         if instance.credential_source == CredentialSource.CREDENTIAL:
             detail = self.credential_descriptions.get(instance.credential_id)
@@ -247,12 +252,6 @@ class TargetSerializer(TeamSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
-
-
-class TargetBatchDeleteSerializer(serializers.Serializer):
-    """批量删除序列化器"""
-
-    ids = serializers.ListField(child=serializers.IntegerField(), min_length=1)
 
 
 class TargetTestConnectionSerializer(serializers.Serializer):

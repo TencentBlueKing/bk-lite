@@ -3,6 +3,7 @@
 import io
 import zipfile
 
+from django.db import transaction
 from django.http import FileResponse
 from rest_framework import status
 from rest_framework.decorators import action
@@ -12,6 +13,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.playbook import PlaybookFilter
 from apps.job_mgmt.models import Playbook, PlaybookRevision
+from apps.job_mgmt.serializers.organization_batch import OrganizationAdjustmentSerializer
 from apps.job_mgmt.serializers.playbook import (
     PlaybookBatchDeleteSerializer,
     PlaybookCreateSerializer,
@@ -31,12 +33,12 @@ from apps.job_mgmt.services.template_revision import (
     parse_page,
 )
 from apps.job_mgmt.utils.i18n import job_message
-from apps.job_mgmt.views.mixins import BatchDeleteMixin
+from apps.job_mgmt.views.organization_batch import OrganizationBatchMixin
 from apps.job_mgmt.views.script import authorize_job_template
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
+class PlaybookViewSet(OrganizationBatchMixin, AuthViewSet):
     """Playbook视图集"""
 
     queryset = Playbook.objects.all()
@@ -49,6 +51,8 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
     batch_delete_serializer_class = PlaybookBatchDeleteSerializer
     batch_delete_log_label = "作业"
 
+    batch_delete_fields = ("id", "team", "file")
+
     def pre_batch_delete(self, instances):
         """删除前先清理当前包和历史包，避免数据库记录消失后存储残留。"""
         for playbook in instances:
@@ -56,6 +60,8 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.action in ("update", "partial_update", "destroy", "restore_revision", "upgrade"):
+            return queryset.select_for_update()
         if self.action in ("list", "retrieve"):
             queryset = annotate_current_revision_label(queryset, PlaybookRevision, "playbook")
         return queryset
@@ -71,6 +77,8 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
             return PlaybookUpdateSerializer
         elif self.action == "upgrade":
             return PlaybookUpgradeSerializer
+        elif self.action == "adjust_organizations":
+            return OrganizationAdjustmentSerializer
         elif self.action == "batch_delete":
             return PlaybookBatchDeleteSerializer
         return PlaybookDetailSerializer
@@ -128,12 +136,24 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @HasPermission("playbook_library-Edit")
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @HasPermission("playbook_library-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("playbook_library-View")
+    def selection_ids(self, request):
+        return self.get_selection_ids(request)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("playbook_library-Edit")
+    def adjust_organizations(self, request):
+        return self.perform_organization_adjustment(request)
 
     @action(detail=False, methods=["post"])
     @HasPermission("playbook_library-Delete")
@@ -143,6 +163,7 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
 
     @action(detail=True, methods=["post"])
     @HasPermission("playbook_library-Edit")
+    @transaction.atomic
     def upgrade(self, request, pk=None):
         """
         更新 Playbook 版本
@@ -267,6 +288,7 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
 
     @action(detail=True, methods=["post"], url_path=r"revisions/(?P<revision_id>[0-9]+)/restore")
     @HasPermission("playbook_library-Edit")
+    @transaction.atomic
     def restore_revision(self, request, pk=None, revision_id=None):
         """恢复到所选版本，并追加一条新的日期版本。"""
         instance, denied = authorize_job_template(self, request, view_only=False)
