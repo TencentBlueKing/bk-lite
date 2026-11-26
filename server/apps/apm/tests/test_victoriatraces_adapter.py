@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.apm.adapters import (
     TelemetryGroupedReadFallback,
+    TelemetryQueryOutOfRetention,
     TelemetryQueryTooLarge,
     TelemetryStoreUnavailable,
     TelemetryUniqueSpanLimitExceeded,
@@ -640,18 +641,28 @@ def test_red_scopes_every_aggregate_to_the_selected_endpoint():
     assert '`resource_attr:service.version`:="v2\\" | stats count() as forged"' in query
 
 
-def test_slo_uses_deduplicated_counts_and_preserves_no_data_semantics():
+def test_slo_uses_streaming_counts_and_preserves_no_data_semantics():
     now = timezone.now()
     session = Mock()
     session.get.side_effect = [
         _response(_vector(total=10, bad=2)),
         _response(_vector()),
+        _response(_vector(total=10, good=9)),
     ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
-    query = SloMetricQuery("shop", "checkout", "prod", now - timedelta(seconds=100), now, "availability")
+    window = (now - timedelta(seconds=100), now)
 
-    available = store.slo_measurement(query)
-    no_data = store.slo_measurement(query)
+    with pytest.raises(ValueError, match="35 天"):
+        store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=36), now, "availability"))
+    with pytest.raises(ValueError, match="时延 SLO 必须提供正数阈值"):
+        store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", *window, "latency_p95"))
+    assert session.get.call_count == 0
+
+    available = store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", *window, "availability"))
+    no_data = store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", *window, "availability"))
+    latency = store.slo_measurement(
+        SloMetricQuery("shop", "checkout", "prod", *window, "latency_p95", endpoint="POST /pay", latency_threshold_ms=300)
+    )
 
     assert available.compliance_percent == 80
     assert available.good_rate == pytest.approx(0.08)
@@ -659,6 +670,19 @@ def test_slo_uses_deduplicated_counts_and_preserves_no_data_semantics():
     assert available.data_state == MetricDataState.AVAILABLE
     assert no_data.data_state == MetricDataState.NO_DATA
     assert no_data.compliance_percent is None
+    assert latency.compliance_percent == 90
+    assert latency.good_rate == pytest.approx(0.09)
+    assert latency.total_rate == pytest.approx(0.1)
+    queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list]
+    assert len(queries) == 3
+    for query_text in queries:
+        assert "stats by (trace_id, span_id)" not in query_text
+        assert "limit 1000000" not in query_text
+        assert 'kind:in("2","5")' in query_text
+    assert 'count() as total, count() if (status_code:="2") as bad' in queries[0]
+    assert queries[1] == queries[0]
+    assert "count() as total, count() if (duration:<=300000000) as good" in queries[2]
+    assert 'name:="POST /pay"' in queries[2]
 
 
 def test_activity_and_dependencies_are_mapped_from_bounded_vt_endpoints():
@@ -1154,6 +1178,31 @@ def test_vt_client_side_rejection_maps_to_capacity_hint_not_unavailable():
         store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
 
+def test_vt_out_of_retention_rejection_is_not_reported_as_capacity():
+    now = timezone.now()
+    session = Mock()
+    rejected = Mock()
+    rejected.status_code = 422
+    rejected.headers = {}
+    rejected.raise_for_status.side_effect = requests.HTTPError("422 Unprocessable Entity", response=rejected)
+    rejected.iter_content.return_value = [
+        b'{"status":"error","errorType":"422","error":"cannot execute query [_time:[2026-10-27T05:28:41Z,'
+        b'2026-10-28T05:28:41Z] secret-sentinel | stats count(*) as total]: request time out of retention"}'
+    ]
+    session.get.return_value = rejected
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryQueryOutOfRetention) as caught:
+        store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=30), now, "availability"))
+
+    assert str(caught.value) == "查询时间早于 VictoriaTraces 明细保留期，请缩小时间窗后重试"
+    assert isinstance(caught.value, TelemetryQueryTooLarge)
+    assert "secret-sentinel" not in str(caught.value)
+    assert isinstance(caught.value.__cause__, requests.HTTPError)
+    assert session.get.call_count == 1
+    assert rejected.close.called
+
+
 def _error_breakdown_session(*, red, endpoints, types, samples, recent):
     session = Mock()
 
@@ -1361,19 +1410,28 @@ def test_pack_trace_ids_uses_span_budget_and_falls_back_to_fixed_batches():
 def test_slo_measurement_slices_windows_longer_than_one_day():
     now = timezone.now()
     session = Mock()
-    session.get.side_effect = [
-        _response(_vector(total=10, bad=2)),
-        _response(_vector(total=5, bad=1)),
-    ]
+    session.get.side_effect = [_response(_vector(total=10, bad=1)) for _ in range(30)]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
-    result = store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=2), now, "availability"))
+    result = store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=30), now, "availability"))
 
-    assert session.get.call_count == 2
-    assert result.compliance_percent == pytest.approx(80)
-    assert result.total_rate == pytest.approx(15 / (2 * 86400))
-    first_end = session.get.call_args_list[0].kwargs["params"]["end"]
-    second_start = session.get.call_args_list[1].kwargs["params"]["start"]
-    assert first_end == second_start
+    assert session.get.call_count == 30
+    assert result.compliance_percent == pytest.approx(90)
+    assert result.good_rate == pytest.approx(270 / (30 * 86400))
+    assert result.total_rate == pytest.approx(300 / (30 * 86400))
+    assert result.data_state == MetricDataState.AVAILABLE
+    previous_end = None
+    for call in session.get.call_args_list:
+        params = call.kwargs["params"]
+        query = params["query"]
+        assert "stats by (trace_id, span_id)" not in query
+        assert "limit 1000000" not in query
+        assert '| stats count() as total, count() if (status_code:="2") as bad' in query
+        if previous_end is not None:
+            assert params["start"] == previous_end
+        assert datetime.fromisoformat(params["end"]) - datetime.fromisoformat(params["start"]) == timedelta(days=1)
+        previous_end = params["end"]
+    assert session.get.call_args_list[0].kwargs["params"]["start"] == (now - timedelta(days=30)).isoformat()
+    assert previous_end == now.isoformat()
 
 
 def test_oversized_response_raises_query_too_large():

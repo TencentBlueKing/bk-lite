@@ -55,6 +55,7 @@ export interface LogTerminalProps {
 
 export interface LogTerminalRef {
   startLogStream: () => void;
+  stopLogStream: () => void;
 }
 
 export interface FieldListProps {

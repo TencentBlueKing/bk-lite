@@ -300,7 +300,7 @@ def test_dashboard_slo_overview_skips_unavailable_evaluations(mocker):
     assert payload["slos"]["data"]["items"][0]["service_name"] == "checkout"
 
 
-def test_dashboard_slo_section_fails_when_every_evaluation_has_no_rate(mocker):
+def test_dashboard_slo_section_fails_on_store_error_but_lists_slo_without_samples(mocker):
     now = timezone.now()
     service = _service(name="checkout", last_seen_at=now)
     ApmSlo.objects.create(
@@ -331,11 +331,23 @@ def test_dashboard_slo_section_fails_when_every_evaluation_has_no_rate(mocker):
         ended_at=now,
         reason="no_samples",
     )
-    empty = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
+    no_samples = ApmDashboardService(reliability=reliability, now_fn=lambda: now).build(organization_id=10, window="1h")
 
     assert failed["slos"]["status"] == "failed"
     assert failed["slos"]["error"] == "聚合库查询不可用"
-    assert empty["slos"]["status"] == "empty"
+    assert no_samples["slos"]["status"] == "ok"
+    assert no_samples["slos"]["data"]["items"] == [
+        {
+            "id": str(ApmSlo.objects.get().id),
+            "service_id": str(service.id),
+            "service_name": "checkout",
+            "environment": "production",
+            "objective": 99.9,
+            "current_rate": None,
+            "met": None,
+            "reason": "no_samples",
+        }
+    ]
 
 
 def test_dashboard_caps_red_queries_but_counts_all_visible_services_in_kpis(monkeypatch):

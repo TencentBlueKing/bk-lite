@@ -21,7 +21,7 @@ from apps.monitor.services.authorized_metric_query import (
     _instance_lookup_candidates,
     _metric_instance_id_keys,
 )
-from apps.monitor.services.collection_query import query_collection_rows
+from apps.monitor.services.collection_query import query_collection_count, query_collection_rows
 from apps.monitor.services.generic_query import (
     ALERT_DISTRIBUTION_FIELDS,
     GenericQueryError,
@@ -324,17 +324,19 @@ def query_monitor_collection_counts(
     queryset = _apply_instance_status(
         _scoped_monitor_instances(user_info, monitor_object_id, monitor_object_type_ids),
         status,
+    ).distinct()
+    return _ok(
+        [
+            {
+                "instance_count": query_collection_count(
+                    queryset,
+                    report_status=report_status,
+                    collect_status=collect_status,
+                    collect_mode=collect_mode,
+                )
+            }
+        ]
     )
-    instances = list(queryset.select_related("monitor_object", "monitor_object__type").distinct())
-    rows = query_collection_rows(
-        instances,
-        report_status=report_status,
-        collect_status=collect_status,
-        collect_mode=collect_mode,
-        locale=(user_info or {}).get("locale"),
-        bounded=False,
-    )
-    return _ok([{"instance_count": len(rows)}])
 
 
 query_monitor_collection_counts._nats_thread_sensitive = False

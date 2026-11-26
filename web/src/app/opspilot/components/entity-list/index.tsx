@@ -29,6 +29,8 @@ interface EntityListProps<T> {
   pageTitle?: string;
   pageDescription?: string;
   afterHeader?: React.ReactNode;
+  headerExtra?: React.ReactNode;
+  onExport?: (item: T) => void;
 }
 
 interface ApiResponse<T> {
@@ -49,6 +51,8 @@ const EntityList = <T,>({
   pageTitle,
   pageDescription,
   afterHeader,
+  headerExtra,
+  onExport,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const { get, post, patch, del } = useApiClient();
@@ -240,6 +244,8 @@ const EntityList = <T,>({
       handleDelete(item);
     } else if (action === 'pin') {
       handleTogglePin(item);
+    } else if (action === 'export') {
+      onExport?.(item);
     }
   };
 
@@ -306,6 +312,7 @@ const EntityList = <T,>({
                   onSearch={handleSearch}
                 />
               )}
+              {headerExtra}
               {createAction}
             </>
           }
@@ -343,6 +350,7 @@ const EntityList = <T,>({
               onSearch={handleSearch}
             />
           )}
+          {headerExtra}
           {createAction}
         </div>
       )}

@@ -7,9 +7,6 @@ import threading
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-
-from django.conf import settings
-
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.plugin import MonitorPlugin
@@ -18,6 +15,7 @@ from apps.monitor.services.generic_query import GenericQueryError, _checked_sort
 from apps.monitor.services.generic_query_limits import INSTANCE_LIST_MAX
 from apps.monitor.services.instance_distribution import _object_labels, _type_labels
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.query_deadline import past_deadline, resolve_nats_deadline
 from apps.monitor.utils.instance import list_reporting_status
 from apps.monitor.utils.last_sample import last_sample_timestamp_query, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -74,21 +72,76 @@ def query_collection_rows(
     collect_code = _choice(collect_status, {COLLECT_STATUS_ALL, COLLECT_STATUS_NORMAL, COLLECT_STATUS_OFFLINE}, "采集状态")
     mode_code = _choice(collect_mode, {COLLECT_MODE_ALL, COLLECT_MODE_AUTO, COLLECT_MODE_MANUAL}, "采集方式")
     requested_sort = _checked_sort(order_by, order_dir, {SORT_LAST_SAMPLE})
+    scoped = list(instances)
+    if mode_code != COLLECT_MODE_ALL:
+        scoped = _filter_mode(scoped, mode_code)
+    needs_status = report_code != REPORT_STATUS_ALL or collect_code != COLLECT_STATUS_ALL or requested_sort is not None
+    vm = vm_api or VictoriaMetricsAPI()
+    read_deadline = resolve_nats_deadline(deadline)
+    if needs_status:
+        rows = _rolled_rows(scoped, locale=locale, vm_api=vm, deadline=read_deadline)
+        if report_code != REPORT_STATUS_ALL:
+            rows = [row for row in rows if row["report_status"] == report_code]
+        if collect_code != COLLECT_STATUS_ALL:
+            rows = [row for row in rows if row["collect_status"] == collect_code]
+        rows.sort(key=lambda row: _sort_key(row, requested_sort))
+        labeled = [_public_row(row) for row in rows]
+        return _page(labeled, page, page_size, bounded=bounded)
+    ordered = sorted(scoped, key=_instance_name_key)
+    total = len(ordered)
+    paging = _optional_page(page, page_size)
+    if paging is None:
+        if bounded and total > INSTANCE_LIST_MAX:
+            raise GenericQueryError(f"实例超过 {INSTANCE_LIST_MAX} 条，请缩小范围或填写分页")
+        visible = ordered
+    else:
+        page_no, size = paging
+        start = (page_no - 1) * size
+        visible = ordered[start : start + size]
+    rows = _rolled_rows(visible, locale=locale, vm_api=vm, deadline=read_deadline, plugin_population=ordered)
+    rows.sort(key=lambda row: _sort_key(row, None))
+    labeled = [_public_row(row) for row in rows]
+    if paging is None:
+        return labeled
+    return _table(labeled, total, page_no, size)
+
+
+def query_collection_count(
+    instances,
+    *,
+    report_status=None,
+    collect_status=None,
+    collect_mode=None,
+    vm_api=None,
+    deadline=None,
+) -> int:
+    """范围内的实例数。过滤条件与列表相同，不组装对外明细。"""
+    report_code = _choice(report_status, {REPORT_STATUS_ALL, REPORT_STATUS_NORMAL, REPORT_STATUS_UNAVAILABLE}, "上报状态")
+    collect_code = _choice(collect_status, {COLLECT_STATUS_ALL, COLLECT_STATUS_NORMAL, COLLECT_STATUS_OFFLINE}, "采集状态")
+    mode_code = _choice(collect_mode, {COLLECT_MODE_ALL, COLLECT_MODE_AUTO, COLLECT_MODE_MANUAL}, "采集方式")
+    needs_status = report_code != REPORT_STATUS_ALL or collect_code != COLLECT_STATUS_ALL
+    needs_mode = mode_code != COLLECT_MODE_ALL
+    if not needs_status and not needs_mode:
+        if isinstance(instances, list):
+            return len(instances)
+        return instances.count()
+    materialized = instances if isinstance(instances, list) else list(instances.select_related("monitor_object", "monitor_object__type"))
+    if needs_mode:
+        materialized = _filter_mode(materialized, mode_code)
+    if not needs_status:
+        return len(materialized)
     rows = _rolled_rows(
-        list(instances),
-        locale=locale,
+        materialized,
+        locale=None,
         vm_api=vm_api or VictoriaMetricsAPI(),
-        deadline=_collection_deadline(deadline),
+        deadline=resolve_nats_deadline(deadline),
+        with_labels=False,
     )
     if report_code != REPORT_STATUS_ALL:
         rows = [row for row in rows if row["report_status"] == report_code]
     if collect_code != COLLECT_STATUS_ALL:
         rows = [row for row in rows if row["collect_status"] == collect_code]
-    if mode_code != COLLECT_MODE_ALL:
-        rows = [row for row in rows if row["collect_mode"] == mode_code]
-    rows.sort(key=lambda row: _sort_key(row, requested_sort))
-    labeled = [_public_row(row) for row in rows]
-    return _page(labeled, page, page_size, bounded=bounded)
+    return len(rows)
 
 
 def _choice(value, allowed: set[str], label: str) -> str:
@@ -100,21 +153,36 @@ def _choice(value, allowed: set[str], label: str) -> str:
     return text
 
 
-def _collection_deadline(deadline):
-    """与调用方的 NATS 超时对齐。到点后停止后续读取。"""
-    if deadline is not None:
-        return deadline
-    raw = getattr(settings, "NATS_REQUEST_TIMEOUT", 60)
-    try:
-        seconds = float(raw)
-    except (TypeError, ValueError):
-        seconds = 60.0
-    if seconds <= 0:
-        return None
-    return time.monotonic() + seconds
+def _instance_name_key(instance):
+    name = instance.name or ""
+    return (name.casefold(), name, instance.id)
 
 
-def _rolled_rows(instances, *, locale, vm_api, deadline) -> list[dict]:
+def _filter_mode(instances, mode_code):
+    if not instances:
+        return []
+    plugins_by_object = _plugins_by_object(_object_ids(instances))
+    configured = _configured_plugin_ids(instances, plugins_by_object)
+    kept = []
+    for instance in instances:
+        mode = COLLECT_MODE_AUTO if configured.get(instance.id) else COLLECT_MODE_MANUAL
+        if mode == mode_code:
+            kept.append(instance)
+    return kept
+
+
+def _object_ids(instances) -> list:
+    ids = []
+    seen = set()
+    for instance in instances:
+        object_id = _instance_object_id(instance)
+        if object_id is not None and object_id not in seen:
+            seen.add(object_id)
+            ids.append(object_id)
+    return ids
+
+
+def _rolled_rows(instances, *, locale, vm_api, deadline, with_labels=True, plugin_population=None) -> list[dict]:
     if not instances:
         return []
     objects = []
@@ -131,11 +199,16 @@ def _rolled_rows(instances, *, locale, vm_api, deadline) -> list[dict]:
         if monitor_type is not None and monitor_type.id not in seen_types:
             seen_types.add(monitor_type.id)
             types.append(monitor_type)
-    object_labels = _object_labels(objects, locale)
-    type_labels = _type_labels(types, locale)
-    plugins_by_object = _plugins_by_object([item.id for item in objects])
+    if with_labels:
+        object_labels = _object_labels(objects, locale)
+        type_labels = _type_labels(types, locale)
+    else:
+        object_labels = {}
+        type_labels = {}
+    population = list(instances if plugin_population is None else plugin_population)
+    plugins_by_object = _plugins_by_object(_object_ids(population))
     configured = _configured_plugin_ids(instances, plugins_by_object)
-    report_maps = _report_maps(instances, plugins_by_object, vm_api, configured, deadline)
+    report_maps = _report_maps(instances, plugins_by_object, vm_api, configured, deadline, population)
     rows = []
     for instance in instances:
         monitor_object = instance.monitor_object
@@ -196,11 +269,17 @@ def _plugin_status_query(plugin) -> str:
     return query
 
 
-def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> dict[tuple, dict[str, float]]:
-    """没人配置的插件不再查询。选择器只含配置了该插件的实例，以及完全没有配置的实例。
+def _report_maps(instances, plugins_by_object, vm_api, configured, deadline, population=None) -> dict[tuple, dict[str, float]]:
+    """没人配置的插件不再查询。选择器只含这次要出结果的实例。
 
+    手动实例能搭乘的插件，只来自本次请求已经授权并过滤后的实例，不到库里再找同对象的其他实例。
     失联仍是已配置插件减去有上报的插件。最后采样时间不再计入没配给这台机器的插件。
     """
+    if past_deadline(deadline):
+        logger.warning("event=collection_query_deadline_exceeded")
+        raise GenericQueryError("采集查询超时")
+    if population is None:
+        population = instances
     keys_by_object = {}
     for instance in instances:
         monitor_object = instance.monitor_object
@@ -211,6 +290,7 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
         object_id = _instance_object_id(instance)
         if object_id is not None and not configured.get(instance.id):
             manual_by_object[object_id].append(instance)
+    in_use = _plugin_ids_in_use(population, plugins_by_object) if manual_by_object else {}
 
     maps = {}
     groups = {}
@@ -220,7 +300,8 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
         for plugin in plugins:
             query = _plugin_status_query(plugin)
             needed = [instance for instance in object_instances if plugin.id in configured.get(instance.id, set())]
-            if not query or not keys or not needed:
+            plugin_active = bool(needed) or plugin.id in in_use.get(object_id, set())
+            if not query or not keys or not plugin_active:
                 maps[(object_id, plugin.id)] = {}
                 continue
             allowed = {instance.id for instance in needed}
@@ -228,6 +309,9 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
                 if instance.id not in allowed:
                     needed.append(instance)
                     allowed.add(instance.id)
+            if not needed:
+                maps[(object_id, plugin.id)] = {}
+                continue
             group = groups.setdefault((query, keys), {"instances": {}, "plugins": [], "plugin_id": plugin.id})
             for instance in needed:
                 group["instances"][instance.id] = instance
@@ -237,7 +321,18 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
     job_groups = []
     plugin_id_by_job = {}
     for (query, keys), group in groups.items():
-        for scoped in _scoped_status_queries(query, keys, list(group["instances"].values())):
+        targets = list(group["instances"].values())
+        scoped_queries = _scoped_status_queries(query, keys, targets)
+        if not scoped_queries:
+            logger.warning(
+                "event=collection_status_query_unscoped plugin_id=%s reason=%s failed_stage=%s error_type=%s",
+                group["plugin_id"],
+                _unscopeable_reason(query, keys, targets),
+                "status_query_scope",
+                "UnscopeableStatusQuery",
+            )
+            continue
+        for scoped in scoped_queries:
             jobs.append(scoped)
             job_groups.append((query, keys))
             plugin_id_by_job.setdefault(scoped, group["plugin_id"])
@@ -245,14 +340,14 @@ def _report_maps(instances, plugins_by_object, vm_api, configured, deadline) -> 
     aborted = threading.Event()
 
     def fetch(scoped):
-        if aborted.is_set() or _past_deadline(deadline):
+        if aborted.is_set() or past_deadline(deadline):
             aborted.set()
             return _DEADLINE
         remaining = None if deadline is None else deadline - time.monotonic()
         try:
             return _read_status(vm_api, last_sample_timestamp_query(scoped), remaining)
         except Exception as exc:
-            if _past_deadline(deadline):
+            if past_deadline(deadline):
                 aborted.set()
                 return _DEADLINE
             logger.exception(
@@ -293,10 +388,6 @@ def _instance_object_id(instance):
     return object_id
 
 
-def _past_deadline(deadline) -> bool:
-    return deadline is not None and time.monotonic() >= deadline
-
-
 def _read_timeout(remaining):
     if remaining is None:
         return _VM_READ_TIMEOUT_SECONDS
@@ -315,16 +406,34 @@ def _read_status(vm_api, promql, remaining=None):
 
 
 def _scoped_status_queries(query: str, keys: tuple[str, ...], instances) -> list[str]:
-    identities = [_identity(instance, keys) for instance in instances]
-    if any(identity is None for identity in identities) or not _SELECTOR_RE.search(query):
-        return [query]
-    if _selector_already_constrained(query, keys):
-        return [query]
-    chunks = _chunk_instances(keys, instances, _MATCHER_BUDGET)
-    scoped = [_rewrite_selector(query, keys, chunk) for chunk in chunks]
-    if any(item == query for item in scoped):
-        return [query]
-    return scoped
+    scoped_instances = [instance for instance in instances if _identity(instance, keys) is not None]
+    if not scoped_instances or not _SELECTOR_RE.search(query):
+        return []
+    narrowed = []
+    for chunk in _chunk_instances(keys, scoped_instances, _MATCHER_BUDGET):
+        rewritten = _rewrite_selector(query, keys, chunk)
+        if rewritten and rewritten != query:
+            narrowed.append(rewritten)
+    return narrowed
+
+
+def _unscopeable_reason(query: str, keys: tuple[str, ...], instances) -> str:
+    if not _SELECTOR_RE.search(query):
+        return "no_selector"
+    if not any(_identity(instance, keys) is not None for instance in instances):
+        return "no_identity"
+    return "not_narrowed"
+
+
+def _plugin_ids_in_use(population, plugins_by_object) -> dict:
+    configured = _configured_plugin_ids(population, plugins_by_object)
+    in_use = defaultdict(set)
+    for instance in population:
+        object_id = _instance_object_id(instance)
+        if object_id is None:
+            continue
+        in_use[object_id].update(configured.get(instance.id, ()))
+    return in_use
 
 
 def _identity(instance, keys: tuple[str, ...]):
@@ -335,14 +444,6 @@ def _identity(instance, keys: tuple[str, ...]):
     if any(value in (None, "") for value in values):
         return None
     return tuple(str(value) for value in values)
-
-
-def _selector_already_constrained(query: str, keys: tuple[str, ...]) -> bool:
-    for selector in _SELECTOR_RE.findall(query):
-        for key in keys:
-            if re.search(rf"(?:^|,)\s*{re.escape(key)}\s*(=~|=|!=|!~)", selector):
-                return True
-    return False
 
 
 def _chunk_instances(keys: tuple[str, ...], instances, budget: int) -> list[list]:
@@ -384,8 +485,6 @@ def _rewrite_selector(query: str, keys: tuple[str, ...], instances) -> str:
 
     def replace(match):
         body = match.group(1).strip()
-        if _selector_already_constrained("{" + body + "}", keys):
-            return match.group(0)
         if not body:
             return "{" + matcher + "}"
         return "{" + matcher + "," + body + "}"

@@ -94,15 +94,13 @@ HOST_REMOTE_OS_TYPES = frozenset({"aix", "freebsd", "hpux", "solaris"})
 SUPPORTED_OS_TYPES = {"linux", "windows", *HOST_REMOTE_OS_TYPES}
 SSH_OS_TYPES = frozenset({"linux", *HOST_REMOTE_OS_TYPES})
 DEBUG_SCRAPE_OS_TYPES = frozenset({"freebsd", "hpux", "solaris"})
-# 采集节点 Ubuntu 24.04 OpenSSH 9.6p1 上 ssh -Q kex/key/cipher 均存在，故不删名。
-# "+" 追加到客户端默认列表末尾，不替换默认算法。PubkeyAcceptedKeyTypes 是旧别名，
-# OpenSSH 9.6 写出 PubkeyAcceptedAlgorithms。ssh-dss 在 OpenSSH 10 起默认不再编译，
-# 升级执行节点镜像时必须从这里删除。
+# 现场 Solaris 10 已验证的三项。前缀 "+" 追加到客户端默认列表末尾。
+# 不带未验证的 group1、ssh-dss 或 CBC。公钥选项用旧名，ansible-executor 会按本机 ssh
+# 改写成 PubkeyAcceptedAlgorithms。私钥登录不走密码 SSH 默认参数，仍靠这里带上算法。
 _SOLARIS_SSH_LEGACY_OPTIONS = (
-    "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1",
-    "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
-    "PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss",
-    "Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc",
+    "KexAlgorithms=+diffie-hellman-group14-sha1",
+    "HostKeyAlgorithms=+ssh-rsa",
+    "PubkeyAcceptedKeyTypes=+ssh-rsa",
 )
 SOLARIS_SSH_EXTRA_ARGS = " ".join(f"-o {option}" for option in _SOLARIS_SSH_LEGACY_OPTIONS)
 # module, wrap_attr, parse_attr — 名称对齐各 Remote 采集模块导出。

@@ -43,6 +43,11 @@ class ControlledReader {
   }
 
   releaseLock() {}
+
+  cancel() {
+    this.finish();
+    return Promise.resolve();
+  }
 }
 
 describe('LogTerminal', () => {
@@ -116,5 +121,34 @@ describe('LogTerminal', () => {
       readers[1].push('data: {"message":"继续后"}\n\n');
     });
     expect(await screen.findByText('继续后')).not.toBeNull();
+  });
+
+  it('卸载时中止尚未完成的实时连接', async () => {
+    let releaseFetch: ((value: unknown) => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal);
+        return new Promise((resolve) => {
+          releaseFetch = resolve;
+        });
+      })
+    );
+
+    const { unmount } = render(
+      <LogTerminal query={{ query: '*', log_groups: ['app'] }} />
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    unmount();
+
+    expect(signals[0].aborted).toBe(true);
+    releaseFetch?.({
+      ok: true,
+      body: { getReader: () => new ControlledReader() },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

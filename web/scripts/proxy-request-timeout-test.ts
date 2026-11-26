@@ -6,7 +6,9 @@ import {
   DEFAULT_TIMEOUT_MS,
   getInitialProxyTimeoutMs,
   getProxyTimeoutHeaderValue,
+  linkAbortSignal,
   PROXY_TIMEOUT_HEADER,
+  proxyAbortStatus,
   scheduleProxyAbort,
   SSE_TIMEOUT_MS,
 } from '../src/utils/proxyTimeout.ts';
@@ -60,6 +62,21 @@ assert.match(
   /consumeProxyTimeoutMs\(headers\)/,
   'the proxy must consume its timeout contract before fetch'
 );
+assert.equal(proxyAbortStatus(true), 499);
+assert.equal(proxyAbortStatus(false), 504);
+
+const client = new AbortController();
+const upstream = new AbortController();
+linkAbortSignal(client.signal, upstream);
+assert.equal(upstream.signal.aborted, false);
+client.abort();
+assert.equal(upstream.signal.aborted, true);
+
+const alreadyClosed = new AbortController();
+alreadyClosed.abort();
+const lateUpstream = new AbortController();
+linkAbortSignal(alreadyClosed.signal, lateUpstream);
+assert.equal(lateUpstream.signal.aborted, true);
 
 const requestSource = readFileSync(
   new URL('../src/utils/request.ts', import.meta.url),

@@ -6,6 +6,10 @@ class TelemetryQueryTooLarge(TelemetryStoreUnavailable):
     """本次查询响应或 VictoriaTraces 单次查询容量超过上限。"""
 
 
+class TelemetryQueryOutOfRetention(TelemetryQueryTooLarge):
+    """查询时间早于 VictoriaTraces 实际保留期。缩小时间窗同样能恢复，所以仍按 query_too_large 返回。"""
+
+
 class TelemetryGroupedReadFallback(TelemetryStoreUnavailable):
     """分组 RED 这次不能用。评估器退回逐目标查询，不记成整轮查询失败。"""
 

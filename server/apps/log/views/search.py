@@ -1,16 +1,17 @@
 import os
 
 from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet, ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ViewSet
 
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
-from apps.log.services.search import SearchService
-from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.filters.log_group import SearchConditionFilter
 from apps.log.models.log_group import SearchCondition
 from apps.log.serializers.log_group import SearchConditionSerializer
 from apps.log.serializers.search import LogFieldValuesSerializer, LogHitsSerializer, LogSearchSerializer, LogTopStatsSerializer
-from apps.log.filters.log_group import SearchConditionFilter
-from apps.core.utils.team_utils import get_current_team
+from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.services.search import SearchService
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 
 
 class LogSearchViewSet(ViewSet):
@@ -129,7 +130,12 @@ class LogSearchViewSet(ViewSet):
         )
         return WebUtils.response_success(data)
 
-    @action(methods=["get"], detail=False, url_path="tail")
+    @action(
+        methods=["get"],
+        detail=False,
+        url_path="tail",
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
     def tail_logs(self, request):
         """
         实现长连接接口，用于实时获取日志数据
@@ -196,11 +202,7 @@ class SearchConditionViewSet(ModelViewSet):
             .only("id", "condition")
             .iterator(chunk_size=int(os.getenv("SEARCH_CONDITION_CHUNK_SIZE", "200")))
         )
-        accessible_ids = [
-            row.id
-            for row in slim_qs
-            if self._is_accessible_search_condition(row, accessible_group_ids)
-        ]
+        accessible_ids = [row.id for row in slim_qs if self._is_accessible_search_condition(row, accessible_group_ids)]
         if not accessible_ids:
             return SearchCondition.objects.none()
         return SearchCondition.objects.filter(organization=org_id, id__in=accessible_ids)

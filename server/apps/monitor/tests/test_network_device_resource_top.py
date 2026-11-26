@@ -1,4 +1,5 @@
 import logging
+import time
 import traceback
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -332,6 +333,32 @@ def test_traffic_batches_follow_the_larger_direction_and_keep_the_raw_timestamp_
         times.add(in_kwargs["time"])
         times.add(out_kwargs["time"])
     assert times == {NOW.timestamp()}
+
+
+def test_rank_deadline_does_not_return_a_partial_board():
+    class SlowVM:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, query, **kwargs):
+            self.calls.append(query)
+            time.sleep(0.3)
+            return {"status": "success", "data": {"result": [_point("a000", 50)]}}
+
+    vm = SlowVM()
+    devices = [_device(f"a{index:03d}", "Switch", name=f"n{index:03d}") for index in range(201)]
+    with pytest.raises(RuntimeError, match="网络设备资源指标查询失败"):
+        NetworkDeviceResourceTopService(vm_api=vm, now=NOW).run("cpu", devices, deadline=time.monotonic() + 0.2)
+    assert len(vm.calls) == 1
+
+    idle = FakeVM({})
+    with pytest.raises(RuntimeError, match="网络设备资源指标查询失败"):
+        NetworkDeviceResourceTopService(vm_api=idle, now=NOW).run(
+            "cpu",
+            [_device("sw-1", "Switch")],
+            deadline=time.monotonic() - 1,
+        )
+    assert idle.calls == []
 
 
 def test_a_high_value_in_a_later_batch_still_wins_the_global_top():

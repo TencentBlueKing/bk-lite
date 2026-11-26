@@ -200,12 +200,14 @@ const DataManagement: React.FC = () => {
         onOk={handleDataModalSubmit}
         onCancel={handleModalCancel}
       >
-        <DynamicForm
-          key={`form-${currentGroupId}-${dataModalOpen ? 'open' : 'closed'}`}
-          form={dataForm}
-          fields={formFields}
-          initialValues={{ permissionRule: dataForm.getFieldValue('permissionRule') }}
-        />
+        {dataModalOpen ? (
+          <DynamicForm
+            key={`form-${currentGroupId}`}
+            form={dataForm}
+            fields={formFields}
+            initialValues={{ permissionRule: dataForm.getFieldValue('permissionRule') }}
+          />
+        ) : null}
       </OperateModal>
     </div>
   );

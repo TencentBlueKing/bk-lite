@@ -12,7 +12,13 @@ from typing import Any
 
 import requests
 
-from apps.apm.adapters.errors import TelemetryGroupedReadFallback, TelemetryQueryTooLarge, TelemetryStoreUnavailable, TelemetryUniqueSpanLimitExceeded
+from apps.apm.adapters.errors import (
+    TelemetryGroupedReadFallback,
+    TelemetryQueryOutOfRetention,
+    TelemetryQueryTooLarge,
+    TelemetryStoreUnavailable,
+    TelemetryUniqueSpanLimitExceeded,
+)
 from apps.apm.adapters.span_aliases import (
     DB_NAME_KEYS,
     DB_SYSTEM_KEYS,
@@ -94,6 +100,10 @@ TRACE_DETAIL_ATTR_BATCH = 100
 ERROR_TYPE_SAMPLE_WORKERS = 4
 RESPONSE_TOO_LARGE = "VictoriaTraces 响应超过大小上限"
 QUERY_CAPACITY_REJECTED = "VictoriaTraces 拒绝了本次查询（超出单次查询容量），请缩小时间窗后重试"
+QUERY_OUT_OF_RETENTION = "查询时间早于 VictoriaTraces 明细保留期，请缩小时间窗后重试"
+# VT 对保留期外的时间返回 422，正文含此标记；只做匹配，正文不进日志和异常。
+_OUT_OF_RETENTION_MARKER = b"out of retention"
+_ERROR_BODY_PROBE_BYTES = 4096
 # 全窗按 trace_id 分组的内存与分组数成正比；按窗口分层切片分别取样再轮转合并，
 # 既避开 VT 单次查询内存上限，也让 15m/1h/1d/7d 覆盖不同时段而不是一律取最新 200 条。
 SAMPLE_SLICE_QUARTER_HOUR = timedelta(minutes=15)
@@ -375,6 +385,16 @@ def _span_search_fields_pipe() -> str:
 
 def _is_response_too_large(exc: BaseException) -> bool:
     return isinstance(exc, TelemetryQueryTooLarge) and str(exc) == RESPONSE_TOO_LARGE
+
+
+def _error_body_prefix(response) -> bytes:
+    try:
+        for chunk in response.iter_content(chunk_size=_ERROR_BODY_PROBE_BYTES):
+            if chunk:
+                return bytes(chunk[:_ERROR_BODY_PROBE_BYTES])
+    except (requests.RequestException, TypeError, ValueError):
+        pass
+    return b""
 
 
 def _pack_trace_ids(
@@ -1631,7 +1651,8 @@ class VictoriaTracesTelemetryStore:
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
         window_seconds = _validate_window(query.started_at, query.ended_at)
-        deduped = self._deduped_entry_query(
+        # 不按 (trace_id, span_id) 去重：去重内存与唯一 Span 数成正比，大流量服务单天就会超出 VT 单次查询容量。
+        entry_filters = self._entry_span_filters(
             query.service_namespace,
             query.service_name,
             query.environment,
@@ -1646,6 +1667,7 @@ class VictoriaTracesTelemetryStore:
             threshold_ns = query.latency_threshold_ms * 1_000_000
             final = f"count() as total, count() if (duration:<={threshold_ns}) as good"
             good_metric = "good"
+        aggregate = f"{entry_filters} | stats {final}"
         total = 0.0
         good = 0.0
         for slice_started_at, slice_ended_at in _metric_window_slices(
@@ -1653,11 +1675,10 @@ class VictoriaTracesTelemetryStore:
             query.ended_at,
             width=RED_EXACT_DEDUP_WINDOW,
         ):
-            values = self._ungrouped_values(self._stats(f"{self._bounded_spans(deduped)} | stats {final}", slice_started_at, slice_ended_at))
+            values = self._ungrouped_values(self._stats(aggregate, slice_started_at, slice_ended_at))
             slice_total = values.get("total")
             if slice_total is None or slice_total <= 0:
                 continue
-            self._reject_truncated_unique_spans(deduped, slice_total, slice_started_at, slice_ended_at)
             total += slice_total
             good += values.get(good_metric, 0.0) if good_metric else max(0.0, slice_total - values.get("bad", 0.0))
         if total <= 0:
@@ -2429,6 +2450,8 @@ class VictoriaTracesTelemetryStore:
         except requests.HTTPError as exc:
             status_code = exc.response.status_code if exc.response is not None else None
             if status_code in (400, 413, 422):
+                if _OUT_OF_RETENTION_MARKER in _error_body_prefix(exc.response):
+                    raise TelemetryQueryOutOfRetention(QUERY_OUT_OF_RETENTION) from exc
                 raise TelemetryQueryTooLarge(QUERY_CAPACITY_REJECTED) from exc
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用") from exc
         except (requests.RequestException, TypeError, ValueError) as exc:

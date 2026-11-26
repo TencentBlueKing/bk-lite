@@ -29,6 +29,10 @@ def test_get_opspilot_module_list_and_unknown_module():
         "result": False,
         "message": "Unknown child_module: bad",
     }
+    assert get_opspilot_module_data("bot", None, 1, 10, "") == {
+        "result": False,
+        "message": "invalid group_id",
+    }
 
 
 def test_get_opspilot_module_data_pages_team_scoped_items():
