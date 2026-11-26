@@ -171,6 +171,17 @@ def test_handle_recovery_associates_event_to_alert(source):
 
 
 @pytest.mark.django_db
+def test_handle_recovery_associates_recovered_alias(source):
+    created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=20)
+    alert = _make_active_alert(created)
+    recovered = _make_event(source, "E2", external_id="ext-1", action=EventAction.RECOVERED_ALIAS, start_minutes_ago=5)
+
+    RecoveryHandler.handle_recovery_events([recovered])
+
+    assert alert.events.filter(event_id="E2").exists()
+
+
+@pytest.mark.django_db
 def test_handle_recovery_matches_source_push_source_and_team(source):
     other_source = AlertSource.objects.create(name="源2", source_id="s2", source_type="restful", secret="x")
     created_expected = _make_event(source, "E-created-expected", external_id="same-ext", push_source_id="p1", team=[1])
@@ -281,6 +292,17 @@ def test_check_and_recover_closed_action(source):
     created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=30)
     closed = _make_event(source, "E2", external_id="ext-1", action=EventAction.CLOSED, start_minutes_ago=5)
     alert = _make_active_alert(created, closed)
+    assert AlertRecoveryChecker.check_and_recover_alert(alert) is True
+    alert.refresh_from_db()
+    assert alert.status == AlertStatus.AUTO_RECOVERY
+    assert alert.closed_at is not None
+
+
+@pytest.mark.django_db
+def test_check_and_recover_recovered_alias(source):
+    created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=30)
+    recovered = _make_event(source, "E2", external_id="ext-1", action=EventAction.RECOVERED_ALIAS, start_minutes_ago=5)
+    alert = _make_active_alert(created, recovered)
     assert AlertRecoveryChecker.check_and_recover_alert(alert) is True
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_RECOVERY

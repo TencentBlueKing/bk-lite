@@ -45,7 +45,7 @@ def test_superuser_allowed_org_ids_uses_assignable_groups_via_nats(monkeypatch):
         lambda req: frozenset({3, 7, 9}),
     )
 
-    allowed = InstanceViewSet._get_allowed_org_ids(request)
+    allowed = InstanceViewSet()._get_allowed_org_ids(request)
 
     assert set(allowed) == {3, 7, 9}
 
@@ -63,7 +63,7 @@ def test_normal_user_allowed_org_ids_only_current_team():
         include_children="0",
     )
 
-    allowed = InstanceViewSet._get_allowed_org_ids(request)
+    allowed = InstanceViewSet()._get_allowed_org_ids(request)
 
     assert allowed == [root.id]
 
@@ -81,7 +81,7 @@ def test_normal_user_allowed_org_ids_with_children():
         include_children="1",
     )
 
-    allowed = set(InstanceViewSet._get_allowed_org_ids(request))
+    allowed = set(InstanceViewSet()._get_allowed_org_ids(request))
 
     assert allowed == {root.id, child.id}
     assert other.id not in allowed
@@ -100,7 +100,7 @@ def test_normal_user_without_current_team_permission_raises():
     )
 
     with pytest.raises(BaseAppException):
-        InstanceViewSet._get_allowed_org_ids(request)
+        InstanceViewSet()._get_allowed_org_ids(request)
 
 
 def test_auditor_allowed_org_ids_uses_assignable_groups_via_nats(monkeypatch):
@@ -117,7 +117,7 @@ def test_auditor_allowed_org_ids_uses_assignable_groups_via_nats(monkeypatch):
         lambda req: frozenset({3, 7, 9}),
     )
 
-    allowed = InstanceViewSet._get_allowed_org_ids(request)
+    allowed = InstanceViewSet()._get_allowed_org_ids(request)
 
     assert set(allowed) == {3, 7, 9}
 

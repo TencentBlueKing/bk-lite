@@ -20,6 +20,17 @@ import Cookies from 'js-cookie';
 import type { Group } from '@/types/index';
 import UserInformation from './userInformation'
 import { clearUserTeamPreference } from '@/utils/userTeamPreference';
+import { containsAuthorizedGroup, hasModulePrivilege } from '@/app/system-manager/utils/moduleRoles';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
+
+const firstAuthorizedGroup = (nodes: Group[]): Group | null => {
+  for (const node of nodes) {
+    if (node.hasAuth) return node;
+    const child = node.subGroups ? firstAuthorizedGroup(node.subGroups) : null;
+    if (child) return child;
+  }
+  return null;
+};
 
 // 将 Group 转换为 Tree DataNode
 const convertGroupsToTreeData = (groups: Group[], selectedGroupId: string | undefined): DataNode[] => {
@@ -38,8 +49,10 @@ const UserInfo: React.FC = () => {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const { groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser, roles } = useUserInfoContext();
-  const unrestrictedOrgPicker = isSuperUser || roles.includes('auditor');
+  const { groups, groupTree, selectedGroup, setSelectedGroup, displayName, isSuperUser, roles } = useUserInfoContext();
+  const modulePrivileged = hasModulePrivilege(roles, pathname);
+  const orgPickerTree = useOperableGroupTree();
+  const unrestrictedOrgPicker = isSuperUser || roles.includes('auditor') || modulePrivileged;
   const homepageMenu = useHomepageMenu(selectedGroup?.id);
 
   const [versionVisible, setVersionVisible] = useState<boolean>(false);
@@ -84,7 +97,7 @@ const UserInfo: React.FC = () => {
 
   // 初始化时默认展开所有节点
   useEffect(() => {
-    if (groupTree.length > 0 && userExpandedKeys.length === 0) {
+    if (orgPickerTree.length > 0 && userExpandedKeys.length === 0) {
       const collectAllKeys = (groups: Group[]): string[] => {
         const keys: string[] = [];
         const collect = (grps: Group[]) => {
@@ -96,9 +109,9 @@ const UserInfo: React.FC = () => {
         collect(groups);
         return keys;
       };
-      setUserExpandedKeys(collectAllKeys(groupTree));
+      setUserExpandedKeys(collectAllKeys(orgPickerTree));
     }
-  }, [groupTree]);
+  }, [orgPickerTree]);
 
   // 组面板引用，用于检测点击外部关闭
   const groupPanelRef = useRef<HTMLDivElement>(null);
@@ -112,7 +125,7 @@ const UserInfo: React.FC = () => {
   const prevSearchValueRef = useRef<string>('');
   useEffect(() => {
     // 只在从无搜索变为有搜索时展开
-    if (searchValue && !prevSearchValueRef.current && groupTree.length > 0) {
+    if (searchValue && !prevSearchValueRef.current && orgPickerTree.length > 0) {
       const collectAllKeys = (groups: Group[]): string[] => {
         const keys: string[] = [];
         const collect = (grps: Group[]) => {
@@ -124,10 +137,10 @@ const UserInfo: React.FC = () => {
         collect(groups);
         return keys;
       };
-      setUserExpandedKeys(collectAllKeys(groupTree));
+      setUserExpandedKeys(collectAllKeys(orgPickerTree));
     }
     prevSearchValueRef.current = searchValue;
-  }, [searchValue]);
+  }, [searchValue, orgPickerTree]);
 
   // 刷新页面逻辑
   const refreshPage = useCallback(() => {
@@ -138,6 +151,17 @@ const UserInfo: React.FC = () => {
       window.location.reload();
     }
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (modulePrivileged || !selectedGroup || groupTree.length === 0) return;
+    if (containsAuthorizedGroup(groupTree, String(selectedGroup.id))) return;
+    const fallback = firstAuthorizedGroup(groupTree)
+      || groups.find((group) => containsAuthorizedGroup(groupTree, String(group.id)))
+      || null;
+    if (!fallback || String(fallback.id) === String(selectedGroup.id)) return;
+    setSelectedGroup(fallback);
+    refreshPage();
+  }, [modulePrivileged, selectedGroup, groupTree, groups, setSelectedGroup, refreshPage]);
 
   // 处理复选框变化
   const handleIncludeChildrenChange = useCallback((checked: boolean) => {
@@ -238,14 +262,14 @@ const UserInfo: React.FC = () => {
       return null;
     };
 
-    const nextGroup = findGroup(groupTree, selectedKey);
+    const nextGroup = findGroup(orgPickerTree, selectedKey);
     if (!nextGroup) return;
 
     setSelectedGroup(nextGroup);
     setDropdownVisible(false);
     setGroupPanelVisible(false);
     refreshPage();
-  }, [groupTree, pathname, router, setSelectedGroup, refreshPage]);
+  }, [orgPickerTree, pathname, router, setSelectedGroup, refreshPage]);
 
   // 组选择面板内容
   const groupPanelContent = useMemo(() => {
@@ -258,7 +282,7 @@ const UserInfo: React.FC = () => {
         }));
     };
 
-    const filteredGroupTree = filterGroups(groupTree);
+    const filteredGroupTree = filterGroups(orgPickerTree);
 
     // 搜索过滤逻辑（不分大小写）
     const searchFilterGroups = (groups: Group[], searchText: string): Group[] => {
@@ -320,7 +344,7 @@ const UserInfo: React.FC = () => {
         </div>
       </>
     );
-  }, [selectedGroup, groupTree, includeChildren, unrestrictedOrgPicker, session, searchValue, userExpandedKeys, handleChangeGroup, handleIncludeChildrenChange, t]);
+  }, [selectedGroup, orgPickerTree, includeChildren, unrestrictedOrgPicker, session, searchValue, userExpandedKeys, handleChangeGroup, handleIncludeChildrenChange, t]);
 
   const dropdownItems: MenuProps['items'] = useMemo(() => {
     const items: MenuProps['items'] = [

@@ -5,7 +5,7 @@ import { Table, Button, message, Popconfirm, Spin } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useModuleReadOnly, useOperableFlatGroups } from '@/hooks/useOperableGroupTree';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { TeamSecretItem } from '@/app/alarm/types/integration';
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -17,7 +17,8 @@ interface TeamSecretsManagerProps {
 
 const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => {
   const { t } = useTranslation();
-  const { flatGroups } = useUserInfoContext();
+  const flatGroups = useOperableFlatGroups();
+  const moduleReadOnly = useModuleReadOnly();
   const { listTeamSecrets, addTeamSecret, revealTeamSecret, regenerateTeamSecret, removeTeamSecret } = useSourceApi();
 
   const [loading, setLoading] = useState(false);
@@ -47,6 +48,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
   }, [fetchTeamSecrets]);
 
   const handleAddTeamSecret = async () => {
+    if (moduleReadOnly) return;
     if (!selectedTeamId) {
       message.warning(t('incidents.teamRequired'));
       return;
@@ -67,6 +69,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
   };
 
   const handleRegenerateSecret = async (teamId: string) => {
+    if (moduleReadOnly) return;
     setRegeneratingTeamId(teamId);
     try {
       const result = await regenerateTeamSecret(sourceId, teamId);
@@ -93,6 +96,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
   };
 
   const handleRemoveTeamSecret = async (teamId: string) => {
+    if (moduleReadOnly) return;
     try {
       await removeTeamSecret(sourceId, teamId);
       setRevealedSecrets((current) => {
@@ -153,17 +157,19 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
             size="small"
             icon={<ReloadOutlined spin={regeneratingTeamId === record.team_id} />}
             loading={regeneratingTeamId === record.team_id}
+            disabled={moduleReadOnly}
             onClick={() => handleRegenerateSecret(record.team_id)}
           >
             {t('integration.regenerateSecret')}
           </Button>
           <Popconfirm
+            disabled={moduleReadOnly}
             title={t('integration.confirmRemoveTeamSecret')}
             onConfirm={() => handleRemoveTeamSecret(record.team_id)}
             okText={t('common.confirm')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" size="small" danger disabled={moduleReadOnly} icon={<DeleteOutlined />}>
               {t('integration.removeTeamSecret')}
             </Button>
           </Popconfirm>
@@ -189,7 +195,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
             type="primary"
             icon={<PlusOutlined />}
             loading={addingSecret}
-            disabled={!selectedTeamId || availableTeamIds.length === 0}
+            disabled={moduleReadOnly || !selectedTeamId || availableTeamIds.length === 0}
             onClick={handleAddTeamSecret}
           >
             {t('integration.addTeamSecret')}

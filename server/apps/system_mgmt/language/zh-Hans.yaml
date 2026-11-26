@@ -20,6 +20,10 @@ error:
   order_required: 排序值不能为空
   time_range_required: 时间范围是必填项
   cannot_delete_admin_normal_roles: admin和normal角色不允许删除
+  module_role_locked: 模块管理员和模块审计员不能修改、删除或分配给组织
+  module_role_grant_forbidden: 只有平台超级管理员可以授予或收回模块管理员和模块审计员
+  module_role_identity_transition_forbidden: 身份转换会收回模块管理员或模块审计员角色，需由平台超级管理员操作
+  platform_identity_cannot_take_module_role: 平台超级管理员和平台超级审计员不能分配模块角色
   group_id_required: 组织ID不能为空
   group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
   update_failed: 更新失败

@@ -67,7 +67,7 @@ def _dashboard_group_ids(team_id: int, user_info) -> list[int]:
     ):
         raise PermissionDenied("Operation analysis NATS authentication failed")
     scope = SystemMgmt().get_authorized_groups_scoped(
-        {"username": username.strip(), "domain": domain.strip(), "current_team": team_id},
+        {"username": username.strip(), "domain": domain.strip(), "current_team": team_id, "app": "ops-analysis"},
         include_children=include_children,
     )
     if not isinstance(scope, dict) or scope.get("result") is not True or not isinstance(scope.get("data"), list):

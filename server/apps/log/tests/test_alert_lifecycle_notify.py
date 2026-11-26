@@ -200,12 +200,13 @@ def test_recovered_event_matches_closed_contract(alert_center_channel, mocker):
     payload = notifier.build_recovered_event(alert)
     closed = notifier.build_closed_event(alert)
     assert set(payload) == set(closed)
-    assert payload["action"] == "recovered"
+    assert payload["action"] == "recovery"
+    assert closed["action"] == "closed"
     assert payload["value"] is None
     assert payload["labels"]["operator"] == ""
     success, _result = notifier.notify_recovered(alert, max_attempts=1)
     assert success is True
-    assert send.call_args.args[2]["events"][0]["action"] == "recovered"
+    assert send.call_args.args[2]["events"][0]["action"] == "recovery"
 
 
 @pytest.mark.parametrize(

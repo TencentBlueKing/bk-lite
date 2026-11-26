@@ -9,11 +9,12 @@ so that mlops-specific code does not depend on the core ViewSet class hierarchy.
 
 from types import SimpleNamespace
 
-from apps.core.logger import mlops_logger as logger
-from apps.core.utils.team_utils import get_current_team as _get_current_team_str
-from apps.mlops.utils.i18n import mlops_message
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
+
+from apps.core.utils.module_scope import effective_module_privilege
+from apps.core.utils.team_utils import get_current_team as _get_current_team_str
+from apps.mlops.utils.i18n import mlops_message
 
 
 def get_current_team(request, default=0):
@@ -43,7 +44,7 @@ def get_allowed_team_ids(request):
     user = getattr(request, "user", None)
     if not user:
         return set()
-    if getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False) or effective_module_privilege(user, "mlops") == "admin":
         return None
 
     group_list = getattr(user, "group_list", None) or []
@@ -106,7 +107,8 @@ def filter_queryset_by_parent_team(queryset, request, parent_team_lookup):
 
     current_team = get_current_team(request, default=None)
     allowed_team_ids = get_allowed_team_ids(request)
-    if not current_team or current_team not in allowed_team_ids:
+    module_scope = effective_module_privilege(user, "mlops")
+    if not current_team or (module_scope is None and allowed_team_ids is not None and current_team not in allowed_team_ids):
         raise PermissionDenied(mlops_message(request, "error.team_data_access_denied"))
 
     return queryset.filter(**{f"{parent_team_lookup}__contains": current_team})

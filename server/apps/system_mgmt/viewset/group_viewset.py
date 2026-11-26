@@ -284,6 +284,10 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if error_response is not None:
             return error_response
         role_ids = request.data.get("role_ids", [])
+        from apps.core.utils.module_scope import module_builtin_role_ids
+
+        if isinstance(role_ids, list) and {str(role_id) for role_id in role_ids}.intersection(str(role_id) for role_id in module_builtin_role_ids()):
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
         group_name = request.data.get("group_name")
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_modify")

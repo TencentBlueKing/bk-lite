@@ -49,6 +49,7 @@ export interface UserInfoContextType {
   roles: string[];
   groups: Group[];
   groupTree: Group[];
+  moduleGroupTree?: Group[];
   selectedGroup: Group | null;
   flatGroups: Group[];
   isSuperUser: boolean;

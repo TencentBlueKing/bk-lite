@@ -8,7 +8,7 @@ import CustomTable from '@/components/custom-table';
 import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import type { CustomReportingStats, CustomReportingTask } from '@/app/cmdb/types/customReporting';
 import { StatusToneBadge, type StatusTone } from '@/app/cmdb/utils/statusTone';
 
@@ -67,7 +67,7 @@ export default function TaskTable({
   onOpenBatchReview,
 }: TaskTableProps) {
   const { t } = useTranslation();
-  const { groupTree } = useUserInfoContext();
+  const groupTree = useOperableGroupTree();
   const { getTaskList, getStats, deleteTask, updateTask, rotateCredential } =
     useCustomReportingApi();
   const [loading, setLoading] = useState(false);

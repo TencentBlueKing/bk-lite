@@ -141,7 +141,7 @@
         "bulkCommandHint": "Replace the host IP placeholder with each machine's IPv4. The same command can be sent to many hosts.",
         "bulkCopyCommand": "Copy command",
         "bulkViewProgress": "View progress",
-        "bulkSidecarVersionDes": "One command covers the published x86_64 and ARM64 packages of this version. A host fails only when its architecture has no matching package.",
+        "bulkSidecarVersionDes": "Versions follow the selected CPU architecture. One command still covers the published x86_64 and ARM64 packages of this version. A host fails only when its architecture has no matching package.",
         "bulkEmptyProgress": "No host has run this command yet.",
         "bulkAcceptedCount": "Accepted {accepted} / {max}",
         "bulkFailureCount": "Failures counted toward disable {count}",

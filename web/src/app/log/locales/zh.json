@@ -210,6 +210,19 @@
       "instanceUnavailable": "找不到这条日志所属的采集实例，或当前团队无权编辑其提取器。",
       "unsupportedCollectType": "当前采集类型不支持类型级提取器。"
     },
+    "sourceDevice": {
+      "searchPlaceholder": "搜索源 IP 或主机名",
+      "receiveType": "接收类型",
+      "syslog": "系统日志",
+      "cloudRegion": "云区域",
+      "sourceIp": "源 IP",
+      "hostname": "主机名",
+      "firstSeen": "首次收到",
+      "lastSeen": "最近收到",
+      "status": "状态",
+      "active": "活跃",
+      "silent": "静默"
+    },
     "integration": {
       "connect": "接入",
       "searchCategory": "搜索分类",

@@ -6,4 +6,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.log.tasks.policy.compensate_log_notice_task",
         "schedule": beat_crontab(minute="*/5"),  # 每5分钟回扫一次发送失败的告警通知
     },
+    "discover_syslog_source_devices": {
+        "task": "apps.log.tasks.syslog_source_device.discover_syslog_source_devices",
+        "schedule": beat_crontab(minute="*/5"),
+    },
 }

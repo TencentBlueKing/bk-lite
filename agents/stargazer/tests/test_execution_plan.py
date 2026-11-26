@@ -262,6 +262,24 @@ def test_vmware_monitor_request_uses_vmware_vc_budget():
     assert plan.execution_mode == "sync"
 
 
+def test_missing_plugin_yaml_keeps_request_collection_timeout(tmp_path):
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(tmp_path / "missing-plugins")),
+        defaults=TimeoutDefaults(collection_seconds=60),
+    )
+
+    plan = resolver.resolve(
+        CollectionRequest(
+            task_id="yaml-missing-timeout",
+            plugin_ref="vmware.monitor",
+            targets=("172.31.1.97",),
+            params={"monitor_type": "vmware", "timeout": 300},
+        )
+    )
+
+    assert plan.collection_timeout_seconds == 300
+
+
 def test_execution_plan_uses_final_fallback_executor_config_without_rereading_yaml():
     class ReaderMustNotBeUsed:
         def __getattr__(self, name):

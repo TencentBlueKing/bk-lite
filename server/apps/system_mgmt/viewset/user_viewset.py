@@ -23,6 +23,7 @@ from apps.base.models import UserAPISecret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.module_scope import ModuleRoleGrantError, ModuleRoleIdentityTransitionError, sanitize_submitted_roles
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.rpc.cmdb import CMDB
@@ -450,8 +451,14 @@ class UserViewSet(ViewSetUtils):
         queryset = User.objects.all()
         # 按用户有权限的组筛选
         queryset = self._filter_users_by_accessible_groups(queryset, request.user)
-        data = queryset.values(*User.display_fields())
-        return JsonResponse({"result": True, "data": self._mask_user_payload_list(list(data), request)})
+        data = list(queryset.values(*User.display_fields()))
+        platform_admin_ids = set(Role.objects.filter(name="admin", app__in=["", "system-manager"]).values_list("id", flat=True))
+        platform_auditor_ids = set(Role.objects.filter(name="auditor", app__in=["", "system-manager"]).values_list("id", flat=True))
+        for row in data:
+            role_ids = set(row.get("role_list") or [])
+            row["is_superuser"] = bool(platform_admin_ids.intersection(role_ids))
+            row["is_auditor"] = bool(platform_auditor_ids.intersection(role_ids)) and not row["is_superuser"]
+        return JsonResponse({"result": True, "data": self._mask_user_payload_list(data, request)})
 
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
@@ -549,6 +556,10 @@ class UserViewSet(ViewSetUtils):
         else:
             excluded = set(Role.objects.filter(name__in=["admin", "auditor"], app="").values_list("id", flat=True))
             roles = [rid for rid in (kwargs.get("roles") or []) if rid not in excluded]
+        try:
+            roles = sanitize_submitted_roles(request.user, roles, existing_ids=[])
+        except ModuleRoleGrantError:
+            return JsonResponse({"result": False, "message": loader.get("error.module_role_grant_forbidden")}, status=403)
 
         initial_password_settings = dict(
             SystemSettings.objects.filter(
@@ -965,7 +976,7 @@ class UserViewSet(ViewSetUtils):
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
-    def update_user(self, request):
+    def update_user(self, request):  # noqa: C901
         params = request.data
         pk = params.pop("user_id")
         rules = params.pop("rules", [])
@@ -1028,6 +1039,17 @@ class UserViewSet(ViewSetUtils):
         else:
             role_ids = params.get("roles") or []
             params["roles"] = [role_id for role_id in role_ids if role_id not in {admin_role_id, auditor_role_id}]
+        try:
+            params["roles"] = sanitize_submitted_roles(
+                request.user,
+                params.get("roles") or [],
+                existing_ids=target_user.role_list or [],
+                identity_transition=privileged,
+            )
+        except ModuleRoleIdentityTransitionError:
+            return JsonResponse({"result": False, "message": loader.get("error.module_role_identity_transition_forbidden")}, status=403)
+        except ModuleRoleGrantError:
+            return JsonResponse({"result": False, "message": loader.get("error.module_role_grant_forbidden")}, status=403)
         with transaction.atomic():
             # 删除旧的规则
             UserRule.objects.filter(

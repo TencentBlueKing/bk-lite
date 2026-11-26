@@ -60,6 +60,11 @@
           "operation": ["View", "Edit", "Delete"]
         },
         {
+          "id": "source_device",
+          "name": "Source-device",
+          "operation": ["View"]
+        },
+        {
           "id": "integration_list",
           "name": "Integration-list",
           "operation": ["View", "Setting"]
@@ -91,7 +96,7 @@
     {
       "name": "normal",
       "role_name": "log_normal",
-      "menus": ["search-View", "integration_list-View"]
+      "menus": ["search-View", "integration_list-View", "source_device-View"]
     }
   ]
 }
