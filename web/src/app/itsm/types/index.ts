@@ -300,6 +300,7 @@ export interface ManualRecoveryDecision { decision: 'abandon'; token: string; se
 export type StartRecoveryRequest = { id: number; action: 'check' } | { id: number; action: 'confirmed_not_started'; sent_at: string; reason: string };
 
 export interface TicketDetail {
+  can_rename?: boolean;
   reopen_from?: string | null;
   engine_pending?: boolean;
   manual_recovery?: { action: string; status: string; can_check: boolean; can_abandon?: boolean; token?: string; sent_at?: string | null } | null;

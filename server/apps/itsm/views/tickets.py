@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -501,6 +501,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         "allowed_actions": allowed_actions,
         "action_display": node_action_display(action_node, allowed_actions),
         "required_opinion_actions": side_required_opinions(design, tasks, allowed_actions) if can_operate else [],
+        "can_rename": can_operate and not terminal and status_key != "suspended" and (creator or handler),
         "can_survey": can_operate and ticket.creator == username and status_key == "finished" and survey is None,
         "id": ticket.id,
         "sn": ticket.sn,
@@ -607,6 +608,31 @@ def _mark_executing_nodes(request, ticket, detail):
                 })
     for node_id in executing:
         nodes[node_id].update(state="current", outcome="current", executing=True)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+@api_errors
+@HasPermission("ticket-View")
+@transaction.atomic
+def rename_ticket(request, ticket_id):
+    if not has_permission(request, "ticket-Operate"):
+        raise PermissionError()
+    ticket = ticket_scope(request).select_for_update().get(id=ticket_id)
+    operator = _user(request)
+    if not _ticket_detail(ticket, operator, getattr(request.user, "is_superuser", False))["can_rename"]:
+        raise PermissionError()
+    title = json_object(request).get("title")
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= 200:
+        return WebUtils.response_error(error_message="工单标题须为 1 至 200 个字符")
+    title = title.strip()
+    if title != ticket.title:
+        old_title = ticket.title
+        ticket.title = title
+        ticket.updated_by = operator
+        ticket.save(update_fields=["title", "updated_by", "updated_at"])
+        ticket.logs.create(domain=ticket.domain, action="rename", operator=operator, message="修改工单标题", detail={"from": old_title, "to": title})
+    return WebUtils.response_success({"title": title})
 
 
 @csrf_exempt

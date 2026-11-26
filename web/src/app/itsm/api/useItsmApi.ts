@@ -155,6 +155,7 @@ export function useItsmApi() {
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
+  const renameTicket = useCallback((id: number, title: string) => put(`/itsm/api/tickets/${id}/title/`, { title }), [put]);
   const getTicket = useCallback((id: number, taskId?: number) => get(`/itsm/api/tickets/${id}/`, { params: { task_id: taskId }, suppressErrorNotification: true }), [get]);
   const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
     `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
@@ -316,6 +317,7 @@ export function useItsmApi() {
     operateTicket, recoverOperation, recoverStart,
     ticketLogs,
     getTicket,
+    renameTicket,
     getTicketTriggerLogs,
     retryAutoNode,
     reconcileAutoNode,

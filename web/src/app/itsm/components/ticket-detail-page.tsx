@@ -1,6 +1,7 @@
 'use client';
 
 import { Alert, App, Form, Button, Empty, Tag } from 'antd';
+import { EditableDesignerName } from './editable-designer-name';
 import { ItsmBackButton } from './back-button';
 import { TICKET_LIST_RETURN } from './ticket-list-view';
 import { LeftOutlined, RightOutlined, ReloadOutlined, FileTextOutlined, PrinterOutlined } from '@ant-design/icons';
@@ -46,6 +47,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
   const [existingTicket, setTicket] = useState<TicketDetail | null>(null);
   const [triggerLogRevision, setTriggerLogRevision] = useState(0);
   const [form] = Form.useForm();
+  const draftTitle = Form.useWatch('title', form);
   const draft = useServiceDraft(serviceId, form, fromTicketCenter);
   const ticket = serviceId ? draft.ticket : existingTicket;
   const [operationBusy, setBusy] = useState(false);
@@ -77,12 +79,13 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
     }
   }, [api.getTicket, ticketId]);
 
+  const formData = ticket?.form_data;
   useEffect(() => {
-    if (ticket) {
+    if (formData) {
       form.resetFields();
-      form.setFieldsValue(ticket.form_data);
+      form.setFieldsValue(formData);
     }
-  }, [ticket, form]);
+  }, [formData, form]);
 
   useEffect(() => {
     if (api.ready && ticketId && !serviceId) void load();
@@ -159,6 +162,10 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
   }
 
   const selectedTask = ticket.tasks.find(task => task.id === ticket.selected_task_id && task.can_operate);
+  const titleField = serviceId && ticket.fields.find(field => field.key === 'title' && field.type === 'input');
+  const draftTitleEditable = titleField && (!titleField.state || titleField.state === 'default')
+    && !titleField.fetch && !titleField.visibleWhen && !ticket.form_rules?.some(rule => rule.field === 'title' && rule.type !== 'required')
+    && ['edit', 'editable', 'required'].includes(draft.fieldPerm.title || draft.fieldPerm['*'] || 'edit');
   const status = STATUS_LABEL[ticket.status];
   const backToPortal = serviceId && !fromTicketCenter;
 
@@ -170,7 +177,19 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
             <ItsmBackButton href={backToPortal ? "/itsm/portal" : fromTicketCenter ? TICKET_LIST_RETURN : "/itsm/tickets"} label={t(backToPortal ? "itsm.ticket.backToPortal" : "itsm.ticket.backToList")} />
             <Tag color={status?.color || 'default'}>{serviceId ? '待提单' : status ? t(status.id) : ticket.status}</Tag>
             <span className="shrink-0 text-sm font-semibold text-[var(--color-text-2)]">{ticket.sn}</span>
-            <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>{!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
+            {(serviceId ? draftTitleEditable : ticket.can_rename) ? (
+              <EditableDesignerName name={serviceId ? (typeof draftTitle === 'string' ? draftTitle : '') : ticket.title}
+                fallback={ticket.title} label="工单标题" maxLength={200} disabled={busy}
+                onSave={async title => {
+                  if (serviceId) {
+                    form.setFieldValue('title', title);
+                  } else {
+                    await api.renameTicket(ticketId, title);
+                    setTicket(current => current && { ...current, title });
+                  }
+                }} />
+            ) : <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>}
+            {!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
           <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
         </div>
