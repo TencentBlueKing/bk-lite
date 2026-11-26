@@ -27,6 +27,7 @@ interface EntityCardProps {
   is_pinned?: boolean;
   showPinButton?: boolean;
   permissions?: string[];
+  showExport?: boolean;
   onMenuClick: (action: string, entity: any) => void;
   redirectUrl: string;
   iconTypeMapping: string[];
@@ -52,6 +53,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
   is_pinned,
   showPinButton = false,
   permissions,
+  showExport = false,
   onMenuClick,
   redirectUrl,
   iconTypeMapping,
@@ -81,6 +83,15 @@ const EntityCard: React.FC<EntityCardProps> = ({
           </span>
         </PermissionWrapper>
       </Menu.Item>
+      {showExport ? (
+        <Menu.Item key={`export-${id}`}>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={permissions}>
+            <span className="block" onClick={() => onMenuClick('export', entityPayload)}>
+              {t('common.export')}
+            </span>
+          </PermissionWrapper>
+        </Menu.Item>
+      ) : null}
       <Menu.Item key={`delete-${id}`}>
         <PermissionWrapper requiredPermissions={['Delete']} instPermissions={permissions}>
           <span className="block" onClick={() => onMenuClick('delete', entityPayload)}>

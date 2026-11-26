@@ -42,6 +42,9 @@ afterEach(cleanup);
 it('saves added management and usage organizations without submitting the unavailable Kubernetes binding', async () => {
   render(<SkillSettingsPage />);
   await screen.findByDisplayValue('巡检助手');
+  const exportButton = screen.getByRole('button', { name: 'common.export' });
+  const saveButton = screen.getByRole('button', { name: 'common.save' });
+  expect(exportButton.compareDocumentPosition(saveButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.change(screen.getByLabelText('skill.form.manageGroup'), { target: { value: '1,2' } });
   fireEvent.change(screen.getByLabelText(/skill.form.usageGroup/), { target: { value: '1,2,3' } });
   fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
@@ -50,6 +53,13 @@ it('saves added management and usage organizations without submitting the unavai
   expect(id).toBe('17');
   expect(payload).toMatchObject({ team: [1, 2], usage_team: [1, 2, 3] });
   expect(payload).not.toHaveProperty('tools');
+});
+
+it('shows import notes left by the agent list', async () => {
+  sessionStorage.setItem('opspilot-agent-import-notes', JSON.stringify(['名称已调整为「助手 2」']));
+  render(<SkillSettingsPage />);
+  expect(await screen.findByText('名称已调整为「助手 2」')).toBeTruthy();
+  expect(sessionStorage.getItem('opspilot-agent-import-notes')).toBeNull();
 });
 
 it('omits tools from the list edit dialog even when its initial row contains tools', async () => {

@@ -960,6 +960,7 @@ def test_get_source_data_rolls_unified_select_value_to_rfc3339_range(authenticat
         "2026-08-20T09:45:00.000Z",
         "2026-08-20T10:00:00.000Z",
     ]
+    assert "resolved_time_ranges" not in payload["data"]
 
 
 @pytest.mark.django_db

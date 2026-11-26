@@ -1696,6 +1696,7 @@
     "pageTitle": "智能体",
     "toolDescriptionDefault": "提供智能体外部接口调用与自动化能力",
     "pageDescription": "配置 LLM、知识库与工具，编排问答与自动化能力",
+    "importNotes": "导入说明",
     "form": {
       "guide": "引导语",
       "guideTip": "每次对话开始前,发送一个初始化内容。支持标准Markdown语法，可使用的额外标记。[快捷按键]：用户点击后可以直接发送该问题。",

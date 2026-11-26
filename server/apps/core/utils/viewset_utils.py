@@ -66,6 +66,9 @@ def build_json_membership_query(queryset, field_name, expected_values):
             current_values = [current_values]
         comparable_values = set()
         for value in current_values:
+            # PostgreSQL 在这里匹配标量成员，不会从嵌套对象或数组中取 ID。
+            if isinstance(value, (dict, list)):
+                continue
             comparable_values.add(value)
             comparable_values.add(str(value))
             try:
@@ -113,12 +116,12 @@ class GenericViewSetFun(object):
                 if hasattr(i, org_field):
                     # 判断两个集合是否有交集
                     org_value = getattr(i, org_field)
-                    if not set(org_value).intersection(scoped_groups):
+                    if scoped_groups.isdisjoint(value for value in org_value if isinstance(value, (int, str))):
                         return False
         else:
             if hasattr(instance, org_field):
                 org_value = getattr(instance, org_field)
-                if not set(org_value).intersection(scoped_groups):
+                if scoped_groups.isdisjoint(value for value in org_value if isinstance(value, (int, str))):
                     return False
             instance_id = [instance.id]
         if write and is_readonly_scope(user, app_name):

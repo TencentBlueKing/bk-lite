@@ -1390,10 +1390,9 @@ class TestHostCollectorCredentialDecoding:
 
 
 SOLARIS_LEGACY_SSH_EXTRA_ARGS = (
-    "-o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1 "
-    "-o HostKeyAlgorithms=+ssh-rsa,ssh-dss "
-    "-o PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss "
-    "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"
+    "-o KexAlgorithms=+diffie-hellman-group14-sha1 "
+    "-o HostKeyAlgorithms=+ssh-rsa "
+    "-o PubkeyAcceptedKeyTypes=+ssh-rsa"
 )
 
 
@@ -1415,9 +1414,10 @@ class TestSolarisLegacySshArgs:
 
         assert credential["ssh_extra_args"] == SOLARIS_LEGACY_SSH_EXTRA_ARGS
         assert "+diffie-hellman-group14-sha1" in credential["ssh_extra_args"]
-        assert "HostKeyAlgorithms=+ssh-rsa,ssh-dss" in credential["ssh_extra_args"]
-        assert "PubkeyAcceptedAlgorithms=+ssh-rsa,ssh-dss" in credential["ssh_extra_args"]
-        assert "PubkeyAcceptedKeyTypes" not in credential["ssh_extra_args"]
+        assert "HostKeyAlgorithms=+ssh-rsa" in credential["ssh_extra_args"]
+        assert "PubkeyAcceptedKeyTypes=+ssh-rsa" in credential["ssh_extra_args"]
+        assert "diffie-hellman-group1-sha1" not in credential["ssh_extra_args"]
+        assert "ssh-dss" not in credential["ssh_extra_args"]
         command = json.loads(config["module_args"])["_raw_params"]
         assert command.startswith("/usr/bin/env LC_ALL=C LANG=C /usr/bin/ksh <<'")
 

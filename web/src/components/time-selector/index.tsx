@@ -62,15 +62,15 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
   const TIME_RANGE_LIST = useTimeRangeList();
   const FREQUENCY_LIST = useFrequencyList();
   const rangePickerVauleRef = useRef<number[] | null>(null);
-  const selectValueRef = useRef<number | null>(clearable ? null : 15);
+  const selectValueRef = useRef<number | null>(defaultValue.selectValue);
   const openCustomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressPickerCloseRef = useRef(false);
   const confirmingCustomRangeRef = useRef(false);
   // 进入自定义前的预设分钟数，取消时还原。
-  const lastPresetValueRef = useRef<number>(
+  const lastPresetValueRef = useRef<number | null>(
     defaultValue.selectValue && defaultValue.selectValue !== 0
       ? defaultValue.selectValue
-      : 15
+      : null,
   );
   const [frequency, setFrequency] = useState<number>(
     typeof frequenceValue === 'number' ? frequenceValue : 0
@@ -79,7 +79,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
   const selectRef = useRef<HTMLDivElement>(null);
   const [selectValue, setSelectValue] = useState<number | null>(
-    clearable ? null : 15
+    defaultValue.selectValue,
   );
   const [rangePickerVaule, setRangePickerVaule] = useState<
     [Dayjs, Dayjs] | null
@@ -181,8 +181,12 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
   };
 
   const handleCancelCustom = () => {
-    const preset =
-      lastPresetValueRef.current || defaultValue.selectValue || 15;
+    const storedPreset =
+      lastPresetValueRef.current
+      || (defaultValue.selectValue && defaultValue.selectValue !== 0
+        ? defaultValue.selectValue
+        : null);
+    const preset = storedPreset ?? (clearable ? null : 15);
     confirmingCustomRangeRef.current = false;
     suppressPickerCloseRef.current = false;
     if (openCustomTimerRef.current) {
@@ -191,6 +195,13 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
     }
     setRangePickerOpen(false);
     setRangePickerVaule(null);
+    if (preset == null) {
+      selectValueRef.current = null;
+      setSelectValue(null);
+      rangePickerVauleRef.current = [];
+      onChange?.([], null);
+      return;
+    }
     selectValueRef.current = preset;
     setSelectValue(preset);
     const rangeTime = [
@@ -300,6 +311,10 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
         selectValue === 0 ? timeSelectorStyle.customActive : ''
       } ${
         pickerVisible ? timeSelectorStyle.pickerVisible : ''
+      } ${
+        clearable && !pickerVisible && selectValue != null && selectValue !== 0
+          ? timeSelectorStyle.clearableValue
+          : ''
       } ${className || ''}`}
     >
       {!onlyRefresh && (
@@ -308,6 +323,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             allowClear={clearable}
             className={`${timeFieldWidthClass} ${timeSelectorStyle.frequence}`}
             value={selectValue}
+            placeholder={t('common.timeSelector.placeholder')}
             options={customTimeRangeList || TIME_RANGE_LIST}
             open={dropdownOpen}
             onChange={handleTimeRangeChange}

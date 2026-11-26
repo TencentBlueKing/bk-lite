@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { AxiosRequestConfig } from 'axios';
 import {
@@ -8,6 +9,9 @@ import {
   EnabledDangerousPaths,
   TargetParams,
   TargetListResponse,
+  BatchResource,
+  OrganizationAdjustment,
+  OrganizationPreview,
   Target,
   ScriptParams,
   ScriptListResponse,
@@ -139,7 +143,7 @@ const useJobApi = () => {
   };
 
   // Target management
-  const getTargetList = async (
+  const getTargetList = useCallback(async (
     params: TargetParams = {},
     config?: AxiosRequestConfig
   ): Promise<TargetListResponse> => {
@@ -147,7 +151,16 @@ const useJobApi = () => {
       params,
       ...config,
     });
-  };
+  }, [get]);
+
+  const getTargetSelectionIds = (params: Pick<TargetParams, 'name'>): Promise<{ ids: number[] }> =>
+    get('/job_mgmt/api/target/selection_ids/', { params });
+
+  const adjustOrganizations = (
+    resource: BatchResource,
+    adjustment: OrganizationAdjustment
+  ): Promise<OrganizationPreview> =>
+    post(`/job_mgmt/api/${resource}/adjust_organizations/`, adjustment);
 
   const createTarget = async (
     data: FormData
@@ -169,6 +182,9 @@ const useJobApi = () => {
   const deleteTarget = async (id: number): Promise<void> => {
     return await del(`/job_mgmt/api/target/${id}/`);
   };
+
+  const batchDeleteTargets = (ids: number[]): Promise<{ deleted_count: number }> =>
+    post('/job_mgmt/api/target/batch_delete/', { ids });
 
   const syncTargets = async (data: { node_ids?: string[]; team: number[] }): Promise<void> => {
     return await post('/job_mgmt/api/target/sync_from_nodes/', data);
@@ -224,7 +240,7 @@ const useJobApi = () => {
   };
 
   // Script management
-  const getScriptList = async (
+  const getScriptList = useCallback(async (
     params: ScriptParams = {},
     config?: AxiosRequestConfig
   ): Promise<ScriptListResponse> => {
@@ -232,7 +248,10 @@ const useJobApi = () => {
       params,
       ...config,
     });
-  };
+  }, [get]);
+
+  const getScriptSelectionIds = (params: Omit<ScriptParams, 'page' | 'page_size'>): Promise<{ ids: number[] }> =>
+    get('/job_mgmt/api/script/selection_ids/', { params });
 
   const getScriptDetail = async (
     id: number,
@@ -279,6 +298,9 @@ const useJobApi = () => {
     return await del(`/job_mgmt/api/script/${id}/`);
   };
 
+  const batchDeleteScripts = (ids: number[]): Promise<{ deleted_count: number }> =>
+    post('/job_mgmt/api/script/batch_delete/', { ids });
+
   const exportScripts = async (ids: number[]): Promise<Blob> => {
     return await post('/job_mgmt/api/script/export/', { ids }, {
       responseType: 'blob',
@@ -304,7 +326,7 @@ const useJobApi = () => {
   };
 
   // Playbook management
-  const getPlaybookList = async (
+  const getPlaybookList = useCallback(async (
     params: PlaybookParams = {},
     config?: AxiosRequestConfig
   ): Promise<PlaybookListResponse> => {
@@ -312,7 +334,10 @@ const useJobApi = () => {
       params,
       ...config,
     });
-  };
+  }, [get]);
+
+  const getPlaybookSelectionIds = (params: Omit<PlaybookParams, 'page' | 'page_size'>): Promise<{ ids: number[] }> =>
+    get('/job_mgmt/api/playbook/selection_ids/', { params });
 
   const getPlaybookDetail = async (
     id: number,
@@ -610,14 +635,18 @@ const useJobApi = () => {
     deleteDangerousPath,
     getEnabledDangerousPaths,
     getTargetList,
+    getTargetSelectionIds,
+    adjustOrganizations,
     createTarget,
     updateTarget,
     deleteTarget,
+    batchDeleteTargets,
     syncTargets,
     testTargetConnection,
     testSavedTargetConnection,
     queryNodes,
     getScriptList,
+    getScriptSelectionIds,
     getScriptDetail,
     getScriptRevisions,
     compareScriptRevision,
@@ -625,9 +654,11 @@ const useJobApi = () => {
     createScript,
     updateScript,
     deleteScript,
+    batchDeleteScripts,
     exportScripts,
     importScripts,
     getPlaybookList,
+    getPlaybookSelectionIds,
     getPlaybookDetail,
     createPlaybook,
     updatePlaybook,
