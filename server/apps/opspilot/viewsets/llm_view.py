@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import yaml
 from django.db.models import Case, Q, When
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -45,6 +45,15 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillRequestLogSerializer,
     SkillTemplateSerializer,
     SkillToolsSerializer,
+)
+from apps.opspilot.services.agent_transfer import (
+    AgentArchiveError,
+    build_agent_zip,
+    import_agent_recipe,
+    missing_builtin_message,
+    permission_denied_message,
+    read_agent_zip,
+    read_bounded_upload,
 )
 from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
 from apps.opspilot.services.builtin_tools import (
@@ -408,6 +417,75 @@ class LLMViewSet(PinMixin, AuthViewSet):
         response = JsonResponse({"result": True, "data": {"usage_team": obj.usage_team}})
         log_operation(request, "update", "opspilot", f"授权使用组织: {obj.name}")
         return response
+
+    @action(methods=["get"], detail=True, url_path="export")
+    def export_agent(self, request, pk=None):
+        denied = permission_denied_message(request.user, "skill_setting-Edit")
+        if denied:
+            return JsonResponse({"result": False, "message": denied}, status=403)
+        skill = self.get_object()
+        if not getattr(request.user, "is_superuser", False):
+            try:
+                current_team = self._validate_current_team_permission(request)
+            except PermissionDenied as exc:
+                detail = getattr(exc, "detail", None)
+                return JsonResponse({"result": False, "message": str(detail if detail is not None else exc)}, status=403)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            if not self.get_has_permission(request.user, skill, current_team, include_children=include_children):
+                message = self.loader.get("error.permission_update_denied") if self.loader else ""
+                return JsonResponse(
+                    {"result": False, "message": message or "You do not have permission to update this instance"},
+                    status=403,
+                )
+        try:
+            payload = build_agent_zip(skill)
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        logger.info("agent export finished skill_id=%s", skill.id)
+        response = HttpResponse(payload, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="agent-{skill.id}.zip"'
+        log_operation(request, "export", "opspilot", f"导出智能体: {skill.name}")
+        return response
+
+    @action(methods=["post"], detail=False, url_path="import_agent")
+    def import_agent(self, request):
+        upload = request.FILES.get("file")
+        try:
+            data = read_bounded_upload(upload)
+            recipe = read_agent_zip(data)
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        if recipe is None:
+            return JsonResponse({"result": False, "message": "文件无法识别，导入已取消"}, status=400)
+        denied = permission_denied_message(request.user, "skill_list-Add")
+        if denied:
+            return JsonResponse({"result": False, "message": denied}, status=403)
+        if recipe.needs_tool_add:
+            denied = permission_denied_message(request.user, "tool_list-Add")
+            if denied:
+                return JsonResponse({"result": False, "message": denied}, status=403)
+        try:
+            team_id = self._validate_current_team_permission(request)
+        except PermissionDenied:
+            return JsonResponse({"result": False, "message": "当前组织无效，导入已取消"}, status=400)
+        missing = missing_builtin_message(recipe)
+        if missing:
+            return JsonResponse({"result": False, "message": missing}, status=400)
+        try:
+            result = import_agent_recipe(
+                recipe,
+                team_id=team_id,
+                user=request.user,
+                name_taken=lambda name: bool(self._validate_name(name, request.user.group_list or [], [team_id])),
+            )
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        except Exception:
+            logger.exception("agent import failed")
+            return JsonResponse({"result": False, "message": "导入失败"}, status=500)
+        logger.info("agent import finished skill_id=%s note_count=%s", result["id"], len(result["notes"]))
+        log_operation(request, "create", "opspilot", f"导入智能体: {result['name']}")
+        return JsonResponse({"result": True, "data": result})
 
     @staticmethod
     def create_error_stream_response(error_message):

@@ -10,6 +10,8 @@ _DURATION_RE = re.compile(r"^(?P<amount>[1-9]\d*)(?P<unit>[dh])$")
 _DEFAULT_TRACE_RETENTION = "35d"
 TRACE_RETENTION_TOO_SHORT = "明细保留期不足"
 TRACE_RETENTION_INVALID = "明细保留期配置无效"
+# 明细回退的单次查询被 VictoriaTraces 拒掉时，这条 SLO 的空达成率原因。不是保留期解析结果。
+TRACE_SLO_CAPACITY_EXCEEDED = "评估窗超出明细单次查询容量"
 
 
 def retention_days(value: str) -> float | None:

@@ -251,6 +251,25 @@ export const useSkillApi = () => {
     };
   };
 
+  const exportAgent = async (id: string | number): Promise<Blob> => {
+    return get(`/opspilot/model_provider_mgmt/llm/${id}/export/`, {
+      responseType: 'blob',
+      suppressErrorNotification: true,
+    });
+  };
+
+  const importAgent = async (file: File): Promise<{ id: number; name: string; notes: string[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    // 客户端默认 Content-Type 是 application/json。axios 1.19 会因此把 FormData
+    // 收成 {"file":{}}，服务端拿不到 ZIP。必须改成 multipart，和技能包导入一致。
+    return post('/opspilot/model_provider_mgmt/llm/import_agent/', form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  };
+
   const fetchAdminSkillSessionMessages = async (sessionId: string, messageId?: number) => {
     const res = await get('/opspilot/model_provider_mgmt/skill_channel/admin_conversation_messages/', {
       params: { session_id: sessionId, message_id: messageId },
@@ -266,6 +285,8 @@ export const useSkillApi = () => {
     fetchInvocationLogs,
     fetchSkill,
     fetchSkillDetail,
+    exportAgent,
+    importAgent,
     updateRule,
     createRule,
     fetchRules,

@@ -12,6 +12,7 @@ const tool = (overrides: Partial<SelectTool>): SelectTool => ({
 describe('toolHasConfigurableFields', () => {
   it('hides config when a tool or MCP has no parameters', () => {
     expect(toolHasConfigurableFields(tool({ kwargs: [] }))).toBe(false);
+    expect(toolHasConfigurableFields(tool({ kwargs: {} as SelectTool['kwargs'] }))).toBe(false);
     expect(toolHasConfigurableFields(tool({ isBuildIn: false, kwargs: [] }))).toBe(false);
     expect(toolHasConfigurableFields(tool({ rawName: 'monitor', kwargs: [{ key: 'token', value: 'x' }] }))).toBe(false);
   });
