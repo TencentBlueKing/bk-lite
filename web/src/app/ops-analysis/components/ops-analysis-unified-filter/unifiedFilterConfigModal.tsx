@@ -19,7 +19,7 @@ import {
 import FilterOptionsModal from './filterOptionsModal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
-import dayjs from 'dayjs';
+import { getUnifiedFilterTimeSelectorDefaultValue, timeRangeValueFromSelector } from '@/app/ops-analysis/utils/filterValue';
 import TimeSelector from '@/components/time-selector';
 import {
   isOptionInputMode,
@@ -51,7 +51,6 @@ import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
-  TimeRangeValue,
   FilterOption,
   DatasourceItem,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
@@ -402,42 +401,18 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       width: 260,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
-          const getDefaultValue = (): { selectValue: number; rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null } => {
-            if (value === null || value === undefined) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            if (typeof value === 'number') {
-              return { selectValue: value, rangePickerVaule: null };
-            }
-            const timeValue = value as TimeRangeValue;
-            if (!timeValue.start || !timeValue.end) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            const selectVal = timeValue.selectValue ?? 0;
-            if (selectVal > 0) {
-              return { selectValue: selectVal, rangePickerVaule: null };
-            }
-            return {
-              selectValue: 0,
-              rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
-            };
-          };
-
           return (
             <TimeSelector
               key={`${record.id}-${JSON.stringify(value)}`}
               onlyTimeSelect
-              defaultValue={getDefaultValue()}
+              clearable
+              defaultValue={getUnifiedFilterTimeSelectorDefaultValue(value)}
               onChange={(range, originValue) => {
-                if (range.length === 2) {
-                  handleFieldChange(record.id, 'defaultValue', {
-                    start: dayjs(range[0]).toISOString(),
-                    end: dayjs(range[1]).toISOString(),
-                    selectValue: originValue ?? 0,
-                  } as TimeRangeValue);
-                } else {
-                  handleFieldChange(record.id, 'defaultValue', null);
-                }
+                handleFieldChange(
+                  record.id,
+                  'defaultValue',
+                  timeRangeValueFromSelector(range, originValue),
+                );
               }}
             />
           );

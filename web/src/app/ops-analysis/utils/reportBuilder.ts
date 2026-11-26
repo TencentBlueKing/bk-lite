@@ -11,7 +11,6 @@ import type {
   ReportViewSets,
 } from '@/app/ops-analysis/types/report';
 import { validateDateRangeValue } from './dateRange';
-import { buildRelativeTimeRangeFilterValue } from './filterValue';
 import { isChartTypeSupportedOnSurface } from './chartTypeSurface';
 import { normalizeStoredFilterDefinitions } from './unifiedFilterState';
 import { findReusableFilterDefinition } from './scanUnifiedFilterParams';
@@ -277,7 +276,7 @@ export const buildFiltersFromReportSections = (
       if (defaultValue === undefined && param.value !== undefined && param.value !== null) {
         defaultValue =
           param.type === 'timeRange' && typeof param.value === 'number'
-            ? buildRelativeTimeRangeFilterValue(param.value)
+            ? { selectValue: param.value }
             : (param.value as FilterValue);
       }
       if (defaultValue === undefined) {

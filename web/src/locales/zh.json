@@ -219,7 +219,8 @@
       "7Days": "最近7天",
       "30Days": "最近30天",
       "custom": "自定义",
-      "off": "关闭"
+      "off": "关闭",
+      "placeholder": "请选择时间范围"
     },
     "heatMap": {
       "monthDisplay": "按月展示",

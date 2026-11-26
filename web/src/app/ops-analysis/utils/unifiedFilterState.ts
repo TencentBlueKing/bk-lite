@@ -3,7 +3,7 @@ import type {
   TimeRangeValue,
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
-import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
+import { normalizeTimeRangeFilterValue, persistedTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { isOrganizationControl } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -386,7 +386,7 @@ const materializeDefaultValue = (
     return null;
   }
   if (definition.type === 'timeRange') {
-    return normalizeTimeRangeFilterValue(raw) ?? null;
+    return persistedTimeRangeFilterValue(normalizeTimeRangeFilterValue(raw));
   }
   if (definition.type === 'dateRange') {
     return validateDateRangeValue(raw).valid
@@ -415,7 +415,9 @@ export const recomputeTimeRangeValuesFromDefaults = (
       nextValues[definition.id] = null;
       return;
     }
-    const normalized = normalizeTimeRangeFilterValue(definition.defaultValue);
+    const normalized = persistedTimeRangeFilterValue(
+      normalizeTimeRangeFilterValue(definition.defaultValue),
+    );
     if (normalized) {
       nextValues[definition.id] = normalized;
     }

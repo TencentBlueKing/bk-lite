@@ -8,7 +8,7 @@ export interface TimeSelectorDefaultValue {
 }
 
 export const getTimeSelectorDefaultValue = (
-  value?: TimeValue | null,
+  value?: TimeValue | null | '',
 ): TimeSelectorDefaultValue => {
   if (Array.isArray(value) && value.length === 2) {
     return {
@@ -17,7 +17,7 @@ export const getTimeSelectorDefaultValue = (
     };
   }
 
-  if (value === null) {
+  if (value === null || value === '') {
     return {
       selectValue: null,
       rangePickerVaule: null,
@@ -30,9 +30,9 @@ export const getTimeSelectorDefaultValue = (
   };
 };
 
-export const getTimeSelectorKey = (value?: TimeValue | null): string =>
+export const getTimeSelectorKey = (value?: TimeValue | null | ''): string =>
   JSON.stringify(
-    value === null
+    value === null || value === ''
       ? { mode: 'empty' }
       : Array.isArray(value)
         ? { mode: 'custom', value }

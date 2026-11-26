@@ -19,6 +19,8 @@ assert.equal(getTimeSelectorKey(undefined), getTimeSelectorKey(10080));
 const cleared = getTimeSelectorDefaultValue(null);
 assert.equal(cleared.selectValue, null);
 assert.equal(cleared.rangePickerVaule, null);
+assert.equal(getTimeSelectorDefaultValue('').selectValue, null);
+assert.equal(getTimeSelectorKey(''), getTimeSelectorKey(null));
 assert.notEqual(getTimeSelectorKey(null), getTimeSelectorKey(undefined));
 
 console.log('ops analysis params time range tests passed');

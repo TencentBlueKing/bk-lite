@@ -219,7 +219,8 @@
       "7Days": "The past 7 days",
       "30Days": "The past 30 days",
       "custom": "Custom",
-      "off": "off"
+      "off": "off",
+      "placeholder": "Select time range"
     },
     "heatMap": {
       "monthDisplay": "Monthly Display",
