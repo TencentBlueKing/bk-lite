@@ -226,6 +226,37 @@ def test_network_models_define_sn_table():
         wb.close()
 
 
+def test_interface_model_defines_collect_task_group():
+    """接口连线按 collect_task 找已入库端口，模型必须声明这组采集字段。"""
+    wb = openpyxl.load_workbook(MODEL_CONFIG, read_only=True, data_only=True)
+    try:
+        headers = [cell.value for cell in next(wb["attr-interface"].iter_rows(min_row=2, max_row=2))]
+        rows = [dict(zip(headers, values)) for values in wb["attr-interface"].iter_rows(min_row=3, values_only=True) if values and values[0]]
+        switch_headers = [cell.value for cell in next(wb["attr-switch"].iter_rows(min_row=2, max_row=2))]
+        switch_rows = {
+            values[0]: dict(zip(switch_headers, values))
+            for values in wb["attr-switch"].iter_rows(min_row=3, values_only=True)
+            if values and values[0]
+        }
+    finally:
+        wb.close()
+    by_id = {row["attr_id"]: row for row in rows}
+    basic = {row["attr_id"] for row in rows if row["attr_group"] == "基本信息"}
+    assert {"inst_name", "organization", "self_device", "mac", "name", "description", "status"} <= basic
+    for attr_id in ("auto_collect", "collect_time", "collect_task"):
+        row = by_id[attr_id]
+        switch = switch_rows[attr_id]
+        assert row["attr_name"] == switch["attr_name"]
+        assert row["attr_type"] == switch["attr_type"]
+        assert row["option"] == switch["option"]
+        assert row["attr_group"] == "自动发现信息"
+        assert row["is_only"] is False
+        assert row["editable"] is True
+        assert row["is_required"] is False
+        assert row["key_attribute"] is False
+        assert row["freshness"] in (None, "")
+
+
 def test_network_models_define_sys_desc_attr():
     wb = openpyxl.load_workbook(MODEL_CONFIG, read_only=True)
     try:

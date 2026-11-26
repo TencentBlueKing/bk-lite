@@ -60,12 +60,14 @@ def build_round_complete_prometheus(
     instance_id: str,
     model_id: str,
     extra_labels: Mapping[str, Any] | None = None,
+    include_snapshot_contract: bool = True,
 ) -> str:
     labels = {
         "instance_id": instance_id,
         "model_id": model_id,
-        SNAPSHOT_CONTRACT_LABEL: SNAPSHOT_CONTRACT_VERSION,
     }
+    if include_snapshot_contract:
+        labels[SNAPSHOT_CONTRACT_LABEL] = SNAPSHOT_CONTRACT_VERSION
     if extra_labels:
         for key, value in extra_labels.items():
             if key not in ROUND_COMPLETE_EXTRA_LABELS or value in (None, ""):
@@ -94,10 +96,32 @@ def is_complete_round(summary) -> bool:
     )
 
 
+def _is_topology_role(params: Mapping[str, Any]) -> bool:
+    return str(params.get("collection_role") or "") == "topology"
+
+
+def _topology_round_complete_skip_reason(summary) -> str | None:
+    """拓扑通道按已发布的数据计算。个别目标超时或失败不挡完成标记。"""
+    if summary.publish_succeeded <= 0:
+        return "no_publishable_metrics"
+    if summary.publish_unknown:
+        return "delivery_unknown"
+    if (
+        summary.publish_failed
+        or summary.publish_event_failed
+        or summary.publish_permanent_failed
+        or summary.publish_succeeded + summary.publish_not_applicable != summary.total
+    ):
+        return "delivery_incomplete"
+    return None
+
+
 def round_complete_skip_reason(request: CollectionRequest, summary) -> str | None:
     """返回完成标记不能发布的稳定原因；None 表示满足发布契约。"""
     if resolve_round_marker_identity(request.params) is None:
         return "not_applicable"
+    if _is_topology_role(request.params):
+        return _topology_round_complete_skip_reason(summary)
     if (
         summary.total <= 0
         or summary.collection_succeeded != summary.total
@@ -132,6 +156,7 @@ async def publish_round_complete_marker(
     metrics_publish=None,
     extra_labels: Mapping[str, Any] | None = None,
     completed_at_ms: int | None = None,
+    snapshot_complete: bool = True,
 ) -> bool:
     """发布成功返回 True；不适用或发布失败返回 False（失败不抛，由调用方记日志）。"""
     identity = resolve_round_marker_identity(request.params)
@@ -141,13 +166,18 @@ async def publish_round_complete_marker(
     marker_labels = build_round_complete_labels(request.params)
     if extra_labels:
         marker_labels.update(extra_labels)
-    marker_labels[SNAPSHOT_CONTRACT_LABEL] = SNAPSHOT_CONTRACT_VERSION
+    if snapshot_complete:
+        marker_labels[SNAPSHOT_CONTRACT_LABEL] = SNAPSHOT_CONTRACT_VERSION
+    else:
+        # 部分成功的拓扑轮次只计算已返回的数据，不声明可做破坏性清理的完整快照。
+        marker_labels.pop(SNAPSHOT_CONTRACT_LABEL, None)
     payload = build_round_complete_prometheus(
         round_ts=round_ts,
         completed_at_ms=completed_at_ms or int(time.time() * 1000),
         instance_id=instance_id,
         model_id=model_id,
         extra_labels=marker_labels,
+        include_snapshot_contract=snapshot_complete,
     )
     params = dict(request.params)
     params.setdefault("tags", {})

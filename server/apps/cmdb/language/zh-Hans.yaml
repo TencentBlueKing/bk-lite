@@ -1313,6 +1313,9 @@ ATTR:
     description: 接口描述
     status: 状态
     self_device: 所属设备
+    auto_collect: 是否自动发现
+    collect_time: 上次更新时间
+    collect_task: 采集任务
   k8s_cluster:
     inst_name: 集群名称
     organization: 组织

@@ -376,11 +376,15 @@ class TargetCollectionExecutor:
             report.publish_failure_codes,
             report.publish_failure_samples,
         )
-        from core.collection.round_complete import publish_round_complete_marker, round_complete_skip_reason
+        from core.collection.round_complete import is_complete_round, publish_round_complete_marker, round_complete_skip_reason
 
         marker_skip_reason = round_complete_skip_reason(request, summary)
         if marker_skip_reason is None:
-            marker_published = await publish_round_complete_marker(request, round_ts)
+            marker_published = await publish_round_complete_marker(
+                request,
+                round_ts,
+                snapshot_complete=is_complete_round(summary),
+            )
             summary = replace(
                 summary,
                 round_complete_marker_published=int(marker_published),
