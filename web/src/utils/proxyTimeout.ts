@@ -46,6 +46,21 @@ export function scheduleProxyAbort(controller: AbortController, timeoutMs: numbe
   return setTimeout(() => controller.abort(), timeoutMs);
 }
 
+/** 浏览器断开是 499，超时才是 504。调用方据此决定要不要打超时日志。 */
+export function proxyAbortStatus(clientAborted: boolean): 499 | 504 {
+  return clientAborted ? 499 : 504;
+}
+
+/** 浏览器断开时终止上游 fetch。SSE 清掉超时后，只靠这条链路释放后端连接。 */
+export function linkAbortSignal(source: AbortSignal | undefined, controller: AbortController): void {
+  if (!source) return;
+  if (source.aborted) {
+    controller.abort();
+    return;
+  }
+  source.addEventListener('abort', () => controller.abort(), { once: true });
+}
+
 /** CMDB 文件传输通道；普通 API 仍使用默认的响应体超时。 */
 export function getProxyBodyTimeoutMs(path: string, method: string): number {
   if (method === 'POST' && (/^\/cmdb\/api\/transfer_tasks\/import\/$/.test(path) ||
