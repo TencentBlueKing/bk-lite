@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.apm.adapters import (
     TelemetryGroupedReadFallback,
+    TelemetryQueryOutOfRetention,
     TelemetryQueryTooLarge,
     TelemetryStoreUnavailable,
     TelemetryUniqueSpanLimitExceeded,
@@ -1175,6 +1176,31 @@ def test_vt_client_side_rejection_maps_to_capacity_hint_not_unavailable():
 
     with pytest.raises(TelemetryQueryTooLarge, match="超出单次查询容量"):
         store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
+
+
+def test_vt_out_of_retention_rejection_is_not_reported_as_capacity():
+    now = timezone.now()
+    session = Mock()
+    rejected = Mock()
+    rejected.status_code = 422
+    rejected.headers = {}
+    rejected.raise_for_status.side_effect = requests.HTTPError("422 Unprocessable Entity", response=rejected)
+    rejected.iter_content.return_value = [
+        b'{"status":"error","errorType":"422","error":"cannot execute query [_time:[2026-10-27T05:28:41Z,'
+        b'2026-10-28T05:28:41Z] secret-sentinel | stats count(*) as total]: request time out of retention"}'
+    ]
+    session.get.return_value = rejected
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryQueryOutOfRetention) as caught:
+        store.slo_measurement(SloMetricQuery("shop", "checkout", "prod", now - timedelta(days=30), now, "availability"))
+
+    assert str(caught.value) == "查询时间早于 VictoriaTraces 明细保留期，请缩小时间窗后重试"
+    assert isinstance(caught.value, TelemetryQueryTooLarge)
+    assert "secret-sentinel" not in str(caught.value)
+    assert isinstance(caught.value.__cause__, requests.HTTPError)
+    assert session.get.call_count == 1
+    assert rejected.close.called
 
 
 def _error_breakdown_session(*, red, endpoints, types, samples, recent):

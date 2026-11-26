@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.apm.adapters.aggregate_red import AggregateApmRedStore, ApmAvailabilitySloStore
-from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable
+from apps.apm.adapters.errors import TelemetryQueryOutOfRetention, TelemetryQueryTooLarge, TelemetryStoreUnavailable
 from apps.apm.models import ApmSlo
 from apps.apm.services.contracts import MetricDataState, SloMeasurement, SloMetricQuery
 from apps.apm.services.reliability import DjangoApmReliabilityService
@@ -358,6 +358,23 @@ def test_trace_fallback_turns_query_capacity_rejection_into_an_empty_slo_reason(
     assert isinstance(caught.value.__cause__, TelemetryQueryTooLarge)
 
 
+def test_trace_fallback_reports_vt_retention_rejection_as_short_retention(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35d")
+    rejected = TelemetryQueryOutOfRetention("查询时间早于 VictoriaTraces 明细保留期，请缩小时间窗后重试")
+
+    class _RejectingTraces:
+        def slo_measurement(self, query):
+            raise rejected
+
+    store = _store(_Client(_counts), _RejectingTraces(), origin=None)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="^明细保留期不足$") as caught:
+        store.slo_measurement(_query(started_at=START_30D))
+
+    assert type(caught.value) is TelemetryStoreUnavailable
+    assert caught.value.__cause__ is rejected
+
+
 def test_missing_or_zero_samples_stay_no_data():
     traces = _Traces(SloMeasurement(0.0, 0.0, 1.0, MetricDataState.AVAILABLE))
     empty = _Client(lambda expression: [])
@@ -619,4 +636,50 @@ def test_dashboard_list_and_detail_keep_capacity_rejection_on_the_slo_row(apm_ap
     assert detail.data["current_rate"] is None
     assert detail.data["data_state"] == "no_data"
     assert detail.data["reason"] == listed.data[0]["reason"]
+    assert detail.data["id"] == listed.data[0]["id"] == card["id"] == str(slo.id)
+
+
+@pytest.mark.django_db
+def test_vt_retention_rejection_shows_short_retention_on_dashboard_list_and_detail(apm_api_client, monkeypatch):
+    import requests
+
+    service = _visible_service()
+    slo = ApmSlo.objects.create(
+        name="结算可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective="99.900",
+        evaluation_window="rolling30d",
+    )
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35d")
+    _run_dashboard_inline(monkeypatch)
+    monkeypatch.setattr("apps.apm.adapters.aggregate_red.AggregatePromqlClient.from_env", lambda: _Client(_counts))
+
+    def _rejected(*args, **kwargs):
+        response = requests.Response()
+        response.status_code = 422
+        response._content = b'{"status":"error","errorType":"422","error":"cannot execute query: request time out of retention"}'
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr("apps.apm.adapters.victoriatraces.requests.Session.get", _rejected)
+
+    dashboard = apm_api_client.get("/api/v1/apm/dashboard/?window=1h")
+    listed = apm_api_client.get("/api/v1/apm/slos/")
+    detail = apm_api_client.get(f"/api/v1/apm/slos/{slo.id}/")
+
+    assert dashboard.status_code == 200
+    assert dashboard.data["slos"]["status"] == "ok"
+    card = dashboard.data["slos"]["data"]["items"][0]
+    assert card["current_rate"] is None
+    assert card["met"] is None
+    assert card["reason"] == "明细保留期不足"
+    assert listed.status_code == 200
+    assert listed.data[0]["current_rate"] is None
+    assert listed.data[0]["budget_remaining"] is None
+    assert listed.data[0]["data_state"] == "no_data"
+    assert listed.data[0]["reason"] == "明细保留期不足"
+    assert detail.status_code == 200
+    assert detail.data["reason"] == "明细保留期不足"
     assert detail.data["id"] == listed.data[0]["id"] == card["id"] == str(slo.id)

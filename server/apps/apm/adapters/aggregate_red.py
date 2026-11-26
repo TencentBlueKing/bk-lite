@@ -9,7 +9,7 @@ import math
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 
-from apps.apm.adapters.errors import TelemetryQueryTooLarge, TelemetryStoreUnavailable
+from apps.apm.adapters.errors import TelemetryQueryOutOfRetention, TelemetryQueryTooLarge, TelemetryStoreUnavailable
 from apps.apm.adapters.victoriatraces import MAX_RED_POINTS, VictoriaTracesTelemetryStore
 from apps.apm.services.contracts import (
     GroupedRed,
@@ -22,7 +22,7 @@ from apps.apm.services.contracts import (
     SloMeasurement,
     SloMetricQuery,
 )
-from apps.apm.services.trace_retention import TRACE_SLO_CAPACITY_EXCEEDED, trace_retention_block_reason
+from apps.apm.services.trace_retention import TRACE_RETENTION_TOO_SHORT, TRACE_SLO_CAPACITY_EXCEEDED, trace_retention_block_reason
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregateMetricsTooLarge, AggregateMetricsUnavailable, AggregatePromqlClient
 from apps.core.aggregate_promql import align_query_end as align_aggregate_query_end
@@ -917,7 +917,8 @@ class ApmAvailabilitySloStore:
     """可用性窗口被聚合起点覆盖时读聚合库；否则和延迟 SLO 一样读 VictoriaTraces。
 
     聚合库报错只向上抛，不回退扫明细。回退到明细时，窗口长于保留期或保留期无法解析则不查询。
-    明细查询因单次容量被拒时，改为这条 SLO 的空达成率，原因是评估窗超出明细单次查询容量。
+    `APM_TRACE_RETENTION` 可能长于 VT 实际保留期，所以 VT 的保留期拒绝同样记为明细保留期不足；
+    单次容量拒绝记为评估窗超出明细单次查询容量。两者都是这条 SLO 的空达成率。
     """
 
     def __init__(self, *, traces, aggregate: AggregateApmRedStore, origin_at: Callable[[], datetime | None]):
@@ -932,6 +933,8 @@ class ApmAvailabilitySloStore:
                 raise TelemetryStoreUnavailable(reason)
             try:
                 return self.traces.slo_measurement(query)
+            except TelemetryQueryOutOfRetention as exc:
+                raise TelemetryStoreUnavailable(TRACE_RETENTION_TOO_SHORT) from exc
             except TelemetryQueryTooLarge as exc:
                 raise TelemetryStoreUnavailable(TRACE_SLO_CAPACITY_EXCEEDED) from exc
         return self.aggregate.slo_measurement(query)
