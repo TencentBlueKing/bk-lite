@@ -41,6 +41,26 @@ def test_global_import_rejects_non_object_without_creating_records():
     assert Workflow.objects.count() == 0
 
 
+def test_rename_workflow_changes_display_name_without_creating_version():
+    workflow = Workflow.objects.create(key="expense", name="旧名称")
+    version = WorkflowVersion.objects.create(workflow=workflow, version_no=1, is_published=True)
+    workflow.current_version = version
+    workflow.save()
+    rename = resolve(f"/api/v1/itsm/api/workflows/{workflow.pk}/name/").func
+    for value in (" ", "长" * 129, 42):
+        assert rename(request("put", {"name": value}, permissions=["workflow-Edit"]), workflow.pk).status_code == 400
+    payload = {"name": " 费用申请 "}
+    assert rename(request("put", payload, permissions=["workflow-View"]), workflow.pk).status_code == 403
+    assert rename(request("put", payload, permissions=["workflow-Edit"], domain="other"), workflow.pk).status_code == 404
+    workflow.refresh_from_db()
+    assert workflow.name == "旧名称"
+    assert rename(request("put", payload, permissions=["workflow-Edit"]), workflow.pk).status_code == 200
+    workflow.refresh_from_db()
+    assert (workflow.name, workflow.key, workflow.current_version_id) == ("费用申请", "expense", version.id)
+    assert workflow.versions.count() == 1
+    assert json.loads(workflows(request(permissions=["workflow-View"])).content)["data"]["items"][0]["name"] == "费用申请"
+
+
 def test_draft_inherits_selected_published_design_and_repeated_creation_preserves_edits():
     from apps.itsm.views.api import workflow_design
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { Alert, Button, Select, Tabs, message } from 'antd';
+import { EditableDesignerName } from '../../../components/editable-designer-name';
 import { DesignerLoadStatus, useDesignerLoad } from '../../../components/designer-load';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
@@ -168,7 +169,8 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
           <ItsmBackButton href="/itsm/workflow" label="返回流程列表" />
           <div className="h-4 w-px bg-[var(--color-border)]" />
           <div className="flex items-center gap-2.5">
-            <span className="text-sm font-medium text-[var(--color-text-1)]">{name || t('itsm.design.flowFallback')}</span>
+            <EditableDesignerName name={name} label="流程名称" fallback={t('itsm.design.flowFallback')} disabled={busy}
+              onSave={async next => { await api.renameWorkflow(workflowId, next); setName(next); }} />
             <span className="rounded bg-[var(--color-fill-1)] px-2 py-0.5 text-xs font-medium text-[var(--color-text-2)]">
               V{versionNo || 1}
             </span>

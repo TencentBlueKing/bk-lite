@@ -31,7 +31,7 @@ from apps.itsm.serializers import HandlerGroupSerializer, NotifyTemplateSerializ
 from apps.itsm.services.basic_settings import BASIC_SETTINGS_DEFAULTS, basic_settings_values, normalize_setting, read_basic_settings
 from apps.itsm.services.form.validator import FormValidator
 from apps.itsm.services.ticket.transfer import validate_transfer_scopes
-from apps.itsm.views.access import api_errors, domain_of, has_permission, method_permission
+from apps.itsm.views.access import api_errors, domain_of, has_permission, json_object, method_permission
 from apps.itsm.views.base import ItsmAPIView
 from apps.system_mgmt.models import User
 
@@ -142,6 +142,7 @@ def form_detail(request, form_id):
             "id": form.id,
             "name": form.name,
             "key": form.key,
+            "can_edit": has_permission(request, "form-Edit"),
             "schema": latest.schema if latest else {"version": 1, "fields": []},
             "versions": [_version_item(item) for item in versions],
         }
@@ -328,6 +329,34 @@ def workflows(request):
         updated_by=_user(request),
     )
     return WebUtils.response_success({"id": item.id})
+
+
+def _rename(request, item, label):
+    name = json_object(request).get("name")
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 128:
+        return WebUtils.response_error(error_message=f"{label}须为 1 至 128 个字符")
+    item.name = name.strip()
+    item.updated_by = _user(request)
+    item.save(update_fields=["name", "updated_by", "updated_at"])
+    return WebUtils.response_success({"name": item.name})
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+@api_errors
+@HasPermission("workflow-Edit")
+def rename_workflow(request, workflow_id):
+    workflow = Workflow.objects.get(id=workflow_id, domain=domain_of(request))
+    return _rename(request, workflow, "流程名称")
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+@api_errors
+@HasPermission("form-Edit")
+def rename_form(request, form_id):
+    form = FormModel.objects.get(id=form_id, domain=domain_of(request))
+    return _rename(request, form, "表单名称")
 
 
 @csrf_exempt

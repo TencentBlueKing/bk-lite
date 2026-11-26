@@ -2,6 +2,7 @@
 
 import { ItsmDrawer as Drawer, usePageLeave } from '@/app/itsm/components/interaction-surfaces';
 import { Button, Empty, Tag, message } from 'antd';
+import { EditableDesignerName } from '../../../components/editable-designer-name';
 import { DesignerLoadStatus, useDesignerLoad } from '../../../components/designer-load';
 import { ItsmBackButton } from '@/app/itsm/components/back-button';
 import { useParams } from 'next/navigation';
@@ -14,6 +15,7 @@ import type { FormFieldSchema, FormSchema } from '../../../types';
 
 interface FormDetail {
   name: string;
+  can_edit: boolean;
   schema: FormSchema;
   versions: Array<{ id: number; version_no: number; is_published: boolean }>;
 }
@@ -77,7 +79,15 @@ function FormEditor({ formId }: { formId: number }) {
         <div className="flex items-center gap-3">
           <ItsmBackButton href="/itsm/form" label="返回表单列表" />
           <div className="h-4 w-px bg-[var(--color-border)]" />
-          <span className="text-sm font-medium text-[var(--color-text-1)]">{detail?.name || t('itsm.design.formDesigner')}</span>
+          {detail?.can_edit ? (
+            <EditableDesignerName name={detail.name} label="表单名称" fallback={t('itsm.design.formDesigner')} disabled={busy}
+              onSave={async next => {
+                await api.renameForm(formId, next);
+                setDetail(current => current && { ...current, name: next });
+              }} />
+          ) : (
+            <span className="text-sm font-medium text-[var(--color-text-1)]">{detail?.name || t('itsm.design.formDesigner')}</span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setPreview((current) => !current)}>{preview ? t('itsm.design.backEdit') : t('itsm.design.previewForm')}</Button>

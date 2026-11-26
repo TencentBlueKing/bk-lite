@@ -70,6 +70,10 @@ export function useItsmApi() {
     [post],
   );
   const getForm = useCallback((id: number) => get(`/itsm/api/forms/${id}/`), [get]);
+  const renameForm = useCallback(
+    (id: number, name: string) => put(`/itsm/api/forms/${id}/name/`, { name }),
+    [put],
+  );
   const saveForm = useCallback((id: number, schema: unknown) => put(`/itsm/api/forms/${id}/`, { schema }), [put]);
   const publishForm = useCallback(
     (id: number, schema: unknown) => post(`/itsm/api/forms/${id}/publish/`, { schema }),
@@ -79,6 +83,10 @@ export function useItsmApi() {
   const createWorkflow = useCallback(
     (body: { name: string; key: string; form_id?: number }) => post('/itsm/api/workflows/', body),
     [post],
+  );
+  const renameWorkflow = useCallback(
+    (id: number, name: string) => put(`/itsm/api/workflows/${id}/name/`, { name }),
+    [put],
   );
   const getDesign = useCallback((id: number) => get(`/itsm/api/workflows/${id}/design/`), [get]);
   const saveDesign = useCallback(
@@ -288,10 +296,12 @@ export function useItsmApi() {
     listForms,
     createForm,
     getForm,
+    renameForm,
     saveForm,
     publishForm,
     listWorkflows,
     createWorkflow,
+    renameWorkflow,
     getDesign,
     saveDesign,
     publishWorkflow,
