@@ -21,9 +21,6 @@ import {
 import { rewriteParamQueryRefs } from '@/app/ops-analysis/utils/optionsQueryParamRefs';
 import { findReusableFilterDefinition } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import {
-  buildRelativeTimeRangeFilterValue,
-} from '@/app/ops-analysis/utils/filterValue';
-import {
   syncFilterValuesWithDefinitions as syncFilterValuesForDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
@@ -124,7 +121,7 @@ export const buildFiltersFromDashboardLayout = ({
         defaultValue = existing.defaultValue;
       } else if (param.value !== undefined && param.value !== null) {
         if (param.type === 'timeRange' && typeof param.value === 'number') {
-          defaultValue = buildRelativeTimeRangeFilterValue(param.value);
+          defaultValue = { selectValue: param.value };
         } else {
           defaultValue = param.value as FilterValue;
         }
