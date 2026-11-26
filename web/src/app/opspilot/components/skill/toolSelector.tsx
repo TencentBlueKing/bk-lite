@@ -61,7 +61,8 @@ const isDbTool = (tool?: SelectTool | null) =>
 export const toolHasConfigurableFields = (tool?: SelectTool | null) => {
   if (!tool || isMonitorToolConfig(tool)) return false;
   if (isMlopsTool(tool) || isDbTool(tool)) return true;
-  return (tool.kwargs || []).some((item) => Boolean(String(item?.key || '').trim()));
+  const kwargs = Array.isArray(tool.kwargs) ? tool.kwargs : [];
+  return kwargs.some((item) => Boolean(String(item?.key || '').trim()));
 };
 
 type CatalogTool = SelectTool & { id: number; rawName: string };

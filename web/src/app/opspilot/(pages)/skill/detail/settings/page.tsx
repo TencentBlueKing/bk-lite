@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
+import { Alert, Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
@@ -29,6 +29,7 @@ import SkillPackageParamsModal, {
 } from '@/app/opspilot/components/skill/skillPackageParamsModal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { downloadBlob, readBlobError, takeAgentImportNotes } from '@/app/opspilot/utils/agentTransfer';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
@@ -61,7 +62,7 @@ const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
 const SkillSettingsForm = ({ id }: { id: string }) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
-  const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail } = useSkillApi();
+  const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail, exportAgent } = useSkillApi();
   const { fetchKnowledgeBases } = useWikiApi();
   const { fetchWorkflowMemorySpaces } = useMemoryApi();
   const { refreshSkillInfo } = useSkill();
@@ -102,6 +103,11 @@ const SkillSettingsForm = ({ id }: { id: string }) => {
   const [editingSkillPackage, setEditingSkillPackage] = useState<SkillPackage | null>(null);
   const [pendingRemoveAsset, setPendingRemoveAsset] = useState<SkillPackage | null>(null);
   const [isTestChatFullscreen, setIsTestChatFullscreen] = useState(false);
+  const [importNotes, setImportNotes] = useState<string[]>([]);
+
+  useEffect(() => {
+    setImportNotes(takeAgentImportNotes());
+  }, []);
 
   const currentModelName = useMemo(() => {
     if (!selectedModelId) return '';
@@ -244,6 +250,16 @@ const SkillSettingsForm = ({ id }: { id: string }) => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isTestChatFullscreen]);
+
+  const handleExportAgent = async () => {
+    try {
+      const blob = await exportAgent(id);
+      const agentName = form.getFieldValue('name') || id;
+      downloadBlob(blob, `${agentName}.zip`);
+    } catch (error) {
+      message.error(await readBlobError(error, t('common.exportFailed')));
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -777,6 +793,21 @@ const SkillSettingsForm = ({ id }: { id: string }) => {
 
             {/* 配置面板表单滚动区 */}
             <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+              {importNotes.length > 0 && (
+                <Alert
+                  className="mb-4"
+                  type="warning"
+                  showIcon
+                  message={t('skill.importNotes', '导入说明')}
+                  description={(
+                    <ul className="mb-0 list-disc pl-4">
+                      {importNotes.map((note, index) => (
+                        <li key={`${note}-${index}`}>{note}</li>
+                      ))}
+                    </ul>
+                  )}
+                />
+              )}
               <Form
                 form={form}
                 layout="horizontal"
@@ -1114,9 +1145,12 @@ const SkillSettingsForm = ({ id }: { id: string }) => {
                 {t('skill.settings.applyHint')}
               </span>
               <PermissionWrapper requiredPermissions={['Edit']} instPermissions={skillPermissions}>
-                <Button type="primary" onClick={handleSave} loading={saveLoading}>
-                  {t('common.save')}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={handleExportAgent}>{t('common.export')}</Button>
+                  <Button type="primary" onClick={handleSave} loading={saveLoading}>
+                    {t('common.save')}
+                  </Button>
+                </div>
               </PermissionWrapper>
             </div>
           </div>

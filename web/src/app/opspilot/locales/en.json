@@ -1699,6 +1699,7 @@
     "pageTitle": "Agents",
     "toolDescriptionDefault": "Calls external interfaces and runs automation for the agent",
     "pageDescription": "Configure LLMs, knowledge bases, and tools for Q&A and automation",
+    "importNotes": "Import notes",
     "form": {
       "guide": "Guide",
       "guideTip": "An initialization message sent at the start of each conversation. Supports standard Markdown syntax and additional tags. [Quick Key]: Users can click to send this question directly.",
