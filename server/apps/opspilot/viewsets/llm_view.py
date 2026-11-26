@@ -107,6 +107,7 @@ from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params, merge_package_params, validate_package_params
+from apps.opspilot.utils.skill_tool_log import log_skill_tools_replaced, skill_tools_before_save
 from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
 from apps.opspilot.utils.user_message import user_message
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
@@ -244,6 +245,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = getattr(serializer, "instance", None)
+        if instance is not None and "tools" in params:
+            log_skill_tools_replaced(skill_id=instance.id, actor=request.user.username, before=[], after=instance.tools)
         if instance is not None and "skill_package_params" in params:
             instance.skill_package_params = params["skill_package_params"]
             instance.save(update_fields=["skill_package_params"])
@@ -368,6 +371,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 if i.get("type") == "password":
                     EncryptMixin.decrypt_field("value", i)
                     EncryptMixin.encrypt_field("value", i)
+        previous_tools = skill_tools_before_save(params, instance.tools)
         self._normalize_skill_param_passwords(params, instance)
         package_params_error = self._normalize_skill_package_params_for_update(request, params, instance)
         if package_params_error is not None:
@@ -387,6 +391,12 @@ class LLMViewSet(PinMixin, AuthViewSet):
         instance.updated_by = request.user.username
         update_fields.add("updated_by")
         instance.save(update_fields=update_fields)
+        log_skill_tools_replaced(
+            skill_id=instance.id,
+            actor=request.user.username,
+            before=previous_tools,
+            after=instance.tools,
+        )
         sync_skill_channel_usage_teams(instance)
         # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
         # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
