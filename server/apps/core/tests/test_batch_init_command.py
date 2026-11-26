@@ -270,45 +270,26 @@ class TestHandleDispatch:
 
         assert not [call for call in calls if call[0] == "create_user"]
 
-    def test_admin_existence_check_matches_legacy_cross_domain_scope(self, monkeypatch):
+    @pytest.mark.parametrize(("pks", "expected"), [([7], True), ([], False)])
+    def test_admin_existence_check_locks_legacy_cross_domain_scope_without_limit(self, monkeypatch, pks, expected):
         calls = []
-        queryset = SimpleNamespace(exists=lambda: calls.append("exists") or True)
-        queryset.select_for_update = lambda: calls.append("select_for_update") or queryset
+
+        def forbidden_exists():
+            raise AssertionError("exists() 带 LIMIT 1，达梦不支持 FOR UPDATE 与 LIMIT 同用")
+
+        queryset = SimpleNamespace(exists=forbidden_exists)
+        queryset.values_list = lambda *fields, **kwargs: calls.append(("values_list", fields, kwargs)) or pks
         manager = SimpleNamespace(filter=lambda **kwargs: calls.append(("filter", kwargs)) or queryset)
+        manager.select_for_update = lambda: calls.append("select_for_update") or manager
         model = SimpleNamespace(objects=manager)
         monkeypatch.setattr(bi.django_apps, "get_model", lambda *args: calls.append(("get_model", args)) or model)
-        monkeypatch.setattr(
-            bi.connection,
-            "features",
-            SimpleNamespace(has_select_for_update=True, supports_select_for_update_with_limit=True),
-        )
 
-        assert _any_admin_username_exists() is True
+        assert _any_admin_username_exists() is expected
         assert calls == [
             ("get_model", ("system_mgmt", "User")),
-            ("filter", {"username": "admin"}),
             "select_for_update",
-            "exists",
-        ]
-
-    def test_admin_existence_check_skips_select_for_update_when_limit_unsupported(self, monkeypatch):
-        calls = []
-        queryset = SimpleNamespace(exists=lambda: calls.append("exists") or True)
-        queryset.select_for_update = lambda: calls.append("select_for_update") or queryset
-        manager = SimpleNamespace(filter=lambda **kwargs: calls.append(("filter", kwargs)) or queryset)
-        model = SimpleNamespace(objects=manager)
-        monkeypatch.setattr(bi.django_apps, "get_model", lambda *args: calls.append(("get_model", args)) or model)
-        monkeypatch.setattr(
-            bi.connection,
-            "features",
-            SimpleNamespace(has_select_for_update=True, supports_select_for_update_with_limit=False),
-        )
-
-        assert _any_admin_username_exists() is True
-        assert calls == [
-            ("get_model", ("system_mgmt", "User")),
             ("filter", {"username": "admin"}),
-            "exists",
+            ("values_list", ("pk",), {"flat": True}),
         ]
 
     def test_system_mgmt_runs_opspilot_legacy_menu_cleanup_before_realm_resource(self, calls):

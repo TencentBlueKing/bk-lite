@@ -94,16 +94,6 @@ def _constraint_names(schema_editor, model) -> set[str]:
     return {name.lower() for name in constraints}
 
 
-class FakeRemoveIndex(migrations.RemoveIndex):
-    """对应 FakeAddIndex：这个名字从未在目标库创建。"""
-
-    def database_forwards(self, *args, **kwargs):
-        pass
-
-    def database_backwards(self, *args, **kwargs):
-        pass
-
-
 class RemoveIndexIfExists(migrations.RemoveIndex):
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
         model = from_state.apps.get_model(app_label, self.model_name)

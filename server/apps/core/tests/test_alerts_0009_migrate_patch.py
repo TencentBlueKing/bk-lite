@@ -1,4 +1,4 @@
-"""alerts.0009 信创补丁：FakeAddIndex 必须配对，删除必须能从任意中断点重跑。
+"""alerts.0009 信创补丁：索引可能从未创建，删除必须能从任意中断点重跑。
 
 0005 补丁用 FakeAddIndex 跳过 alerts_sess_event_i_5ab59a_idx，原始 0009 按名删除会失败；
 达梦和 MySQL 系 DDL 自动提交，失败前的删除已经生效，重跑时对象已经不在。
@@ -66,12 +66,13 @@ def test_engine_that_skips_fk_index_in_0005_patches_0009(engine):
 
     operations = _operations(path)
     rows = _index_ops(operations)
-    assert [row for row in rows if row[1] == FK_INDEX] == [("FakeRemoveIndex", FK_INDEX, "remove")]
+    # 0005 补丁上线前迁移过的库里，这个索引真实存在，不能用 Fake 跳过。
+    assert [row for row in rows if row[1] == FK_INDEX] == [("RemoveIndexIfExists", FK_INDEX, "remove")]
     assert [row for row in rows if row[1] == SESSION_INDEX] == [("RemoveIndexIfExists", SESSION_INDEX, "remove")]
 
     original = import_module(f"apps.alerts.migrations.{MIGRATION_0009}").Migration.operations
     assert [op.describe() for op in operations] == [op.describe() for op in original]
-    assert all(type(op).__name__ == "FakeRemoveIndex" or type(op).__name__.endswith("IfExists") for op in operations)
+    assert all(type(op).__name__.endswith("IfExists") for op in operations)
 
 
 def _legacy_state():
@@ -90,7 +91,8 @@ def _legacy_tables(state) -> set[str]:
 
 
 def _existing(tables: set[str]) -> set[str]:
-    return tables & set(connection.introspection.table_names())
+    present = {name.lower() for name in connection.introspection.table_names()}
+    return {table for table in tables if table.lower() in present}
 
 
 def _drop_remaining_legacy_tables(state):
@@ -146,12 +148,30 @@ def test_patched_0009_drops_legacy_tables_and_can_run_again(engine, legacy_alert
 @pytest.mark.integration
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("engine", ENGINES)
-def test_patched_0009_resumes_after_original_0009_stopped_midway(engine, legacy_alerts_tables):
+def test_patched_0009_skips_fk_index_never_created(engine, legacy_alerts_tables):
+    state, tables = legacy_alerts_tables
+    model = state.apps.get_model("alerts", "SessionEventRelation")
+    index = next(index for index in model._meta.indexes if index.name == FK_INDEX)
+    with connection.schema_editor() as editor:
+        editor.remove_index(model, index)
+
+    _apply(_patched_0009(engine), state)
+    assert not _existing(tables)
+
+
+ORIGINAL_STEPS = len(import_module(f"apps.alerts.migrations.{MIGRATION_0009}").Migration.operations)
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("committed", range(1, ORIGINAL_STEPS))
+def test_patched_0009_resumes_after_original_0009_stopped_midway(engine, committed, legacy_alerts_tables):
     state, tables = legacy_alerts_tables
     original = import_module(f"apps.alerts.migrations.{MIGRATION_0009}").Migration(MIGRATION_0009, "alerts")
-    # 达梦和 MySQL 系上，原始 0009 在第 3 步 DROP INDEX 失败前，已经提交了前两步。
-    stopped = migrations.Migration("0009_stopped_before_drop_index", "alerts")
-    stopped.operations = original.operations[:2]
+    # 达梦和 MySQL 系 DDL 自动提交：原始 0009 在任一步失败时，前面各步已经生效。
+    stopped = migrations.Migration("0009_stopped_midway", "alerts")
+    stopped.operations = original.operations[:committed]
     _apply(stopped, state)
 
     with pytest.raises(DatabaseError):

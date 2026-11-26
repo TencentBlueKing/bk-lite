@@ -5,15 +5,13 @@
 #      再 AddIndex 会 -3236）。0009 按该名字 DROP INDEX 得到 -2139，迁移未登记。
 #   2. 达梦 DDL 自动提交。失败前的删除已经生效，重跑原始 0009 会因对象已不在而失败。
 # 方案:
-#   - FakeRemoveIndex 跳过从未创建的命名索引
-#   - 其余删除先查库，对象已不在就跳过，任意中断点都能重跑做完
+#   - 每步删除先查库，对象不在（从未创建或上次已删）就跳过，任意中断点都能重跑做完
 
 from django.db import migrations
 
 from migrate_patch.patches.compat_ops import (
     AlterUniqueTogetherIfExists,
     DeleteModelIfExists,
-    FakeRemoveIndex,
     RemoveFieldIfExists,
     RemoveIndexIfExists,
 )
@@ -33,7 +31,7 @@ class Migration(migrations.Migration):
             name="sessioneventrelation",
             unique_together=None,
         ),
-        FakeRemoveIndex(model_name="sessioneventrelation", name="alerts_sess_event_i_5ab59a_idx"),
+        RemoveIndexIfExists(model_name="sessioneventrelation", name="alerts_sess_event_i_5ab59a_idx"),
         RemoveIndexIfExists(model_name="sessioneventrelation", name="alerts_sess_session_76b0b9_idx"),
         RemoveFieldIfExists(
             model_name="sessioneventrelation",
