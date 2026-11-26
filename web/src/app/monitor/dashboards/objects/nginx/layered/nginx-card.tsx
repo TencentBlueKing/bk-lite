@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import ProDashLoading from '../../host/layered/pro-dash-loading';
-import { type NginxSeriesItem, type Point } from './model';
+import { type NginxSeriesItem } from './model';
 import { NginxHint } from './nginx-hint';
 import type { NginxHintCopy } from './hints';
 import { NginxPlot } from './nginx-plot';
@@ -65,59 +65,6 @@ function CardStatus({
   );
 }
 
-export function NginxSpark({ points, step = false }: { points: readonly Point[]; step?: boolean }) {
-  if (points.length < 1) return <div className="h-6 w-full" data-nginx-spark="" />;
-  const width = 160;
-  const height = 24;
-  const values = points.map((point) => point.value);
-  const min = Math.min(0, ...values);
-  const max = Math.max(...values, min + 1);
-  const coords = points.map((point, index) => {
-    const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
-    const y = height - 2 - ((point.value - min) / (max - min)) * (height - 4);
-    return [x, y] as const;
-  });
-  let path = '';
-  coords.forEach((coord, index) => {
-    if (index === 0) {
-      path += `M${coord[0]},${coord[1]}`;
-      return;
-    }
-    const previous = coords[index - 1];
-    path += step ? `H${coord[0]}V${coord[1]}` : `L${coord[0]},${coord[1]}`;
-    if (!step && previous) return;
-  });
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-6 w-full" data-nginx-spark="" preserveAspectRatio="none" aria-hidden="true">
-      <path d={path} fill="none" stroke="var(--color-primary)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-export interface NginxSharePart {
-  id: string;
-  color: string;
-  value: number;
-}
-
-function NginxShareBar({ parts }: { parts: readonly NginxSharePart[] }) {
-  const sum = parts.reduce((total, part) => total + Math.max(part.value, 0), 0);
-  return (
-    <div className="h-3 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]" data-nginx-share-bar="">
-      {sum > 0 ? (
-        <div className="flex h-full w-full">
-          {parts.map((part) => (
-            <div
-              key={part.id}
-              style={{ width: `${(Math.max(part.value, 0) / sum) * 100}%`, background: part.color }}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 const TILE_FRAME = `${CARD} !h-[104px] h-full w-full px-3 py-2.5`;
 const FOCUS_FRAME = `${CARD} !h-[136px] h-full w-full px-3 py-3 text-left`;
 const CARD_SHELL = 'flex h-full min-h-0 w-full min-w-0 flex-col';
@@ -133,7 +80,7 @@ function TileHeading({
 }) {
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
+      <div className="inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-[var(--color-text-2)]">
         <span className="truncate">{label}</span>
         {hint ? <NginxHint copy={hint} /> : null}
       </div>
@@ -150,15 +97,11 @@ export function NginxTile({
   figure,
   sub,
   tone,
-  spark,
-  sparkStep = false,
-  progress,
   phase = 'ready',
   emptyText = '暂无数据',
   onRetry,
   onActivate,
-  extra,
-  baseline = false
+  extra
 }: {
   anchor?: string;
   label: string;
@@ -167,47 +110,30 @@ export function NginxTile({
   figure: string;
   sub?: string;
   tone?: string;
-  spark?: readonly Point[];
-  sparkStep?: boolean;
-  progress?: number | null;
   phase?: NginxQueryPhase;
   emptyText?: string;
   onRetry?: () => void;
   onActivate?: () => void;
   extra?: ReactNode;
-  /** 概览四张 KPI 共用同一条大数基线。其它签保持底部对齐。 */
-  baseline?: boolean;
 }) {
   const quiet = phase !== 'ready' || figure === '暂无数据';
   const figureNode = (
     <div
-      className="text-[28px] font-semibold leading-none tabular-nums text-[var(--color-text-1)]"
+      className="text-[24px] font-semibold leading-[26px] tabular-nums text-[var(--color-text-1)]"
       data-nginx-figure=""
       style={tone ? { color: tone } : undefined}
     >
       {figure}
     </div>
   );
-  const progressNode = progress != null ? (
-    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-fill-2)]">
-      <div
-        className="h-full rounded-full bg-[var(--color-primary)]"
-        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-      />
-    </div>
-  ) : null;
-  const body = baseline && !quiet ? (
-    <div className="grid h-full w-full grid-rows-[auto_auto_minmax(0,1fr)_1.5rem]">
+  const body = !quiet ? (
+    <div className="flex h-full w-full flex-col">
       <TileHeading label={label} hint={hint} unit={unit} />
-      <div className="flex w-full items-baseline gap-2" data-nginx-figure-row="">
+      <div className="mt-1 flex w-full items-baseline gap-2" data-nginx-figure-row="">
         {figureNode}
         {extra}
       </div>
-      <div className="min-h-0 w-full text-[12px] text-[var(--color-text-3)]">{sub}</div>
-      <div className="flex h-6 w-full items-end self-end" data-nginx-tile-trail="">
-        {spark ? <NginxSpark points={spark} step={sparkStep} /> : null}
-        {progressNode}
-      </div>
+      {sub ? <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
     </div>
   ) : (
     <>
@@ -216,20 +142,10 @@ export function NginxTile({
         <div className="min-h-0 w-full flex-1">
           <CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} />
         </div>
-      ) : quiet ? (
+      ) : (
         <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
           <div className="text-[14px] text-[var(--color-text-3)]">{figure}</div>
           {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
-        </div>
-      ) : (
-        <div className="flex min-h-0 w-full flex-1 flex-col justify-end">
-          <div className="flex w-full items-end justify-between gap-2">
-            {figureNode}
-            {extra}
-          </div>
-          {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
-          {spark ? <NginxSpark points={spark} step={sparkStep} /> : null}
-          {progressNode}
         </div>
       )}
     </>
@@ -255,9 +171,6 @@ export function NginxFocusTile({
   unit,
   figure,
   sub,
-  spark,
-  sparkStep = false,
-  bar,
   phase = 'ready',
   emptyText = '暂无数据',
   onRetry,
@@ -268,20 +181,18 @@ export function NginxFocusTile({
   unit?: string;
   figure: string;
   sub?: string;
-  spark?: readonly Point[];
-  sparkStep?: boolean;
-  bar?: readonly NginxSharePart[];
   phase?: NginxQueryPhase;
   emptyText?: string;
   onRetry?: () => void;
   onOpen?: () => void;
 }) {
   const title = (
-    <div className="flex w-full min-w-0 items-center gap-1" data-nginx-focus-title="">
+    <div className="flex w-full min-w-0 items-center justify-between gap-2" data-nginx-focus-title="">
       <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
         <span className="truncate">{label}</span>
         {hint ? <NginxHint copy={hint} /> : null}
       </div>
+      {unit ? <span className="shrink-0 text-[12px] font-normal text-[var(--color-text-3)]">{unit}</span> : null}
     </div>
   );
   const quietFigure = figure === '暂无数据';
@@ -290,17 +201,21 @@ export function NginxFocusTile({
       {title}
       <div className="min-h-0 w-full flex-1"><CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} /></div>
     </div>
+  ) : quietFigure ? (
+    <div className={`${CARD_SHELL} gap-1`}>
+      {title}
+      <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
+        <div className="text-[14px] text-[var(--color-text-3)]" data-nginx-figure="">{figure}</div>
+        {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
+      </div>
+    </div>
   ) : (
-    <div className="grid h-full w-full grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-1">
+    <div className="flex h-full w-full flex-col gap-1">
       {title}
       <div className="flex w-full items-baseline gap-2" data-nginx-figure-row="">
-        <div className={`tabular-nums ${quietFigure ? 'text-[14px] font-normal text-[var(--color-text-3)]' : 'text-[22px] font-semibold leading-tight text-[var(--color-text-1)]'}`} data-nginx-figure="">{figure}</div>
-        {unit && !quietFigure ? <span className="shrink-0 text-[12px] font-normal text-[var(--color-text-3)]">{unit}</span> : null}
+        <div className="text-[24px] font-semibold leading-[26px] tabular-nums text-[var(--color-text-1)]" data-nginx-figure="">{figure}</div>
       </div>
       <div className="w-full text-[12px] text-[var(--color-text-3)]">{sub}</div>
-      <div className="flex w-full items-end" data-nginx-focus-trail="">
-        {bar ? <NginxShareBar parts={bar} /> : <NginxSpark points={spark ?? []} step={sparkStep} />}
-      </div>
     </div>
   );
   if (!onOpen || phase !== 'ready') {
@@ -358,7 +273,8 @@ export function NginxChartCard({
   onRetry,
   kind = 'line',
   percent = false,
-  height = 280
+  height = 280,
+  countAxis = false
 }: {
   anchor?: string;
   title: string;
@@ -373,11 +289,12 @@ export function NginxChartCard({
   kind?: 'line' | 'step' | 'bar';
   percent?: boolean;
   height?: number;
+  countAxis?: boolean;
 }) {
   const hasPoints = items.some((item) => item.points.length > 0);
   const chartStatus: NginxQueryPhase | 'empty' | 'ready' = phase !== 'ready' ? phase : hasPoints ? 'ready' : 'empty';
   return (
-    <section id={anchor} className={CARD} style={{ height }} data-nginx-chart={title}>
+    <section id={anchor} className={CARD} style={{ height }} data-nginx-chart={title} data-nginx-count-axis={countAxis ? '' : undefined}>
       <div className="flex items-center justify-between gap-2 px-3 pt-3">
         <div className="inline-flex min-w-0 items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
           <span className="truncate">{title}</span>
@@ -393,6 +310,7 @@ export function NginxChartCard({
             kind={kind}
             floor={floor}
             percent={percent}
+            countAxis={countAxis}
             formatReading={formatReading}
             height={height - 64}
           />

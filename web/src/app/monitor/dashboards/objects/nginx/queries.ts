@@ -1,7 +1,7 @@
 /**
  * Nginx 专业盘查询。打在 TSDB 原始名上。
  * 趋势 rate 用 __$rate_window__，等于 max(4×采集间隔, step)。
- * 即时窗口次数和比例仍用 __$window__（整段范围）。本文件没有这类模板。
+ * 即时窗口次数和比例仍用 __$window__（整段范围）。
  * 传统盘 config.ts 里的查询保持原样，不在这里改。
  */
 
@@ -173,6 +173,7 @@ export const NGINX_PRO_QUERIES: readonly NginxQuerySpec[] = [
   range('filterStatusRate', statusRate('nginx_vts_filter', ANY)),
   range('filterBytes', bytesRate('nginx_vts_filter', ANY)),
   range('filterTime', `nginx_vts_filter_request_time${ANY}`),
+  instant('droppedWindow', 'max(increase(nginx_accepts{__$labels__}[__$window__]) - increase(nginx_handled{__$labels__}[__$window__]), 0)'),
   instant('starWindowRequests', `increase(nginx_vts_server_requests${ZONE_STAR}[__$window__])`),
   instant('zoneWindowRequests', `increase(nginx_vts_server_requests${ZONE_DETAIL}[__$window__])`),
   instant('starWindowStatus', statusIncrease('nginx_vts_server', ZONE_STAR, '__$window__')),
@@ -182,6 +183,11 @@ export const NGINX_PRO_QUERIES: readonly NginxQuerySpec[] = [
   range('starStatusStep', statusIncrease('nginx_vts_server', ZONE_STAR, '__$step__')),
   instant('upWindowRequests', 'sum(increase(nginx_vts_upstream_requests{__$labels__}[__$window__]))'),
   instant('upWindow5xx', 'sum(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__]))'),
+  instant('upWindowStatus', CODES.map((code) => tag(
+    `sum(increase(nginx_vts_upstream_response_${code}_count{__$labels__}[__$window__]))`,
+    'code',
+    code
+  )).join(' or ')),
   instant('upMemberWindowRequests', `increase(nginx_vts_upstream_requests${ANY}[__$window__])`),
   instant('upMemberWindowStatus', statusIncrease('nginx_vts_upstream', ANY, '__$window__', ['4xx', '5xx'])),
   instant('upMemberWindowBytes', bytesIncrease('nginx_vts_upstream', ANY)),

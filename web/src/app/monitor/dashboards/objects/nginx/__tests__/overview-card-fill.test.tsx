@@ -75,7 +75,8 @@ const stubModel = () => buildNginxDashboard({
         fresh('nginx_waiting'),
         fresh('nginx_accepts'),
         fresh('nginx_handled')
-      ]
+      ],
+      droppedWindow: [{ labels: {}, value: 1 }]
     }
   },
   capabilityPhases: { serverCap: 'ready', upstreamCap: 'ready' }
@@ -89,7 +90,7 @@ const readyPhases = (): Record<string, NginxQueryPhase> => {
   return phases;
 };
 
-const KPI = ['采集状态', '请求速率', '活跃连接', '告警数量'] as const;
+const KPI = ['请求速率', '活跃连接', '等待连接', '丢弃连接'] as const;
 
 const classNames = (node: Element | null | undefined) => (node?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
 
@@ -129,57 +130,66 @@ const renderOverview = ({
 );
 
 describe('overview cards fill their grid cells', () => {
-  it('stretches four KPI cards and three focus cards, including the spark and share bar', () => {
+  it('stretches four KPI cards and three focus cards without mini trends', () => {
     const model = stubModel();
     expect(model.board.focusThirdTitle).toBe('连接结构');
     const view = renderOverview({ model, alertCount: 2 });
 
+    expect(view.container.querySelector('[data-nginx-host]')).toBeNull();
+    expect(view.container.querySelector('[data-nginx-tile="采集状态"]')).toBeNull();
+    expect(view.container.querySelector('[data-nginx-tile="告警数量"]')).toBeNull();
+    expect(view.container.textContent).toContain('健康概览');
+    expect(view.container.textContent).toContain('事件');
+
     KPI.forEach((label) => {
       const card = view.container.querySelector(`[data-nginx-tile="${label}"]`);
       expectFill(card);
+      expect(card?.closest('[data-nginx-width="1/4"]')).toBeTruthy();
       const row = card?.querySelector('[data-nginx-figure-row]');
       expect(classNames(row)).toEqual(expect.arrayContaining(['w-full', 'items-baseline']));
-      expect(classNames(card?.querySelector('[data-nginx-tile-trail]'))).toContain('w-full');
+      expect(card?.querySelector('[data-nginx-spark]')).toBeNull();
     });
-
-    const requestSpark = view.container.querySelector('[data-nginx-tile="请求速率"] [data-nginx-spark]');
-    const activeSpark = view.container.querySelector('[data-nginx-tile="活跃连接"] [data-nginx-spark]');
-    expect(classNames(requestSpark)).toContain('w-full');
-    expect(classNames(activeSpark)).toContain('w-full');
 
     ['请求是否骤变', '是否在丢连接', '连接结构'].forEach((label) => {
       const card = view.container.querySelector(`[data-nginx-focus="${label}"]`);
       expectFill(card);
+      expect(card?.closest('[data-nginx-width="1/3"]')).toBeTruthy();
       const row = card?.querySelector('[data-nginx-figure-row]');
       expect(classNames(row)).toEqual(expect.arrayContaining(['w-full', 'items-baseline']));
-      expect(classNames(card?.querySelector('[data-nginx-focus-trail]'))).toContain('w-full');
-      expect(card?.querySelector('[data-nginx-focus-title]')?.textContent).not.toContain('次/秒');
-      expect(card?.querySelector('[data-nginx-focus-title]')?.textContent).not.toContain('连接/秒');
+      expect(card?.querySelector('[data-nginx-spark]')).toBeNull();
+      expect(card?.querySelector('[data-nginx-share-bar]')).toBeNull();
     });
 
     const jump = view.container.querySelector('[data-nginx-focus="请求是否骤变"]');
-    expect(jump?.querySelector('[data-nginx-figure-row]')?.textContent).toContain('次/秒');
-    expect(classNames(jump?.querySelector('[data-nginx-spark]'))).toContain('w-full');
+    expect(jump?.querySelector('[data-nginx-focus-title]')?.textContent).toContain('次/秒');
+    expect(jump?.querySelector('[data-nginx-figure-row]')?.textContent).not.toContain('次/秒');
 
     const drop = view.container.querySelector('[data-nginx-focus="是否在丢连接"]');
-    expect(drop?.querySelector('[data-nginx-figure-row]')?.textContent).toContain('连接/秒');
-    expect(classNames(drop?.querySelector('[data-nginx-spark]'))).toContain('w-full');
-
-    const structure = view.container.querySelector('[data-nginx-focus="连接结构"] [data-nginx-share-bar]');
-    expect(classNames(structure)).toContain('w-full');
+    expect(drop?.querySelector('[data-nginx-focus-title]')?.textContent).toContain('连接/秒');
+    expect(drop?.querySelector('[data-nginx-figure-row]')?.textContent).not.toContain('连接/秒');
   });
 
-  it('keeps the alert card filled in loading, error, and empty', () => {
-    (['loading', 'error'] as const).forEach((alertPhase) => {
-      const view = renderOverview({ alertPhase, alertCount: null });
-      const card = view.container.querySelector('[data-nginx-tile="告警数量"]');
+  it('keeps the request card filled in loading, error, and empty', () => {
+    (['loading', 'error'] as const).forEach((phase) => {
+      const phases = readyPhases();
+      NGINX_CARD_QUERIES.request.forEach((key) => {
+        phases[key] = phase;
+      });
+      const view = renderOverview({ phases });
+      const card = view.container.querySelector('[data-nginx-tile="请求速率"]');
       expectFill(card);
-      expect(card?.textContent).toContain(alertPhase === 'loading' ? '加载中' : '加载失败');
+      expect(card?.textContent).toContain(phase === 'loading' ? '加载中' : '加载失败');
       cleanup();
     });
 
-    const empty = renderOverview({ alertPhase: 'ready', alertCount: null });
-    const card = empty.container.querySelector('[data-nginx-tile="告警数量"]');
+    const emptyModel = buildNginxDashboard({
+      onboarded: true,
+      nowSeconds: now,
+      data: { range: {}, instant: { serverCap: [], upstreamCap: [] } },
+      capabilityPhases: { serverCap: 'ready', upstreamCap: 'ready' }
+    });
+    const empty = renderOverview({ model: emptyModel });
+    const card = empty.container.querySelector('[data-nginx-tile="请求速率"]');
     expectFill(card);
     expect(card?.textContent).toContain('暂无数据');
   });
@@ -213,7 +223,7 @@ describe('overview cards fill their grid cells', () => {
     const card = empty.container.querySelector('[data-nginx-focus="连接结构"]');
     expectFill(card);
     expect(card?.textContent).toContain('暂无数据');
-    expect(classNames(card?.querySelector('[data-nginx-share-bar]'))).toContain('w-full');
-    expect(classNames(card?.querySelector('[data-nginx-focus-trail]'))).toContain('w-full');
+    expect(card?.querySelector('[data-nginx-share-bar]')).toBeNull();
+    expect(card?.querySelector('[data-nginx-spark]')).toBeNull();
   });
 });

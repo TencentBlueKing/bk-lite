@@ -18,15 +18,22 @@ export const pickDurationUnit = (maxAbsMs: number): DurationUnit => {
   return 'min';
 };
 
-export const formatDuration = (ms: number, unit: DurationUnit) => {
+/** 大数本身。单位由标题旁的灰字承担，不拼在数字后面。 */
+export const formatDurationValue = (ms: number, unit: DurationUnit) => {
   if (!Number.isFinite(ms)) return EMPTY_READING;
   if (unit === 'ms') {
     const digits = Math.abs(ms) >= 100 || ms === 0 ? 0 : 1;
-    return `${trimNumber(ms, digits)} ms`;
+    return trimNumber(ms, digits);
   }
   const scaled = unit === 's' ? ms / 1000 : ms / 60_000;
-  const suffix = unit === 's' ? '秒' : '分钟';
-  return `${trimNumber(scaled, Math.abs(scaled) >= 100 ? 0 : 1)} ${suffix}`;
+  return trimNumber(scaled, Math.abs(scaled) >= 100 ? 0 : 1);
+};
+
+export const formatDuration = (ms: number, unit: DurationUnit) => {
+  const value = formatDurationValue(ms, unit);
+  if (value === EMPTY_READING) return value;
+  const suffix = unit === 'ms' ? 'ms' : unit === 's' ? '秒' : '分钟';
+  return `${value} ${suffix}`;
 };
 
 export const formatDecimal = (value: number) => {

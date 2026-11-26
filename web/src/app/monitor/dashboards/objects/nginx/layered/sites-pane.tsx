@@ -1,13 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { byteScale, durationUnitLabel, formatBytes, formatBytesPerSecond, formatCount, formatDecimal, formatDuration, formatPerSecond, formatPercent, pickDurationUnit } from './format';
+import { useMemo, useState, type ReactNode } from 'react';
+import { byteScale, durationUnitLabel, formatBytes, formatBytesPerSecond, formatCount, formatDuration, formatPerSecond, pickDurationUnit } from './format';
 import { NGINX_HINTS } from './hints';
 import { NginxChartCard, NginxRankCard, NginxRetryBanner, NginxTile } from './nginx-card';
+import { NginxCompositionCard } from './nginx-composition';
 import { NginxHint } from './nginx-hint';
 import { filterPlotted } from './selection';
-import type { NginxDashboardModel, ZoneTableRow } from './model';
+import type { FilterTableRow, NginxDashboardModel, ZoneTableRow } from './model';
 import { NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from './query-phase';
+import { ProMetricTable, type ProMetricColumn, type ProMetricRow } from '../../../shared/widgets/pro-metric-table';
 
 const STATUS_COLORS: Record<string, string> = {
   '1xx': '#8c8c8c',
@@ -17,80 +19,37 @@ const STATUS_COLORS: Record<string, string> = {
   '5xx': '#ff4d4f'
 };
 
-const numberCell = (value: number | null, text: string) => (value == null ? '--' : text);
+const STATUS_ORDER = ['1xx', '2xx', '3xx', '4xx', '5xx'] as const;
+const CELL = 'flex min-w-0 min-[1100px]:col-span-3';
 
-function StatusMix({
-  parts,
-  phase,
-  emptyText,
-  onRetry
-}: {
-  parts: NginxDashboardModel['board']['statusParts'];
-  phase: NginxQueryPhase;
-  emptyText: string;
-  onRetry: () => void;
-}) {
-  const known = parts.some((part) => part.count != null);
-  if (phase !== 'ready' || !known) {
-    return (
-      <NginxChartCard
-        title="状态码构成"
-        hint={NGINX_HINTS.statusMix}
-        items={[]}
-        floor={1}
-        formatReading={(value) => formatCount(value, '次')}
-        phase={phase === 'ready' ? 'ready' : phase}
-        emptyText={emptyText}
-        onRetry={onRetry}
-      />
-    );
-  }
-  const rows = ['1xx', '2xx', '3xx', '4xx', '5xx'].map((code) => ({
-    code,
-    count: parts.find((part) => part.code === code)?.count ?? 0
-  }));
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  const peak = Math.max(...rows.map((row) => row.count), 0);
-  return (
-    <section className="flex h-[280px] flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-3">
-      <div className="inline-flex items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
-        状态码构成
-        <NginxHint copy={NGINX_HINTS.statusMix} />
-      </div>
-      <div className="mt-3 flex min-h-0 flex-1 flex-col justify-center gap-3">
-        {rows.map((row) => {
-          const share = total === 0 ? 0 : (row.count / total) * 100;
-          const width = peak === 0 ? 0 : (row.count / peak) * 100;
-          return (
-            <div key={row.code} className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-2 text-[13px]">
-              <span>{row.code}</span>
-              <span className="h-2 rounded-full bg-[var(--color-fill-2)]">
-                <span className="block h-2 rounded-full" style={{ width: `${width}%`, background: STATUS_COLORS[row.code] }} />
-              </span>
-              <span className="tabular-nums text-[var(--color-text-1)]">{formatCount(row.count, '次')} · {formatDecimal(share)}%</span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
+type ZoneSortKey = 'zone' | 'rate' | 'window' | '1xx' | '2xx' | '3xx' | '4xx' | '5xx' | 'in' | 'out' | 'time';
+type FilterSortKey = 'name' | 'key' | 'rate' | 'window' | '2xx' | '4xx' | '5xx' | 'in' | 'out' | 'time';
 
-type SortKey = 'rate' | 'window' | '1xx' | '2xx' | '3xx' | '4xx' | '5xx' | 'ratio' | 'in' | 'out' | 'time';
+const textOf = (value: number | null | undefined, text: string) => (value == null ? '--' : text);
 
-const sortValue = (row: ZoneTableRow, key: SortKey) => {
+const zoneNumber = (row: ZoneTableRow, key: ZoneSortKey) => {
   if (key === 'rate') return row.requestRate;
   if (key === 'window') return row.windowRequests ?? null;
   if (key === 'in') return row.windowBytesIn ?? null;
   if (key === 'out') return row.windowBytesOut ?? null;
   if (key === 'time') return row.timeMs;
-  if (key === 'ratio') {
-    const total = row.windowRequests;
-    const five = row.windowCodes?.['5xx'];
-    if (total == null || total === 0 || five == null) return null;
-    return five / total;
-  }
+  if (key === 'zone') return null;
   return row.windowCodes?.[key] ?? null;
+};
+
+const filterNumber = (row: FilterTableRow, key: FilterSortKey) => {
+  if (key === 'rate') return row.requestRate;
+  if (key === 'window') return row.windowRequests ?? null;
+  if (key === 'in') return row.windowBytesIn ?? null;
+  if (key === 'out') return row.windowBytesOut ?? null;
+  if (key === 'time') return row.timeMs;
+  if (key === '2xx' || key === '4xx' || key === '5xx') return row.windowCodes?.[key] ?? null;
+  return null;
+};
+
+const byNumber = (left: number | null, right: number | null, desc: boolean) => {
+  const delta = (right ?? Number.NEGATIVE_INFINITY) - (left ?? Number.NEGATIVE_INFINITY);
+  return desc ? delta : -delta;
 };
 
 export default function SitesPane({
@@ -106,8 +65,10 @@ export default function SitesPane({
   onRetry: (keys: readonly string[]) => void;
   onRetryFailed: () => void;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>('rate');
+  const [sortKey, setSortKey] = useState<ZoneSortKey>('rate');
   const [sortDesc, setSortDesc] = useState(true);
+  const [filterSort, setFilterSort] = useState<FilterSortKey>('rate');
+  const [filterDesc, setFilterDesc] = useState(true);
   const [zone, setZone] = useState<string | null>(null);
   const board = model.board;
   const kpiPhase = phaseOf(NGINX_CARD_QUERIES.sitesKpi, phases);
@@ -121,70 +82,180 @@ export default function SitesPane({
   if (model.showFilter) cardPhases.push(filterPhase);
   const failures = cardPhases.filter((item) => item === 'error').length;
   const rows = useMemo(() => [...model.zoneRows].sort((left, right) => {
-    const delta = (sortValue(right, sortKey) ?? Number.NEGATIVE_INFINITY) - (sortValue(left, sortKey) ?? Number.NEGATIVE_INFINITY);
-    return sortDesc ? delta : -delta;
+    if (sortKey === 'zone') {
+      const delta = left.zone.localeCompare(right.zone, 'zh');
+      return sortDesc ? -delta : delta;
+    }
+    return byNumber(zoneNumber(left, sortKey), zoneNumber(right, sortKey), sortDesc);
   }), [model.zoneRows, sortDesc, sortKey]);
+  const filterRows = useMemo(() => [...model.filterRows].sort((left, right) => {
+    if (filterSort === 'name' || filterSort === 'key') {
+      const delta = (filterSort === 'name' ? left.filterName : left.filterKey).localeCompare(
+        filterSort === 'name' ? right.filterName : right.filterKey,
+        'zh'
+      );
+      return filterDesc ? -delta : delta;
+    }
+    return byNumber(filterNumber(left, filterSort), filterNumber(right, filterSort), filterDesc);
+  }), [filterDesc, filterSort, model.filterRows]);
   const show1xx = [...rows, model.zoneSummary].some((row) => (row?.windowCodes?.['1xx'] ?? 0) > 0);
   const trend = zone ? filterPlotted(model.zoneRequest, new Set([zone])) : board.siteTrend;
   const bytePeak = board.trafficSeries.reduce((peak, item) => Math.max(peak, ...item.points.map((point) => Math.abs(point.value))), 0);
   const scale = byteScale(bytePeak);
-  const chooseSort = (key: SortKey) => {
-    if (sortKey === key) setSortDesc((value) => !value);
+  const chooseSort = (key: string) => {
+    const next = key as ZoneSortKey;
+    if (sortKey === next) setSortDesc((value) => !value);
     else {
-      setSortKey(key);
+      setSortKey(next);
       setSortDesc(true);
     }
   };
-  const head = (key: SortKey, label: string) => (
-    <th className="px-2 py-2 text-right">
-      <button type="button" className="font-semibold text-[var(--color-text-2)]" onClick={() => chooseSort(key)}>{label}</button>
-    </th>
-  );
+  const chooseFilterSort = (key: string) => {
+    const next = key as FilterSortKey;
+    if (filterSort === next) setFilterDesc((value) => !value);
+    else {
+      setFilterSort(next);
+      setFilterDesc(true);
+    }
+  };
   const tableTimeUnit = pickDurationUnit([
     ...model.zoneRows.map((row) => row.timeMs),
     model.zoneSummary?.timeMs
   ].reduce((peak, value) => (
     value != null && Number.isFinite(value) ? Math.max(peak, Math.abs(value)) : peak
   ), 0));
-  const ratioOf = (row: ZoneTableRow) => {
-    const total = row.windowRequests;
-    const five = row.windowCodes?.['5xx'];
-    if (total == null || total === 0 || five == null) return '--';
-    return formatPercent(five / total);
-  };
+  const zoneColumns: ProMetricColumn[] = [
+    { key: 'zone', label: '站点', align: 'left', minWidth: 160 },
+    { key: 'rate', label: '请求速率', align: 'right' },
+    { key: 'window', label: '窗口请求数', align: 'right' },
+    ...(show1xx ? [{ key: '1xx', label: '1xx', align: 'right' as const }] : []),
+    { key: '2xx', label: '2xx', align: 'right' },
+    { key: '3xx', label: '3xx', align: 'right' },
+    { key: '4xx', label: '4xx', align: 'right' },
+    { key: '5xx', label: '5xx', align: 'right' },
+    { key: 'in', label: '入站', align: 'right' },
+    { key: 'out', label: '出站', align: 'right' },
+    { key: 'time', label: '平均处理时间', align: 'right' }
+  ];
+  const zoneCsv = (row: ZoneTableRow, name: string) => zoneColumns.map((column) => {
+    if (column.key === 'zone') return name;
+    if (column.key === 'rate') return textOf(row.requestRate, formatPerSecond(row.requestRate ?? 0, '次'));
+    if (column.key === 'window') return textOf(row.windowRequests ?? null, formatCount(row.windowRequests ?? 0, '次'));
+    if (column.key === 'in') return textOf(row.windowBytesIn ?? null, formatBytes(row.windowBytesIn ?? 0));
+    if (column.key === 'out') return textOf(row.windowBytesOut ?? null, formatBytes(row.windowBytesOut ?? 0));
+    if (column.key === 'time') return textOf(row.timeMs, formatDuration(row.timeMs ?? 0, tableTimeUnit));
+    const code = row.windowCodes?.[column.key] ?? null;
+    return textOf(code, formatCount(code ?? 0, '次'));
+  });
+  const zoneCells = (row: ZoneTableRow, name: string): ReactNode[] => zoneCsv(row, name).map((value, index) => (
+    index === 0
+      ? <span key={name} className="block max-w-[240px] truncate" title={name}>{name}</span>
+      : value
+  ));
+  const zoneTableRows: ProMetricRow[] = rows.map((row) => ({
+    key: row.zone,
+    cells: zoneCells(row, row.zone),
+    csv: zoneCsv(row, row.zone)
+  }));
+  const zoneFooter: ProMetricRow | null = model.zoneSummary ? {
+    key: 'total',
+    cells: zoneCells(model.zoneSummary, '全部站点'),
+    csv: zoneCsv(model.zoneSummary, '全部站点')
+  } : null;
+  const filterColumns: ProMetricColumn[] = [
+    { key: 'name', label: '过滤器', align: 'left', minWidth: 160 },
+    { key: 'key', label: '过滤键', align: 'left' },
+    { key: 'rate', label: '请求速率', align: 'right' },
+    { key: 'window', label: '窗口请求数', align: 'right' },
+    { key: '2xx', label: '2xx', align: 'right' },
+    { key: '4xx', label: '4xx', align: 'right' },
+    { key: '5xx', label: '5xx', align: 'right' },
+    { key: 'in', label: '入站', align: 'right' },
+    { key: 'out', label: '出站', align: 'right' },
+    { key: 'time', label: '平均处理时间', align: 'right' }
+  ];
+  const filterCsv = (row: FilterTableRow) => [
+    row.filterName,
+    row.filterKey || '--',
+    textOf(row.requestRate, formatPerSecond(row.requestRate ?? 0, '次')),
+    textOf(row.windowRequests ?? null, formatCount(row.windowRequests ?? 0, '次')),
+    textOf(row.windowCodes?.['2xx'] ?? null, formatCount(row.windowCodes?.['2xx'] ?? 0, '次')),
+    textOf(row.windowCodes?.['4xx'] ?? null, formatCount(row.windowCodes?.['4xx'] ?? 0, '次')),
+    textOf(row.windowCodes?.['5xx'] ?? null, formatCount(row.windowCodes?.['5xx'] ?? 0, '次')),
+    textOf(row.windowBytesIn ?? null, formatBytes(row.windowBytesIn ?? 0)),
+    textOf(row.windowBytesOut ?? null, formatBytes(row.windowBytesOut ?? 0)),
+    textOf(row.timeMs, formatDuration(row.timeMs ?? 0, model.zoneTimeUnit))
+  ];
+  const filterTableRows: ProMetricRow[] = filterRows.map((row) => {
+    const csv = filterCsv(row);
+    return {
+      key: `${row.filterName}|${row.filterKey}`,
+      csv,
+      cells: csv.map((value, index) => (
+        index === 0
+          ? <span key={value} className="block max-w-[220px] truncate" title={row.filterName}>{row.filterName}</span>
+          : value
+      ))
+    };
+  });
+  const statusBlocked = board.windowRequests === '暂无数据' || board.windowRequests === '0';
+  const statusParts = STATUS_ORDER.map((code) => ({
+    id: code,
+    label: code,
+    color: STATUS_COLORS[code],
+    value: statusBlocked ? null : (board.statusParts.find((part) => part.code === code)?.count ?? 0)
+  }));
+  const tableEmpty = tablePhase !== 'ready' ? (
+    <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={tablePhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTable)} height={300} />
+  ) : !rows.length && !model.zoneSummary ? (
+    <div className="flex flex-1 items-center justify-center text-[14px] text-[var(--color-text-3)]">{emptyText}</div>
+  ) : undefined;
 
   return (
     <div className="flex flex-col gap-4" data-nginx-pane="sites">
       <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-        <div className="min-[1100px]:col-span-3">
+        <div className={CELL} data-nginx-width="1/4">
           <NginxTile label="窗口请求数" hint={NGINX_HINTS.windowRequests} unit="次" figure={board.windowRequests} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
         </div>
-        <div className="min-[1100px]:col-span-3">
-          <NginxTile label="4xx 比例" hint={NGINX_HINTS.ratio4xx} figure={board.ratio4xx} sub={board.count4xx} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+        <div className={CELL} data-nginx-width="1/4">
+          <NginxTile label="4xx 次数" hint={NGINX_HINTS.count4xx} unit="次" figure={board.count4xx} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
         </div>
-        <div className="min-[1100px]:col-span-3">
-          <NginxTile label="5xx 比例" hint={NGINX_HINTS.ratio5xx} figure={board.ratio5xx} sub={board.count5xx} tone={board.ratio5xxHot ? 'var(--color-fail)' : undefined} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+        <div className={CELL} data-nginx-width="1/4">
+          <NginxTile label="5xx 次数" hint={NGINX_HINTS.count5xx} unit="次" figure={board.count5xx} tone={board.count5xxHot ? 'var(--color-fail)' : undefined} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
         </div>
-        <div className="min-[1100px]:col-span-3">
-          <NginxTile label="平均处理时间" hint={NGINX_HINTS.avgTime} figure={board.avgTime} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+        <div className={CELL} data-nginx-width="1/4">
+          <NginxTile label="平均处理时间" hint={NGINX_HINTS.avgTime} unit={durationUnitLabel(model.requestTimeUnit)} figure={board.avgTime} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        <NginxChartCard
-          anchor="nginx-status-dist"
-          title="状态码分布"
-          hint={NGINX_HINTS.statusDist}
-          unit="次"
-          items={board.statusSteps}
-          floor={1}
-          kind="bar"
-          formatReading={(value) => formatCount(value, '次')}
-          phase={statusPhase}
-          emptyText={emptyText}
-          onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
-        />
-        <StatusMix parts={board.statusParts} phase={statusPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)} />
+        <div data-nginx-width="1/2">
+          <NginxChartCard
+            anchor="nginx-status-dist"
+            title="状态码分布"
+            hint={NGINX_HINTS.statusDist}
+            unit="次"
+            items={board.statusSteps}
+            floor={1}
+            kind="bar"
+            countAxis
+            formatReading={(value) => formatCount(value, '次')}
+            phase={statusPhase}
+            emptyText={emptyText}
+            onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
+          />
+        </div>
+        <div data-nginx-width="1/2">
+          <NginxCompositionCard
+            title="状态码构成"
+            hint={NGINX_HINTS.statusMix}
+            parts={statusParts}
+            noun="次"
+            phase={statusPhase}
+            emptyText={emptyText}
+            onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
+          />
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
         <NginxChartCard
@@ -240,117 +311,40 @@ export default function SitesPane({
           formatValue={(value) => formatCount(value, '次')}
         />
       </div>
-      <section className="flex h-[360px] flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]" data-nginx-sites-table="">
-        <div className="flex items-center gap-1 px-3 pt-3 text-[14px] font-semibold text-[var(--color-text-1)]">
-          站点
-          <NginxHint copy={NGINX_HINTS.sites} />
-        </div>
-        {tablePhase !== 'ready' ? (
-          <div className="min-h-0 flex-1">
-            <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={tablePhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTable)} height={300} />
-          </div>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full border-separate border-spacing-0 text-[13px]">
-              <thead className="sticky top-0 bg-[var(--color-bg)]">
-                <tr>
-                  <th className="min-w-[160px] px-2 py-2 text-left">站点</th>
-                  {head('rate', '请求速率')}
-                  {head('window', '窗口请求数')}
-                  {show1xx ? head('1xx', '1xx') : null}
-                  {head('2xx', '2xx')}
-                  {head('3xx', '3xx')}
-                  {head('4xx', '4xx')}
-                  {head('5xx', '5xx')}
-                  {head('ratio', '5xx 比例')}
-                  {head('in', '入站')}
-                  {head('out', '出站')}
-                  {head('time', '平均处理时间')}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.zone} data-nginx-zone-row={row.zone}>
-                    <td className="max-w-[240px] truncate px-2 py-2 text-left" title={row.zone}>{row.zone}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.requestRate, formatPerSecond(row.requestRate ?? 0, '次'))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowRequests ?? null, formatCount(row.windowRequests ?? 0, '次'))}</td>
-                    {show1xx ? <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowCodes?.['1xx'] ?? null, formatCount(row.windowCodes?.['1xx'] ?? 0, '次'))}</td> : null}
-                    {(['2xx', '3xx', '4xx', '5xx'] as const).map((code) => (
-                      <td key={code} className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowCodes?.[code] ?? null, formatCount(row.windowCodes?.[code] ?? 0, '次'))}</td>
-                    ))}
-                    <td className="px-2 py-2 text-right tabular-nums">{ratioOf(row)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesIn ?? null, formatBytes(row.windowBytesIn ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesOut ?? null, formatBytes(row.windowBytesOut ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.timeMs, formatDuration(row.timeMs ?? 0, tableTimeUnit))}</td>
-                  </tr>
-                ))}
-              </tbody>
-              {model.zoneSummary ? (
-                <tfoot className="sticky bottom-0 bg-[var(--color-fill-1)] font-semibold">
-                  <tr data-nginx-zone-row="total">
-                    <td className="px-2 py-2 text-left">全部站点</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.requestRate, formatPerSecond(model.zoneSummary.requestRate ?? 0, '次'))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowRequests ?? null, formatCount(model.zoneSummary.windowRequests ?? 0, '次'))}</td>
-                    {show1xx ? <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowCodes?.['1xx'] ?? null, formatCount(model.zoneSummary.windowCodes?.['1xx'] ?? 0, '次'))}</td> : null}
-                    {(['2xx', '3xx', '4xx', '5xx'] as const).map((code) => (
-                      <td key={code} className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary?.windowCodes?.[code] ?? null, formatCount(model.zoneSummary?.windowCodes?.[code] ?? 0, '次'))}</td>
-                    ))}
-                    <td className="px-2 py-2 text-right tabular-nums">{ratioOf(model.zoneSummary)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowBytesIn ?? null, formatBytes(model.zoneSummary.windowBytesIn ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.windowBytesOut ?? null, formatBytes(model.zoneSummary.windowBytesOut ?? 0))}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{numberCell(model.zoneSummary.timeMs, formatDuration(model.zoneSummary.timeMs ?? 0, tableTimeUnit))}</td>
-                  </tr>
-                </tfoot>
-              ) : null}
-            </table>
-          </div>
-        )}
-      </section>
+      <div data-nginx-sites-table="">
+        <ProMetricTable
+          title="站点"
+          hint={<NginxHint copy={NGINX_HINTS.sites} />}
+          objectName="nginx"
+          tabName="请求与站点"
+          tableName="站点"
+          columns={zoneColumns}
+          rows={tablePhase === 'ready' ? zoneTableRows.map((row) => ({ ...row, key: row.key, cells: row.cells })) : []}
+          footer={tablePhase === 'ready' ? zoneFooter : null}
+          heightClass="h-[360px]"
+          onSort={chooseSort}
+          empty={tableEmpty}
+        />
+      </div>
       {model.showFilter ? (
-        <section className="flex h-[280px] flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]" data-nginx-filter-table="">
-          <div className="flex items-center gap-1 px-3 pt-3 text-[14px] font-semibold text-[var(--color-text-1)]">
-            过滤器
-            <NginxHint copy={NGINX_HINTS.filter} />
-          </div>
-          {filterPhase !== 'ready' ? (
-            <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={filterPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.filterTable)} height={220} />
-          ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full text-[13px]">
-                <thead className="sticky top-0 bg-[var(--color-bg)] text-[var(--color-text-2)]">
-                  <tr>
-                    <th className="min-w-[160px] px-2 py-2 text-left">过滤器</th>
-                    <th className="px-2 py-2 text-left">过滤键</th>
-                    <th className="px-2 py-2 text-right">请求速率</th>
-                    <th className="px-2 py-2 text-right">窗口请求数</th>
-                    <th className="px-2 py-2 text-right">2xx</th>
-                    <th className="px-2 py-2 text-right">4xx</th>
-                    <th className="px-2 py-2 text-right">5xx</th>
-                    <th className="px-2 py-2 text-right">入站</th>
-                    <th className="px-2 py-2 text-right">出站</th>
-                    <th className="px-2 py-2 text-right">平均处理时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.filterRows.map((row) => (
-                    <tr key={`${row.filterName}|${row.filterKey}`}>
-                      <td className="max-w-[220px] truncate px-2 py-2" title={row.filterName}>{row.filterName}</td>
-                      <td className="px-2 py-2">{row.filterKey || '--'}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.requestRate, formatPerSecond(row.requestRate ?? 0, '次'))}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowRequests ?? null, formatCount(row.windowRequests ?? 0, '次'))}</td>
-                      {(['2xx', '4xx', '5xx'] as const).map((code) => (
-                        <td key={code} className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowCodes?.[code] ?? null, formatCount(row.windowCodes?.[code] ?? 0, '次'))}</td>
-                      ))}
-                      <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesIn ?? null, formatBytes(row.windowBytesIn ?? 0))}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.windowBytesOut ?? null, formatBytes(row.windowBytesOut ?? 0))}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{numberCell(row.timeMs, formatDuration(row.timeMs ?? 0, model.zoneTimeUnit))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <div data-nginx-filter-table="">
+          <ProMetricTable
+            title="过滤器"
+            hint={<NginxHint copy={NGINX_HINTS.filter} />}
+            objectName="nginx"
+            tabName="请求与站点"
+            tableName="过滤器"
+            columns={filterColumns}
+            rows={filterPhase === 'ready' ? filterTableRows : []}
+            heightClass="h-[280px]"
+            onSort={chooseFilterSort}
+            empty={filterPhase !== 'ready' ? (
+              <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={filterPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.filterTable)} height={220} />
+            ) : filterTableRows.length ? undefined : (
+              <div className="flex flex-1 items-center justify-center text-[14px] text-[var(--color-text-3)]">{emptyText}</div>
+            )}
+          />
+        </div>
       ) : null}
     </div>
   );

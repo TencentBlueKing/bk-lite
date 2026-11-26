@@ -88,8 +88,8 @@ describe('upstream request-rate spark', () => {
         onRetryFailed={() => undefined}
       />
     );
-    const spark = view.container.querySelector('[data-nginx-tile="上游请求速率"] path');
-    expect(spark?.getAttribute('d')).toBe('M0,2L160,2');
+    expect(view.container.querySelector('[data-nginx-tile="上游请求速率"] [data-nginx-spark]')).toBeNull();
+    expect(view.container.querySelector('[data-nginx-chart="上游请求速率"]')).toBeTruthy();
   });
 });
 
@@ -216,7 +216,7 @@ describe('site and upstream anomaly empty state', () => {
         }
       }
     });
-    expect(zeroShare.board.focusThirdFigure).toBe('0.0%');
+    expect(zeroShare.board.focusThirdFigure).toBe('0');
 
     const ready = render(
       <NginxFocusTile label="站点与上游异常" figure={empty.board.focusThirdFigure} phase="ready" onRetry={() => undefined} />
@@ -270,8 +270,12 @@ describe('site table processing time', () => {
         onRetryFailed={() => undefined}
       />
     );
-    const cells = [...view.container.querySelectorAll('[data-nginx-zone-row] td')].map((cell) => cell.textContent);
-    return { model, detail: cells[1] ? view.container.querySelector('[data-nginx-zone-row="www"]')?.textContent : '', total: view.container.querySelector('[data-nginx-zone-row="total"]')?.textContent };
+    const detailRow = view.container.querySelector('[data-row-key="www"]');
+    return {
+      model,
+      detail: detailRow?.textContent ?? '',
+      total: view.container.querySelector('[data-row-key="total"]')?.textContent ?? ''
+    };
   };
 
   it('uses one unit for the detail row and the total row', () => {

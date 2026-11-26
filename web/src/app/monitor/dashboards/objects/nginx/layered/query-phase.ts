@@ -17,6 +17,7 @@ export const NGINX_CARD_QUERIES = {
   accept: ['acceptsRate', 'handledRate', 'stubFresh'],
   connections: ['conn', 'stubFresh'],
   dropped: ['acceptsRate', 'handledRate', 'stubFresh'],
+  droppedCount: ['droppedWindow', 'stubFresh'],
   sitesKpi: ['starWindowRequests', 'starWindowStatus', 'starTime', 'serverFresh'],
   sitesStatus: ['starStatusStep', 'starWindowStatus'],
   sitesTraffic: ['starBytes', 'serverFresh'],
@@ -26,7 +27,7 @@ export const NGINX_CARD_QUERIES = {
   filterTable: ['filterRequestRate', 'filterWindowRequests', 'filterWindowStatus', 'filterWindowBytes', 'filterTime', 'filterFresh'],
   upstreamKpi: ['upRequestSum', 'upWindowRequests', 'upWindow5xx', 'upResponseTime', 'upFlags', 'upstreamFresh'],
   upstreamTrend: ['upRequestSum', 'upstreamFresh'],
-  upstreamStatus: ['upStatusStep'],
+  upstreamStatus: ['upStatusStep', 'upWindowStatus'],
   upstreamTime: ['upResponseTime', 'upRequestTime', 'upstreamFresh'],
   upstreamTable: ['upRequestRate', 'upMemberWindowRequests', 'upMemberWindowStatus', 'upMemberWindowBytes', 'upGroupWindowRequests', 'upGroupWindowStatus', 'upGroupWindowBytes', 'upRequestTime', 'upResponseTime', 'upFlags', 'upstreamFresh']
 } as const;

@@ -1384,6 +1384,13 @@
       "template": "http_response_result_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:2af7dd93",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "label_replace(sum(increase(nginx_vts_upstream_response_1xx_count{__$labels__}[__$window__])), \"code\", \"1xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_2xx_count{__$labels__}[__$window__])), \"code\", \"2xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_3xx_count{__$labels__}[__$window__])), \"code\", \"3xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_4xx_count{__$labels__}[__$window__])), \"code\", \"4xx\", \"\", \".*\") or label_replace(sum(increase(nginx_vts_upstream_response_5xx_count{__$labels__}[__$window__])), \"code\", \"5xx\", \"\", \".*\")"
+    },
+    {
       "id": "dashboard:v1:2b101c51",
       "object_names": [
         "Mysql"
@@ -3719,6 +3726,13 @@
         "Host"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
+      "id": "dashboard:v1:76ad8f04",
+      "object_names": [
+        "Nginx"
+      ],
+      "template": "max(increase(nginx_accepts{__$labels__}[__$window__]) - increase(nginx_handled{__$labels__}[__$window__]), 0)"
     },
     {
       "id": "dashboard:v1:76ff4618",

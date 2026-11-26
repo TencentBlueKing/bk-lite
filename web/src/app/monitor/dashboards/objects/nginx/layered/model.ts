@@ -7,6 +7,7 @@ import {
   formatBytesPerSecond,
   formatCount,
   formatDuration,
+  formatDurationValue,
   formatDecimal,
   formatPercent,
   formatPerSecond,
@@ -53,6 +54,10 @@ export interface NginxQueryResult {
 const labelOf = (labels: Record<string, string> | undefined, key: string) => (
   String(labels?.[key] ?? '')
 );
+
+const isBlankAddress = (address: string) => /^(?:|[-—–]+)$/.test(address.trim());
+
+const shownAddress = (address: string) => (isBlankAddress(address) ? '' : address.trim());
 
 export const readRangeSeries = (result: unknown): RangeSeries[] => {
   const rows = (result as { data?: { result?: unknown[] } } | null)?.data?.result;
@@ -297,6 +302,8 @@ export interface NginxBoard {
   busyFigure: string;
   busyShare: number | null;
   droppedFigure: string;
+  droppedCountFigure: string;
+  droppedCountHot: boolean;
   handledFigure: string;
   focusRequestSub: string;
   focusThirdTitle: string;
@@ -305,16 +312,16 @@ export interface NginxBoard {
   focusThirdTab: 'sites' | 'upstream' | 'connections';
   focusThirdAnchor: string;
   windowRequests: string;
-  ratio4xx: string;
   count4xx: string;
-  ratio5xx: string;
   count5xx: string;
-  ratio5xxHot: boolean;
+  count5xxHot: boolean;
   avgTime: string;
   upRate: string;
   up5xx: string;
+  up5xxHot: boolean;
   up5xxSub: string;
   upTime: string;
+  upTimeUnit: DurationUnit;
   upOnline: string;
   upDown: number;
   statusSteps: NginxSeriesItem[];
@@ -323,9 +330,10 @@ export interface NginxBoard {
   siteTrend: NginxSeriesItem[];
   siteRank: NginxRankRow[];
   upstreamGroupTrend: NginxSeriesItem[];
-  /** 上游请求速率迷你趋势，全部上游组按时间合计，与 upRate 同口径。 */
+  /** 全部上游组按时间合计。KPI 不画迷你趋势，合计仍留给同口径核对。 */
   upstreamRateSpark: Point[];
   upstreamStatusSteps: NginxSeriesItem[];
+  upstreamStatusParts: NginxStatusPart[];
 }
 
 const EMPTY_BOARD: NginxBoard = {
@@ -340,6 +348,8 @@ const EMPTY_BOARD: NginxBoard = {
   busyFigure: EMPTY_READING,
   busyShare: null,
   droppedFigure: EMPTY_READING,
+  droppedCountFigure: EMPTY_READING,
+  droppedCountHot: false,
   handledFigure: EMPTY_READING,
   focusRequestSub: '',
   focusThirdTitle: '连接结构',
@@ -348,16 +358,16 @@ const EMPTY_BOARD: NginxBoard = {
   focusThirdTab: 'connections',
   focusThirdAnchor: 'nginx-conn-mix',
   windowRequests: EMPTY_READING,
-  ratio4xx: EMPTY_READING,
-  count4xx: '',
-  ratio5xx: EMPTY_READING,
-  count5xx: '',
-  ratio5xxHot: false,
+  count4xx: EMPTY_READING,
+  count5xx: EMPTY_READING,
+  count5xxHot: false,
   avgTime: EMPTY_READING,
   upRate: EMPTY_READING,
   up5xx: EMPTY_READING,
+  up5xxHot: false,
   up5xxSub: '',
   upTime: EMPTY_READING,
+  upTimeUnit: 'ms',
   upOnline: EMPTY_READING,
   upDown: 0,
   statusSteps: [],
@@ -367,7 +377,8 @@ const EMPTY_BOARD: NginxBoard = {
   siteRank: [],
   upstreamGroupTrend: [],
   upstreamRateSpark: [],
-  upstreamStatusSteps: []
+  upstreamStatusSteps: [],
+  upstreamStatusParts: []
 };
 
 const EMPTY_FOCUS = {
@@ -595,6 +606,11 @@ export const buildNginxDashboard = ({
   const handledNow = freshValue(latestPoint(handledPoints), handledStale);
   const rateStale = acceptStale || handledStale;
   const droppedNow = droppedRate(acceptNow, handledNow, rateStale);
+  const droppedWindowRaw = sampleValue(data.instant.droppedWindow, () => true);
+  const droppedCount = rateStale || droppedWindowRaw == null ? null : Math.max(droppedWindowRaw, 0);
+  const busyCount = readingStale || writingStale || readingNow == null || writingNow == null
+    ? null
+    : readingNow + writingNow;
   const handledShare = handledRatio(acceptNow, handledNow, rateStale);
   const busyNow = busyRatio(activeNow, readingNow, writingNow, activeStale || readingStale || writingStale);
   const waitingShare = waitingRatio(activeNow, waitingNow, activeStale || waitingStale);
@@ -875,9 +891,9 @@ export const buildNginxDashboard = ({
   });
 
   const visibleMembers = (rows: UpstreamMemberRow[]) => {
-    const addressed = rows.filter((member) => member.address);
+    const addressed = rows.filter((member) => !isBlankAddress(member.address));
     if (addressed.length) return addressed;
-    return rows.slice(0, 1).map((member) => ({ ...member, addressLabel: '地址未上报' }));
+    return rows.slice(0, 1).map((member) => ({ ...member, address: '', addressLabel: '地址未上报' }));
   };
 
   const groupNames = new Set<string>(members.map((member) => member.upstream).filter(Boolean));
@@ -923,7 +939,7 @@ export const buildNginxDashboard = ({
       const address = labelOf(item.labels, 'upstream_address');
       const fresh = memberFresh('nginx_vts_upstream_requests', upstreamName, address);
       const value = fresh ? latestPoint(item.points) : null;
-      const label = address ? `${upstreamName} ${address}` : upstreamName;
+      const label = shownAddress(address) ? `${upstreamName} ${shownAddress(address)}` : upstreamName;
       return seriesItem(`${upstreamName}|${address}`, label, colorAt(index), item.points, value == null ? EMPTY_READING : formatPerSecond(value, '次'));
     });
   const upstreamStatus = sumByCode(data.range.upStatusRate ?? [])
@@ -950,7 +966,7 @@ export const buildNginxDashboard = ({
       const address = labelOf(item.labels, 'upstream_address');
       return {
         id: `${upstreamName}|${address}`,
-        label: address ? `${upstreamName} ${address}` : upstreamName,
+        label: shownAddress(address) ? `${upstreamName} ${shownAddress(address)}` : upstreamName,
         points: item.points,
         fresh: memberFresh(metric, upstreamName, address)
       };
@@ -1050,13 +1066,17 @@ export const buildNginxDashboard = ({
     (labels) => labelOf(labels, 'code') === code && labelOf(labels, 'zone') === '*'
   );
   const starWindowTotal = sampleValue(data.instant.starWindowRequests, (labels) => labelOf(labels, 'zone') === '*');
-  const ratioText = (part: number | null, total: number | null) => {
+  const windowCountFigure = (part: number | null, total: number | null) => {
     if (total == null || total === 0) return EMPTY_READING;
-    return formatPercent((part ?? 0) / total);
+    return countFigure(part ?? 0);
   };
   const statusParts = CODE_ORDER.map((code) => ({
     code,
     count: starCode(code)
+  }));
+  const upstreamStatusParts = CODE_ORDER.map((code) => ({
+    code,
+    count: sampleValue(data.instant.upWindowStatus, (labels) => labelOf(labels, 'code') === code)
   }));
   const directionSeries = (direction: string, label: string, color: string) => {
     const found = (data.range.starBytes ?? []).find((item) => (
@@ -1105,7 +1125,9 @@ export const buildNginxDashboard = ({
   const upDown = shownMembers.filter((member) => member.down === 1).length;
   const upTotal = sampleValue(data.instant.upWindowRequests, () => true);
   const upFive = sampleValue(data.instant.upWindow5xx, () => true);
-  const up5xx = upTotal == null || upTotal === 0 ? EMPTY_READING : formatPercent((upFive ?? 0) / upTotal);
+  const up5xxCount = upTotal == null || upTotal === 0 ? null : (upFive ?? 0);
+  const up5xx = up5xxCount == null ? EMPTY_READING : countFigure(up5xxCount);
+  const up5xxHot = (up5xxCount ?? 0) > 0;
   const up5xxSub = upTotal == null || upTotal === 0 ? '窗口内上游没有请求' : '';
   const responseSamples = shownMembers.flatMap((member) => (member.responseMs == null ? [] : [member]));
   const responseWeight = responseSamples.reduce((sum, member) => sum + Math.max(member.windowRequests ?? 0, 0), 0);
@@ -1114,6 +1136,7 @@ export const buildNginxDashboard = ({
     : responseWeight > 0
       ? responseSamples.reduce((sum, member) => sum + (member.responseMs ?? 0) * Math.max(member.windowRequests ?? 0, 0), 0) / responseWeight
       : responseSamples.reduce((sum, member) => sum + (member.responseMs ?? 0), 0) / responseSamples.length;
+  const upTimeUnit = pickUpstreamDurationUnit(Math.abs(responseAvg ?? 0));
   const groupRateTotal = upstreamGroups.reduce((sum, group) => sum + (group.requestRate ?? 0), 0);
   const groupRateKnown = upstreamGroups.some((group) => group.requestRate != null);
   const upstreamRateSpark = mergePoints(data.range.upRequestSum ?? []);
@@ -1138,7 +1161,7 @@ export const buildNginxDashboard = ({
     }
     : {
       title: '站点与上游异常',
-      figure: starWindowTotal != null && starWindowTotal > 0 ? formatPercent((fiveCount ?? 0) / starWindowTotal) : EMPTY_READING,
+      figure: starWindowTotal != null && starWindowTotal > 0 ? countFigure(fiveCount ?? 0) : EMPTY_READING,
       sub: `已下线 ${upDown}`,
       tab: (fiveCount ?? 0) > 0 && sites ? 'sites' as const : upstream ? 'upstream' as const : 'sites' as const,
       anchor: (fiveCount ?? 0) > 0 && sites ? 'nginx-status-dist' : 'nginx-upstream-table'
@@ -1154,9 +1177,11 @@ export const buildNginxDashboard = ({
     readingFigure: countFigure(readingNow),
     writingFigure: countFigure(writingNow),
     waitingFigure: countFigure(waitingNow),
-    busyFigure: formatPercent(busyNow),
+    busyFigure: countFigure(busyCount),
     busyShare: busyNow == null ? null : busyNow * 100,
     droppedFigure: figureOf(droppedNow),
+    droppedCountFigure: countFigure(droppedCount),
+    droppedCountHot: (droppedCount ?? 0) > 0,
     handledFigure: formatPercent(handledShare),
     focusRequestSub,
     focusThirdTitle: focusThird.title,
@@ -1165,16 +1190,16 @@ export const buildNginxDashboard = ({
     focusThirdTab: focusThird.tab,
     focusThirdAnchor: focusThird.anchor,
     windowRequests: countFigure(starWindowTotal),
-    ratio4xx: ratioText(starCode('4xx'), starWindowTotal),
-    count4xx: starCode('4xx') == null ? '' : `${formatCount(starCode('4xx') ?? 0, '次')}`,
-    ratio5xx: ratioText(starCode('5xx'), starWindowTotal),
-    count5xx: starCode('5xx') == null ? '' : `${formatCount(starCode('5xx') ?? 0, '次')}`,
-    ratio5xxHot: (starCode('5xx') ?? 0) > 0 && (starWindowTotal ?? 0) > 0,
-    avgTime: showRequestTime && starTimeFresh ? formatDuration(latestPoint(starTimePoints) ?? Number.NaN, requestTimeUnit) : EMPTY_READING,
+    count4xx: windowCountFigure(starCode('4xx'), starWindowTotal),
+    count5xx: windowCountFigure(starCode('5xx'), starWindowTotal),
+    count5xxHot: (starCode('5xx') ?? 0) > 0 && (starWindowTotal ?? 0) > 0,
+    avgTime: showRequestTime && starTimeFresh ? formatDurationValue(latestPoint(starTimePoints) ?? Number.NaN, requestTimeUnit) : EMPTY_READING,
     upRate: groupRateKnown ? figureOf(groupRateTotal) : EMPTY_READING,
     up5xx,
+    up5xxHot,
     up5xxSub,
-    upTime: responseAvg == null ? EMPTY_READING : formatDuration(responseAvg, pickUpstreamDurationUnit(responseAvg)),
+    upTime: responseAvg == null ? EMPTY_READING : formatDurationValue(responseAvg, upTimeUnit),
+    upTimeUnit,
     upOnline: shownMembers.length ? `${shownMembers.filter((member) => member.down !== 1).length} / ${shownMembers.length}` : EMPTY_READING,
     upDown,
     statusSteps,
@@ -1184,7 +1209,8 @@ export const buildNginxDashboard = ({
     siteRank,
     upstreamGroupTrend,
     upstreamRateSpark,
-    upstreamStatusSteps
+    upstreamStatusSteps,
+    upstreamStatusParts
   };
 
   const has5xx = zoneRows.some((row) => (row.codes['5xx'] ?? 0) > 0) || (zoneSummary?.codes['5xx'] ?? 0) > 0;

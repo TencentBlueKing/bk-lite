@@ -9,6 +9,7 @@ import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
 import { flatZeroStrokeSeries } from '../../host/layered/flat-zero-stroke';
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { useThemeColors } from '../../host/layered/theme-color';
+import { formatIntegerTick, integerCountAxis } from '../../../shared/widgets/integer-count-axis';
 import { nonNegativeBounds } from './format';
 import { chartRows, type NginxSeriesItem } from './model';
 
@@ -27,7 +28,8 @@ export function NginxPlot({
   floor,
   percent,
   formatReading,
-  height
+  height,
+  countAxis = false
 }: {
   items: readonly NginxSeriesItem[];
   kind: 'line' | 'step' | 'bar';
@@ -35,6 +37,8 @@ export function NginxPlot({
   percent: boolean;
   formatReading: (value: number) => string;
   height: number;
+  /** 计数类纵轴只出整数刻度。速率、耗时、字节不走这条。 */
+  countAxis?: boolean;
 }) {
   const proTime = useProTimeWindow();
   const theme = useThemeColors();
@@ -72,7 +76,13 @@ export function NginxPlot({
       const value = readValue(point, key);
       return value == null ? [] : [value];
     }));
-    const bounds = percent ? { min: 0, max: 100 } : nonNegativeBounds(samples, floor);
+    const stacked = kind === 'bar'
+      ? plotted.map((point) => keys.reduce((sum, key) => sum + (readValue(point, key) ?? 0), 0))
+      : samples;
+    const countBounds = countAxis ? integerCountAxis(stacked.length ? stacked : [0]) : null;
+    const bounds = percent
+      ? { min: 0, max: 100 }
+      : countBounds ?? nonNegativeBounds(samples, floor);
     const mark = plotted.length <= 30;
     return {
       animation: false,
@@ -96,7 +106,12 @@ export function NginxPlot({
         type: 'value' as const,
         min: bounds.min,
         max: bounds.max,
-        axisLabel: { color: mutedColor, fontSize: 10 },
+        ...(countBounds ? { interval: countBounds.interval, minInterval: 1 } : {}),
+        axisLabel: {
+          color: mutedColor,
+          fontSize: 10,
+          ...(countBounds ? { formatter: (value: number) => formatIntegerTick(value) } : {})
+        },
         axisTick: { show: false },
         axisLine: { show: false },
         splitLine: { lineStyle: { color: axisColor, width: 1 } }
@@ -166,7 +181,7 @@ export function NginxPlot({
         };
       })
     };
-  }, [chartWindow, floor, formatReading, items, keys, kind, percent, plotted, suspend, theme]);
+  }, [chartWindow, countAxis, floor, formatReading, items, keys, kind, percent, plotted, suspend, theme]);
   const { containerRef } = useECharts(option);
   return <div ref={containerRef} className="h-full w-full" style={{ height }} />;
 }
