@@ -27,7 +27,8 @@ export function TicketEngineRecovery({ ticket, refresh }: { ticket: TicketDetail
         if (!manual?.token || !manual.sent_at) return;
         await api.recoverOperation(ticket.id, { decision: 'abandon', token: manual.token, sent_at: manual.sent_at, verified: true, reason: reason.trim() });
       } else {
-        await api.recoverOperation(ticket.id);
+        const result = await api.recoverOperation(ticket.id);
+        if (result.status === 'pending') message.info('引擎尚未确认，已保留原提交，系统将继续核对。');
       }
       setOpen(false);
       await refresh();

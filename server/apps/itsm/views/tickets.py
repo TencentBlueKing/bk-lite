@@ -142,7 +142,7 @@ def operate_ticket(request, ticket_id):
 @HasPermission("ticket-Operate")
 def operation_recovery(request, ticket_id):
     from apps.itsm.services.ticket.actions import NodeActionValidationError
-    from apps.itsm.services.ticket.manual_recovery import abandon, active_operations, advance
+    from apps.itsm.services.ticket.manual_recovery import ManualReceiptPending, abandon, active_operations, advance
 
     if not has_permission(request, "ticket-View"):
         raise PermissionError()
@@ -168,6 +168,8 @@ def operation_recovery(request, ticket_id):
             abandon(service, ticket, body, _user(request))
         else:
             advance(service, operation)
+    except ManualReceiptPending:
+        return WebUtils.response_success({"id": ticket.pk, "status": "pending"})
     except NodeActionValidationError as exc:
         return WebUtils.response_error(str(exc), status_code=409)
     except FlowableError:

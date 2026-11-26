@@ -150,7 +150,7 @@ export function useItsmApi() {
     (id: number, body: { task_id?: number; action: string; reopen_from?: string; opinion?: string; target?: string; return_node_id?: string; form_data?: Record<string, unknown> }) => post(`/itsm/api/tickets/${id}/operate/`, body),
     [post],
   );
-  const recoverOperation = useCallback((id: number, decision?: ManualRecoveryDecision) => post(`/itsm/api/tickets/${id}/operation-recovery/`, decision ?? {}), [post]);
+  const recoverOperation = useCallback((id: number, decision?: ManualRecoveryDecision) => post<{ status: string }>(`/itsm/api/tickets/${id}/operation-recovery/`, decision ?? {}, { suppressErrorNotification: true }), [post]);
   const recoverStart = useCallback((id: number, body: StartRecoveryRequest) => post(`/itsm/api/tickets/${id}/start-recovery/`, body), [post]);
   const ticketLogs = useCallback((id: number) => get(`/itsm/api/tickets/${id}/logs/`), [get]);
   const listTicketWorkflows = useCallback(() => get('/itsm/api/tickets/workflows/'), [get]);

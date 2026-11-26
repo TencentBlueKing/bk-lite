@@ -231,3 +231,34 @@ def test_missing_runtime_task_reference_cannot_complete_bound_ticket(sample):
     task.refresh_from_db()
     assert task.status == "pending"
     assert not TicketLog.objects.filter(ticket=ticket, action="approve").exists()
+
+
+@pytest.mark.django_db
+def test_child_task_completion_and_legacy_unsent_recovery(sample):
+    from apps.itsm.services.ticket.manual_recovery import _send, advance, prepare
+
+    ticket, task = sample
+    version = ticket.workflow_version
+    version.design["nodes"][1]["fallback"] = "handler"
+    version.save()
+    task.node_id = "child_check"
+    task.flowable_task_id = "child-task"
+    task.process_instance_id = "child-process"
+    task.save()
+    client = Mock()
+    service = TicketService(client)
+    op = prepare(service, ticket, task, "submit", {}, "handler", {})
+    _send(client, op)
+    assert client.complete_task.call_args.args[1]["out_child_check_result"] == "submit"
+    client.reset_mock()
+    op.payload["node"] = {}
+    op.status = "sending"
+    op.save()
+    client.confirmed_manual_action.return_value = False
+    client.manual_action_unchanged.return_value = True
+    advance(service, op)
+    op.refresh_from_db()
+    assert op.status == "rejected"
+    client.complete_task.assert_not_called()
+    task.refresh_from_db()
+    assert task.status == "pending"

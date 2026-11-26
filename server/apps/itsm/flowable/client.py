@@ -240,7 +240,8 @@ class FlowableClient:
             row = self._request("GET", f"/flowable-rest/service/runtime/tasks/{op.task_ref}")
             if row.get("id") != op.task_ref or row.get("processInstanceId") != op.process_id:
                 return False
-            if row.get("taskDefinitionKey") != op.payload["node"].get("id"):
+            node_id = op.payload["node"].get("id") or (op.task.node_id if op.task_id else None)
+            if not node_id or row.get("taskDefinitionKey") != node_id:
                 return False
             if op.action in {"claim", "transfer"}:
                 return "assignee" in row and (row["assignee"] or "") == op.payload.get("previous_assignee")

@@ -20,6 +20,10 @@ PENDING = ("prepared", "sending", "applied")
 CONFIRM_AFTER = timedelta(minutes=5)
 
 
+class ManualReceiptPending(NodeActionValidationError):
+    """引擎尚未确认，保留原操作等待后续核对。"""
+
+
 def active_operations(ticket):
     return ManualOperation.objects.filter(ticket=ticket, status__in=PENDING)
 
@@ -42,6 +46,8 @@ def creates_child(ticket, action, data):
 
 
 def prepare(service, ticket, task, action, data, operator, node, *, handover_id=None, local_parent=False):
+    if task and action in COMPLETIONS and not node.get("id"):
+        node = {**node, "id": task.node_id}
     payload = {"data": data, "node": node, "previous_assignee": task.assignee if task else "", "local_parent": local_parent}
     transitions = {"withdraw": "cancelled", "terminate": "terminated", "close": "finished", "suspend": "suspended", "resume": "processing"}
     target = transitions.get(action)
@@ -195,7 +201,27 @@ def advance(service, operation):
     operation.refresh_from_db()
     if operation.status == "sending":
         if not service.client.confirmed_manual_action(operation):
-            raise NodeActionValidationError("引擎操作尚无确认回执，请稍后核对")
+            # 旧版缺少节点 ID 会在构造 complete_task 的参数时中断，尚未发出请求。
+            if (
+                operation.action in COMPLETIONS
+                and "id" not in operation.payload["node"]
+                and operation.task_id
+                and operation.task.flowable_task_id == operation.task_ref
+                and operation.task.process_instance_id == operation.process_id
+                and service.client.manual_action_unchanged(operation)
+            ):
+                with transaction.atomic():
+                    changed = ManualOperation.objects.filter(pk=operation.pk, status="sending").update(status="rejected", updated_at=timezone.now())
+                    if changed:
+                        TicketLog.objects.create(
+                            ticket_id=operation.ticket_id,
+                            domain=operation.ticket.domain,
+                            operator=operation.operator,
+                            action="manual_reconcile",
+                            message="原提交缺少节点标识，已核实引擎待办仍在，可重新办理",
+                        )
+                return operation.ticket
+            raise ManualReceiptPending("引擎操作尚无确认回执，请稍后核对")
         ManualOperation.objects.filter(pk=operation.pk, status="sending").update(status="applied", updated_at=timezone.now())
     with transaction.atomic():
         ticket = Ticket.objects.select_for_update().get(pk=operation.ticket_id)
