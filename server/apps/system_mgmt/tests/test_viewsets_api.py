@@ -85,6 +85,29 @@ def test_group_data_rule_update_and_destroy(super_client):
         assert not GroupDataRule.objects.filter(id=rule.id).exists()
 
 
+def test_registered_app_without_data_object_api_is_client_error(super_client):
+    message = "This application has no data object API"
+    for app in ("alarm", "apm", "rum", "workflow", "system-manager"):
+        module = super_client.get(f"{V}/group_data_rule/get_app_module/?app={app}")
+        assert module.status_code == 400
+        assert module.json() == {"result": False, "message": message}
+
+        data = super_client.get(f"{V}/group_data_rule/get_app_data/?app={app}&module=x&page=1&page_size=10&group_id=1")
+        assert data.status_code == 400
+        assert data.json() == {"result": False, "message": message}
+
+
+def test_unknown_client_id_is_app_not_found(super_client):
+    for app in ("ops-console", "not-a-real-app"):
+        module = super_client.get(f"{V}/group_data_rule/get_app_module/?app={app}")
+        assert module.status_code == 400
+        assert module.json() == {"result": False, "message": "APP not found"}
+
+        data = super_client.get(f"{V}/group_data_rule/get_app_data/?app={app}&module=x&page=1&page_size=10&group_id=1")
+        assert data.status_code == 400
+        assert data.json() == {"result": False, "message": "APP not found"}
+
+
 def test_group_data_rule_get_app_module(super_client):
     fake_client = type("C", (), {"get_module_list": staticmethod(lambda: [{"display_name": "模块A"}])})()
     with patch.object(

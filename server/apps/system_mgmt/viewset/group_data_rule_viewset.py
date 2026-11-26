@@ -10,6 +10,8 @@ from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import LanguageViewSet
+from apps.rpc.alerts import Alerts
+from apps.rpc.apm import Apm
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
 from apps.rpc.log import Log
@@ -19,7 +21,9 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.patch_mgmt import PatchMgmt
+from apps.rpc.rum import Rum
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.rpc.workflow import WorkflowMgmt
 from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
 from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
@@ -266,10 +270,9 @@ class GroupDataRuleViewSet(LanguageViewSet):
                 params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
 
         client = self.get_client(params)
-        fun = getattr(client, "get_module_data", None)
-        if fun is None:
-            message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            raise AttributeError(message)
+        fun, error_response = self._require_catalog_method(request, client, "get_module_data")
+        if error_response:
+            return error_response
         raw_page = params.get("page", "1")
         raw_page_size = params.get("page_size", "10")
         if raw_page in (None, ""):
@@ -312,10 +315,9 @@ class GroupDataRuleViewSet(LanguageViewSet):
     def get_app_module(self, request):
         params = request.GET.dict()
         client = self.get_client(params)
-        fun = getattr(client, "get_module_list", None)
-        if fun is None:
-            message = self.loader.get("error.module_not_found") if self.loader else "Module not found"
-            raise AttributeError(message)
+        fun, error_response = self._require_catalog_method(request, client, "get_module_list")
+        if error_response:
+            return error_response
         return_data = fun()
         for i in return_data:
             translated_name = self.loader.get(i["display_name"]) if self.loader else None
@@ -339,9 +341,21 @@ class GroupDataRuleViewSet(LanguageViewSet):
             "ops-analysis": OperationAnalysisRPC,
             "job": JobMgmt,
             "patch": PatchMgmt,
+            "alarm": Alerts,
+            "apm": Apm,
+            "rum": Rum,
+            "workflow": WorkflowMgmt,
         }
-        app = params.pop("app")
-        if app not in client_map.keys():
-            raise Exception("APP not found")
-        client = client_map[app]()
-        return client
+        client_cls = client_map.get(params.pop("app", None))
+        if client_cls is None:
+            return None
+        return client_cls()
+
+    def _require_catalog_method(self, request, client, method_name):
+        loader = self._loader(request)
+        if client is None:
+            return None, JsonResponse({"result": False, "message": loader.get("error.app_not_found")}, status=400)
+        method = getattr(client, method_name, None)
+        if method is None:
+            return None, JsonResponse({"result": False, "message": loader.get("error.data_object_api_unavailable")}, status=400)
+        return method, None

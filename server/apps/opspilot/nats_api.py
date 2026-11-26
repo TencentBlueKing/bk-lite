@@ -175,7 +175,11 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
         model = provider_model_map.get(child_module)
         if model is None:
             return {"result": False, "message": f"Unknown child_module: {child_module}"}
-    queryset = model.objects.filter(team__contains=int(group_id))
+    try:
+        team_id = int(group_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "invalid group_id"}
+    queryset = model.objects.filter(team__contains=team_id)
     # 计算总数
     total_count = queryset.count()
     # 计算分页

@@ -108,6 +108,10 @@ export function usePermissionData(
   getAppDataRef.current = getAppData;
 
   const loadSpecificData = useCallback(async (module: string, subModule?: string) => {
+    if (formGroupId === undefined || formGroupId === null || formGroupId === '') {
+      return;
+    }
+
     const dataKey = subModule ? `${module}_${subModule}` : module;
 
     if (loadingRef.current[dataKey]) {
@@ -179,6 +183,9 @@ export function usePermissionData(
     subModule?: string
   ) => {
     if (!module) return;
+    if (formGroupId === undefined || formGroupId === null || formGroupId === '') {
+      return;
+    }
 
     const dataKey = subModule ? `${module}_${subModule}` : module;
 
