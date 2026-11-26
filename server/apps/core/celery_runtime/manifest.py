@@ -94,6 +94,7 @@ TASK_ROUTES = {
     "apps.log.tasks.extractor.publish_system_vector_config": "background",
     "apps.log.tasks.policy.compensate_log_notice_task": "notification",
     "apps.log.tasks.policy.scan_log_policy_task": "critical",
+    "apps.log.tasks.syslog_source_device.discover_syslog_source_devices": "background",
     "apps.mlops.tasks.anomaly_detection.publish_dataset_release_async": "background",
     "apps.mlops.tasks.classification.publish_dataset_release_async": "background",
     "apps.mlops.tasks.external_resource_cleanup.cleanup_external_resource": "background",

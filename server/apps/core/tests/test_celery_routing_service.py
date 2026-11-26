@@ -23,6 +23,7 @@ def routing_app():
         ("apps.node_mgmt.tasks.action_task.converge_collector_action_task_for_node", "state"),
         ("apps.alerts.tasks.tasks.sync_notify", "notification"),
         ("apps.cmdb.tasks.celery_tasks.reconcile_instance_auto_association_task", "background"),
+        ("apps.log.tasks.syslog_source_device.discover_syslog_source_devices", "background"),
         ("apps.future.tasks.new_task", "celery"),
     ],
 )
