@@ -109,6 +109,9 @@
 ## 2026-11-05 Code-ARD 校准
 - `[monitor#20261105-001]` 节点删除或卸载后联动主机不软删，该主机的 `CollectConfig` 标 `executor_node_removed` 后仍保护对应子配置，再次接入不会把它当成无主子配置删除。同 IP 再接挂回所选节点，不报已存在、不物理删除。「已接入主机监控」仍只认未软删的 Host 对象。
 
+## 2026-11-26 通用监控查询范围
+- `[monitor#20261126-001]` `query_monitor_collection`、`query_monitor_collection_counts`、`query_interface_current`、`query_interface_current_counts`、`get_network_device_resource_top` 仍是通用数据源。分页列表的 `count` 是过滤后的全集；计数接口不受 500 条列表上限。采集状态查询无法收窄到本次实例时不再原样下发。手动实例搭乘的插件只来自本次请求已授权并过滤的实例。调用方截止时间已过时，即使没有可发的状态查询也失败，不返回全未上报的成功结果。接口计数按合并后的接口身份做聚合，一台 VM 序列对应多台实例时仍按归属台数累加；计数响应不是成功时整次失败，不把该块当成 0。补展示列时接口名允许首尾空白。网络设备排行先按分类（CPU/内存再按既有五类对象）收窄，再做权限判断；调用方超时时停止后续分块，不返回半截榜。证据见 `specs/changes/monitor-generic-query-scope/spec.md`。
+
 ## 2026-11-20 Code-ARD 校准
 - `[monitor#20261120-001]` 资产列表可对已有实例「重新下发」：`update_collect_template_configs` 带 `force_redispatch` 时按当前模板重渲并下发，不比较探针版本或内容指纹。手改和内容漂移都会覆盖，使节点配置回到当前模板。空指纹不再挡住这条路径；「升级探针」仍只在指纹变化时出现，且默认不覆盖手改。
 
