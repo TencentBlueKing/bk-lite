@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TableField, SignatureField } from './structured-fields';
 
@@ -17,6 +17,25 @@ describe('结构化字段', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     view.rerender(<TableField {...props} disabled />);
     expect(screen.queryByTitle('必填')).toBeNull();
+  });
+  it('查看指定行只展示可见字段，保留零值、多行文本和选项名称', async () => {
+    const field = {key:'rows', label:'虚拟机', type:'table', children:[
+      {key:'cpu', label:'核数', type:'number'},
+      {key:'note', label:'备注', type:'textarea'},
+      {key:'pool', label:'资源池', type:'select', source:{type:'static',options:[{label:'生产池',value:'prod'}]}},
+      {key:'users',label:'负责人',type:'multiselect'},
+      {key:'secret',label:'内部字段',type:'input'}
+    ]};
+    render(<TableField disabled field={field} fieldPerm={{secret:'hidden'}} value={[{cpu:4}, {cpu:0,note:'第一段\n第二段',pool:'prod',users:['admin','reviewer'],secret:'隐藏内容'}]} />);
+    fireEvent.click(screen.getByRole('button', {name:'查看第 2 行'}));
+    const panel = within(await screen.findByRole('dialog'));
+    expect(panel.getByText('0')).toBeTruthy();
+    expect(panel.getByText('第一段 第二段')).toBeTruthy();
+    expect(panel.getByText('生产池')).toBeTruthy();
+    expect(panel.queryByText('隐藏内容')).toBeNull();
+    expect(panel.getByText('admin')).toBeTruthy();
+    expect(panel.getByText('reviewer')).toBeTruthy();
+    expect(panel.getByRole('button', {name:/关\s*闭/})).toBeTruthy();
   });
   it('空子表单只展示已设计的字段', () => {
     render(<TableField field={{ key: 'items', type: 'table', label: '明细', children: [] }} />);

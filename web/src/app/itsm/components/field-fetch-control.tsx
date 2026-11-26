@@ -28,10 +28,27 @@ interface FetchProps {
   field: FormFieldSchema; context: FetchContext; children: ReactElement; id?: string; value?: unknown; onChange?: (...args: unknown[]) => void;
 }
 export interface FieldStore {
+  rememberOptions?: (options: FormChoice[]) => void;
   getFieldValue: (key: string) => unknown;
   setFieldValue: (key: string, value: unknown) => void;
   isFieldTouched: (key: string) => boolean;
   requestValues: () => Record<string, unknown>;
+}
+
+function rememberSelection(store: FieldStore, field: FormFieldSchema, value: unknown, options: FormChoice[]) {
+  if (!store.rememberOptions) return;
+  const saved = (store.getFieldValue('_field_labels') as Record<string, FormChoice[]> | undefined)?.[field.key] || [];
+  const labels = new Map(saved.map(option => [option.value, option.label]));
+  function visit(nodes: FormChoice[], path: string[]) {
+    for (const item of nodes) {
+      const names = [...path, item.label];
+      labels.set(item.value, field.showCascadePath === false ? item.label : names.join(' / '));
+      if (item.children) visit(item.children, names);
+    }
+  }
+  visit(options, []);
+  const selected = Array.isArray(value) ? value : [value];
+  store.rememberOptions(selected.filter(key => labels.has(key)).map(key => ({value: key, label: labels.get(key)!})));
 }
 
 export function FieldFetchControl(props: FetchProps) {
@@ -117,6 +134,7 @@ export function ScopedFetchControl({ field, context, children, value, onChange, 
             if (!form.isFieldTouched(key)) form.setFieldValue(key, v);
           }
         }
+        if (cfg.mode === 'options') rememberSelection(form, field, form.getFieldValue(field.key), options);
         if (cfg.mode !== 'options' && (cfg.enforce || (!changed.current && (!first.current || form.getFieldValue(field.key) == null || form.getFieldValue(field.key) === '')))) form.setFieldValue(field.key, next.value);
         first.current = false;
       }).catch((cause: unknown) => { if (sequence.current === seq) setError(cause instanceof Error ? cause.message : '取数失败，请重试'); })
@@ -135,6 +153,7 @@ export function ScopedFetchControl({ field, context, children, value, onChange, 
     const input = args[0];
     const selected = input && typeof input === 'object' && 'target' in input ? (input.target as { value?: unknown }).value : input;
     const form = currentStore.current;
+    if (cfg.mode === 'options') rememberSelection(form, field, selected, result?.options || []);
     const fills = result?.fills?.[String(selected)];
     if (fills) for (const [key, next] of Object.entries(fills)) if (!form.isFieldTouched(key)) form.setFieldValue(key, next);
   };

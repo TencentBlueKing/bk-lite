@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { Form, Input, Radio, TreeSelect } from 'antd';
 import { afterEach, expect, it, vi } from 'vitest';
-import { FieldFetchControl } from './field-fetch-control';
+import { FieldFetchControl, ScopedFetchControl } from './field-fetch-control';
 const api = vi.hoisted(() => ({ ready: true, fetchField: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
@@ -56,4 +56,21 @@ it('手动取数每次点击只执行一次当前依赖快照', async () => {
   fireEvent.click(screen.getByRole('button', { name: '刷新取数' }));
   await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(2));
   expect(api.fetchField.mock.lastCall[0].values.dept).toBe('运维');
+});
+
+it('查看子表单行时使用动态选项的名称，覆盖默认值与重新选择', async () => {
+  const options = [{ value: 1, label: '华北' }, { value: 2, label: '华东' }];
+  api.fetchField.mockResolvedValue({ options, receipt: 'proof', fills: {} });
+  const rememberOptions = vi.fn();
+  const row: Record<string, unknown> = {};
+  render(<ScopedFetchControl field={{ key: 'area', type: 'select', label: '区域', props: { defaultFirstOption: true },
+    fetch: { source: 'integration', mode: 'options', integration_id: 1 } }} path="machines.area" context={{ service_id: 1 }} depKey="[]"
+    store={{ getFieldValue: key => row[key], setFieldValue: (key, value) => { row[key] = value; },
+      requestValues: () => ({ machines: [row] }), isFieldTouched: () => false, rememberOptions }}>
+    <Radio.Group />
+  </ScopedFetchControl>);
+  const east = await screen.findByRole('radio', { name: '华东' });
+  expect(rememberOptions).toHaveBeenCalledWith([options[0]]);
+  fireEvent.click(east);
+  expect(rememberOptions).toHaveBeenLastCalledWith([options[1]]);
 });
