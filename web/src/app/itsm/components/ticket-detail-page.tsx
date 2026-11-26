@@ -84,7 +84,6 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
   useEffect(() => {
     if (formData) {
       form.resetFields();
-      form.setFieldsValue(formData);
     }
   }, [formData, form]);
 
