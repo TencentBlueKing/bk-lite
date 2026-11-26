@@ -20,6 +20,7 @@ import type { FormFieldSchema, FormSchema } from '../../../types';
 
 interface DesignPayload extends FlowDesign {
   locked?: boolean;
+  can_publish: boolean;
   form_schema?: FormSchema;
   form_id?: number | null;
   workflow_name?: string;
@@ -43,6 +44,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
   const [name, setName] = useState('');
   const [versionNo, setVersionNo] = useState(0);
   const [locked, setLocked] = useState(false);
+  const [canPublish, setCanPublish] = useState(false);
   const [formId, setFormId] = useState<number | null>(null);
   const [fields, setFields] = useState<FormFieldSchema[]>([]);
   const [design, setDesign] = useState<FlowDesign>(DEMO_FLOW);
@@ -83,6 +85,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
     setName(data.workflow_name || '');
     setVersionNo(data.version_no || 0);
     setLocked(Boolean(data.locked));
+    setCanPublish(data.can_publish);
     setFormId(data.form_id ?? null);
     const nextDesign = data.nodes?.length ? { nodes: data.nodes, edges: data.edges || [], settings: data.settings } : DEMO_FLOW;
     const nextFields = schema?.fields || [];
@@ -191,7 +194,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
           <div className="mx-1 h-4 w-px bg-[var(--color-border)]" />
           <Button loading={busy} disabled={locked} onClick={() => { void save(); }}>{t('itsm.common.save')}</Button>
           <Button loading={busy} disabled={!locked} onClick={() => { void createDraft(); }}>新建草稿</Button>
-          <Button type="primary" loading={busy} disabled={locked} onClick={() => { void publish(); }}>{t('itsm.design.publish')}</Button>
+          {canPublish && <Button type="primary" loading={busy} disabled={locked} onClick={() => { void publish(); }}>{t('itsm.design.publish')}</Button>}
         </div>
       </div>
       <OperateModal title="从表单模板创建" open={templateOpen} width={900} onCancel={()=>{ templateRequest.current++; setTemplateOpen(false); }} confirmLoading={templateLoading} okButtonProps={{disabled:!templateSchema || templateLoading}} onOk={()=>{

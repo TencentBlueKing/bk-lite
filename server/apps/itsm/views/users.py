@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.itsm.models import TicketStatus
 from apps.itsm.serializers import TicketStatusSerializer, UserSearchSerializer
-from apps.itsm.views.base import ItsmAPIView
 from apps.itsm.services.notify.recipients import active_users
+from apps.itsm.views.base import ItsmAPIView
 
 PAGE_SIZE = 10
 
@@ -25,7 +25,7 @@ def search_users(request, queryset):
 
 
 class UserSearchView(ItsmAPIView):
-    @HasPermission("portal-View,ticket-View,workflow-Edit,duty-Add,duty-Edit,org-Edit,rule-Add,rule-Edit")
+    @HasPermission("portal-View,ticket-View,workflow-Edit,workflow-Draft,duty-Add,duty-Edit,org-Edit,rule-Add,rule-Edit")
     def get(self, request):
         queryset = active_users(request.user.domain)
         return Response(search_users(request, queryset))

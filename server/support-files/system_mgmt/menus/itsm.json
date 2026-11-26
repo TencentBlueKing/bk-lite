@@ -57,6 +57,7 @@
             "View",
             "Add",
             "Edit",
+            "Draft",
             "Delete",
             "Publish"
           ]
@@ -253,6 +254,7 @@
         "workflow-View",
         "workflow-Add",
         "workflow-Edit",
+        "workflow-Draft",
         "workflow-Delete",
         "workflow-Publish",
         "form-View",
@@ -330,6 +332,18 @@
         "portal-View",
         "ticket-View",
         "ticket-Add"
+      ]
+    },
+    {
+      "name": "designer",
+      "role_name": "itsm--designer",
+      "menus": [
+        "workflow-View",
+        "workflow-Add",
+        "workflow-Draft",
+        "form-View",
+        "form-Add",
+        "form-Edit"
       ]
     }
   ]

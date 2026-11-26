@@ -16,6 +16,7 @@ import type { FormFieldSchema, FormSchema } from '../../../types';
 interface FormDetail {
   name: string;
   can_edit: boolean;
+  can_publish: boolean;
   schema: FormSchema;
   versions: Array<{ id: number; version_no: number; is_published: boolean }>;
 }
@@ -94,7 +95,7 @@ function FormEditor({ formId }: { formId: number }) {
           <Button onClick={() => setHistoryOpen(true)}>{t('itsm.design.history')}</Button>
           <div className="mx-1 h-4 w-px bg-[var(--color-border)]" />
           <Button loading={busy} onClick={() => { void save(); }}>{t('itsm.design.saveDraft')}</Button>
-          <Button type="primary" loading={busy} onClick={() => { void publish(); }}>{t('itsm.design.publishVersion')}</Button>
+          {detail?.can_publish && <Button type="primary" loading={busy} onClick={() => { void publish(); }}>{t('itsm.design.publishVersion')}</Button>}
         </div>
       </div>
       {preview ? (

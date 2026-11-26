@@ -143,6 +143,7 @@ def form_detail(request, form_id):
             "name": form.name,
             "key": form.key,
             "can_edit": has_permission(request, "form-Edit"),
+            "can_publish": has_permission(request, "form-Publish"),
             "schema": latest.schema if latest else {"version": 1, "fields": []},
             "versions": [_version_item(item) for item in versions],
         }
@@ -297,7 +298,7 @@ def workflows(request):
             {
                 "count": current.paginator.count,
                 "can_add": has_permission(request, "workflow-Add"),
-                "can_edit": has_permission(request, "workflow-Edit"),
+                "can_edit": has_permission(request, "workflow-Edit") or has_permission(request, "workflow-Draft"),
                 "can_publish": has_permission(request, "workflow-Publish"),
                 "items": [
                     {
@@ -344,7 +345,7 @@ def _rename(request, item, label):
 @csrf_exempt
 @require_http_methods(["PUT"])
 @api_errors
-@HasPermission("workflow-Edit")
+@HasPermission("workflow-Edit,workflow-Draft")
 def rename_workflow(request, workflow_id):
     workflow = Workflow.objects.get(id=workflow_id, domain=domain_of(request))
     return _rename(request, workflow, "流程名称")
@@ -361,7 +362,7 @@ def rename_form(request, form_id):
 
 @csrf_exempt
 @api_errors
-@HasPermission("workflow-Edit")
+@HasPermission("workflow-Edit,workflow-Draft")
 @transaction.atomic
 def workflow_design(request, workflow_id):
     workflows = Workflow.objects.filter(domain=domain_of(request))
@@ -381,6 +382,7 @@ def workflow_design(request, workflow_id):
             {
                 **design,
                 "locked": bool(version and version.is_published),
+                "can_publish": has_permission(request, "workflow-Publish") and has_permission(request, "form-Publish"),
                 "form_id": workflow.form_id,
                 "workflow_name": workflow.name,
                 "version_no": version.version_no if version else 0,
@@ -418,7 +420,7 @@ def workflow_design(request, workflow_id):
 @csrf_exempt
 @require_POST
 @api_errors
-@HasPermission("workflow-Edit")
+@HasPermission("workflow-Edit,workflow-Draft")
 @HasPermission("workflow-Add")
 @transaction.atomic
 def duplicate_workflow_version(request, workflow_id, version_no):
@@ -505,7 +507,7 @@ def publish_workflow(request, workflow_id):
 
 @require_GET
 @api_errors
-@HasPermission("workflow-Edit")
+@HasPermission("workflow-Edit,workflow-Draft")
 def handler_group_options(request):
     current = _page(request, HandlerGroup.objects.filter(domain=domain_of(request)).values("id", "name"))
     return WebUtils.response_success({"items": list(current), "count": current.paginator.count})
