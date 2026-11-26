@@ -1058,6 +1058,7 @@
       "evalError": "Evaluation error",
       "retentionTooShort": "Trace retention is shorter than this window",
       "retentionInvalid": "Trace retention setting is invalid",
+      "capacityExceeded": "Evaluation window exceeds the per-query trace capacity",
       "thresholdMs": "Threshold {duration}",
       "archivedServiceOption": "{name} (archived)"
     },

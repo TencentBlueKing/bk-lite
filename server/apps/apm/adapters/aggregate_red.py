@@ -22,7 +22,7 @@ from apps.apm.services.contracts import (
     SloMeasurement,
     SloMetricQuery,
 )
-from apps.apm.services.trace_retention import trace_retention_block_reason
+from apps.apm.services.trace_retention import TRACE_SLO_CAPACITY_EXCEEDED, trace_retention_block_reason
 from apps.core.aggregate_origin import recorded_origin
 from apps.core.aggregate_promql import AggregateMetricsTooLarge, AggregateMetricsUnavailable, AggregatePromqlClient
 from apps.core.aggregate_promql import align_query_end as align_aggregate_query_end
@@ -917,6 +917,7 @@ class ApmAvailabilitySloStore:
     """可用性窗口被聚合起点覆盖时读聚合库；否则和延迟 SLO 一样读 VictoriaTraces。
 
     聚合库报错只向上抛，不回退扫明细。回退到明细时，窗口长于保留期或保留期无法解析则不查询。
+    明细查询因单次容量被拒时，改为这条 SLO 的空达成率，原因是评估窗超出明细单次查询容量。
     """
 
     def __init__(self, *, traces, aggregate: AggregateApmRedStore, origin_at: Callable[[], datetime | None]):
@@ -929,7 +930,10 @@ class ApmAvailabilitySloStore:
             reason = trace_retention_block_reason(query.started_at, query.ended_at)
             if reason is not None:
                 raise TelemetryStoreUnavailable(reason)
-            return self.traces.slo_measurement(query)
+            try:
+                return self.traces.slo_measurement(query)
+            except TelemetryQueryTooLarge as exc:
+                raise TelemetryStoreUnavailable(TRACE_SLO_CAPACITY_EXCEEDED) from exc
         return self.aggregate.slo_measurement(query)
 
     def _covered(self, query: SloMetricQuery) -> bool:

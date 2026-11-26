@@ -241,6 +241,35 @@ describe('ApmHomePage', () => {
     expect(screen.queryByText('加载失败，点击重试')).toBeNull();
   });
 
+  it('shows an empty SLO rate when the trace query exceeds capacity', async () => {
+    api.getDashboard.mockResolvedValue({
+      ...loadedDashboard,
+      slos: {
+        status: 'ok',
+        data: {
+          items: [{
+            id: 'slo-capacity',
+            service_id: 'svc-checkout',
+            service_name: 'checkout-capacity',
+            environment: 'prod',
+            objective: 99.9,
+            current_rate: null,
+            met: null,
+            reason: '评估窗超出明细单次查询容量',
+          }],
+        },
+      },
+    });
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText('checkout-capacity')).not.toBeNull();
+    expect(screen.getByText('评估窗超出明细单次查询容量')).not.toBeNull();
+    expect(screen.getByText('无数据')).not.toBeNull();
+    expect(screen.queryByText('0.00%')).toBeNull();
+    expect(screen.queryByText('未达成')).toBeNull();
+    expect(screen.queryByText('加载失败，点击重试')).toBeNull();
+  });
+
   it('shows retry when a section failed', async () => {
     api.getDashboard.mockResolvedValue(failedAlertsDashboard);
     renderWithApmIntl(<ApmHomePage />);

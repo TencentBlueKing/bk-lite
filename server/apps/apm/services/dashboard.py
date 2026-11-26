@@ -13,7 +13,7 @@ from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmService
 from apps.apm.services.contracts import GroupedRed, ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
-from apps.apm.services.trace_retention import TRACE_RETENTION_INVALID, TRACE_RETENTION_TOO_SHORT
+from apps.apm.services.trace_retention import TRACE_RETENTION_INVALID, TRACE_RETENTION_TOO_SHORT, TRACE_SLO_CAPACITY_EXCEEDED
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
 
@@ -35,7 +35,7 @@ ALERT_SPARKLINE_HOURS = 24
 MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
-_TRACE_RETENTION_REASONS = {TRACE_RETENTION_TOO_SHORT, TRACE_RETENTION_INVALID}
+_TRACE_RETENTION_REASONS = {TRACE_RETENTION_TOO_SHORT, TRACE_RETENTION_INVALID, TRACE_SLO_CAPACITY_EXCEEDED}
 MAX_ALERT_ROWS = 5
 MAX_RELEASE_ROWS = 5
 RELEASE_LOOKBACK = timedelta(days=7)
@@ -636,7 +636,7 @@ class ApmDashboardService:
             evaluation = self.reliability.evaluate(slo, evaluated_at=self.now_fn())
             objective = float(slo.objective)
             if evaluation.current_rate is None:
-                # 保留期不够是这条 SLO 自己的空达成率，和列表用同一个原因，不当成存储故障或 0。
+                # 保留期不够或明细单次容量不够，是这条 SLO 自己的空达成率，和列表用同一个原因，不当成存储故障或 0。
                 if evaluation.reason in _TRACE_RETENTION_REASONS:
                     rows.append(
                         {

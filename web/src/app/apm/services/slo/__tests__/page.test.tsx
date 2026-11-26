@@ -175,6 +175,37 @@ describe('APM SLO 列表布局', () => {
     expect(screen.queryByText('未达标')).toBeNull();
   });
 
+  it('单次查询容量不足时展示原因，达成率不是 0', async () => {
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-capacity',
+        name: '结算可用性',
+        service_id: 'service-checkout',
+        environment: 'local',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'rolling30d',
+        is_enabled: true,
+        service_namespace: 'apm-demo-shop',
+        service_name: 'demo-storefront',
+        latency_threshold_ms: null,
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+        reason: '评估窗超出明细单次查询容量',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+
+    expect(await screen.findByText('评估窗超出明细单次查询容量')).not.toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.queryByText('0.00%')).toBeNull();
+    expect(screen.queryByText('未达标')).toBeNull();
+    expect(screen.queryByText('暂无数据')).toBeNull();
+  });
+
   it('编辑归档服务的 SLO 时展示服务名称而不是 UUID', async () => {
     const user = userEvent.setup();
     api.getServices.mockResolvedValue([]);

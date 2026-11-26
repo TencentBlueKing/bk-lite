@@ -1631,7 +1631,8 @@ class VictoriaTracesTelemetryStore:
 
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
         window_seconds = _validate_window(query.started_at, query.ended_at)
-        deduped = self._deduped_entry_query(
+        # 不按 (trace_id, span_id) 去重：去重内存与唯一 Span 数成正比，大流量服务单天就会超出 VT 单次查询容量。
+        entry_filters = self._entry_span_filters(
             query.service_namespace,
             query.service_name,
             query.environment,
@@ -1646,6 +1647,7 @@ class VictoriaTracesTelemetryStore:
             threshold_ns = query.latency_threshold_ms * 1_000_000
             final = f"count() as total, count() if (duration:<={threshold_ns}) as good"
             good_metric = "good"
+        aggregate = f"{entry_filters} | stats {final}"
         total = 0.0
         good = 0.0
         for slice_started_at, slice_ended_at in _metric_window_slices(
@@ -1653,11 +1655,10 @@ class VictoriaTracesTelemetryStore:
             query.ended_at,
             width=RED_EXACT_DEDUP_WINDOW,
         ):
-            values = self._ungrouped_values(self._stats(f"{self._bounded_spans(deduped)} | stats {final}", slice_started_at, slice_ended_at))
+            values = self._ungrouped_values(self._stats(aggregate, slice_started_at, slice_ended_at))
             slice_total = values.get("total")
             if slice_total is None or slice_total <= 0:
                 continue
-            self._reject_truncated_unique_spans(deduped, slice_total, slice_started_at, slice_ended_at)
             total += slice_total
             good += values.get(good_metric, 0.0) if good_metric else max(0.0, slice_total - values.get("bad", 0.0))
         if total <= 0:

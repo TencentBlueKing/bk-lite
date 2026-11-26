@@ -342,6 +342,22 @@ def test_aggregate_errors_degrade_without_scanning_traces_or_returning_zero(erro
     assert result.reason == message
 
 
+def test_trace_fallback_turns_query_capacity_rejection_into_an_empty_slo_reason(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35d")
+
+    class _RejectingTraces:
+        def slo_measurement(self, query):
+            raise TelemetryQueryTooLarge("VictoriaTraces 拒绝了本次查询（超出单次查询容量），请缩小时间窗后重试")
+
+    store = _store(_Client(_counts), _RejectingTraces(), origin=None)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="^评估窗超出明细单次查询容量$") as caught:
+        store.slo_measurement(_query())
+
+    assert type(caught.value) is TelemetryStoreUnavailable
+    assert isinstance(caught.value.__cause__, TelemetryQueryTooLarge)
+
+
 def test_missing_or_zero_samples_stay_no_data():
     traces = _Traces(SloMeasurement(0.0, 0.0, 1.0, MetricDataState.AVAILABLE))
     empty = _Client(lambda expression: [])
@@ -564,3 +580,43 @@ def test_dashboard_list_and_detail_share_empty_rate_when_trace_retention_is_shor
     assert card["met"] is None
     assert card["reason"] == listed.data[0]["reason"]
     assert card["id"] == str(slo.id)
+
+
+@pytest.mark.django_db
+def test_dashboard_list_and_detail_keep_capacity_rejection_on_the_slo_row(apm_api_client, monkeypatch):
+    service = _visible_service()
+    slo = ApmSlo.objects.create(
+        name="结算可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective="99.900",
+        evaluation_window="rolling30d",
+    )
+    monkeypatch.setenv("APM_TRACE_RETENTION", "35d")
+    _run_dashboard_inline(monkeypatch)
+    monkeypatch.setattr("apps.apm.adapters.aggregate_red.AggregatePromqlClient.from_env", lambda: _Client(_counts))
+    monkeypatch.setattr(
+        "apps.apm.adapters.victoriatraces.VictoriaTracesTelemetryStore.slo_measurement",
+        lambda self, query: (_ for _ in ()).throw(TelemetryQueryTooLarge("VictoriaTraces 拒绝了本次查询（超出单次查询容量），请缩小时间窗后重试")),
+    )
+
+    dashboard = apm_api_client.get("/api/v1/apm/dashboard/?window=1h")
+    listed = apm_api_client.get("/api/v1/apm/slos/")
+    detail = apm_api_client.get(f"/api/v1/apm/slos/{slo.id}/")
+
+    assert dashboard.status_code == 200
+    assert dashboard.data["slos"]["status"] == "ok"
+    card = dashboard.data["slos"]["data"]["items"][0]
+    assert card["current_rate"] is None
+    assert card["met"] is None
+    assert card["reason"] == "评估窗超出明细单次查询容量"
+    assert listed.status_code == 200
+    assert listed.data[0]["current_rate"] is None
+    assert listed.data[0]["data_state"] == "no_data"
+    assert listed.data[0]["reason"] == "评估窗超出明细单次查询容量"
+    assert detail.status_code == 200
+    assert detail.data["current_rate"] is None
+    assert detail.data["data_state"] == "no_data"
+    assert detail.data["reason"] == listed.data[0]["reason"]
+    assert detail.data["id"] == listed.data[0]["id"] == card["id"] == str(slo.id)
