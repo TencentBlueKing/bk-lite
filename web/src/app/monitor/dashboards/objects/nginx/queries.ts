@@ -19,10 +19,14 @@ const totalRate = (metric: string, selector: string) => (
   `label_replace(rate(${metric}${selector}[__$window__]), "code", "total", "__name__", ".*")`
 );
 
-/** `or` 忽略 __name__，同标签会只留下左边一条。补上互斥的 metric 后每条原始序列都还在。 */
+/**
+ * `or` 按标签集去重，不看 __name__。tlast_over_time 会丢掉 __name__，
+ * 外层再按 __name__ 和 ".+" 做 label_replace 时匹配不到空值，metric 加不上，多路只剩一条。
+ * 空 src 配 ".*" 不依赖 __name__，每路仍带上互斥的 metric。
+ */
 const tlastOr = (metrics: readonly string[]) => (
   metrics.map((metric) => (
-    `label_replace(tlast_over_time(${metric}{__$labels__}[20m]), "metric", "${metric}", "__name__", ".+")`
+    `label_replace(tlast_over_time(${metric}{__$labels__}[20m]), "metric", "${metric}", "", ".*")`
   )).join(' or ')
 );
 
