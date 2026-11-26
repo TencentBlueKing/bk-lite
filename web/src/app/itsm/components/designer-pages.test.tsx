@@ -26,7 +26,7 @@ const schema = { version: 1, fields: [{ key: 'cost', type: 'number', label: '原
 beforeEach(() => { vi.resetAllMocks(); state.id = '1'; });
 afterEach(cleanup);
 it('表单编辑加载失败可重试，保存与发布保留布局和规则', async () => {
-  api.getForm.mockRejectedValueOnce(new Error('读取失败')).mockResolvedValue({ schema, versions: [] });
+  api.getForm.mockRejectedValueOnce(new Error('读取失败')).mockResolvedValue({ schema, versions: [], can_publish: true });
   api.saveForm.mockResolvedValue({ version_no: 3 });
   api.publishForm.mockResolvedValue({ version_no: 4 });
   render(<FormPage />);
@@ -57,9 +57,10 @@ it('切换流程后等待对应表单读完，旧请求迟到不会覆盖当前�
 });
 
 it('预览使用编辑中的表单配置取数', async () => {
-  api.getForm.mockResolvedValue({ schema, versions: [] });
+  api.getForm.mockResolvedValue({ schema, versions: [], can_publish: false });
   render(<FormPage />);
   fireEvent.click(await screen.findByRole('button', { name: '原名' }));
+  expect(screen.queryByText('itsm.design.publishVersion')).toBeNull();
   fireEvent.click(screen.getByText('itsm.design.previewForm'));
   expect(screen.getByRole('status').textContent).toBe('变更');
 });
