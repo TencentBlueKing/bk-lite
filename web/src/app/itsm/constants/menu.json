@@ -45,7 +45,18 @@
       ]
     },
     {
-      "title": "流程管理",
+      "title": "业务协作",
+      "icon": "zuzhiguanli",
+      "name": "knowledge",
+      "children": [
+        {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
+        {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
+        {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"}
+      ]
+    },
+    {
+      "title": "流程设计",
       "icon": "jiqiren2",
       "url": "/itsm/workflow",
       "name": "workflow",
@@ -70,21 +81,14 @@
       ]
     },
     {
-      "title": "表单与数据",
+      "title": "表单与集成",
       "icon": "weihuzuoyemoban",
-      "url": "/itsm/form",
       "name": "form",
       "children": [
         {
           "title": "表单模型",
           "url": "/itsm/form",
           "name": "form"
-        },
-        {
-          "title": "视图模板",
-          "url": "/itsm/form/view-templates",
-          "name": "form",
-          "isNotMenuItem": true
         },
         {
           "title": "数据字典",
@@ -100,13 +104,18 @@
           "title": "集成",
           "url": "/itsm/form/integrations",
           "name": "data"
+        },
+        {
+          "title": "视图模板",
+          "url": "/itsm/form/view-templates",
+          "name": "form",
+          "isNotMenuItem": true
         }
       ]
     },
     {
-      "title": "规则与时效",
+      "title": "自动化与时效",
       "icon": "mubiaoguanli",
-      "url": "/itsm/rule",
       "name": "rule",
       "children": [
         {
@@ -142,21 +151,8 @@
       ]
     },
     {
-      "title": "应用",
-      "icon": "job",
-      "url": "/itsm/apps",
-      "name": "knowledge",
-      "children": [
-        {"title": "知识库", "url": "/itsm/apps/knowledge", "name": "knowledge"},
-        {"title": "值班", "url": "/itsm/apps/duty", "name": "duty"},
-        {"title": "变更", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "交接", "url": "/itsm/apps/handover", "name": "handover"}
-      ]
-    },
-    {
-      "title": "设置",
+      "title": "管理设置",
       "icon": "settings-fill",
-      "url": "/itsm/settings",
       "name": "setting",
       "children": [
         {"title": "处理组", "url": "/itsm/settings/handler-groups", "name": "org"},
@@ -172,7 +168,7 @@
   ],
   "en": [
     {
-      "title": "Portal",
+      "title": "Service portal",
       "icon": "home",
       "url": "/itsm/portal",
       "name": "portal",
@@ -183,7 +179,7 @@
       ]
     },
     {
-      "title": "Tickets",
+      "title": "Ticket center",
       "icon": "renwu",
       "url": "/itsm/tickets",
       "name": "ticket",
@@ -193,7 +189,18 @@
       ]
     },
     {
-      "title": "Workflows",
+      "title": "Team operations",
+      "icon": "zuzhiguanli",
+      "name": "knowledge",
+      "children": [
+        {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
+        {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
+        {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
+        {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"}
+      ]
+    },
+    {
+      "title": "Workflow design",
       "icon": "jiqiren2",
       "url": "/itsm/workflow",
       "name": "workflow",
@@ -204,22 +211,20 @@
       ]
     },
     {
-      "title": "Forms and data",
+      "title": "Forms and integrations",
       "icon": "weihuzuoyemoban",
-      "url": "/itsm/form",
       "name": "form",
       "children": [
         {"title": "Forms", "url": "/itsm/form", "name": "form"},
-        {"title": "View templates", "url": "/itsm/form/view-templates", "name": "form", "isNotMenuItem": true},
         {"title": "Dictionaries", "url": "/itsm/form/dictionaries", "name": "data"},
         {"title": "Tables", "url": "/itsm/form/tables", "name": "data"},
-        {"title": "Integrations", "url": "/itsm/form/integrations", "name": "data"}
+        {"title": "Integrations", "url": "/itsm/form/integrations", "name": "data"},
+        {"title": "View templates", "url": "/itsm/form/view-templates", "name": "form", "isNotMenuItem": true}
       ]
     },
     {
-      "title": "Rules",
+      "title": "Automation and SLA",
       "icon": "mubiaoguanli",
-      "url": "/itsm/rule",
       "name": "rule",
       "children": [
         {"title": "SLA", "url": "/itsm/rule/sla", "name": "rule"},
@@ -231,21 +236,8 @@
       ]
     },
     {
-      "title": "Applications",
-      "icon": "job",
-      "url": "/itsm/apps",
-      "name": "knowledge",
-      "children": [
-        {"title": "Knowledge base", "url": "/itsm/apps/knowledge", "name": "knowledge"},
-        {"title": "Duty", "url": "/itsm/apps/duty", "name": "duty"},
-        {"title": "Change", "url": "/itsm/apps/change", "name": "change"},
-        {"title": "Handover", "url": "/itsm/apps/handover", "name": "handover"}
-      ]
-    },
-    {
-      "title": "Settings",
+      "title": "Administration",
       "icon": "settings-fill",
-      "url": "/itsm/settings",
       "name": "setting",
       "children": [
         {"title": "Handler groups", "url": "/itsm/settings/handler-groups", "name": "org"},
