@@ -336,7 +336,7 @@ def _ack(client, ticket, execution_id):
     detail = execution.detail
     if detail.get("process_id") != ticket.process_instance_id or (ticket.status_id and ticket.status.key in TERMINAL):
         return False
-    variables = {**_form_variables(ticket.form_data), **(detail.get("result", {}).get("variables") or {})}
+    variables = {**_form_variables(ticket.form_data, ticket.workflow_version), **(detail.get("result", {}).get("variables") or {})}
     marker, value = _ack_marker(execution)
     variables[marker] = value
     try:

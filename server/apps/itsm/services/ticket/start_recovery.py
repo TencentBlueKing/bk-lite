@@ -25,7 +25,7 @@ def _instance(service, attempt):
         variables = {
             "initiator": ticket.creator,
             **service._assignee_variables(ticket.workflow_version, ticket.creator, ticket.form_data, service_id=ticket.service_id),
-            **_form_variables(ticket.form_data),
+            **_form_variables(ticket.form_data, ticket.workflow_version),
         }
     sent_at = timezone.now()
     with transaction.atomic():

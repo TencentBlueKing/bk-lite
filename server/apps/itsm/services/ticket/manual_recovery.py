@@ -85,7 +85,7 @@ def _send(client, op):
     if op.action in COMPLETIONS:
         node_id = op.payload["node"]["id"]
         variables = {
-            **_form_variables(op.payload["form"]),
+            **_form_variables(op.payload["form"], op.ticket.workflow_version),
             **op.payload["assignees"],
             "result": op.action,
             f"out_{node_id}_result": op.action,

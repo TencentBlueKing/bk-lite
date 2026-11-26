@@ -5,7 +5,8 @@ from django.utils import timezone
 
 from apps.itsm.flowable.client import FlowableClient, FlowableError
 from apps.itsm.models import Service, StatusTransition, Ticket, TicketLog, TicketStatus, TicketTask, WorkflowVersion
-from apps.itsm.services.form.fetch import task_fetch_context, validate_submission
+from apps.itsm.services.form.fetch import task_fetch_context, validate_submission, walk
+from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns
 from apps.itsm.services.notify.service import dispatch_notification, ticket_notice_variables
 from apps.itsm.services.service_assignment import LEGACY_PRESET_MESSAGE, has_legacy_preset_handlers, requires_handler_group, service_assignees
 from apps.itsm.services.sla import finish as finish_sla
@@ -660,11 +661,18 @@ class TicketService:
 _PERM_ALIAS = {"edit": "editable", "read": "readonly"}
 
 
-def _form_variables(form_data: dict) -> dict:
+def _form_variables(form_data: dict, version=None) -> dict:
     variables = {}
     for key, value in (form_data or {}).items():
         if isinstance(value, (str, int, float, bool)):
             variables[f"form_{key}"] = value
+    if version and any(isinstance(v, list) for v in (form_data or {}).values()):
+        for field in walk(workflow_schema(version).get("fields", [])):
+            key = field.get("key")
+            rows = form_data.get(key)
+            if field.get("type") in TABLE_FIELDS and isinstance(rows, list):
+                columns = {column.get("key") for column in configured_table_columns(field)}
+                variables[f"form_{key}"] = [{k: v for k, v in row.items() if k in columns} for row in rows if isinstance(row, dict)]
     return variables
 
 
