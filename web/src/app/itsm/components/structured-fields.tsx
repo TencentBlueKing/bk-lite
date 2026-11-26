@@ -6,6 +6,7 @@ import { matches } from './form-conditions';
 import { fetchDependencies, ScopedFetchControl, type FetchContext } from './field-fetch-control';
 import dynamic from 'next/dynamic';
 import { ItsmModal } from './interaction-surfaces';
+import { subformColumns } from './subform-columns';
 import { TableOptionCell } from './table-option-cell';
 import { Button, Form, Input, Tag, Tooltip } from 'antd';
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -68,11 +69,7 @@ export function TableField({ field, value = [], onChange, disabled = false, cont
   const { errors } = Form.Item.useStatus();
   const form = Form.useFormInstance();
   const touched = useRef(new Map<number, Set<string>>());
-  const configured: FormFieldSchema[] = field.children && (field.children.length || !field.props?.columns) ? field.children
-    : String(field.props?.columns || '名称:name\n数量:quantity:number').split('\n').filter(Boolean).map((line) => {
-      const [label, key = label, type = 'input'] = line.split(':');
-      return { key: key.trim(), label: label.trim(), type };
-    });
+  const configured = subformColumns(field);
   const permission = (column: FormFieldSchema) => fieldPerm[column.key] || fieldPerm['*'];
   const columns = configured.filter(column => column.state !== 'hidden' && permission(column) !== 'hidden');
   const rows = Array.isArray(value) ? value : [];
