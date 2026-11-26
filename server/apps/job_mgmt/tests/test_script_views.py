@@ -194,13 +194,14 @@ class TestScriptCrud:
         assert delete_resp.status_code in (200, 204)
         assert not Script.objects.filter(id=script.id).exists()
 
-    def test_export_returns_zip_and_strips_encrypted_defaults(self, su_client):
+    def test_export_returns_zip_and_strips_encrypted_defaults(self, su_client, mocker):
         from apps.job_mgmt.services.param_crypto import ParamCrypto
 
         params = [{"name": "pwd", "default": "secret", "is_encrypted": True}]
         ParamCrypto.encrypt_param_defaults(params)
         s = Script.objects.create(name="exp", content="echo hi", script_type="shell", params=params, team=[1])
 
+        mocker.patch("apps.core.utils.viewset_utils.get_permission_rules", return_value={"team": [1], "instance": []})
         resp = su_client.post(f"{URL}export/", {"ids": [s.id]}, format="json")
         assert resp.status_code == 200
         assert resp["Content-Type"] == "application/zip"

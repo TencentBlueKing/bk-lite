@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Button,
   Tag,
@@ -20,14 +20,15 @@ import {
   DeleteOutlined,
   CheckOutlined,
   CloseOutlined,
-  ExportOutlined,
-  ImportOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import ImportFileModalShell from '@/components/import-file-modal-shell';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
+import { useUserInfoContext } from '@/context/userInfo';
+import usePermissions from '@/hooks/usePermissions';
+import LibraryBatchMenu from '../library-batch-menu';
+import useTemplateLibraryList from '../use-template-library-list';
 import useJobApi from '@/app/job/api';
 import { Script, ScriptFormData, ScriptParam, ScriptParamType, ScriptType } from '@/app/job/types';
 import { ColumnItem } from '@/types';
@@ -111,10 +112,17 @@ const EnumOptionsEditor: React.FC<EnumOptionsEditorProps> = ({
 };
 
 const ScriptLibraryPage = () => {
+  const { userId, selectedGroup } = useUserInfoContext();
+  return <ScriptLibrary key={JSON.stringify([userId, selectedGroup?.id])} />;
+};
+
+const ScriptLibrary = () => {
   const { t } = useTranslation();
-  const { isLoading: isApiReady } = useApiClient();
+  const { hasPermission } = usePermissions();
   const {
     getScriptList,
+    getScriptSelectionIds,
+    batchDeleteScripts,
     getScriptDetail,
     createScript,
     updateScript,
@@ -127,15 +135,9 @@ const ScriptLibraryPage = () => {
   const [form] = Form.useForm();
   const [paramForm] = Form.useForm<ScriptParam>();
   const [importForm] = Form.useForm();
-  const [data, setData] = useState<Script[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [searchKey, setSearchKey] = useState('');
-  const [pagination, setPagination] = useState({
-    current: 1,
-    total: 0,
-    pageSize: 20,
-  });
+  const {
+    data, loading, searchKey, setSearchKey, appliedSearch, pagination, selection, fetchData, handleSearch, handleTableChange,
+  } = useTemplateLibraryList({ resource: 'script', loadPage: getScriptList, loadIds: getScriptSelectionIds });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'add' | 'edit' | 'view'>('add');
@@ -165,53 +167,6 @@ const ScriptLibraryPage = () => {
   const isEnumParam = Form.useWatch('type', paramForm) === 'enum';
   const enumOptionsWatch = Form.useWatch('options', paramForm);
   const enumOptions = enumOptionsWatch && enumOptionsWatch.length > 0 ? enumOptionsWatch : [''];
-
-  const fetchData = useCallback(
-    async (fetchParams: { keyword?: string; current?: number; pageSize?: number } = {}) => {
-      setLoading(true);
-      try {
-        const keyword = (fetchParams.keyword ?? searchKey).trim();
-        const queryParams: Record<string, unknown> = {
-          page: fetchParams.current ?? pagination.current,
-          page_size: fetchParams.pageSize ?? pagination.pageSize,
-        };
-        if (keyword) {
-          queryParams.name = keyword;
-        }
-        const res = await getScriptList(queryParams as any);
-        setData(res.items || []);
-        setPagination((prev) => ({
-          ...prev,
-          total: res.count || 0,
-        }));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [searchKey, pagination.current, pagination.pageSize]
-  );
-
-  useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [isApiReady]);
-
-  useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [pagination.current, pagination.pageSize]);
-
-  const handleSearch = useCallback((value: string) => {
-    setSearchKey(value);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ keyword: value, current: 1 });
-  }, [fetchData]);
-
-  const handleTableChange = (pag: any) => {
-    setPagination(pag);
-  };
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '-';
@@ -310,6 +265,7 @@ const ScriptLibraryPage = () => {
 
   const handleDelete = async (record: Script) => {
     await deleteScript(record.id);
+    selection.removeFromSelection(record.id);
     message.success(t('job.deleteScript'));
     fetchData();
   };
@@ -343,13 +299,8 @@ const ScriptLibraryPage = () => {
     }
   };
 
-  const handleExportScripts = async () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning(t('job.selectScriptsToExport'));
-      return;
-    }
+  const handleExportScripts = async (ids: number[]) => {
     try {
-      const ids = selectedRowKeys.map((key) => Number(key));
       const blob = await exportScripts(ids);
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement('a');
@@ -381,7 +332,7 @@ const ScriptLibraryPage = () => {
       setImportConfirmLoading(true);
       const result = await importScripts(importFile, values.team || []);
       setImportModalOpen(false);
-      setSelectedRowKeys([]);
+      selection.clearSelection();
       const summary = t('job.importScriptsResult', undefined, {
         created: result.created.length,
         skipped: result.skipped.length,
@@ -700,14 +651,20 @@ const ScriptLibraryPage = () => {
           }}
           actions={(
             <>
-              <Button icon={<ExportOutlined />} onClick={handleExportScripts}>
-                {t('job.batchExportScripts')}
-              </Button>
-              <Permission requiredPermissions={['Add']}>
-                <Button icon={<ImportOutlined />} onClick={openImportModal}>
-                  {t('job.batchImportScripts')}
-                </Button>
-              </Permission>
+              <LibraryBatchMenu
+                key={appliedSearch}
+                resource="script"
+                selectedIds={selection.selectedIds}
+                busy={loading || selection.selectingAll}
+                selectionVersion={selection.selectionVersion}
+                deleteItems={batchDeleteScripts}
+                onSuccess={() => {
+                  selection.clearSelection();
+                  fetchData();
+                }}
+                onImport={openImportModal}
+                onExport={handleExportScripts}
+              />
               <Permission requiredPermissions={['Add']}>
                 <Button
                   type="primary"
@@ -730,10 +687,7 @@ const ScriptLibraryPage = () => {
             rowKey="id"
             pagination={pagination}
             onChange={handleTableChange}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys),
-            }}
+            rowSelection={hasPermission(['View', 'Edit', 'Delete']) ? selection.rowSelection : undefined}
           />
         </div>
       </div>

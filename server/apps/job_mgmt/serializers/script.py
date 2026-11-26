@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Script
+from apps.job_mgmt.serializers.organization_batch import SelectionSerializer
 from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_param_definitions import normalize_script_param_definitions
@@ -188,10 +189,8 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
             return instance
 
 
-class ScriptBatchDeleteSerializer(serializers.Serializer):
-    """脚本批量删除序列化器"""
-
-    ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="要删除的脚本ID列表")
+class ScriptBatchDeleteSerializer(SelectionSerializer):
+    """校验批量删除的选择范围。"""
 
 
 class ScriptExportSerializer(serializers.Serializer):

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Button,
   Modal,
@@ -28,7 +28,10 @@ import VersionBadge from '@/components/version-badge';
 import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
+import { useUserInfoContext } from '@/context/userInfo';
+import usePermissions from '@/hooks/usePermissions';
+import LibraryBatchMenu from '../library-batch-menu';
+import useTemplateLibraryList from '../use-template-library-list';
 import useJobApi from '@/app/job/api';
 import { Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
@@ -43,11 +46,18 @@ import Permission from '@/components/permission';
 const { Dragger } = Upload;
 
 const PlaybookLibraryPage = () => {
+  const { userId, selectedGroup } = useUserInfoContext();
+  return <PlaybookLibrary key={JSON.stringify([userId, selectedGroup?.id])} />;
+};
+
+const PlaybookLibrary = () => {
   const { t } = useTranslation();
-  const { isLoading: isApiReady } = useApiClient();
+  const { hasPermission } = usePermissions();
   const router = useRouter();
   const {
     getPlaybookList,
+    getPlaybookSelectionIds,
+    batchDeletePlaybook,
     getPlaybookDetail,
     createPlaybook,
     updatePlaybook,
@@ -61,14 +71,9 @@ const PlaybookLibraryPage = () => {
   const [form] = Form.useForm();
   const [uploadForm] = Form.useForm();
   const [upgradeForm] = Form.useForm();
-  const [data, setData] = useState<Playbook[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchKey, setSearchKey] = useState('');
-  const [pagination, setPagination] = useState({
-    current: 1,
-    total: 0,
-    pageSize: 20,
-  });
+  const {
+    data, loading, searchKey, setSearchKey, appliedSearch, pagination, selection, fetchData, handleSearch, handleTableChange,
+  } = useTemplateLibraryList({ resource: 'playbook', loadPage: getPlaybookList, loadIds: getPlaybookSelectionIds });
 
   // Upload modal
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -98,53 +103,6 @@ const PlaybookLibraryPage = () => {
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [filePreviewData, setFilePreviewData] = useState<PlaybookFilePreview | null>(null);
   const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
-
-  const fetchData = useCallback(
-    async (fetchParams: { keyword?: string; current?: number; pageSize?: number } = {}) => {
-      setLoading(true);
-      try {
-        const keyword = (fetchParams.keyword ?? searchKey).trim();
-        const queryParams: Record<string, unknown> = {
-          page: fetchParams.current ?? pagination.current,
-          page_size: fetchParams.pageSize ?? pagination.pageSize,
-        };
-        if (keyword) {
-          queryParams.name = keyword;
-        }
-        const res = await getPlaybookList(queryParams as Record<string, unknown>);
-        setData(res.items || []);
-        setPagination((prev) => ({
-          ...prev,
-          total: res.count || 0,
-        }));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [searchKey, pagination.current, pagination.pageSize]
-  );
-
-  useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [isApiReady]);
-
-  useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [pagination.current, pagination.pageSize]);
-
-  const handleSearch = useCallback((value: string) => {
-    setSearchKey(value);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ keyword: value, current: 1 });
-  }, [fetchData]);
-
-  const handleTableChange = (pag: Record<string, number>) => {
-    setPagination((prev) => ({ ...prev, ...pag }));
-  };
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '-';
@@ -311,6 +269,7 @@ const PlaybookLibraryPage = () => {
   // Delete
   const handleDelete = async (record: Playbook) => {
     await deletePlaybook(record.id);
+    selection.removeFromSelection(record.id);
     message.success(t('job.deletePlaybook'));
     fetchData();
   };
@@ -590,15 +549,29 @@ const PlaybookLibraryPage = () => {
             onSearch: handleSearch,
           }}
           actions={(
-            <Permission requiredPermissions={['Add']}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openUploadModal}
-              >
-                {t('common.new')}
-              </Button>
-            </Permission>
+            <>
+              <LibraryBatchMenu
+                key={appliedSearch}
+                resource="playbook"
+                selectedIds={selection.selectedIds}
+                busy={loading || selection.selectingAll}
+                selectionVersion={selection.selectionVersion}
+                deleteItems={batchDeletePlaybook}
+                onSuccess={() => {
+                  selection.clearSelection();
+                  fetchData();
+                }}
+              />
+              <Permission requiredPermissions={['Add']}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={openUploadModal}
+                >
+                  {t('common.new')}
+                </Button>
+              </Permission>
+            </>
           )}
         />
 
@@ -611,6 +584,7 @@ const PlaybookLibraryPage = () => {
             rowKey="id"
             pagination={pagination}
             onChange={handleTableChange}
+            rowSelection={hasPermission(['Edit', 'Delete']) ? selection.rowSelection : undefined}
           />
         </div>
       </div>

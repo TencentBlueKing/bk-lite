@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Playbook
+from apps.job_mgmt.serializers.organization_batch import SelectionSerializer
 from apps.job_mgmt.services.template_revision import TemplateRevisionService, display_revision_label, request_operator
 from apps.job_mgmt.utils.i18n import serializer_message
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits, open_archive, validate_archive_extension
@@ -624,7 +625,5 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
             return instance
 
 
-class PlaybookBatchDeleteSerializer(serializers.Serializer):
-    """Playbook批量删除序列化器"""
-
-    ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, help_text="要删除的PlaybookID列表")
+class PlaybookBatchDeleteSerializer(SelectionSerializer):
+    """校验批量删除的选择范围。"""

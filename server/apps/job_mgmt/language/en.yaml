@@ -22,6 +22,12 @@ message:
   connection_test_failed: "Connection test failed: {detail}"
   winrm_connection_test_success: "WinRM connection test succeeded"
 error:
+  batch_selection_limit: "Select up to {limit} resources at a time. Narrow the filter and try again."
+  batch_operation_denied: "Some selected resources are unavailable or you do not have permission to operate on them."
+  batch_organization_missing: "This organization is unavailable."
+  batch_preview_changed: "The selected resources have changed. Refresh the preview before confirming."
+  batch_exclude_required: "Exclude resources that would lose their last organization before confirming."
+  builtin_script_delete: "Built-in scripts cannot be deleted."
   status_changed_retry: "Status has changed; refresh and try again"
   group_id_invalid: "Invalid group_id"
   team_required: "team is required"
