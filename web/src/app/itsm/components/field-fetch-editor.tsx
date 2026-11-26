@@ -3,6 +3,8 @@ import { ItsmModal as Modal } from '@/app/itsm/components/interaction-surfaces';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Select } from 'antd';
 import { useItsmApi } from '../api/useItsmApi';
+import { SubformOptions } from './subform-options';
+import { CASCADE_TYPES } from '../constants/field-catalog';
 import { FieldFetchGuide } from './field-fetch-guide';
 import { FieldParameterBindings, type ParameterSchema } from './field-parameter-bindings';
 import { compatiblePaths, listPath, sampleAt, samplePaths, type SamplePath } from './field-fetch-mapping';
@@ -26,8 +28,8 @@ function JsonInput({ label, value, onChange }: { label: string; value: Record<st
   }} />{error && <span className="text-red-500">请输入 JSON 对象，当前内容尚未保存</span>}</label>;
 }
 
-interface EditorProps { field: FormFieldSchema; fields: FormFieldSchema[]; patch: (key: string, next: Partial<FormFieldSchema>) => void }
-export function FieldFetchEditor({ field, fields, patch }: EditorProps) {
+interface EditorProps { tableKey?: string; field: FormFieldSchema; fields: FormFieldSchema[]; patch: (key: string, next: Partial<FormFieldSchema>) => void }
+export function FieldFetchEditor({ field, fields, patch, tableKey }: EditorProps) {
   const api = useItsmApi();
   const [catalog, setCatalog] = useState<Catalog>();
   const [error, setError] = useState('');
@@ -38,6 +40,9 @@ export function FieldFetchEditor({ field, fields, patch }: EditorProps) {
   const cfg = field.fetch;
   const source = cfg?.source === 'integration' ? cfg.integration_kind || catalog?.integrations.find(i => i.id === cfg.integration_id)?.kind || 'api' : cfg?.source || 'static';
   const title = capability?.mode === 'options' ? '选项来源' : capability?.mode === 'table' ? '行数据来源' : '自动填值';
+  if (tableKey) return capability?.mode === 'options'
+    ? <SubformOptions options={field.source?.options || []} tree={CASCADE_TYPES.has(field.type)} onChange={options => patch(field.key, { source: { type: 'static', options } })} />
+    : null;
   if (!capability) return error ? <Alert type="error" message={error} /> : null;
   if (!capability.sources.length || (cfg && (!capability.sources.includes(source) || cfg.mode !== capability.mode))) return cfg ? <Alert type="warning" message="此字段不支持当前取数配置" action={<Button onClick={() => patch(field.key, { fetch: undefined })}>移除无效配置</Button>} /> : null;
   const resource = cfg?.source === 'integration' ? catalog?.integrations.find(i => i.id === cfg.integration_id)?.name : (cfg?.source === 'dictionary' ? catalog?.dictionaries : catalog?.tables)?.find(i => i.key === cfg?.resource_key)?.name;

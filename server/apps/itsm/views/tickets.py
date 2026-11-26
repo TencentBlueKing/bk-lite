@@ -16,7 +16,7 @@ from apps.itsm.models import Ticket, TicketSurvey, TicketTask, WorkflowVersion
 from apps.itsm.serializers.ticket import TicketListSerializer
 from apps.itsm.services.external_jobs import reconcile_execution, request_retry, result_field, retry_available, review_available
 from apps.itsm.services.form.fetch import walk
-from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, visible_table_rows
+from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, protected_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
 from apps.itsm.services.ticket.history import node_progress, ticket_history
@@ -311,10 +311,10 @@ def ticket_form_view(ticket, design, own_task, status_key, *, include_legacy_fie
                 if key in values:
                     visible_values[key] = visible_table_rows(
                         values[key],
-                        {column["key"] for column in allowed},
+                        allowed,
                         f"ticket:{ticket.pk}",
                         key,
-                        preserve_hidden=any(hidden_column(column, permissions) for column in columns),
+                        preserve_hidden=any(protected_column(column, permissions) or column.get("visibleWhen") for column in columns),
                     )
             else:
                 if key in values:

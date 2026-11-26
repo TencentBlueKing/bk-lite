@@ -25,3 +25,9 @@ def resolve_options(
             return []
         return list(datatable_lookup(str(source.get("id") or "")))
     return list(field.get("props", {}).get("options") or [])
+
+
+def option_values(options):
+    for option in options:
+        yield option.get("value")
+        yield from option_values(option.get("children") or [])

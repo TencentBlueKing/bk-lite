@@ -3,7 +3,7 @@
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Button, Checkbox, DatePicker, Empty, Input, InputNumber, Radio, Select, Switch } from 'antd';
+import { Button, Checkbox, DatePicker, Empty, Input, InputNumber, message, Radio, Select, Switch } from 'antd';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ALL_FIELDS, BASIC_FIELDS, CASCADE_TYPES, CHOICE_TYPES, FULL_ROW_TYPES, SCENE_FIELDS, SENIOR_FIELDS, fieldLabelId, type CatalogField } from '../constants/field-catalog';
 import type { FormFieldSchema } from '../types';
@@ -13,6 +13,9 @@ import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { FIELD_GROUP_COLOR, FieldGlyph } from './field-glyph';
 import { useTranslation } from '@/utils/i18n';
+
+const isDropContainer = (field: FormFieldSchema) => field.type === 'section' || (field.type === 'table' && Array.isArray(field.children));
+const subformTypes = new Set(BASIC_FIELDS.map(field => field.type));
 
 const WIDTHS = [
   { span: 3, label: '1/4' },
@@ -298,6 +301,7 @@ function CanvasPane({ children }: { children: ReactNode }) {
 }
 
 function columnNames(field: FormFieldSchema) {
+  if (field.children?.length) return field.children.map(column => column.label || column.key);
   const names = String(field.props?.columns || '')
     .split('\n')
     .map((line) => line.split(':')[0].trim())
@@ -411,7 +415,7 @@ function SortableCard({ field, selected, guide, onSelect, onCopy, onRemove, chil
           {field.label}
         </span>
       </div>
-      {field.type === 'section' ? children : <FieldPreview field={field} />}
+      {children ?? <FieldPreview field={field} />}
       {edge === 'left' ? <span className={`${bar} bottom-0 left-0 top-0 w-1`} /> : null}
       {edge === 'right' ? <span className={`${bar} bottom-0 right-0 top-0 w-1`} /> : null}
       {edge === 'top' ? <span className={`${bar} left-0 right-0 top-0 h-1`} /> : null}
@@ -458,7 +462,7 @@ function GroupDrop({
           ))}
         </div>
       </SortableContext>
-      {children.length ? null : <div className="py-3 text-center text-xs text-[var(--color-text-3)]">拖到分组里</div>}
+      {children.length ? null : <div className="py-3 text-center text-xs text-[var(--color-text-3)]">{field.type === 'table' ? '将基础字段拖到这里' : '拖到分组里'}</div>}
     </div>
   );
 }
@@ -472,6 +476,8 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const selected = fields.flatMap((field) => [field, ...(field.children || [])]).find((field) => field.key === selectedKey) || fields[0];
+  const rowTable = fields.find(parent => parent.type === 'table' && parent.children?.some(child => child.key === selected?.key));
+  const rowFields = rowTable?.children;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const removeField = (key: string) => {
@@ -541,6 +547,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
     return {
       key,
       type: item.type,
+      children: item.type === 'table' ? [] : undefined,
       label: t(fieldLabelId(item)),
       span: FULL_ROW_TYPES.has(item.type) ? 12 : 6,
       placeholder: item.placeholder,
@@ -589,14 +596,24 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
     });
     if (group) {
       const parent = fields.find((field) => field.key === group.dataset.groupKey);
-      setGuide(parent ? resolveGuide(parent.children || [], point, parent.key, activeId) : null);
+      setGuide(parent ? resolveGuide(parent.children || [], point, parent.key, activeId) ?? { scope: parent.key, anchor: '', edge: 'bottom', keys: [] } : null);
       return;
     }
     setGuide(resolveGuide(fields, point, '', activeId.startsWith('control:') || activeId.startsWith('scene:') ? '' : activeId));
   };
 
   const onDragEnd = (event: DragEndEvent) => {
-    const currentGuide = guide;
+    const overId = String(event.over?.id ?? '');
+    const currentGuide = overId.startsWith('group:') && guide?.scope !== overId.slice(6)
+      ? { scope: overId.slice(6), anchor: '', edge: 'bottom' as const, keys: [] } : guide;
+    const target = fields.find(item => item.key === currentGuide?.scope);
+    const accepts = (field: FormFieldSchema) => {
+      if (target?.type === 'table' && !subformTypes.has(field.type)) {
+        message.info('请从基础字段中选择子表单控件');
+        return false;
+      }
+      return !target || !isDropContainer(field);
+    };
     setDraggingKey('');
     setGuide(null);
     const { active, over } = event;
@@ -608,7 +625,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
     if (catalog) {
       const field = createField(catalog);
       if (currentGuide?.scope) {
-        if (field.type === 'section') {
+        if (!accepts(field)) {
           return;
         }
         onChange(fields.map((item) => (
@@ -627,7 +644,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
     const activeId = String(active.id);
     const moving = fields.find((field) => field.key === activeId)
       || fields.flatMap((field) => field.children || []).find((field) => field.key === activeId);
-    if (!moving || (currentGuide.scope && moving.type === 'section')) {
+    if (!moving || !accepts(moving)) {
       return;
     }
     const rest = fields
@@ -713,7 +730,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
                     onCopy={() => copyField(field.key)}
                     onRemove={() => removeField(field.key)}
                   >
-                    {field.type === 'section' ? (
+                    {isDropContainer(field) ? (
                       <GroupDrop field={field} guide={guide} selectedKey={selectedKey} onSelect={setSelectedKey} onCopy={copyField} onRemove={removeField} />
                     ) : null}
                   </SortableCard>
@@ -746,7 +763,17 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-[var(--color-text-2)]">字段标识 (Key)</span>
-              <Input value={selected.key} placeholder="key" onChange={(event) => patch(selected.key, { key: event.target.value })} />
+              <Input key={selected.key} defaultValue={selected.key} placeholder="key" onBlur={event => {
+                const key = event.target.value.trim();
+                if (key === selected.key) return;
+                if (!key || usedKeys.has(key)) {
+                  event.target.value = selected.key;
+                  message.warning('请输入唯一的字段标识');
+                  return;
+                }
+                patch(selected.key, { key });
+                setSelectedKey(key);
+              }} />
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-[var(--color-text-2)]">提示文字</span>
@@ -796,7 +823,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
                 </div>
               </>
             ) : null}
-            <FieldFetchEditor key={selected.key} field={selected} fields={fields} patch={patch} />
+            <FieldFetchEditor key={selected.key} field={selected} fields={fields} tableKey={rowTable?.key} patch={patch} />
             <FieldTypeProps field={selected} patch={patch} />
             {CASCADE_TYPES.has(selected.type) ? (
               <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3">
@@ -840,7 +867,7 @@ export function FormDesigner({ fields, onChange }: FormDesignerProps) {
             <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
               <span className="text-xs font-semibold text-[var(--color-text-2)]">显隐条件</span>
               <ConditionBuilder
-                fields={fields.map((field) => field.key)}
+                fields={(rowFields || fields).filter(field => field.key !== selected.key).map(field => field.key)}
                 value={selected.visibleWhen || undefined}
                 onChange={(visibleWhen) => patch(selected.key, { visibleWhen })}
               />
@@ -872,6 +899,10 @@ function FieldTypeProps({ field, patch }: { field: FormFieldSchema; patch: (key:
   const setProp = (key: string, value: unknown) => patch(field.key, { props: { ...field.props, [key]: value } });
   return (
     <>
+      {field.type === 'select' && <label className="flex items-center justify-between">
+        默认选择第一项
+        <Switch aria-label="默认选择第一项" checked={field.props?.defaultFirstOption === true} onChange={enabled => setProp('defaultFirstOption', enabled)} />
+      </label>}
       {field.type === 'radio' || field.type === 'checkbox' ? (
         <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-[var(--color-text-2)]">排列</span>
@@ -926,8 +957,16 @@ function FieldTypeProps({ field, patch }: { field: FormFieldSchema; patch: (key:
         </div>
       ) : null}
       {field.type === 'subProcessForm' && <SubProcessBinding value={Number(field.props?.workflow_version_id) || undefined} onChange={(value) => setProp('workflow_version_id', value)} />}
-      {field.type === 'table' || field.type === 'nestedTable' || field.type === 'task' || field.type === 'cab' ? (
+      {(field.type === 'table' && !field.children) || field.type === 'nestedTable' || field.type === 'task' || field.type === 'cab' ? (
         <div className="flex flex-col gap-1">
+          {field.children?.filter(column => column.type === 'select').map(column => (
+            <label key={column.key} className="flex items-center justify-between">
+              {column.label}默认选择第一项
+              <Switch aria-label={column.label + '默认选择第一项'} checked={column.props?.defaultFirstOption === true}
+                onChange={enabled => patch(field.key, {children: field.children?.map(item => item.key === column.key
+                  ? {...item, props: {...item.props, defaultFirstOption: enabled}} : item)})}/>
+            </label>
+          ))}
           <span className="text-xs font-medium text-[var(--color-text-2)]">列（一行一个：名称:标识，可加 :number）</span>
           <Input.TextArea rows={3} value={String(field.props?.columns || '')} onChange={(event) => setProp('columns', event.target.value)} />
         </div>

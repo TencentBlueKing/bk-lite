@@ -64,7 +64,10 @@ export function useServiceDraft(serviceId: number | undefined, form: FormInstanc
       void api.saveDraft({ service_id: serviceId, clear: true }).catch(() => message.warning('工单已创建，草稿清理失败'));
       router.replace(detailUrl(created.id));
     } catch (reason) {
-      if (!(reason && typeof reason === 'object' && 'errorFields' in reason)) message.error(reason instanceof Error ? reason.message : '保存失败');
+      if (reason && typeof reason === 'object' && 'errorFields' in reason) {
+        const invalid = (reason as { errorFields: { errors?: string[]; name?: string[] }[] }).errorFields[0];
+        if (invalid?.errors?.[0]) message.warning(invalid.errors[0]);
+      } else message.error(reason instanceof Error ? reason.message : '保存失败');
     } finally { lock.current = false; setBusy(false); }
   };
   return { ticket, fieldPerm, error, busy, load, save };

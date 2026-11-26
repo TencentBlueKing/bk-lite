@@ -1,39 +1,16 @@
 'use client';
 
-import { Button, Checkbox, DatePicker, Divider, Empty, Form, Input, InputNumber, Radio, Select, TreeSelect, Tabs, Upload, message } from 'antd';
+import { Button, Divider, Empty, Form, Input, InputNumber, Select, Tabs, Upload, message } from 'antd';
 import type { FormInstance } from 'antd';
-import dayjs, { type Dayjs } from 'dayjs';
 import { FULL_ROW_TYPES } from '../constants/field-catalog';
 import type { FormFieldSchema, FormSchema } from '../types';
-import AIEditor from '@/app/opspilot/components/ai-editor';
 import { useItsmApi } from '../api/useItsmApi';
 import GroupTreeSelect from '@/components/group-tree-select';
-import { UserSelector } from './user-selector';
-import { TableField, SignatureField } from './structured-fields';
+import { basicFieldControl, dateItemProps } from './basic-field-control';
+import { TableField, SignatureField, isRequiredColumn } from './structured-fields';
 import { FieldFetchControl, type FetchContext } from './field-fetch-control';
 import { matches } from './form-conditions';
 import { SubProcessField } from './subprocess-field';
-
-function RichTextField({
-  disabled,
-  value,
-  onChange,
-  placeholder,
-}: {
-  disabled: boolean;
-  value?: string;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-}) {
-  if (disabled) {
-    return <div className="whitespace-pre-wrap">{value || ''}</div>;
-  }
-  return (
-    <div className="h-64">
-      <AIEditor placeholder={placeholder} value={value} onChange={onChange} />
-    </div>
-  );
-}
 
 function AttachmentField({ disabled, value, onChange, field, context }: { field: string; context?: FetchContext; disabled: boolean; value?: string[]; onChange?: (value: string[]) => void }) {
   const api = useItsmApi();
@@ -72,90 +49,17 @@ interface FormRendererProps {
   onSubmit: (values: Record<string, unknown>) => void;
 }
 
-const DATE_TYPES = new Set(['date', 'time', 'datetime', 'dateRange']);
-
-const asDayjs = (value: unknown): Dayjs | null => {
-  if (value == null || value === '') {
-    return null;
-  }
-  if (dayjs.isDayjs(value)) {
-    return value;
-  }
-  const parsed = dayjs(value as string | number | Date);
-  return parsed.isValid() ? parsed : null;
-};
-
-const pickerValue = (field: FormFieldSchema, value: unknown) => {
-  if (field.type === 'dateRange') {
-    return Array.isArray(value) ? value.map(asDayjs) : null;
-  }
-  return asDayjs(value);
-};
-
-const storedValue = (field: FormFieldSchema, value: unknown) => {
-  if (field.type === 'dateRange') {
-    return Array.isArray(value)
-      ? value.map((item) => (dayjs.isDayjs(item) ? item.format('YYYY-MM-DD') : item))
-      : value;
-  }
-  if (!dayjs.isDayjs(value)) {
-    return value;
-  }
-  if (field.type === 'time') {
-    return value.format('HH:mm:ss');
-  }
-  if (field.type === 'datetime') {
-    return value.format('YYYY-MM-DD HH:mm:ss');
-  }
-  return value.format('YYYY-MM-DD');
-};
-
-const dateItemProps = (field: FormFieldSchema) => (
-  DATE_TYPES.has(field.type)
-    ? {
-      getValueProps: (value: unknown) => ({ value: pickerValue(field, value) }),
-      normalize: (value: unknown) => storedValue(field, value),
-    }
-    : {}
-);
-
-const control = (field: FormFieldSchema, disabled: boolean, context?: FetchContext) => {
-  if (field.type === 'number' || field.type === 'calculate') {
-    return <InputNumber className="w-full" disabled={disabled || field.type === 'calculate'} placeholder={field.placeholder || String(field.props?.expr || '')} />;
-  }
-  if (field.type === 'textarea') {
-    return <Input.TextArea disabled={disabled} rows={field.rows} placeholder={field.placeholder} />;
-  }
-  if (field.type === 'radio') {
-    return <Radio.Group className={field.optionLayout === 'vertical' ? 'flex flex-col gap-1' : ''} disabled={disabled} options={field.source?.options || []} />;
-  }
-  if (field.type === 'checkbox') {
-    return <Checkbox.Group className={field.optionLayout === 'vertical' ? 'flex flex-col gap-1' : ''} disabled={disabled} options={field.source?.options || []} />;
-  }
-  if (field.type === 'date') {
-    return <DatePicker className="w-full" disabled={disabled} />;
-  }
-  if (field.type === 'time') {
-    return <DatePicker className="w-full" picker="time" disabled={disabled} />;
-  }
-  if (field.type === 'datetime') {
-    return <DatePicker className="w-full" showTime disabled={disabled} />;
-  }
-  if (field.type === 'dateRange') {
-    return <DatePicker.RangePicker className="w-full" disabled={disabled} />;
+const TABLE_TYPES = new Set(['table', 'nestedTable', 'task', 'cab']);
+const control = (field: FormFieldSchema, disabled: boolean, context?: FetchContext, fieldPerm?: FormRendererProps['fieldPerm']) => {
+  if (field.type === 'calculate') {
+    return <InputNumber className="w-full" disabled placeholder={field.placeholder || String(field.props?.expr || '')} />;
   }
   if (field.type === 'organization' || field.type === 'userGroup' || field.type === 'multiUserGroup' || field.type === 'group') {
     const multiple = field.type === 'multiUserGroup' || field.type === 'group';
     return <GroupTreeSelect multiple={multiple} showSearch disabled={disabled} placeholder={field.placeholder || '选择组织'} />;
   }
-  if (field.type === 'user' || field.type === 'multiUser') {
-    return <UserSelector multiple={field.type === 'multiUser'} disabled={disabled} placeholder={field.placeholder || '搜索用户'} />;
-  }
-  if (field.type === 'cascade' || field.type === 'multiCascade') {
-    return <TreeSelect treeData={field.source?.options || []} fieldNames={{ label: 'label', value: 'value', children: 'children' }} multiple={field.type === 'multiCascade'} showSearch treeNodeFilterProp="label" disabled={disabled} placeholder={field.placeholder || '请选择'} />;
-  }
-  if (field.type === 'select' || field.type === 'multiselect' || field.type === 'cmdb' || field.type === 'multiCmdb' || field.type === 'singleAssociateConfig' || field.type === 'associateConfig') {
-    const multiple = field.type === 'multiselect' || field.type === 'multiCmdb' || field.type === 'associateConfig';
+  if (field.type === 'cmdb' || field.type === 'multiCmdb' || field.type === 'singleAssociateConfig' || field.type === 'associateConfig') {
+    const multiple = field.type === 'multiCmdb' || field.type === 'associateConfig';
     return <Select mode={multiple ? 'multiple' : undefined} disabled={disabled} options={field.source?.options || []} placeholder={field.placeholder || '请选择'} />;
   }
   if (field.type === 'description') {
@@ -167,11 +71,8 @@ const control = (field: FormFieldSchema, disabled: boolean, context?: FetchConte
   if (field.type === 'attachment') {
     return <AttachmentField field={field.key} context={context} disabled={disabled} />;
   }
-  if (field.type === 'richtext') {
-    return <RichTextField disabled={disabled} placeholder={field.placeholder} />;
-  }
-  if (field.type === 'table' || field.type === 'nestedTable' || field.type === 'task' || field.type === 'cab') {
-    return <TableField field={field} disabled={disabled} />;
+  if (TABLE_TYPES.has(field.type)) {
+    return <TableField field={field} disabled={disabled} fieldPerm={fieldPerm} />;
   }
   if (field.type === 'link') {
     const href = String(field.props?.href || '');
@@ -186,8 +87,15 @@ const control = (field: FormFieldSchema, disabled: boolean, context?: FetchConte
   if (field.type === 'tab') {
     return null;
   }
-  return <Input disabled={disabled} placeholder={field.placeholder} />;
+  return basicFieldControl(field, disabled);
 };
+
+const emptyCell = (value: unknown) => value == null || value === '' || (Array.isArray(value) && !value.length);
+
+function emptyTablePlaceholder(rows: unknown): boolean {
+  return Array.isArray(rows) && rows.length === 1 && rows[0] != null && typeof rows[0] === 'object'
+    && Object.entries(rows[0]).every(([key, value]) => ['_field_receipts','_field_labels','_itsm_row_ref'].includes(key) || emptyCell(value));
+}
 
 const SPANS: Record<number, string> = { 3: 'col-span-3', 4: 'col-span-4', 6: 'col-span-6', 8: 'col-span-8', 9: 'col-span-9', 12: 'col-span-12', 24: 'col-span-12' };
 
@@ -207,18 +115,53 @@ function FieldItems({ fields, fieldPerm, readOnly, fetchContext, rules = [] }: {
           {field.type === 'tab' ? <Tabs items={[{ key: field.key, label: field.label || '标签', children }]} /> : <><div className="mb-2 text-sm font-medium text-[var(--color-text-1)]">{field.label}</div>{children}</>}
         </div>;
       }
+      const table = TABLE_TYPES.has(field.type);
+      const requiredColumns = table ? field.children?.filter(column => isRequiredColumn(column, fieldPerm)) || [] : [];
       return <Form.Item
         className={`${SPANS[FULL_ROW_TYPES.has(field.type) ? 12 : (field.span || 6)] || 'col-span-6'} ${field.rowBreak ? 'col-start-1' : ''}`}
         name={field.key} label={field.type === 'divider' ? undefined : field.label} extra={field.hint}
-        rules={required && !locked ? [{ required: true }] : []}
+        validateTrigger={table ? [] : undefined}
+        rules={locked ? [] : [
+          ...(required ? [table ? { type: 'array' as const, required: true, min: 1, message: '请至少添加一行',
+            transform: (rows: unknown) => !requiredColumns.length && emptyTablePlaceholder(rows) ? [] : rows,
+          } : { required: true }] : []),
+          ...(requiredColumns.length ? [{
+            validator: async (_: unknown, rows: Record<string, unknown>[]) => {
+              if (!required && emptyTablePlaceholder(rows)) return;
+              for (const [index, row] of (Array.isArray(rows) ? rows : []).entries()) {
+                const empty = requiredColumns.find(column => matches(column.visibleWhen, row || {}) && emptyCell(row?.[column.key]));
+                if (empty) throw new Error(`请填写第 ${index + 1} 行的${empty.label}`);
+              }
+            },
+          }] : []),
+        ]}
         {...dateItemProps(field)}
-      >{field.fetch && fetchContext && !locked ? <FieldFetchControl field={field} context={fetchContext}>{control(field, locked, fetchContext)!}</FieldFetchControl> : control(field, locked, fetchContext)}</Form.Item>;
+      >{field.fetch && fetchContext && !locked ? <FieldFetchControl field={field} context={fetchContext}>{control(field, locked, fetchContext, fieldPerm)!}</FieldFetchControl> : control(field, locked, fetchContext, fieldPerm)}</Form.Item>;
     }}
   </Form.Item>)}</>;
 }
 
 export function FormRenderer({ fetchContext, form, hideSubmit = false, schema, initialValues, fieldPerm = {}, readOnly = false, onSubmit }: FormRendererProps) {
-  return <Form form={form} layout="vertical" initialValues={initialValues} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
+  const values = { ...initialValues };
+  function initializeFields(fields: FormFieldSchema[]) {
+    for (const field of fields) {
+      const permission = fieldPerm[field.key] || fieldPerm['*'];
+      if (['hidden', 'readonly', 'disabled'].includes(field.state || '') || ['read', 'readonly', 'hidden'].includes(permission)) continue;
+      if (TABLE_TYPES.has(field.type)) {
+        const rows = values[field.key];
+        if (rows == null || (Array.isArray(rows) && !rows.length)) {
+          values[field.key] = Array.isArray(field.default) && field.default.length ? field.default : [{}];
+        }
+      } else if (field.type === 'select' && !field.fetch && field.props?.defaultFirstOption === true) {
+        const first = field.source?.options?.[0];
+        if (first && (values[field.key] == null || values[field.key] === '')) values[field.key] = first.value;
+      } else if (field.children) {
+        initializeFields(field.children);
+      }
+    }
+  }
+  if (!readOnly && !fetchContext?.ticket_id) initializeFields(schema.fields || []);
+  return <Form form={form} layout="vertical" initialValues={values} onFinish={(values) => onSubmit(values as Record<string, unknown>)}>
     <Form.Item name="_field_receipts" hidden><Input /></Form.Item>
     {schema.fields?.length ? <div className="grid grid-cols-12 gap-x-4 gap-y-1"><FieldItems rules={schema.rules} fields={schema.fields} fieldPerm={fieldPerm} readOnly={readOnly} fetchContext={fetchContext} /></div>
     : <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] py-8"><Empty description="当前表单暂无可展示的字段内容" /></div>}

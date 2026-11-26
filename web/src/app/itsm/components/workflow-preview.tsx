@@ -26,7 +26,7 @@ export function WorkflowPreview({ schema, design }: { schema: FormSchema; design
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
       <div><span className="text-sm font-medium">节点预览</span><p className="mt-1 text-xs text-[var(--color-text-3)]">仅预览配置，不会创建工单或执行流程。</p></div>
       <div className="flex gap-2"><Tooltip title="重置预览数据"><Button aria-label="重置预览数据" icon={<ReloadOutlined />} onClick={()=>{form.resetFields();setRevision(value=>value+1);}} /></Tooltip>
-      <Button icon={<CheckCircleOutlined />} disabled={!interactive} onClick={()=>void form.validateFields().then(()=>message.success('当前节点表单校验通过')).catch(()=>message.warning('请检查表单中标红的字段'))}>校验表单</Button></div>
+      <Button icon={<CheckCircleOutlined />} disabled={!interactive} onClick={()=>void form.validateFields().then(()=>message.success('当前节点表单校验通过')).catch(error=>message.warning(error?.errorFields?.[0]?.errors?.[0] || '请检查表单中标红的字段'))}>校验表单</Button></div>
     </div>
     <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[220px_minmax(0,1fr)] md:overflow-hidden">
       <nav aria-label="预览节点" className="flex gap-2 overflow-auto border-b border-[var(--color-border)] p-3 md:flex-col md:border-b-0 md:border-r">

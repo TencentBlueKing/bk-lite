@@ -1,8 +1,9 @@
 from typing import Any
 
-from apps.itsm.services.form.options import resolve_options
+from apps.itsm.services.form.options import option_values, resolve_options
 from apps.itsm.services.form.rules import ExpressionError, evaluate_expr, match_when
 from apps.itsm.services.form.schema import FIELD_TYPES, LAYOUT_ONLY, FormSchemaModel
+from apps.itsm.services.form.table_columns import TABLE_FIELDS
 
 LIST_TYPES = {
     "checkbox",
@@ -45,7 +46,7 @@ class FormValidator:
         self.field_perm = field_perm or {}
         self.dictionary_lookup = dictionary_lookup
 
-    def _fields(self):
+    def _fields(self, *, include_table_columns=True):
         def walk(fields, inherited="editable"):
             for field in fields:
                 mode = self.field_perm.get(field.key, self.field_perm.get("*", "editable"))
@@ -56,12 +57,17 @@ class FormValidator:
                 elif field.state == "hidden":
                     mode = "hidden"
                 yield field, mode
-                yield from walk(field.children, mode)
+                if include_table_columns or field.type not in TABLE_FIELDS:
+                    yield from walk(field.children, mode)
 
         yield from walk(self.schema.fields)
 
     def merge(self, original, incoming):
-        writable = {field.key for field, mode in self._fields() if mode not in {"readonly", "hidden"} and field.type not in LAYOUT_ONLY}
+        writable = {
+            field.key
+            for field, mode in self._fields(include_table_columns=False)
+            if mode not in {"readonly", "hidden"} and field.type not in LAYOUT_ONLY
+        }
         accepted = {key: value for key, value in incoming.items() if key in writable}
         cleaned, errors = self.apply({**original, **accepted})
         return {**original, **cleaned}, errors
@@ -81,7 +87,7 @@ class FormValidator:
         cleaned: dict[str, Any] = {}
         visible_keys = visible_field_keys(self.schema, values)
         required_by_rule = {rule.field for rule in self.schema.rules if rule.type == "required" and match_when(rule.when, values, strict=False)}
-        for field, inherited_mode in self._fields():
+        for field, inherited_mode in self._fields(include_table_columns=False):
             if field.type in LAYOUT_ONLY:
                 continue
             if field.type not in FIELD_TYPES:
@@ -110,14 +116,51 @@ class FormValidator:
                     cleaned[field.key] = raw
                 continue
             type_error = _check_type(field.model_dump(), raw, self.dictionary_lookup)
+            if not type_error and field.type in TABLE_FIELDS:
+                raw, type_error = self._validate_rows(field, raw)
             if type_error:
                 errors[field.key] = type_error
             else:
                 cleaned[field.key] = raw
         return cleaned, errors
 
+    def _validate_rows(self, field, rows):
+        columns = []
+        for column in field.children:
+            mode = self.field_perm.get(column.key, self.field_perm.get("*"))
+            if mode not in {"readonly", "hidden"} and column.state not in {"hidden", "disabled", "readonly"}:
+                columns.append((column, column.model_dump(), column.required or mode == "required"))
+        cleaned = []
+        for index, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                return [], f"第 {index} 行格式错误"
+            values = dict(row)
+            for column, config, required in columns:
+                if not match_when(column.visibleWhen, row, strict=False):
+                    continue
+                value = _coerce(column.type, row.get(column.key))
+                label = column.label or column.key
+                if _empty(value):
+                    if required:
+                        return [], f"请填写第 {index} 行的{label}"
+                    continue
+                error = _check_type(config, value, self.dictionary_lookup)
+                if error:
+                    return [], f"第 {index} 行的{label}：{error}"
+                values[column.key] = value
+            cleaned.append(values)
+        return cleaned, ""
+
 
 def _coerce(kind: str, value: Any) -> Any:
+    if (
+        kind in TABLE_FIELDS
+        and isinstance(value, list)
+        and len(value) == 1
+        and isinstance(value[0], dict)
+        and all(_empty(v) for v in value[0].values())
+    ):
+        return []
     if kind != "number" or not isinstance(value, str):
         return value
     text = value.strip()
@@ -178,7 +221,7 @@ def _check_type(field: dict[str, Any], value: Any, dictionary_lookup) -> str:
         return "必须是字符串"
     if kind in LIST_TYPES and not isinstance(value, list):
         return "必须是列表"
-    if kind == "table" and not isinstance(value, list):
+    if kind in TABLE_FIELDS and not isinstance(value, list):
         return "必须是表格"
     if kind == "cmdb":
         if not isinstance(value, list) or any(not isinstance(item, dict) or "inst_id" not in item for item in value):
@@ -195,8 +238,8 @@ def _check_type(field: dict[str, Any], value: Any, dictionary_lookup) -> str:
             return "大于最大值"
     if kind in {"radio", "select", "cascade", "checkbox", "multiselect", "multiCascade"}:
         options = resolve_options(field, dictionary_lookup)
-        allowed = {item.get("value") for item in options} if options else set()
+        allowed = set(option_values(options))
         chosen = value if isinstance(value, list) else [value]
-        if allowed and any(item not in allowed for item in chosen):
+        if any(isinstance(item, (dict, list)) or (allowed and item not in allowed) for item in chosen):
             return "选项不存在"
     return ""

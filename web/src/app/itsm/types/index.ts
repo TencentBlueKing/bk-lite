@@ -17,6 +17,12 @@ export interface FieldFetchBinding {
   enforce?: boolean;
 }
 
+export interface FormChoice {
+  label: string;
+  value: string | number;
+  children?: FormChoice[];
+}
+
 export interface FormFieldSchema {
   key: string;
   type: string;
@@ -25,7 +31,7 @@ export interface FormFieldSchema {
   default?: unknown;
   props?: Record<string, unknown>;
   fetch?: FieldFetchBinding;
-  source?: { type: string; options?: Array<{ label: string; value: string }> };
+  source?: { type: string; options?: FormChoice[] };
   placeholder?: string;
   hint?: string;
   span?: number;

@@ -504,12 +504,14 @@ def validate_submission(schema, values, identity, context, original=None, field_
 
     original = original or {}
     validator = FormValidator(schema, field_perm)
-    editable = {f.key: f for f, mode in validator._fields() if mode not in {"hidden", "readonly"} and f.type not in LAYOUT_ONLY}
+    editable = {
+        f.key: f for f, mode in validator._fields(include_table_columns=False) if mode not in {"hidden", "readonly"} and f.type not in LAYOUT_ONLY
+    }
     incoming = {key: value for key, value in values.items() if key in editable}
     for key, value in incoming.items():
         field = editable[key]
         if field.type in TABLE_FIELDS:
-            incoming[key] = merge_table_rows(field.model_dump(), original.get(key), value, validator.field_perm, context)
+            incoming[key] = merge_table_rows(field.model_dump(exclude_unset=True), original.get(key), value, validator.field_perm, context)
     merged = {**original, **incoming}
     allowed = editable.keys() & visible_field_keys(validator.schema, merged)
     merged["_field_receipts"] = values.get("_field_receipts", {})
