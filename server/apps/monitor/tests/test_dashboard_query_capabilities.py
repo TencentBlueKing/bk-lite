@@ -7,7 +7,12 @@ import pytest
 
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, AuthorizedMetricQueryService
-from apps.monitor.services.dashboard_query_capabilities import build_dashboard_query, dashboard_query_capability_id, load_dashboard_query_capabilities
+from apps.monitor.services.dashboard_query_capabilities import (
+    _fill_dashboard_placeholders,
+    build_dashboard_query,
+    dashboard_query_capability_id,
+    load_dashboard_query_capabilities,
+)
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
 
@@ -194,6 +199,119 @@ def test_mssql_deadlock_increase_uses_chart_bucket_not_full_range():
     )
     assert "[1h]" in rate
     assert "[1m]" not in rate
+
+
+def test_rate_window_and_step_placeholders():
+    """__$step__ 跟请求步长，__$rate_window__ 是 max(4×采集间隔, step)，__$window__ 仍是整段。"""
+    query = _fill_dashboard_placeholders(
+        'increase(x{instance="a"}[__$step__]) or rate(x{instance="a"}[__$rate_window__]) or count_over_time(x{instance="a"}[__$window__])',
+        "increase(x{__$labels__}[__$step__]) or rate(x{__$labels__}[__$rate_window__]) or count_over_time(x{__$labels__}[__$window__])",
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+        interval_seconds=60,
+    )
+    assert query == ('increase(x{instance="a"}[1m]) or rate(x{instance="a"}[4m]) or count_over_time(x{instance="a"}[1h])')
+
+    shorter_interval = _fill_dashboard_placeholders(
+        "rate(x{a}[__$rate_window__])",
+        "rate(x{__$labels__}[__$rate_window__])",
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+        interval_seconds=15,
+    )
+    assert shorter_interval == "rate(x{a}[1m])"
+
+    odd_step = _fill_dashboard_placeholders(
+        "increase(x{a}[__$step__]) or rate(x{a}[__$rate_window__])",
+        "increase(x{__$labels__}[__$step__]) or rate(x{__$labels__}[__$rate_window__])",
+        start=0,
+        end=3_600_000,
+        step_seconds=90,
+        interval_seconds=60,
+    )
+    assert odd_step == "increase(x{a}[90s]) or rate(x{a}[4m])"
+
+    bucketed = _fill_dashboard_placeholders(
+        'increase(postgresql_deadlocks{instance="a"}[__$window__]) or rate(postgresql_deadlocks{instance="a"}[__$rate_window__])',
+        "increase(postgresql_deadlocks{__$labels__}[__$window__]) or rate(postgresql_deadlocks{__$labels__}[__$rate_window__])",
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+        interval_seconds=60,
+    )
+    assert bucketed == ('increase(postgresql_deadlocks{instance="a"}[1m]) or rate(postgresql_deadlocks{instance="a"}[4m])')
+
+
+def test_nginx_rate_window_defaults_and_rejects_bad_interval():
+    capability = _capability_with_template(
+        "rate(nginx_requests{__$labels__}[__$rate_window__])",
+        "Nginx",
+    )
+    common = dict(
+        capability_id=capability.id,
+        monitor_object=_object("Nginx"),
+        instance_ids=("('nginx-a',)",),
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+    )
+
+    defaulted = build_dashboard_query(**common)
+    assert "[4m]" in defaulted
+    assert "[1h]" not in defaulted
+    assert "__$" not in defaulted
+
+    wider = build_dashboard_query(**common, interval_seconds="120")
+    assert "[8m]" in wider
+
+    for invalid in (None, 0, -1, True, False, 1.5, "nope", "015", ""):
+        query = build_dashboard_query(**common, interval_seconds=invalid)
+        assert "[4m]" in query
+        assert "__$" not in query
+
+
+def test_old_window_templates_ignore_interval_and_keep_full_range():
+    capability = _capability_with_template(
+        "rate(nginx_requests{__$labels__}[__$window__])",
+        "Nginx",
+    )
+    assert "__$rate_window__" not in capability.template
+    assert "__$step__" not in capability.template
+
+    query = build_dashboard_query(
+        capability_id=capability.id,
+        monitor_object=_object("Nginx"),
+        instance_ids=("('nginx-a',)",),
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+        interval_seconds=15,
+    )
+    assert "[1h]" in query
+    assert "[1m]" not in query
+    assert "[4m]" not in query
+    assert "__$" not in query
+
+
+def test_bucket_window_still_uses_step_when_interval_is_sent():
+    capability = _capability_with_template(
+        'increase(sqlserver_performance_value{counter="Number of Deadlocks/sec"',
+        "MSSQL",
+    )
+    query = build_dashboard_query(
+        capability_id=capability.id,
+        monitor_object=_object("MSSQL"),
+        instance_ids=("('mssql-a',)",),
+        start=0,
+        end=3_600_000,
+        step_seconds=60,
+        interval_seconds=15,
+    )
+    assert "[1m]" in query
+    assert "[1h]" not in query
+    assert "__$" not in query
 
 
 def test_static_capability_injects_authorized_instance_and_server_window():

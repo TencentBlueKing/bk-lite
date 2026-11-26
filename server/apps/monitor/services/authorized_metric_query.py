@@ -460,6 +460,7 @@ class AuthorizedMetricQueryService:
                 end=end,
                 params=payload.get("capability_params"),
                 step_seconds=step_seconds if bucket_window else None,
+                interval_seconds=payload.get("interval_seconds"),
             )
         else:
             metric = (
