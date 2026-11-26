@@ -163,6 +163,9 @@ def _recover_interrupted_actions(limit):
             ):
                 execution.status = "failed"
                 reason = "原流程已结束或切换，请核对历史执行记录"
+            elif (node.get("auto") or {}).get("kind") == "vmware_provision":
+                execution.status = "awaiting_job"
+                reason = "等待按交付编号核对作业状态"
             elif _local_action(node):
                 execution.status = "queued"
                 reason = "本地事务已回滚，等待重新执行"
@@ -372,7 +375,15 @@ def process_job(client, job):
                 status="running",
                 detail=detail,
             )
-        elif execution.status == "queued":
+        elif execution.status in {"queued", "awaiting_job"}:
+            if (node.get("auto") or {}).get("kind") == "vmware_provision":
+                delivery = execution.detail.get("delivery", {})
+                if execution.status == "queued":
+                    for machine in delivery.get("machines", {}).values():
+                        if machine.get("failed_job") and machine.get("job") == machine["failed_job"]:
+                            machine.pop("job")
+                            machine["generation"] = machine.get("generation", 1) + 1
+                detail["delivery"] = delivery
             execution.status = "running"
             execution.detail = detail
             execution.save(update_fields=["status", "detail", "updated_at"])
@@ -382,7 +393,12 @@ def process_job(client, job):
             execution.detail = {**detail, **execution.detail}
             execution.save(update_fields=["detail", "updated_at"])
     if execution.status == "running":
-        _execute(ticket, execution, node, detail)
+        if (node.get("auto") or {}).get("kind") == "vmware_provision":
+            from apps.itsm.services.vmware_delivery import process_delivery
+
+            process_delivery(ticket, execution, node["auto"].get("profile", ""))
+        else:
+            _execute(ticket, execution, node, detail)
         if execution.status != "executed":
             return False
     if not _ack(client, ticket, execution.id):
