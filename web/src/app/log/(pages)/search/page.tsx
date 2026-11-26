@@ -263,7 +263,10 @@ const SearchView: React.FC = () => {
     timerRef.current = null;
   };
 
-  const onTabChange = async (val: string) => {
+  const onTabChange = (val: string) => {
+    if (val === 'list') {
+      terminalRef.current?.stopLogStream();
+    }
     setActiveMenu(val);
     setChartData([]);
     setTableData([]);

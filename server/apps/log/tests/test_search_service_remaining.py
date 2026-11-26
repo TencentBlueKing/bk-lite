@@ -1,6 +1,7 @@
 """SearchService 剩余查询编排：hits 无分组、top_stats 空总数、tail 响应头。"""
 from unittest.mock import MagicMock
 
+import pytest
 from django.http import StreamingHttpResponse
 
 from apps.log.services.search import SearchService
@@ -53,3 +54,32 @@ def test_tail_sets_sse_headers(mocker):
     assert response["Content-Type"] == "text/event-stream"
     assert response["Cache-Control"] == "no-cache, no-store, must-revalidate"
     assert response["X-Accel-Buffering"] == "no"
+
+
+@pytest.mark.asyncio
+async def test_tail_stream_yields_event_loop_every_tenth_line(mocker):
+    mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        return_value=("error", []),
+    )
+
+    async def lines(_query):
+        for _ in range(10):
+            yield "plain-line"
+
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI")
+    vm.return_value.tail_async = lines
+    delays = []
+
+    async def spy(delay, *_args, **_kwargs):
+        delays.append(delay)
+
+    mocker.patch("apps.log.services.search.asyncio.sleep", side_effect=spy)
+    response = SearchService.tail("error")
+    body = b""
+    async for chunk in response:
+        body += chunk
+
+    assert body.count(b"plain-line") == 10
+    assert delays.count(0.01) == 1
+    assert set(delays) <= {0, 0.01}

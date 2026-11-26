@@ -328,3 +328,218 @@ def test_cancelled_requests_do_not_close_other_inflight_connections(application,
                 wrapper.close()
             finally:
                 wrapper.dec_thread_sharing()
+
+
+def test_async_stream_closes_nested_generator_when_client_disconnects(application, monkeypatch):
+    """断开必须停掉正在等待的内层生成器，不能只关掉已经写完的 HTTP 响应。"""
+    state = {"inner": False, "outer": False, "entered": False}
+
+    async def view(request):
+        async def inner():
+            try:
+                yield b"alive"
+                state["entered"] = True
+                await asyncio.sleep(30)
+                yield b"late"
+            finally:
+                state["inner"] = True
+
+        async def outer():
+            try:
+                async for chunk in inner():
+                    yield chunk
+            finally:
+                state["outer"] = True
+
+        return StreamingHttpResponse(outer())
+
+    install_view(monkeypatch, view)
+    calls = {"n": 0}
+    release_disconnect = asyncio.Event()
+
+    async def receive():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await release_disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def exercise():
+        messages = []
+
+        async def send(message):
+            messages.append(message)
+
+        async def disconnect_once_blocked():
+            for _ in range(200):
+                if state["entered"]:
+                    release_disconnect.set()
+                    return
+                await asyncio.sleep(0.01)
+            raise AssertionError("stream did not reach the blocked read")
+
+        waiter = asyncio.create_task(disconnect_once_blocked())
+        try:
+            await asyncio.wait_for(application(scope(), receive, send), 2)
+        finally:
+            await waiter
+        body = b"".join(message.get("body", b"") for message in messages)
+        assert b"alive" in body
+        assert b"late" not in body
+
+    asyncio.run(exercise())
+    assert state["entered"]
+    assert state["inner"]
+    assert state["outer"]
+    assert calls["n"] == 2
+
+
+def test_finished_async_stream_does_not_wait_for_the_next_request(application, monkeypatch):
+    """正常结束的流要取消断开监听，不能占住这条 keep-alive 连接的下一次 receive。"""
+    calls = {"n": 0, "watched": False}
+
+    async def view(request):
+        async def stream():
+            yield b"done"
+
+        return StreamingHttpResponse(stream())
+
+    install_view(monkeypatch, view)
+
+    async def receive():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        calls["watched"] = True
+        await asyncio.Event().wait()
+        return {"type": "http.disconnect"}
+
+    async def exercise():
+        messages = []
+
+        async def send(message):
+            messages.append(message)
+
+        await asyncio.wait_for(application(scope(), receive, send), 2)
+        body = b"".join(message.get("body", b"") for message in messages)
+        assert body.endswith(b"done")
+
+    asyncio.run(exercise())
+    assert calls == {"n": 2, "watched": True}
+
+
+def test_disconnect_watch_failure_stops_stream_without_leaking_the_error(application, monkeypatch, caplog):
+    sentinel = "secret-disconnect-watch-body"
+    state = {"closed": False}
+
+    async def view(request):
+        async def stream():
+            try:
+                yield b"alive"
+                await asyncio.sleep(30)
+            finally:
+                state["closed"] = True
+
+        return StreamingHttpResponse(stream())
+
+    install_view(monkeypatch, view)
+    calls = {"n": 0}
+
+    async def receive():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        raise RuntimeError(sentinel)
+
+    async def send(message):
+        return None
+
+    with caplog.at_level(logging.WARNING, logger="app"):
+        asyncio.run(asyncio.wait_for(application(scope(), receive, send), 2))
+
+    assert state["closed"]
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    warning = warnings[0]
+    assert warning.args[1] == "RuntimeError"
+    assert "event=asgi_disconnect_watch_failed" in warning.getMessage()
+    assert "failed_stage=receive" in warning.getMessage()
+    assert "error_type=RuntimeError" in warning.getMessage()
+    assert warning.exc_info[2] is not None
+    assert sentinel not in logging.Formatter().format(warning)
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+def test_one_async_stream_disconnect_does_not_stop_another(application, monkeypatch):
+    async def view(request):
+        key = request.GET["k"]
+
+        async def stream():
+            yield f"start-{key}".encode()
+            if key == "stop":
+                await asyncio.sleep(30)
+            yield f"end-{key}".encode()
+
+        return StreamingHttpResponse(stream())
+
+    install_view(monkeypatch, view)
+    stop_started = asyncio.Event()
+    stop_calls = {"n": 0}
+
+    async def receive_stop():
+        stop_calls["n"] += 1
+        if stop_calls["n"] == 1:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await stop_started.wait()
+        return {"type": "http.disconnect"}
+
+    async def receive_keep():
+        if not getattr(receive_keep, "opened", False):
+            receive_keep.opened = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.Event().wait()
+        return {"type": "http.disconnect"}
+
+    async def exercise():
+        bodies = {"stop": [], "keep": []}
+
+        async def send_stop(message):
+            body = message.get("body", b"")
+            bodies["stop"].append(body)
+            if body == b"start-stop":
+                stop_started.set()
+
+        async def send_keep(message):
+            bodies["keep"].append(message.get("body", b""))
+
+        stop_scope = {**scope(), "query_string": b"k=stop"}
+        keep_scope = {**scope(), "query_string": b"k=keep"}
+        await asyncio.wait_for(
+            asyncio.gather(
+                application(stop_scope, receive_stop, send_stop),
+                application(keep_scope, receive_keep, send_keep),
+            ),
+            2,
+        )
+        assert b"end-keep" in b"".join(bodies["keep"])
+        assert b"end-stop" not in b"".join(bodies["stop"])
+
+    asyncio.run(exercise())
+
+
+def test_short_response_does_not_read_another_asgi_message(application, monkeypatch):
+    calls = {"n": 0}
+
+    install_view(monkeypatch, lambda request: HttpResponse(b"plain"))
+
+    async def receive():
+        calls["n"] += 1
+        if calls["n"] > 1:
+            await asyncio.Event().wait()
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        return None
+
+    asyncio.run(asyncio.wait_for(application(scope(), receive, send), 2))
+    assert calls["n"] == 1

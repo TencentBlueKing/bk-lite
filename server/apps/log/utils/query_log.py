@@ -15,9 +15,11 @@ from requests.auth import HTTPBasicAuth
 from apps.core.logger import log_logger as logger
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 
-
 TAIL_IDLE = object()
 TAIL_IDLE_INTERVAL_SECONDS = 3.0
+# 读线程解码会占 GIL。按批让出，单 worker 才能同时接受其他 API 的 TLS 握手。
+TAIL_READER_PACE_EVERY = 10
+TAIL_READER_PACE_SECONDS = 0.01
 
 
 class VictoriaMetricsAPI:
@@ -363,9 +365,13 @@ class VictoriaMetricsAPI:
             def _iter_lines_in_thread():
                 """在独立线程中消费流式响应，结果放入 Queue 供异步生成器读取。"""
                 try:
+                    produced = 0
                     for line in response.iter_lines(chunk_size=8192, decode_unicode=True):
                         if not _put_unless_stopped(line):
                             break
+                        produced += 1
+                        if produced % TAIL_READER_PACE_EVERY == 0:
+                            time.sleep(TAIL_READER_PACE_SECONDS)
                 except Exception as exc:
                     if not stop_event.is_set():
                         _put_unless_stopped(exc)
