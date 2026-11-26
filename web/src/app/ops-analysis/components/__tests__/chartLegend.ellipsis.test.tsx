@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('ops-analysis ChartLegend long labels', () => {
-  it('uses a fixed 120px column and ellipsizes long host names', () => {
+  it('grows the vertical column with the label and still ellipsizes past the cap', () => {
     const { container } = render(
       <ChartLegend
         data={[{ name: longName }, { name: '1111' }]}
@@ -19,12 +19,30 @@ describe('ops-analysis ChartLegend long labels', () => {
     );
 
     const column = container.firstElementChild as HTMLElement;
-    expect(column.style.width).toBe('120px');
+    expect(column.className).toMatch(/inline-grid/);
+    expect(column.className).toMatch(/\bshrink-0\b/);
+    expect(column.style.width).toBe('max-content');
+    expect(column.style.minWidth).toBe('120px');
+    expect(column.style.maxWidth).toBe('180px');
 
     const label = screen.getByText(longName);
     expect(label.className).toMatch(/overflow-hidden/);
     expect(label.className).toMatch(/text-ellipsis/);
     expect(label.className).toMatch(/whitespace-nowrap/);
+  });
+
+  it('scales the min and max column width with the screen scale', () => {
+    const { container } = render(
+      <ChartLegend
+        data={[{ name: '交换机' }]}
+        colors={['#1677ff']}
+        scale={2}
+      />,
+    );
+
+    const column = container.firstElementChild as HTMLElement;
+    expect(column.style.minWidth).toBe('240px');
+    expect(column.style.maxWidth).toBe('360px');
   });
 
   it('scrolls the vertical legend when there are more dimensions than the chart height', () => {
@@ -38,5 +56,7 @@ describe('ops-analysis ChartLegend long labels', () => {
     const scroller = getByTestId('chart-legend-scroll');
     expect(scroller.className).toMatch(/overflow-y-auto/);
     expect(scroller.className).toMatch(/min-h-0/);
+    expect(scroller.className).toMatch(/min-w-0/);
+    expect(scroller.className).toMatch(/max-w-full/);
   });
 });

@@ -265,6 +265,9 @@ def patch():
     _patch_jsonfield_for_bulk_update()
     _patch_bulk_create_ignore_conflicts()
     _patch_jsonfield_contains_lookup()
+    from migrate_patch.patches.compat_ops import install_idempotent_schema_editor
+
+    install_idempotent_schema_editor()
     logger.info("DamengDB ORM patches applied (JSONField, bulk_create, JSON contains)")
 
 

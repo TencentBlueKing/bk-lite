@@ -190,7 +190,8 @@ class Command(BaseCommand):
         user_model = django_apps.get_model("system_mgmt", "User")
         # create_user 历史上对任意域的同名用户均 no-op；这里保持同一存量判定，
         # 避免仅有外域 admin 的合法升级环境被新 Secret 门禁意外阻断。
-        return user_model.objects.select_for_update().filter(username="admin").exists()
+        # 不用 exists()：它带 LIMIT 1，达梦不支持 FOR UPDATE 与 LIMIT 同用。
+        return bool(user_model.objects.select_for_update().filter(username="admin").values_list("pk", flat=True))
 
     @staticmethod
     def _has_managed_admin_password() -> bool:
