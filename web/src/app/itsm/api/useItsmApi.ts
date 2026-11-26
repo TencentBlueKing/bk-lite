@@ -8,6 +8,20 @@ import type { PortalLayout } from '../portal/workbench-types';
 import type { ManualRecoveryDecision, StartRecoveryRequest, AutoExecutionReview, HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
+export interface JobParameter {
+  name: string;
+  label?: string;
+  description?: string;
+  type?: 'text' | 'enum';
+  options?: string[];
+  is_required?: boolean;
+}
+
+export interface WorkflowJobOptions {
+  scripts: { id: number; name: string; description?: string; params: JobParameter[] }[];
+  targets: { id: number; name: string }[];
+}
+
 export interface VmwareDeliveryAsset {
   delivery_id: string;
   hostname: string | null;
@@ -45,6 +59,7 @@ export function useItsmApi() {
   const fieldCatalog = useCallback(() => get('/itsm/api/fields/catalog/'), [get]);
 
   const listIntegrations = useCallback((summary = false) => get('/itsm/api/integrations/', { params: summary ? { summary: '1' } : {} }), [get]);
+  const integrationJobCatalog = useCallback(() => get<WorkflowJobOptions & { can_execute: boolean }>('/itsm/api/integrations/job-catalog/', { suppressErrorNotification: true }), [get]);
   const integrationCatalog = useCallback(() => get('/itsm/api/integrations/catalog/'), [get]);
   const getIntegration = useCallback((id: number, filters?: Record<string, string>) => get(`/itsm/api/integrations/${id}/${filters ? `?${new URLSearchParams(filters)}` : ''}`), [get]);
   const saveIntegration = useCallback((body: Record<string, unknown>, id?: number) => id ? put(`/itsm/api/integrations/${id}/`, body) : post('/itsm/api/integrations/', body), [post, put]);
@@ -94,6 +109,7 @@ export function useItsmApi() {
     (id: number, name: string) => put(`/itsm/api/workflows/${id}/name/`, { name }),
     [put],
   );
+  const listJobOptions = useCallback(() => get<WorkflowJobOptions>('/itsm/api/workflows/job-options/', { suppressErrorNotification: true }), [get]);
   const getDesign = useCallback((id: number) => get(`/itsm/api/workflows/${id}/design/`), [get]);
   const saveDesign = useCallback(
     (id: number, design: unknown) => put(`/itsm/api/workflows/${id}/design/`, design),
@@ -301,7 +317,7 @@ export function useItsmApi() {
 
   return {
     ready: !isLoading,
-    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery, reconcileDelivery,
+    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationJobCatalog, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery, reconcileDelivery,
     searchTicketTags, centerSettings, saveTicketColumns, saveTicketGroup, deleteTicketGroup, batchTickets, batchOptions,
     listForms,
     createForm,
@@ -312,6 +328,7 @@ export function useItsmApi() {
     listWorkflows,
     createWorkflow,
     renameWorkflow,
+    listJobOptions,
     getDesign,
     saveDesign,
     publishWorkflow,

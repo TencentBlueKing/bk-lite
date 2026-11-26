@@ -86,12 +86,14 @@ from apps.itsm.views.tickets import (
 from apps.itsm.views.triggers import trigger_logs, trigger_options
 from apps.itsm.views.users import PublicStatusView, UserSearchView
 from apps.itsm.views.vmware_assets import ticket_vmware_assets
+from apps.itsm.views.workflow_jobs import integration_job_catalog, workflow_job_options
 
 urlpatterns = [
     path("api/fields/gateway/", field_gateway, name="itsm-field-gateway"),
     path("api/fields/catalog/", field_catalog),
     path("api/fields/fetch/", field_fetch),
     path("api/integrations/", integrations),
+    path("api/integrations/job-catalog/", integration_job_catalog, name="itsm-integration-job-catalog"),
     path("api/integrations/catalog/", integration_catalog),
     path("api/integrations/<int:item_id>/", integration_detail),
     path("api/integrations/<int:item_id>/test/", integration_test),
@@ -148,6 +150,7 @@ urlpatterns = [
     path("api/dictionaries/export/", export_dictionaries, name="itsm-dictionary-export"),
     path("api/dictionaries/import/", import_dictionaries, name="itsm-dictionary-import"),
     path("api/workflows/", workflows, name="itsm-workflows"),
+    path("api/workflows/job-options/", workflow_job_options, name="itsm-workflow-job-options"),
     path("api/workflows/handler-group-options/", handler_group_options, name="itsm-handler-group-options"),
     path("api/workflows/<int:workflow_id>/name/", rename_workflow, name="itsm-workflow-name"),
     path("api/workflows/<int:workflow_id>/versions/<int:version_no>/copy/", duplicate_workflow_version, name="itsm-workflow-copy"),

@@ -471,8 +471,10 @@ def publish_workflow(request, workflow_id):
         }
     from apps.itsm.services.service_assignment import activate_service_version
     from apps.itsm.services.workflow.dependencies import validate_subprocesses
+    from apps.itsm.views.workflow_jobs import validate_job_bindings
 
     try:
+        validate_job_bindings(request, version.design)
         validate_subprocesses(version.design, workflow)
         validate_transfer_scopes(version.design, workflow.domain)
     except ValueError as exc:
