@@ -574,8 +574,12 @@ def ticket_detail(request, ticket_id):
     )
     can_operate = has_permission(request, "ticket-Operate")
     detail = _ticket_detail(
-        ticket, _user(request), bool(getattr(request.user, "is_superuser", False)), can_operate,
-        can_operate and has_permission(request, "workflow-Edit"), task_id=request.GET.get("task_id"),
+        ticket,
+        _user(request),
+        bool(getattr(request.user, "is_superuser", False)),
+        can_operate,
+        can_operate and has_permission(request, "workflow-Edit"),
+        task_id=request.GET.get("task_id"),
         can_apply=has_permission(request, "ticket-Add"),
     )
     _mark_executing_nodes(request, ticket, detail)
@@ -603,11 +607,21 @@ def _mark_executing_nodes(request, ticket, detail):
             for node_id in sorted(activity_ids & nodes.keys()):
                 node = nodes[node_id]
                 executing.add(node_id)
-                detail["history"].append({
-                    "id": f"runtime-{node_id}", "node_id": node_id, "name": node["name"], "action": "runtime",
-                    "action_label": "执行中", "state": "current", "executing": True, "operator": "",
-                    "started_at": "", "finished_at": "", "message": "",
-                })
+                detail["history"].append(
+                    {
+                        "id": f"runtime-{node_id}",
+                        "node_id": node_id,
+                        "name": node["name"],
+                        "action": "runtime",
+                        "action_label": "执行中",
+                        "state": "current",
+                        "executing": True,
+                        "operator": "",
+                        "started_at": "",
+                        "finished_at": "",
+                        "message": "",
+                    }
+                )
     for node_id in executing:
         nodes[node_id].update(state="current", outcome="current", executing=True)
 

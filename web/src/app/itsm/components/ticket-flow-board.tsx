@@ -17,8 +17,8 @@ const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'bran
 
 interface FlowNodeData extends Record<string, unknown> {
   label: string;
-  nodeType: string;
   executing?: boolean;
+  nodeType: string;
   state: TicketProgressNode['state'];
   outcome?: TicketProgressNode['outcome'];
   assignees: string[];
@@ -40,8 +40,8 @@ const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝
 
 export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
   const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
-  const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
   const statusLabel = data.executing ? runningNodeLabel(data.nodeType) : STATE_LABEL[outcome];
+  const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
   return (
     <Popover trigger={['hover', 'focus']} title={data.label} content={
       <div className="flex max-w-xs flex-col gap-2 text-xs">

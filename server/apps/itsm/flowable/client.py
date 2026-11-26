@@ -111,7 +111,8 @@ class FlowableClient:
     def active_activity_ids(self, process_instance_id: str) -> set[str]:
         executions = self._all_runtime("executions", {"processInstanceId": process_instance_id})
         return {
-            row["activityId"] for row in executions
+            row["activityId"]
+            for row in executions
             if row.get("processInstanceId") == process_instance_id and row.get("activityId") and not row.get("suspended")
         }
 
