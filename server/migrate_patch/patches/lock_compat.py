@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 _SELECT_FOR_UPDATE_LIMIT_PATCHED = False
+_SELECT_FOR_UPDATE_WINDOW_PATCHED = False
 _SCHEMA_INIT_COMMANDS = frozenset({"migrate", "batch_init"})
 
 
@@ -76,6 +77,83 @@ def install_select_for_update_limit_compat():
 
     SQLCompiler.as_sql = as_sql
     _SELECT_FOR_UPDATE_LIMIT_PATCHED = True
+
+
+def _limited_for_update_unsupported(queryset) -> bool:
+    query = getattr(queryset, "query", None)
+    if query is None or not getattr(query, "select_for_update", False):
+        return False
+    if getattr(queryset, "_result_cache", None) is not None:
+        return False
+    from django.db import connections
+
+    features = connections[queryset.db].features
+    return not getattr(features, "supports_select_for_update_with_limit", True)
+
+
+def _without_for_update(queryset):
+    page = queryset._chain()
+    page.query.select_for_update = False
+    return page
+
+
+def evaluate_locked_window(queryset, start: int, stop: int):
+    """Lock a pk-ordered window without putting LIMIT and FOR UPDATE in one statement.
+
+    The page of primary keys is read without a row lock. Those primary keys are
+    then locked with ``pk__in``, which has no LIMIT. Row order follows the page.
+    """
+    if stop < start:
+        return []
+    page = _without_for_update(queryset)
+    if start:
+        pks = list(page.values_list("pk", flat=True)[start:stop])
+    else:
+        pks = list(page.values_list("pk", flat=True)[:stop])
+    if not pks:
+        return []
+    locked = queryset.filter(pk__in=pks)
+    by_pk = {row.pk: row for row in locked}
+    return [by_pk[pk] for pk in pks if pk in by_pk]
+
+
+def install_select_for_update_window_compat():
+    """Rewrite limited ``select_for_update()`` on backends that reject LIMIT + FOR UPDATE.
+
+    ``QuerySet.first()`` and ``queryset[:N]`` both set a limit. Celery claim
+    loops use that shape. This keeps the row lock by paging primary keys, and
+    it is installed for every Dameng process. The SQLCompiler workaround that
+    drops FOR UPDATE stays limited to migrate and batch_init.
+    """
+    global _SELECT_FOR_UPDATE_WINDOW_PATCHED
+    if _SELECT_FOR_UPDATE_WINDOW_PATCHED:
+        return
+
+    from django.db.models.query import QuerySet
+
+    original_getitem = QuerySet.__getitem__
+    original_exists = QuerySet.exists
+
+    def __getitem__(self, key):
+        if isinstance(key, slice) and key.stop is not None and key.step in (None, 1) and _limited_for_update_unsupported(self):
+            start = 0 if key.start is None else int(key.start)
+            return evaluate_locked_window(self, start, int(key.stop))
+        if isinstance(key, int) and key >= 0 and _limited_for_update_unsupported(self):
+            rows = evaluate_locked_window(self, key, key + 1)
+            if not rows:
+                raise IndexError
+            return rows[0]
+        return original_getitem(self, key)
+
+    def exists(self):
+        if self._result_cache is not None or not _limited_for_update_unsupported(self):
+            return original_exists(self)
+        # exists() compiles LIMIT 1. Lock that one row so the transaction still holds it.
+        return bool(evaluate_locked_window(self, 0, 1))
+
+    QuerySet.__getitem__ = __getitem__
+    QuerySet.exists = exists
+    _SELECT_FOR_UPDATE_WINDOW_PATCHED = True
 
 
 def list_locked_batch(queryset, batch_size, connection):
