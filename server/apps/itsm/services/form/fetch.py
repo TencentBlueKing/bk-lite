@@ -19,6 +19,7 @@ from .capabilities import FIELD_CAPABILITIES, validate_binding, validate_result
 
 SALT = "itsm.field.fetch.v1"
 REF = re.compile(r"^\$\{(form|user|query)\.([\w]+)\}$")
+VMWARE_AUTHORITY_COLUMNS = {"flavor_id", "template_id", "network_id", "disk_policy_id", "data_disk_gib"}
 CHOICES = {"select", "multiselect", "radio", "checkbox", "cascade", "multiCascade"}
 
 
@@ -423,6 +424,8 @@ def fetch_field(schema, key, values, identity, *, context, query="", page=1, ins
     if any(values.get(name) in (None, "", []) for name in refs):
         raise ValueError("请先填写依赖字段")
     params = bind(cfg.get("inputs", {}), values, identity, {"keyword": str(query)[:100], "page": max(1, int(page)), "page_size": 20})
+    if (cfg.get("snapshot") or {}).get("config", {}).get("path") == "itsm/vmware/catalog":
+        params["preview"] = context == "preview"
     dependency_values = {name: values.get(name) for name in refs}
     stamp = {
         "binding": digest([field["type"], cfg]),
@@ -547,7 +550,7 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
     return result
 
 
-def _verify_row_fields(schema, verified, submitted, original, permissions, allowed, identity, context, receipt_context):
+def _verify_row_fields(schema, verified, submitted, original, permissions, allowed, identity, context, receipt_context, authority_table):
     from .rules import match_when
     from .table_columns import ROW_REFERENCE, protected_column, row_signature
 
@@ -557,7 +560,16 @@ def _verify_row_fields(schema, verified, submitted, original, permissions, allow
         table = prefix.rstrip(".")
         if not prefix or table not in allowed or table not in submitted:
             continue
-        dynamic = [column for column in columns.values() if column.get("fetch")]
+        dynamic = [
+            col
+            for col in columns.values()
+            if col.get("fetch")
+            and not (
+                table == authority_table
+                and col["key"] in VMWARE_AUTHORITY_COLUMNS
+                and (col["fetch"].get("snapshot") or {}).get("config", {}).get("path") == "itsm/vmware/catalog"
+            )
+        ]
         if not dynamic:
             continue
         if submitted[table] is not None and not isinstance(submitted[table], list):
@@ -603,7 +615,7 @@ def task_fetch_context(ticket, task):
     return f"ticket:{ticket.id}:task:{task.id}"
 
 
-def validate_submission(schema, values, identity, context, original=None, field_perm=None, *, receipt_context=None):
+def validate_submission(schema, values, identity, context, original=None, field_perm=None, *, receipt_context=None, authority_table=None):
     """先按节点权限过滤，再验证取数凭据；只保存服务端验证过的标签。"""
     from apps.itsm.services.form.schema import LAYOUT_ONLY
     from apps.itsm.services.form.table_columns import TABLE_FIELDS, merge_table_rows
@@ -623,10 +635,15 @@ def validate_submission(schema, values, identity, context, original=None, field_
     allowed = editable.keys() & visible_field_keys(validator.schema, merged)
     merged["_field_receipts"] = values.get("_field_receipts", {})
     verified = verify_fields(schema, merged, identity, context=receipt_context or context, original=original, allowed=allowed)
-    _verify_row_fields(schema, verified, values, original, validator.field_perm, allowed, identity, context, receipt_context or context)
+    _verify_row_fields(
+        schema, verified, values, original, validator.field_perm, allowed, identity, context, receipt_context or context, authority_table
+    )
     # 动态选项由凭据验证，不能再拿旧静态选项二次判断。
     checked_schema = copy.deepcopy(schema)
     for field in walk(checked_schema.get("fields", [])):
+        if authority_table and field["key"] == authority_table and field.get("type") == "table":
+            # VMware 配置档负责校验这五列，旧设计以单选字段存储整数容量。
+            field["children"] = [c for c in field.get("children", []) if c["key"] not in VMWARE_AUTHORITY_COLUMNS]
         if field.get("fetch") and field["fetch"].get("mode") == "options":
             field["source"] = {"type": "static", "options": verified.get("_field_labels", {}).get(field["key"], [])}
     cleaned, errors = FormValidator(checked_schema, field_perm).merge(original, verified)
