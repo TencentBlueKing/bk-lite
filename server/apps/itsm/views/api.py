@@ -6,7 +6,7 @@ from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -326,8 +326,10 @@ def workflows(request):
 @csrf_exempt
 @api_errors
 @HasPermission("workflow-Edit")
+@transaction.atomic
 def workflow_design(request, workflow_id):
-    workflow = Workflow.objects.filter(domain=domain_of(request)).get(id=workflow_id)
+    workflows = Workflow.objects.filter(domain=domain_of(request))
+    workflow = (workflows if request.method == "GET" else workflows.select_for_update()).get(id=workflow_id)
     if request.method == "GET":
         version = (
             workflow.versions.filter(is_published=False).order_by("-version_no").first()
@@ -335,6 +337,10 @@ def workflow_design(request, workflow_id):
             or workflow.versions.order_by("-version_no").first()
         )
         design = version.design if version and isinstance(version.design, dict) else {}
+        if version and not version.is_published and "form_schema" not in design and not workflow.form_id and workflow.current_version:
+            published_schema = workflow.current_version.design.get("form_schema")
+            if published_schema is not None:
+                design = {**design, "form_schema": published_schema}
         return WebUtils.response_success(
             {
                 **design,
@@ -345,12 +351,17 @@ def workflow_design(request, workflow_id):
             }
         )
     payload = _body(request)
-    if payload.get("form_id"):
+    draft = workflow.versions.filter(is_published=False).order_by("-version_no").first()
+    if "draft_from_version" in payload:
+        if draft is not None:
+            return WebUtils.response_success({"id": draft.id, "version_no": draft.version_no, "locked": False})
+        source = workflow.versions.get(version_no=payload["draft_from_version"], is_published=True)
+        payload = source.design.copy()
+    elif payload.get("form_id"):
         FormModel.objects.get(id=payload["form_id"], domain=domain_of(request))
         workflow.form_id = payload["form_id"]
         workflow.save(update_fields=["form", "updated_at"])
         payload = {key: value for key, value in payload.items() if key != "form_id"}
-    draft = workflow.versions.filter(is_published=False).order_by("-version_no").first()
     if draft is not None and payload.get("nodes"):
         draft.design = payload
         draft.updated_by = _user(request)

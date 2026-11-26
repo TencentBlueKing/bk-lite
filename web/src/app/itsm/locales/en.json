@@ -666,7 +666,7 @@
       "preview": "Preview",
       "copyFlow": "Copy workflow",
       "publish": "Publish",
-      "lockedHint": "The active workflow version cannot be edited. Copy it before changing the form or flow.",
+      "lockedHint": "Create a draft to edit the next version of this workflow.",
       "formTab": "Form",
       "flowTab": "Flow",
       "backList": "Back to list",

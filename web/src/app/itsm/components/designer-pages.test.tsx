@@ -6,7 +6,7 @@ import WorkflowPage from '../workflow/designer/[id]/page';
 import type { FormFieldSchema } from '../types';
 
 const state = vi.hoisted(() => ({ id: '1' }));
-const api = vi.hoisted(() => ({ ready: true, getForm: vi.fn(), getDesign: vi.fn(), saveForm: vi.fn(), publishForm: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, getForm: vi.fn(), getDesign: vi.fn(), saveDesign: vi.fn(), saveForm: vi.fn(), publishForm: vi.fn() }));
 vi.mock('next/navigation', () => ({ useParams: () => ({ id: state.id }), useRouter: () => ({}) }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -51,4 +51,16 @@ it('切换流程后等待对应表单读完，旧请求迟到不会覆盖当前�
   await act(async () => finish({ schema: { fields: [] } }));
   expect(screen.queryByText('旧流程')).toBeNull();
   expect(screen.getByRole('button', { name: '原名' })).toBeTruthy();
+});
+
+it('从发布版本新建草稿后继续显示版本快照中的字段', async () => {
+  const published = { workflow_name: '虚拟机申请', form_id: 8, locked: true, version_no: 4, form_schema: schema };
+  api.getDesign.mockResolvedValueOnce(published).mockResolvedValue({ ...published, locked: false, version_no: 5 });
+  api.getForm.mockResolvedValue({ schema: { version: 1, fields: [] } });
+  render(<WorkflowPage />);
+  fireEvent.click(await screen.findByRole('button', { name: '新建草稿' }));
+  await waitFor(() => expect(api.saveDesign).toHaveBeenCalledWith(1, { draft_from_version: 4 }));
+  await screen.findByText('V5');
+  expect(screen.getByRole('button', { name: '原名' })).toBeTruthy();
+  expect(api.getForm).not.toHaveBeenCalled();
 });

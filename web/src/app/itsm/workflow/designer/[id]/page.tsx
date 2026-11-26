@@ -74,7 +74,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
 
   const read = useCallback(async () => {
     const data = await api.getDesign(workflowId) as DesignPayload;
-    if (data.form_schema && (data.locked || !data.form_id)) return { data, schema: data.form_schema };
+    if (data.form_schema) return { data, schema: data.form_schema };
     const form = data.form_id ? await api.getForm(data.form_id) as { schema?: FormSchema } : null;
     return { data, schema: form?.schema };
   }, [api.getDesign, api.getForm, workflowId]);
@@ -114,7 +114,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
         await api.saveForm(id, schema);
       }
       if (!locked) {
-        await api.saveDesign(workflowId, design);
+        await api.saveDesign(workflowId, { ...design, form_schema: schema });
       }
       message.success(locked ? t('itsm.design.lockedSave') : t('itsm.design.saved'));
       await load();
@@ -125,11 +125,11 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
     }
   };
 
-  const copyDesign = async () => {
+  const createDraft = async () => {
     setBusy(true);
     try {
-      await api.saveDesign(workflowId, design);
-      message.success('已创建新草稿');
+      await api.saveDesign(workflowId, { draft_from_version: versionNo });
+      message.success('已打开草稿');
       await load();
     } catch (error) {
       message.error(error instanceof Error ? error.message : t('itsm.design.copyFailed'));
@@ -188,7 +188,7 @@ function WorkflowEditor({ workflowId }: { workflowId: number }) {
           <Button onClick={() => setPreview((current) => !current)}>{preview ? t('itsm.design.backDesign') : t('itsm.design.preview')}</Button>
           <div className="mx-1 h-4 w-px bg-[var(--color-border)]" />
           <Button loading={busy} disabled={locked} onClick={() => { void save(); }}>{t('itsm.common.save')}</Button>
-          <Button loading={busy} disabled={!locked} onClick={() => { void copyDesign(); }}>新建草稿</Button>
+          <Button loading={busy} disabled={!locked} onClick={() => { void createDraft(); }}>新建草稿</Button>
           <Button type="primary" loading={busy} disabled={locked} onClick={() => { void publish(); }}>{t('itsm.design.publish')}</Button>
         </div>
       </div>

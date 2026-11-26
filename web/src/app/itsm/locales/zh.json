@@ -666,7 +666,7 @@
       "preview": "预览",
       "copyFlow": "复制流程",
       "publish": "发布",
-      "lockedHint": "启用中的流程版本不支持编辑。请复制流程后再调整表单和流转。",
+      "lockedHint": "当前版本已启用。点击「新建草稿」可在原流程中编辑下一版本。",
       "formTab": "表单设计",
       "flowTab": "流程设计",
       "backList": "返回列表",
