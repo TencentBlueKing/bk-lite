@@ -50,3 +50,14 @@ class ServiceRecent(ItsmModel):
     class Meta:
         db_table = "itsm_service_recent"
         unique_together = (("domain", "username", "service"),)
+
+
+class TicketFormTemplate(ItsmModel):
+    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="ticket_form_templates")
+    username = models.CharField(max_length=64)
+    name = models.CharField(max_length=100)
+    form_data = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "itsm_ticket_form_template"
+        indexes = [models.Index(fields=["domain", "username", "workflow"], name="itsm_formtpl_owner_idx")]

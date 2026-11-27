@@ -21,6 +21,7 @@ import { TicketActions, type OperationInput } from './ticket-actions';
 import { TicketCollaboration, formatTicketTime } from './ticket-collaboration';
 import { useTranslation } from '@/utils/i18n';
 import { useServiceDraft } from './use-service-draft';
+import { TicketFormTemplates } from './ticket-form-templates';
 import type { AutoExecutionReview, TicketDetail, TicketTaskItem } from '../types';
 
 const STATUS_LABEL: Record<string, { id: string; color: string }> = {
@@ -190,7 +191,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
             ) : <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>}
             {!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
+          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><TicketFormTemplates serviceId={serviceId} form={form} fields={ticket.fields} disabled={busy} /><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>

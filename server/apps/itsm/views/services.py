@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
-from apps.itsm.models import Service, ServiceCatalog, ServiceFavorite, ServiceRecent, Workflow
+from apps.itsm.models import Service, ServiceCatalog, ServiceFavorite, ServiceRecent, TicketFormTemplate, Workflow
 from apps.itsm.serializers import ServiceCatalogSerializer, ServiceSerializer
 from apps.itsm.serializers.service import PortalServiceSerializer
 from apps.itsm.services.service_access import visible_services
@@ -178,7 +178,9 @@ def service_portal(request):
             "service_total": enabled.count() if summary else len(first),
             "favorites": [_service_item(item) for item in enabled.filter(pk__in=favorite_ids)],
             "recents": [_service_item(item.service) for item in recent if item.service.is_enabled],
-            "hots": [_service_item(item) for item in enabled.filter(is_hot=True)[:6]] if summary else [_service_item(item) for item in first if item.is_hot],
+            "hots": [_service_item(item) for item in enabled.filter(is_hot=True)[:6]]
+            if summary
+            else [_service_item(item) for item in first if item.is_hot],
         }
     )
 
@@ -223,3 +225,52 @@ def service_use(request, service_id):
     recent.last_used_at = timezone.now()
     recent.save(update_fields=["last_used_at", "updated_at"])
     return WebUtils.response_success({"id": service.id, "version_id": service.workflow.current_version_id})
+
+
+@csrf_exempt
+@api_errors
+@HasPermission("ticket-Add")
+def service_form_templates(request, service_id):
+    from apps.itsm.services.form.templates import project_template_values
+    from apps.itsm.services.ticket.service import _find_node, workflow_schema
+
+    service = visible_services(request, service_id=service_id).select_related("workflow__current_version", "workflow__form__current_version").get()
+    version = service.workflow.current_version
+    schema = workflow_schema(version)
+    permissions = _find_node(version.design, node_type="submit").get("field_perm", {})
+    owner = {"domain": domain_of(request), "username": _user(request), "workflow": service.workflow}
+    owned = TicketFormTemplate.objects.filter(**owner)
+
+    def item_data(item):
+        current = project_template_values(schema.get("fields") or [], item.form_data, permissions)
+        return {"id": item.id, "name": item.name, "form_data": current, "changed": current != item.form_data}
+
+    if request.method == "GET":
+        return WebUtils.response_success({"items": [item_data(item) for item in owned.order_by("-updated_at", "-id")[:50]]})
+    if request.method == "DELETE":
+        item = owned.filter(id=request.GET.get("id")).first()
+        if item is None:
+            return WebUtils.response_error("模板不存在", status_code=404)
+        item.delete()
+        return WebUtils.response_success({"id": item.id})
+    if request.method != "POST":
+        return WebUtils.response_error("不支持的请求方法", status_code=405)
+    payload = _body(request)
+    if not isinstance(payload, dict):
+        return WebUtils.response_error("请求体必须为对象")
+    name = payload.get("name")
+    values = payload.get("form_data")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
+        return WebUtils.response_error("模板名称应为 1 至 100 个字符")
+    if not isinstance(values, dict) or len(json.dumps(values, ensure_ascii=False)) > 65536:
+        return WebUtils.response_error("模板表单数据无效或超过 64 KB")
+    if owned.count() >= 50:
+        return WebUtils.response_error("每个流程最多保存 50 个模板")
+    item = TicketFormTemplate.objects.create(
+        **owner,
+        name=name.strip(),
+        form_data=project_template_values(schema.get("fields") or [], values, permissions),
+        created_by=_user(request),
+        updated_by=_user(request),
+    )
+    return WebUtils.response_success(item_data(item))

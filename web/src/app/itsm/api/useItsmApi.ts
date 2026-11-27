@@ -192,6 +192,9 @@ export function useItsmApi() {
   const portalDashboard = useCallback(() => get('/itsm/api/services/dashboard/'), [get]);
   const loadDrafts = useCallback(() => get('/itsm/api/services/drafts/'), [get]);
   const saveDraft = useCallback((body: { service_id: number; form_data?: Record<string, unknown>; clear?: boolean }) => post('/itsm/api/services/drafts/', body), [post]);
+  const listFormTemplates = useCallback((serviceId: number) => get<{ items: { id: number; name: string; form_data: Record<string, unknown>; changed: boolean }[] }>(`/itsm/api/services/${serviceId}/form-templates/`), [get]);
+  const saveFormTemplate = useCallback((serviceId: number, body: { name: string; form_data: Record<string, unknown> }) => post(`/itsm/api/services/${serviceId}/form-templates/`, body), [post]);
+  const deleteFormTemplate = useCallback((serviceId: number, id: number) => del(`/itsm/api/services/${serviceId}/form-templates/?id=${id}`), [del]);
   const listCatalogs = useCallback(() => get('/itsm/api/catalogs/'), [get]);
   const createCatalog = useCallback((body: { id?: number; name: string; parent_id?: number | null }) => post('/itsm/api/catalogs/', body), [post]);
   const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
@@ -350,6 +353,9 @@ export function useItsmApi() {
     portalDashboard,
     loadDrafts,
     saveDraft,
+    listFormTemplates,
+    saveFormTemplate,
+    deleteFormTemplate,
     listCatalogs,
     createCatalog,
     deleteCatalog,

@@ -64,7 +64,7 @@ from apps.itsm.views.m2 import test_start, ticket_tags, todo_summary, view_templ
 from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
-from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
+from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_form_templates, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
 from apps.itsm.views.ticket_export import download_export, export_fields, export_tasks, export_tickets, retry_export
 from apps.itsm.views.ticket_operations import batch_operate, batch_options, create_child, preview_print_template, render_print, run_auto
@@ -164,6 +164,7 @@ urlpatterns = [
     path("api/services/", ServiceView.as_view(), name="itsm-services"),
     path("api/services/portal/", service_portal, name="itsm-service-portal"),
     path("api/services/drafts/", portal_draft, name="itsm-portal-draft"),
+    path("api/services/<int:service_id>/form-templates/", service_form_templates, name="itsm-service-form-templates"),
     path("api/services/hot/", service_hot, name="itsm-service-hot"),
     path("api/services/<int:service_id>/favorite/", service_favorite, name="itsm-service-favorite"),
     path("api/services/<int:service_id>/use/", service_use, name="itsm-service-use"),
