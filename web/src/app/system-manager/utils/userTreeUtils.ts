@@ -9,6 +9,7 @@ import type { OriginalGroup } from '@/app/system-manager/types/group';
 export interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
   isVirtual?: boolean;
+  isBuiltin?: boolean;
   roleIds?: number[];
   syncSource?: number | null;
   parentId?: number;
@@ -48,6 +49,7 @@ export function convertGroupsToTreeData(groups: OriginalGroup[]): ExtendedTreeDa
       title: group.name,
       hasAuth: group.hasAuth,
       isVirtual: currentIsVirtual,
+      isBuiltin: group.is_builtin === true,
       roleIds: group.role_ids || [],
       syncSource: group.sync_source ?? null,
       parentId: (group as OriginalGroup & { parentId?: number }).parentId,

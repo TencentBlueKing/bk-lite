@@ -65,6 +65,7 @@ ALLOWED_TREE_KEYS = {
     "hasAuth",
     "role_ids",
     "is_virtual",
+    "is_builtin",
     "parentId",
     "sync_source",
 }

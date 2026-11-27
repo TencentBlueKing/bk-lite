@@ -42,7 +42,6 @@ error:
   no_permission_delete_group: You do not have permission to delete this group.
   some_roles_not_exist: Role does not exist
   login_module_name_exists: Login module with this name and source type already exists.
-  default_group_cannot_modify: Default group cannot be modified.
   time_range_too_large: Time range cannot exceed 90 days
   cannot_modify_builtin_menu_group: Cannot modify builtin menu group
   cannot_delete_menu_with_children: Cannot delete menu with children
@@ -188,6 +187,7 @@ error:
   synced_group_child_creation_forbidden: Synced groups cannot have manually created child groups
   cannot_create_under_archived_group: Cannot create a group under an archived organization
   synced_child_group_name_immutable: Synced child group name cannot be changed
+  group_name_exists: A group with this name already exists at the same level
   synced_groups_delete_forbidden: Synced groups cannot be deleted directly
   synced_groups_archive_forbidden: Synced groups cannot be archived directly
   group_archive_users_need_active_org: Archiving would leave some users without an active organization. Please assign them another active organization first

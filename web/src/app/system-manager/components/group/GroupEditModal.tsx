@@ -162,7 +162,8 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
         const firstFieldErrorMessage = error.errorFields[0].errors[0];
         message.error(firstFieldErrorMessage || t('common.valFailed'));
       } else {
-        message.error(t('common.saveFailed'));
+        const backendMessage = error instanceof Error ? error.message.trim() : '';
+        message.error(backendMessage && backendMessage !== 'Request failed' ? backendMessage : t('common.saveFailed'));
       }
       console.error('Failed to update group:', error);
     } finally {
