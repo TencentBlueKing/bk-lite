@@ -112,18 +112,26 @@ describe('status distribution empty window', () => {
 
       const sites = renderSites(model);
       const siteChart = chartOf(sites.container, '状态码分布');
-      expect(siteChart?.textContent).toContain('暂无数据');
+      const sitePie = sites.container.querySelector('[data-nginx-pie="状态码构成"]');
+      expect(siteChart?.querySelector('[data-nginx-empty-title]')?.textContent).toBe('暂无数据');
+      expect(siteChart?.querySelector('[data-nginx-empty-detail]')?.textContent).toBe('窗口内没有请求');
+      expect(sitePie?.querySelector('[data-nginx-empty-title]')?.textContent).toBe('暂无数据');
+      expect(sitePie?.querySelector('[data-nginx-empty-detail]')?.textContent).toBe('窗口内没有请求');
       expect(siteChart?.querySelector('[data-nginx-plot]')).toBeNull();
       expect(siteChart?.textContent).not.toContain('加载失败');
-      expect(sites.container.querySelector('[data-nginx-pie="状态码构成"] [data-nginx-pie-shape]')).toBeNull();
+      expect(sitePie?.querySelector('[data-nginx-pie-shape]')).toBeNull();
       cleanup();
 
       const upstream = renderUpstream(model);
       const upstreamChart = chartOf(upstream.container, '上游状态码分布');
-      expect(upstreamChart?.textContent).toContain('暂无数据');
+      const upstreamPie = upstream.container.querySelector('[data-nginx-pie="上游状态码构成"]');
+      expect(upstreamChart?.querySelector('[data-nginx-empty-title]')?.textContent).toBe('暂无数据');
+      expect(upstreamChart?.querySelector('[data-nginx-empty-detail]')?.textContent).toBe('窗口内上游没有请求');
+      expect(upstreamPie?.querySelector('[data-nginx-empty-title]')?.textContent).toBe('暂无数据');
+      expect(upstreamPie?.querySelector('[data-nginx-empty-detail]')?.textContent).toBe('窗口内上游没有请求');
       expect(upstreamChart?.querySelector('[data-nginx-plot]')).toBeNull();
       expect(upstreamChart?.textContent).not.toContain('加载失败');
-      expect(upstream.container.querySelector('[data-nginx-pie="上游状态码构成"] [data-nginx-pie-shape]')).toBeNull();
+      expect(upstreamPie?.querySelector('[data-nginx-pie-shape]')).toBeNull();
       cleanup();
     }
   });

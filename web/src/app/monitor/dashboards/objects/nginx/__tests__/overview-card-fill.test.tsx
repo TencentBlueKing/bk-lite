@@ -90,7 +90,7 @@ const readyPhases = (): Record<string, NginxQueryPhase> => {
   return phases;
 };
 
-const KPI = ['请求速率', '活跃连接', '等待连接', '丢弃连接'] as const;
+const KPI = ['请求速率', '活跃连接', '告警数量', '等待连接', '丢弃连接'] as const;
 
 const classNames = (node: Element | null | undefined) => (node?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
 
@@ -130,21 +130,24 @@ const renderOverview = ({
 );
 
 describe('overview cards fill their grid cells', () => {
-  it('stretches four KPI cards and three focus cards without mini trends', () => {
+  it('stretches health KPIs without mini trends and gives focus cards a sparkline', () => {
     const model = stubModel();
     expect(model.board.focusThirdTitle).toBe('连接结构');
     const view = renderOverview({ model, alertCount: 2 });
 
     expect(view.container.querySelector('[data-nginx-host]')).toBeNull();
     expect(view.container.querySelector('[data-nginx-tile="采集状态"]')).toBeNull();
-    expect(view.container.querySelector('[data-nginx-tile="告警数量"]')).toBeNull();
+    expect(view.container.querySelector('[data-nginx-tile="告警数量"]')?.textContent).toContain('2');
     expect(view.container.textContent).toContain('健康概览');
     expect(view.container.textContent).toContain('事件');
+    expect(view.container.textContent).toContain('重点关注');
+    expect(view.container.textContent).toContain('趋势');
 
     KPI.forEach((label) => {
       const card = view.container.querySelector(`[data-nginx-tile="${label}"]`);
       expectFill(card);
-      expect(card?.closest('[data-nginx-width="1/4"]')).toBeTruthy();
+      const width = label === '等待连接' || label === '丢弃连接' ? '1/2' : '1/3';
+      expect(card?.closest(`[data-nginx-width="${width}"]`)).toBeTruthy();
       const row = card?.querySelector('[data-nginx-figure-row]');
       expect(classNames(row)).toEqual(expect.arrayContaining(['w-full', 'items-baseline']));
       expect(card?.querySelector('[data-nginx-spark]')).toBeNull();
@@ -153,10 +156,11 @@ describe('overview cards fill their grid cells', () => {
     ['请求是否骤变', '是否在丢连接', '连接结构'].forEach((label) => {
       const card = view.container.querySelector(`[data-nginx-focus="${label}"]`);
       expectFill(card);
+      expect(card?.className).toContain('h-[168px]');
       expect(card?.closest('[data-nginx-width="1/3"]')).toBeTruthy();
       const row = card?.querySelector('[data-nginx-figure-row]');
       expect(classNames(row)).toEqual(expect.arrayContaining(['w-full', 'items-baseline']));
-      expect(card?.querySelector('[data-nginx-spark]')).toBeNull();
+      expect(card?.querySelector('[data-nginx-spark] [data-nginx-plot]')).toBeTruthy();
       expect(card?.querySelector('[data-nginx-share-bar]')).toBeNull();
     });
 

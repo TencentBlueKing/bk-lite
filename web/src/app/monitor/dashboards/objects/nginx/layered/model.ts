@@ -299,10 +299,12 @@ export interface NginxBoard {
   readingFigure: string;
   writingFigure: string;
   waitingFigure: string;
+  waitingSub: string;
   busyFigure: string;
   busyShare: number | null;
   droppedFigure: string;
   droppedCountFigure: string;
+  droppedCountSub: string;
   droppedCountHot: boolean;
   handledFigure: string;
   focusRequestSub: string;
@@ -345,10 +347,12 @@ const EMPTY_BOARD: NginxBoard = {
   readingFigure: EMPTY_READING,
   writingFigure: EMPTY_READING,
   waitingFigure: EMPTY_READING,
+  waitingSub: '',
   busyFigure: EMPTY_READING,
   busyShare: null,
   droppedFigure: EMPTY_READING,
   droppedCountFigure: EMPTY_READING,
+  droppedCountSub: '',
   droppedCountHot: false,
   handledFigure: EMPTY_READING,
   focusRequestSub: '',
@@ -487,6 +491,18 @@ const clockOf = (unix: number | null) => {
 const staleNote = (stale: boolean, source: number | null) => (
   stale && source != null ? `最近读数 ${clockOf(source)}` : ''
 );
+
+const lastTime = (points: readonly Point[]) => (points.length ? points[points.length - 1].time : null);
+
+const noteOf = (stale: boolean, source: number | null, points: readonly Point[]) => (
+  staleNote(stale, source ?? (stale ? lastTime(points) : null))
+);
+
+const newerTime = (left: number | null, right: number | null) => {
+  if (left == null) return right;
+  if (right == null) return left;
+  return Math.max(left, right);
+};
 
 const figureOf = (value: number | null) => (value == null ? EMPTY_READING : formatDecimal(value));
 
@@ -1152,35 +1168,41 @@ export const buildNginxDashboard = ({
   const focusThird = !hasVts
     ? {
       title: '连接结构',
-      figure: readingNow == null && writingNow == null
+      figure: readingNow == null || writingNow == null
         ? EMPTY_READING
-        : countFigure((readingNow ?? 0) + (writingNow ?? 0)),
-      sub: waitingNow == null ? '' : `等待 ${formatCount(waitingNow, '')}`,
+        : countFigure(readingNow + writingNow),
+      sub: readingNow == null || writingNow == null || waitingNow == null
+        ? ''
+        : `等待 ${formatCount(waitingNow, '')}`,
       tab: 'connections' as const,
       anchor: 'nginx-conn-mix'
     }
     : {
       title: '站点与上游异常',
       figure: starWindowTotal != null && starWindowTotal > 0 ? countFigure(fiveCount ?? 0) : EMPTY_READING,
-      sub: `已下线 ${upDown}`,
+      sub: starWindowTotal != null && starWindowTotal > 0 ? `已下线 ${upDown}` : '窗口内没有请求',
       tab: (fiveCount ?? 0) > 0 && sites ? 'sites' as const : upstream ? 'upstream' as const : 'sites' as const,
       anchor: (fiveCount ?? 0) > 0 && sites ? 'nginx-status-dist' : 'nginx-upstream-table'
     };
   const requestSource = sourceTime(stubFresh, nowSeconds, (labels) => matchesMetric(labels, 'nginx_requests'));
-  const activeNote = staleNote(activeStale, activeSource);
+  const waitingSource = sourceTime(stubFresh, nowSeconds, (labels) => matchesMetric(labels, 'nginx_waiting'));
+  const acceptSource = sourceTime(stubFresh, nowSeconds, (labels) => matchesMetric(labels, 'nginx_accepts'));
+  const handledSource = sourceTime(stubFresh, nowSeconds, (labels) => matchesMetric(labels, 'nginx_handled'));
   const board: NginxBoard = {
     collectionSub,
     requestFigure: figureOf(requestNow),
-    requestSub: staleNote(requestStale, requestSource),
+    requestSub: noteOf(requestStale, requestSource, requestPoints),
     activeFigure: countFigure(activeNow),
-    activeSub: activeNote,
+    activeSub: noteOf(activeStale, activeSource, activePoints),
     readingFigure: countFigure(readingNow),
     writingFigure: countFigure(writingNow),
     waitingFigure: countFigure(waitingNow),
+    waitingSub: noteOf(waitingStale, waitingSource, waitingPoints),
     busyFigure: countFigure(busyCount),
     busyShare: busyNow == null ? null : busyNow * 100,
     droppedFigure: figureOf(droppedNow),
     droppedCountFigure: countFigure(droppedCount),
+    droppedCountSub: noteOf(rateStale, newerTime(acceptSource, handledSource), droppedPoints),
     droppedCountHot: (droppedCount ?? 0) > 0,
     handledFigure: formatPercent(handledShare),
     focusRequestSub,

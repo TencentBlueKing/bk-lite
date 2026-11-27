@@ -2,9 +2,10 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Switch } from 'antd';
+import { ProSection } from '../../host/layered/section-title';
 import { durationUnitLabel, formatBytes, formatCount, formatDuration, formatPerSecond, formatPlain } from './format';
 import { NGINX_HINTS } from './hints';
-import { NginxChartCard, NginxRetryBanner, NginxTile } from './nginx-card';
+import { NGINX_SPAN, NginxChartCard, NginxRetryBanner } from './nginx-card';
 import { NginxCompositionCard } from './nginx-composition';
 import { NginxHint } from './nginx-hint';
 import type { NginxDashboardModel, NginxSeriesItem, UpstreamGroupRow, UpstreamMemberRow } from './model';
@@ -19,8 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   '5xx': '#ff4d4f'
 };
 const STATUS_ORDER = ['1xx', '2xx', '3xx', '4xx', '5xx'] as const;
-const CELL = 'flex min-w-0 min-[1100px]:col-span-3';
-const THIRD = 'min-w-0 min-[1100px]:col-span-4';
+const UPSTREAM_EMPTY_DETAIL = '窗口内上游没有请求';
 
 const topSeries = (items: readonly NginxSeriesItem[]) => [...items]
   .sort((left, right) => (right.points[right.points.length - 1]?.value ?? 0) - (left.points[left.points.length - 1]?.value ?? 0))
@@ -67,12 +67,11 @@ export default function UpstreamPane({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDesc, setSortDesc] = useState(true);
   const board = model.board;
-  const kpiPhase = phaseOf(NGINX_CARD_QUERIES.upstreamKpi, phases);
   const trendPhase = phaseOf(NGINX_CARD_QUERIES.upstreamTrend, phases);
   const statusPhase = phaseOf(NGINX_CARD_QUERIES.upstreamStatus, phases);
   const timePhase = phaseOf(NGINX_CARD_QUERIES.upstreamTime, phases);
   const tablePhase = phaseOf(NGINX_CARD_QUERIES.upstreamTable, phases);
-  const failures = [kpiPhase, kpiPhase, kpiPhase, kpiPhase, trendPhase, timePhase, timePhase, statusPhase, statusPhase, tablePhase]
+  const failures = [trendPhase, timePhase, timePhase, statusPhase, statusPhase, tablePhase]
     .filter((item) => item === 'error').length;
   const timeText = (value: number | null) => textOf(value, formatDuration(value ?? 0, model.upstreamTimeUnit));
   const memberMetric = (member: UpstreamMemberRow, key: string) => {
@@ -205,109 +204,84 @@ export default function UpstreamPane({
   }));
 
   return (
-    <div className="flex flex-col gap-4" data-nginx-pane="upstream">
+    <div className="flex flex-col gap-6" data-nginx-pane="upstream">
       <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="上游请求速率" hint={NGINX_HINTS.upRate} unit="次/秒" figure={board.upRate} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
+      <ProSection id="nginx-upstream-trend-section" title="上游趋势">
+        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
+            <NginxChartCard
+              title="上游请求速率"
+              hint={NGINX_HINTS.upRate}
+              unit="次/秒"
+              items={board.upstreamGroupTrend}
+              floor={1}
+              formatReading={(value) => formatPerSecond(value, '次')}
+              phase={trendPhase}
+              emptyText={emptyText}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTrend)}
+            />
+          </div>
+          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
+            <NginxChartCard
+              title="响应时间"
+              hint={NGINX_HINTS.upResponse}
+              unit={durationUnitLabel(model.upstreamTimeUnit)}
+              items={topSeries(model.upstreamResponseTime)}
+              floor={10}
+              formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
+              phase={timePhase}
+              emptyText={emptyText}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
+            />
+          </div>
+          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
+            <NginxChartCard
+              title="请求处理时间"
+              hint={NGINX_HINTS.upRequestTime}
+              unit={durationUnitLabel(model.upstreamTimeUnit)}
+              items={topSeries(model.upstreamRequestTime)}
+              floor={10}
+              formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
+              phase={timePhase}
+              emptyText={emptyText}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
+            />
+          </div>
         </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile
-            label="上游 5xx 次数"
-            hint={NGINX_HINTS.up5xx}
-            unit="次"
-            figure={board.up5xx}
-            sub={board.up5xxSub}
-            tone={board.up5xxHot ? 'var(--color-fail)' : undefined}
-            phase={kpiPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)}
-          />
+      </ProSection>
+      <ProSection id="nginx-upstream-status-section" title="上游状态码">
+        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+          <div className={NGINX_SPAN.threeQuarter} data-nginx-width="3/4">
+            <NginxChartCard
+              title="上游状态码分布"
+              hint={NGINX_HINTS.upStatus}
+              unit="次"
+              items={statusBlocked ? [] : board.upstreamStatusSteps}
+              floor={1}
+              kind="bar"
+              countAxis
+              formatReading={(value) => formatCount(value, '次')}
+              phase={statusPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? UPSTREAM_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamStatus)}
+            />
+          </div>
+          <div className={NGINX_SPAN.quarter} data-nginx-width="1/4">
+            <NginxCompositionCard
+              title="上游状态码构成"
+              hint={NGINX_HINTS.upStatusMix}
+              parts={statusParts}
+              noun="次"
+              phase={statusPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? UPSTREAM_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamStatus)}
+            />
+          </div>
         </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="平均响应时间" hint={NGINX_HINTS.upTime} unit={durationUnitLabel(board.upTimeUnit)} figure={board.upTime} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)} />
-        </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile
-            label="在线成员"
-            hint={NGINX_HINTS.upOnline}
-            figure={board.upOnline}
-            phase={kpiPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamKpi)}
-            extra={board.upDown > 0 ? <span className="rounded-full bg-[color-mix(in_srgb,var(--color-fail)_14%,transparent)] px-2 py-0.5 text-[12px] text-[var(--color-fail)]">已下线 {board.upDown}</span> : null}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-        <div className={THIRD} data-nginx-width="1/3">
-          <NginxChartCard
-            title="上游请求速率"
-            hint={NGINX_HINTS.upRate}
-            unit="次/秒"
-            items={board.upstreamGroupTrend}
-            floor={1}
-            formatReading={(value) => formatPerSecond(value, '次')}
-            phase={trendPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTrend)}
-          />
-        </div>
-        <div className={THIRD} data-nginx-width="1/3">
-          <NginxChartCard
-            title="响应时间"
-            hint={NGINX_HINTS.upResponse}
-            unit={durationUnitLabel(model.upstreamTimeUnit)}
-            items={topSeries(model.upstreamResponseTime)}
-            floor={10}
-            formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
-            phase={timePhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
-          />
-        </div>
-        <div className={THIRD} data-nginx-width="1/3">
-          <NginxChartCard
-            title="请求处理时间"
-            hint={NGINX_HINTS.upRequestTime}
-            unit={durationUnitLabel(model.upstreamTimeUnit)}
-            items={topSeries(model.upstreamRequestTime)}
-            floor={10}
-            formatReading={(value) => formatDuration(value, model.upstreamTimeUnit)}
-            phase={timePhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamTime)}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        <div data-nginx-width="1/2">
-          <NginxChartCard
-            title="上游状态码分布"
-            hint={NGINX_HINTS.upStatus}
-            unit="次"
-            items={statusBlocked ? [] : board.upstreamStatusSteps}
-            floor={1}
-            kind="bar"
-            countAxis
-            formatReading={(value) => formatCount(value, '次')}
-            phase={statusPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamStatus)}
-          />
-        </div>
-        <div data-nginx-width="1/2">
-          <NginxCompositionCard
-            title="上游状态码构成"
-            hint={NGINX_HINTS.upStatusMix}
-            parts={statusParts}
-            noun="次"
-            phase={statusPhase}
-            emptyText={board.up5xxSub || emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.upstreamStatus)}
-          />
-        </div>
-      </div>
+      </ProSection>
+      <ProSection id="nginx-upstream-members-section" title="上游成员">
       <ProMetricTable
         id="nginx-upstream-table"
         title="上游"
@@ -331,6 +305,7 @@ export default function UpstreamPane({
           <div className="flex flex-1 items-center justify-center text-[14px] text-[var(--color-text-3)]">{emptyText}</div>
         )}
       />
+      </ProSection>
     </div>
   );
 }

@@ -8,6 +8,10 @@ export const NGINX_HINTS = {
     lead: '事件',
     body: '当前时间范围内发生的告警触发与恢复。'
   },
+  alerts: {
+    lead: '告警数量',
+    body: '当前仍未恢复的告警总数。'
+  },
   request: {
     lead: '请求速率',
     body: '所选时间范围内，Nginx 平均每秒处理的 HTTP 请求数。'

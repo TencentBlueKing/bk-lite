@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
+import { ProSection } from '../../host/layered/section-title';
 import { byteScale, durationUnitLabel, formatBytes, formatBytesPerSecond, formatCount, formatDuration, formatPerSecond, pickDurationUnit } from './format';
 import { NGINX_HINTS } from './hints';
-import { NginxChartCard, NginxRankCard, NginxRetryBanner, NginxTile } from './nginx-card';
+import { NGINX_SPAN, NginxChartCard, NginxRankCard, NginxRetryBanner } from './nginx-card';
 import { NginxCompositionCard } from './nginx-composition';
 import { NginxHint } from './nginx-hint';
 import { filterPlotted } from './selection';
@@ -20,7 +21,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_ORDER = ['1xx', '2xx', '3xx', '4xx', '5xx'] as const;
-const CELL = 'flex min-w-0 min-[1100px]:col-span-3';
+const SITE_EMPTY_DETAIL = '窗口内没有请求';
 
 type ZoneSortKey = 'zone' | 'rate' | 'window' | '1xx' | '2xx' | '3xx' | '4xx' | '5xx' | 'in' | 'out' | 'time';
 type FilterSortKey = 'name' | 'key' | 'rate' | 'window' | '2xx' | '4xx' | '5xx' | 'in' | 'out' | 'time';
@@ -71,14 +72,13 @@ export default function SitesPane({
   const [filterDesc, setFilterDesc] = useState(true);
   const [zone, setZone] = useState<string | null>(null);
   const board = model.board;
-  const kpiPhase = phaseOf(NGINX_CARD_QUERIES.sitesKpi, phases);
   const statusPhase = phaseOf(NGINX_CARD_QUERIES.sitesStatus, phases);
   const trafficPhase = phaseOf(NGINX_CARD_QUERIES.sitesTraffic, phases);
   const timePhase = phaseOf(NGINX_CARD_QUERIES.sitesTime, phases);
   const rankPhase = phaseOf(NGINX_CARD_QUERIES.sitesRank, phases);
   const tablePhase = phaseOf(NGINX_CARD_QUERIES.sitesTable, phases);
   const filterPhase = phaseOf(NGINX_CARD_QUERIES.filterTable, phases);
-  const cardPhases = [kpiPhase, kpiPhase, kpiPhase, kpiPhase, statusPhase, statusPhase, trafficPhase, timePhase, rankPhase, rankPhase, tablePhase];
+  const cardPhases = [statusPhase, statusPhase, trafficPhase, timePhase, rankPhase, rankPhase, tablePhase];
   if (model.showFilter) cardPhases.push(filterPhase);
   const failures = cardPhases.filter((item) => item === 'error').length;
   const rows = useMemo(() => [...model.zoneRows].sort((left, right) => {
@@ -212,107 +212,112 @@ export default function SitesPane({
   ) : undefined;
 
   return (
-    <div className="flex flex-col gap-4" data-nginx-pane="sites">
+    <div className="flex flex-col gap-6" data-nginx-pane="sites">
       <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="窗口请求数" hint={NGINX_HINTS.windowRequests} unit="次" figure={board.windowRequests} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+      <ProSection id="nginx-status-section" title="状态码">
+        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+          <div className={NGINX_SPAN.threeQuarter} data-nginx-width="3/4">
+            <NginxChartCard
+              anchor="nginx-status-dist"
+              title="状态码分布"
+              hint={NGINX_HINTS.statusDist}
+              unit="次"
+              items={statusBlocked ? [] : board.statusSteps}
+              floor={1}
+              kind="bar"
+              countAxis
+              formatReading={(value) => formatCount(value, '次')}
+              phase={statusPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? SITE_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
+            />
+          </div>
+          <div className={NGINX_SPAN.quarter} data-nginx-width="1/4">
+            <NginxCompositionCard
+              title="状态码构成"
+              hint={NGINX_HINTS.statusMix}
+              parts={statusParts}
+              noun="次"
+              phase={statusPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? SITE_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
+            />
+          </div>
         </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="4xx 次数" hint={NGINX_HINTS.count4xx} unit="次" figure={board.count4xx} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+      </ProSection>
+      <ProSection id="nginx-traffic-section" title="流量与处理">
+        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+            <NginxChartCard
+              title="入站与出站流量"
+              hint={NGINX_HINTS.bytes}
+              unit={scale.suffix}
+              items={board.trafficSeries}
+              floor={1}
+              formatReading={(value) => formatBytesPerSecond(value, scale)}
+              phase={trafficPhase}
+              emptyText={emptyText}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTraffic)}
+            />
+          </div>
+          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+            <NginxChartCard
+              title="平均处理时间趋势"
+              hint={NGINX_HINTS.avgTime}
+              unit={durationUnitLabel(model.requestTimeUnit)}
+              items={model.requestTimePoints.length ? [{
+                id: 'star',
+                label: '平均处理时间',
+                color: '#2f6bff',
+                points: model.requestTimePoints,
+                reading: ''
+              }] : []}
+              floor={10}
+              formatReading={(value) => formatDuration(value, model.requestTimeUnit)}
+              phase={timePhase}
+              emptyText={emptyText}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTime)}
+            />
+          </div>
         </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="5xx 次数" hint={NGINX_HINTS.count5xx} unit="次" figure={board.count5xx} tone={board.count5xxHot ? 'var(--color-fail)' : undefined} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
+      </ProSection>
+      <ProSection id="nginx-sites-section" title="站点">
+        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
+          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+            <NginxChartCard
+              title="站点请求速率"
+              hint={NGINX_HINTS.siteRate}
+              unit="次/秒"
+              items={trend}
+              floor={1}
+              formatReading={(value) => formatPerSecond(value, '次')}
+              phase={rankPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? SITE_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesRank)}
+            />
+          </div>
+          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+            <NginxRankCard
+              title="站点请求排行"
+              hint={NGINX_HINTS.siteRank}
+              rows={board.siteRank.map((row) => ({ id: row.zone, label: row.zone, value: row.count }))}
+              selected={zone}
+              onSelect={(id) => setZone((current) => (current === id ? null : id))}
+              phase={rankPhase}
+              emptyText={emptyText}
+              emptyDetail={statusBlocked ? SITE_EMPTY_DETAIL : undefined}
+              onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesRank)}
+              formatValue={(value) => formatCount(value, '次')}
+            />
+          </div>
         </div>
-        <div className={CELL} data-nginx-width="1/4">
-          <NginxTile label="平均处理时间" hint={NGINX_HINTS.avgTime} unit={durationUnitLabel(model.requestTimeUnit)} figure={board.avgTime} phase={kpiPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesKpi)} />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        <div data-nginx-width="1/2">
-          <NginxChartCard
-            anchor="nginx-status-dist"
-            title="状态码分布"
-            hint={NGINX_HINTS.statusDist}
-            unit="次"
-            items={statusBlocked ? [] : board.statusSteps}
-            floor={1}
-            kind="bar"
-            countAxis
-            formatReading={(value) => formatCount(value, '次')}
-            phase={statusPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
-          />
-        </div>
-        <div data-nginx-width="1/2">
-          <NginxCompositionCard
-            title="状态码构成"
-            hint={NGINX_HINTS.statusMix}
-            parts={statusParts}
-            noun="次"
-            phase={statusPhase}
-            emptyText={emptyText}
-            onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesStatus)}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        <NginxChartCard
-          title="入站与出站流量"
-          hint={NGINX_HINTS.bytes}
-          unit={scale.suffix}
-          items={board.trafficSeries}
-          floor={1}
-          formatReading={(value) => formatBytesPerSecond(value, scale)}
-          phase={trafficPhase}
-          emptyText={emptyText}
-          onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTraffic)}
-        />
-        <NginxChartCard
-          title="平均处理时间"
-          hint={NGINX_HINTS.avgTime}
-          unit={durationUnitLabel(model.requestTimeUnit)}
-          items={model.requestTimePoints.length ? [{
-            id: 'star',
-            label: '平均处理时间',
-            color: '#2f6bff',
-            points: model.requestTimePoints,
-            reading: ''
-          }] : []}
-          floor={10}
-          formatReading={(value) => formatDuration(value, model.requestTimeUnit)}
-          phase={timePhase}
-          emptyText={emptyText}
-          onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesTime)}
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        <NginxChartCard
-          title="站点请求速率"
-          hint={NGINX_HINTS.siteRate}
-          unit="次/秒"
-          items={trend}
-          floor={1}
-          formatReading={(value) => formatPerSecond(value, '次')}
-          phase={rankPhase}
-          emptyText={emptyText}
-          onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesRank)}
-        />
-        <NginxRankCard
-          title="站点请求排行"
-          hint={NGINX_HINTS.siteRank}
-          rows={board.siteRank.map((row) => ({ id: row.zone, label: row.zone, value: row.count }))}
-          selected={zone}
-          onSelect={(id) => setZone((current) => (current === id ? null : id))}
-          phase={rankPhase}
-          emptyText={emptyText}
-          onRetry={() => onRetry(NGINX_CARD_QUERIES.sitesRank)}
-          formatValue={(value) => formatCount(value, '次')}
-        />
-      </div>
-      <div data-nginx-sites-table="">
-        <ProMetricTable
+      </ProSection>
+      <ProSection id="nginx-sites-table-section" title="站点明细">
+        <div data-nginx-sites-table="">
+          <ProMetricTable
           title="站点"
           hint={<NginxHint copy={NGINX_HINTS.sites} />}
           objectName="nginx"
@@ -325,26 +330,29 @@ export default function SitesPane({
           onSort={chooseSort}
           empty={tableEmpty}
         />
-      </div>
-      {model.showFilter ? (
-        <div data-nginx-filter-table="">
-          <ProMetricTable
-            title="过滤器"
-            hint={<NginxHint copy={NGINX_HINTS.filter} />}
-            objectName="nginx"
-            tabName="请求与站点"
-            tableName="过滤器"
-            columns={filterColumns}
-            rows={filterPhase === 'ready' ? filterTableRows : []}
-            heightClass="h-[280px]"
-            onSort={chooseFilterSort}
-            empty={filterPhase !== 'ready' ? (
-              <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={filterPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.filterTable)} height={220} />
-            ) : filterTableRows.length ? undefined : (
-              <div className="flex flex-1 items-center justify-center text-[14px] text-[var(--color-text-3)]">{emptyText}</div>
-            )}
-          />
         </div>
+      </ProSection>
+      {model.showFilter ? (
+        <ProSection id="nginx-filter-section" title="过滤器">
+          <div data-nginx-filter-table="">
+            <ProMetricTable
+              title="过滤器"
+              hint={<NginxHint copy={NGINX_HINTS.filter} />}
+              objectName="nginx"
+              tabName="请求与站点"
+              tableName="过滤器"
+              columns={filterColumns}
+              rows={filterPhase === 'ready' ? filterTableRows : []}
+              heightClass="h-[280px]"
+              onSort={chooseFilterSort}
+              empty={filterPhase !== 'ready' ? (
+                <NginxChartCard title="" items={[]} floor={1} formatReading={() => ''} phase={filterPhase} emptyText={emptyText} onRetry={() => onRetry(NGINX_CARD_QUERIES.filterTable)} height={220} />
+              ) : filterTableRows.length ? undefined : (
+                <div className="flex flex-1 items-center justify-center text-[14px] text-[var(--color-text-3)]">{emptyText}</div>
+              )}
+            />
+          </div>
+        </ProSection>
       ) : null}
     </div>
   );

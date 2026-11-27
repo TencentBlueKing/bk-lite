@@ -88,7 +88,7 @@ describe('upstream request-rate spark', () => {
         onRetryFailed={() => undefined}
       />
     );
-    expect(view.container.querySelector('[data-nginx-tile="上游请求速率"] [data-nginx-spark]')).toBeNull();
+    expect(view.container.querySelector('[data-nginx-tile="上游请求速率"]')).toBeNull();
     expect(view.container.querySelector('[data-nginx-chart="上游请求速率"]')).toBeTruthy();
   });
 });

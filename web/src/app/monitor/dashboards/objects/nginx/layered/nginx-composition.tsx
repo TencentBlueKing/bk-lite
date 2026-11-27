@@ -2,7 +2,7 @@
 
 import { formatCount, formatDecimal } from './format';
 import type { NginxHintCopy } from './hints';
-import { NginxHint } from './nginx-hint';
+import { NginxCardTitle } from './nginx-card';
 import type { NginxQueryPhase } from './query-phase';
 
 export interface NginxPiePart {
@@ -34,6 +34,7 @@ export function NginxCompositionCard({
   idleText,
   phase,
   emptyText,
+  emptyDetail,
   onRetry
 }: {
   anchor?: string;
@@ -45,6 +46,7 @@ export function NginxCompositionCard({
   idleText?: string;
   phase: NginxQueryPhase;
   emptyText: string;
+  emptyDetail?: string;
   onRetry?: () => void;
 }) {
   const known = parts.every((part) => part.value != null);
@@ -65,28 +67,31 @@ export function NginxCompositionCard({
       className="flex h-[280px] flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-3"
       data-nginx-pie={title}
       data-nginx-chart-kind="pie"
+      data-nginx-pie-layout="stack"
     >
-      <div className="inline-flex items-center gap-1 text-[14px] font-semibold text-[var(--color-text-1)]">
-        {title}
-        {hint ? <NginxHint copy={hint} /> : null}
-      </div>
+      <NginxCardTitle label={title} hint={hint} className="text-[14px] font-semibold text-[var(--color-text-1)]" />
       {quiet ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center text-center text-[14px] text-[var(--color-text-3)]">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center text-[var(--color-text-3)]">
           {phase === 'error' ? (
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-2 text-[14px]">
               加载失败
               {onRetry ? <button type="button" className="text-[var(--color-primary)]" onClick={onRetry}>重试</button> : null}
             </div>
-          ) : phase === 'loading' ? '加载中' : emptyText}
+          ) : phase === 'loading' ? <div className="text-[14px]">加载中</div> : (
+            <>
+              <div className="text-[14px]" data-nginx-empty-title="">{emptyText}</div>
+              {emptyDetail ? <div className="mt-1 text-[12px]" data-nginx-empty-detail="">{emptyDetail}</div> : null}
+            </>
+          )}
         </div>
       ) : (
-        <div className="mt-2 flex min-h-0 flex-1 items-center gap-4">
-          <div className="flex w-[46%] min-w-0 flex-col items-center justify-center gap-2">
+        <div className="mt-2 flex min-h-0 flex-1 flex-col items-center gap-2 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1">
             {headline ? <div className="text-[13px] text-[var(--color-text-2)]">{headline}</div> : null}
             {idle ? (
               <div className="text-center text-[14px] text-[var(--color-text-3)]">{idleText}</div>
             ) : (
-              <svg viewBox="0 0 100 100" className="h-[148px] w-[148px]" data-nginx-pie-shape="" aria-hidden="true">
+              <svg viewBox="0 0 100 100" className="h-[112px] w-[112px]" data-nginx-pie-shape="" aria-hidden="true">
                 {slices.map((slice) => {
                   const sweep = slice.end - slice.start;
                   if (!(sweep > 0)) return null;
@@ -98,7 +103,7 @@ export function NginxCompositionCard({
               </svg>
             )}
           </div>
-          <ul className="m-0 flex min-w-0 flex-1 list-none flex-col gap-2 text-[13px] text-[var(--color-text-1)]">
+          <ul className="m-0 flex w-full list-none flex-col gap-1 overflow-y-auto text-[12px] text-[var(--color-text-1)]">
             {slices.map((slice) => {
               const share = sum === 0 ? 0 : (slice.value / sum) * 100;
               return (
