@@ -10,9 +10,6 @@ import {
 import { findReusableFilterDefinition } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
-  buildRelativeTimeRangeFilterValue,
-} from '@/app/ops-analysis/utils/filterValue';
-import {
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { applyChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
@@ -165,7 +162,7 @@ export const buildFiltersFromNodes = (
       defaultValue = existing.defaultValue;
     } else if (param.value !== undefined && param.value !== null) {
       if (param.type === 'timeRange' && typeof param.value === 'number') {
-        defaultValue = buildRelativeTimeRangeFilterValue(param.value);
+        defaultValue = { selectValue: param.value };
       } else {
         defaultValue = param.value as FilterValue;
       }

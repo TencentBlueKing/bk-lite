@@ -3,6 +3,9 @@ import time
 import traceback
 from types import SimpleNamespace
 
+import pytest
+
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.nats import monitor as nm
 
 SENTINEL_ID = "SECRET-DEVICE-9"
@@ -30,7 +33,7 @@ def _switch(instance_id, interval=300):
 
 def _authorize(monkeypatch, instances, vm):
     monkeypatch.setattr(nm, "_get_nats_actor_scope", lambda user_info: (None, 1, False, frozenset({1}), False, None))
-    monkeypatch.setattr(nm, "_get_authorized_monitor_instances", lambda user_info, scope_ids: (instances, None))
+    monkeypatch.setattr(nm, "_get_authorized_monitor_instances", lambda user_info, scope_ids, **kwargs: (instances, None))
     monkeypatch.setattr(nm, "VictoriaMetricsAPI", lambda: vm)
 
 
@@ -98,7 +101,7 @@ def test_network_device_resource_top_handler_returns_ranked_traffic(monkeypatch)
     monkeypatch.setattr(
         nm,
         "_get_authorized_monitor_instances",
-        lambda user_info, scope_ids: ({"sw-1": instance}, None),
+        lambda user_info, scope_ids, **kwargs: ({"sw-1": instance}, None),
     )
 
     class FakeVM:
@@ -224,3 +227,88 @@ def test_handler_logs_one_error_when_the_outgoing_direction_fails(monkeypatch, c
         + ("metric_type=traffic", "failed_stage=query_chunk", "direction=device_total_outgoing_traffic", "error_type=RuntimeError"),
         origin_name="_raise_sensitive",
     )
+
+
+def test_network_rank_stays_on_the_shared_nats_thread():
+    assert getattr(nm.get_network_device_resource_top, "_nats_thread_sensitive", True) is True
+
+
+def test_handler_fail_closed_when_rank_deadline_already_passed(monkeypatch, caplog):
+    vm = SimpleNamespace(calls=[])
+
+    def query(query_text, **kwargs):
+        vm.calls.append(query_text)
+        return {"status": "success", "data": {"result": [{"metric": {"instance_id": "sw-1"}, "value": [time.time(), "4"]}]}}
+
+    vm.query = query
+    _authorize(monkeypatch, {"sw-1": _switch("sw-1")}, vm)
+    monkeypatch.setattr(nm, "_network_device_rank_deadline", lambda: time.monotonic() - 1)
+    with caplog.at_level(logging.ERROR):
+        out = nm.get_network_device_resource_top("cpu", user_info={"user": "u", "team": 1})
+    assert vm.calls == []
+    assert out == {"result": False, "data": [], "message": "网络设备资源指标查询失败"}
+    _assert_one_business_error(
+        caplog,
+        sentinels=("sw-1", "Switch A", "device_cpu_usage"),
+        diagnostics=DIAGNOSTIC_FIELDS
+        + ("metric_type=cpu", "failed_stage=deadline", "chunk_count=0", "query_bytes=0", "error_type=DeadlineExceeded"),
+        origin_name="_deadline_failure",
+    )
+
+
+@pytest.mark.django_db
+def test_rank_permission_scope_is_filtered_before_checks(monkeypatch):
+    network = MonitorObjectType.objects.create(id="Network Device", name="网络设备", order=1)
+    os_type = MonitorObjectType.objects.create(id="OS", name="主机", order=2)
+    switch = MonitorObject.objects.create(name="Switch", level="base", type=network, instance_id_keys=["instance_id"])
+    wireless = MonitorObject.objects.create(name="Wireless", level="base", type=network, instance_id_keys=["instance_id"])
+    host = MonitorObject.objects.create(name="Host", level="base", type=os_type, instance_id_keys=["instance_id"])
+
+    def make(obj, raw, *, active=True):
+        item = MonitorInstance.objects.create(
+            id=raw,
+            name=raw,
+            monitor_object=obj,
+            is_active=active,
+            ip="10.0.0.8",
+        )
+        MonitorInstanceOrganization.objects.create(monitor_instance=item, organization=1)
+        return item
+
+    make(switch, "sw-1")
+    make(wireless, "ap-1")
+    make(host, "host-1")
+    make(switch, "sw-off", active=False)
+    seen = []
+
+    monkeypatch.setattr(nm, "_get_nats_actor_scope", lambda user_info: (None, 1, False, [1], False, None))
+    monkeypatch.setattr(nm, "get_permissions_rules", lambda *args, **kwargs: {"data": {}})
+
+    def check(object_type_id, instance_id, teams, permissions, cur_team):
+        del object_type_id, teams, permissions, cur_team
+        seen.append(instance_id)
+        return True
+
+    monkeypatch.setattr(nm, "check_instance_permission", check)
+
+    class _VM:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, query, **kwargs):
+            self.calls.append(query)
+            return {"status": "success", "data": {"result": []}}
+
+    vm = _VM()
+    monkeypatch.setattr(nm, "VictoriaMetricsAPI", lambda: vm)
+    cpu = nm.get_network_device_resource_top("cpu", user_info={"user": "ada", "team": 1})
+    assert cpu["result"] is True
+    assert seen == ["sw-1"]
+    assert all("host-1" not in query and "ap-1" not in query and "sw-off" not in query for query in vm.calls)
+
+    seen.clear()
+    vm.calls.clear()
+    traffic = nm.get_network_device_resource_top("traffic", user_info={"user": "ada", "team": 1})
+    assert traffic["result"] is True
+    assert sorted(seen) == ["ap-1", "sw-1"]
+    assert all("host-1" not in query and "sw-off" not in query for query in vm.calls)

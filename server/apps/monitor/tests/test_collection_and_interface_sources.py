@@ -1,6 +1,8 @@
 """采集和接口当前值：同一套过滤，查询出表，数量出一行。"""
 
 import asyncio
+import logging
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -12,7 +14,7 @@ from django.test import override_settings
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.plugin import MonitorPlugin
-from apps.monitor.services.collection_query import query_collection_rows
+from apps.monitor.services.collection_query import query_collection_count, query_collection_rows
 from apps.monitor.services.generic_query import GenericQueryError
 from apps.monitor.services.interface_current import _rate_text, query_interface_current_count, query_interface_current_rows
 
@@ -174,6 +176,259 @@ def test_collection_skips_unconfigured_plugins_and_keeps_manual_instances(monkey
     assert len([query for query in calls if "plugin='alive'" in query]) >= 2
 
 
+def test_collection_does_not_emit_an_unscopeable_status_query(caplog):
+    obj = _object("collect-unscoped")
+    host = _instance(obj, "hostbox", name="host")
+    bare = _plugin(obj, "bare-up", "up")
+    _config(host, bare)
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": [_sample("hostbox", time.time())]}}
+
+    with caplog.at_level(logging.WARNING, logger="monitor"):
+        rows = query_collection_rows([host], vm_api=_RecordingVM())
+
+    assert calls == []
+    assert rows[0]["collect_status"] == "失联"
+    warnings = [record for record in caplog.records if record.levelno >= logging.WARNING and record.name == "monitor"]
+    assert len(warnings) == 1
+    record = warnings[0]
+    assert record.exc_info is None
+    assert record.msg == (
+        "event=collection_status_query_unscoped plugin_id=%s reason=%s failed_stage=%s error_type=%s"
+    )
+    assert record.args == (bare.id, "no_selector", "status_query_scope", "UnscopeableStatusQuery")
+    formatted = logging.Formatter().format(record)
+    assert "reason=no_selector" in formatted
+    assert formatted.endswith("error_type=UnscopeableStatusQuery")
+    assert "hostbox" not in formatted
+
+    other = _object("collect-wide")
+    scoped_host = _instance(other, "widebox", name="wide")
+    wide = _plugin(other, "wide-up", 'up{instance_id=~".+"}')
+    _config(scoped_host, wide)
+    calls.clear()
+
+    class _WideVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": [_sample("widebox", time.time())]}}
+
+    narrowed = query_collection_rows([scoped_host], vm_api=_WideVM())
+    assert calls
+    assert all("widebox" in query for query in calls)
+    assert all(query != 'up{instance_id=~".+"}' for query in calls)
+    assert narrowed[0]["collect_status"] == "正常"
+
+
+def test_collection_scopes_only_instances_whose_identity_parses():
+    obj = _object("collect-partial")
+    obj.instance_id_keys = ["instance_id", "port"]
+    obj.save(update_fields=["instance_id_keys"])
+    good = MonitorInstance.objects.create(
+        id=str(("goodhost", "1")),
+        name="good",
+        monitor_object=obj,
+        is_active=True,
+        ip="10.0.0.8",
+    )
+    bad = MonitorInstance.objects.create(
+        id=str(("badhost",)),
+        name="bad",
+        monitor_object=obj,
+        is_active=True,
+        ip="10.0.0.9",
+    )
+    plugin = _plugin(obj, "partial-up", "up{plugin='partial'}")
+    _config(good, plugin)
+    _config(bad, plugin)
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": []}}
+
+    rows = query_collection_rows([good, bad], vm_api=_RecordingVM())
+    by_name = {row["name"]: row for row in rows}
+    assert calls
+    assert all("goodhost" in query for query in calls)
+    assert all("badhost" not in query for query in calls)
+    assert all(query != "up{plugin='partial'}" for query in calls)
+    assert by_name["good"]["collect_status"] == "失联"
+    assert by_name["bad"]["collect_status"] == "失联"
+
+
+def test_collection_page_with_name_sort_reads_status_only_for_that_page():
+    obj = _object("collect-page")
+    third = _instance(obj, "pagec", name="c")
+    first = _instance(obj, "pagea", name="a")
+    second = _instance(obj, "pageb", name="b")
+    plugin = _plugin(obj, "page-up", "up{plugin='page'}")
+    for item in (first, second, third):
+        _config(item, plugin)
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": [_sample("pagea", time.time())]}}
+
+    page = query_collection_rows([third, first, second], page=1, page_size=1, vm_api=_RecordingVM())
+    assert page["count"] == 3
+    assert [row["name"] for row in page["items"]] == ["a"]
+    assert len(page["items"]) == 1
+    assert calls
+    assert all("pagea" in query for query in calls)
+    assert all("pageb" not in query and "pagec" not in query for query in calls)
+
+
+def test_collection_offline_page_counts_every_match_not_the_page_length():
+    obj = _object("collect-offline-page")
+    early = _instance(obj, "offa", name="a")
+    middle = _instance(obj, "offb", name="b")
+    late = _instance(obj, "onc", name="c")
+    plugin = _plugin(obj, "offline-up", "up{plugin='offline'}")
+    for item in (early, middle, late):
+        _config(item, plugin)
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": [_sample("onc", time.time())]}}
+
+    page = query_collection_rows(
+        [early, middle, late],
+        collect_status="offline",
+        page=1,
+        page_size=1,
+        vm_api=_RecordingVM(),
+    )
+    assert page["count"] == 2
+    assert len(page["items"]) == 1
+    assert page["items"][0]["collect_status"] == "失联"
+    sent = " ".join(calls)
+    assert "offa" in sent and "offb" in sent and "onc" in sent
+    assert query_collection_count([early, middle, late], collect_status="offline", vm_api=_RecordingVM()) == 2
+
+
+def test_collection_open_count_skips_victoria_metrics_and_ignores_the_list_cap(monkeypatch):
+    obj = _object("collect-open-count")
+    items = [_instance(obj, f"open-{index}", name=f"n-{index}") for index in range(3)]
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr("apps.monitor.services.collection_query.INSTANCE_LIST_MAX", 1)
+    assert query_collection_count(items, vm_api=_RecordingVM()) == 3
+    assert calls == []
+    with pytest.raises(GenericQueryError, match="1"):
+        query_collection_rows(items, vm_api=_RecordingVM())
+
+
+def test_collection_manual_page_still_reads_plugins_configured_on_the_object():
+    obj = _object("collect-manual-page")
+    manual = _instance(obj, "manuala", name="a")
+    configured = _instance(obj, "configuredz", name="z")
+    plugin = _plugin(obj, "manual-up", "up{plugin='manualpage'}")
+    _config(configured, plugin)
+    calls = []
+    now = time.time()
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": [_sample("manuala", now)]}}
+
+    page = query_collection_rows([manual, configured], page=1, page_size=1, vm_api=_RecordingVM())
+    assert page["count"] == 2
+    assert page["items"][0]["name"] == "a"
+    assert page["items"][0]["collect_mode"] == "手动"
+    assert page["items"][0]["last_sample_at"]
+    assert calls
+    assert all("manuala" in query and "configuredz" not in query for query in calls)
+
+
+def test_collection_manual_status_stays_inside_the_request_scope():
+    obj = _object("collect-manual-scope")
+    manual = _instance(obj, "manualb", name="a")
+    peer = _instance(obj, "peerb", name="m")
+    outsider = _instance(obj, "outb", name="z")
+    peer_plugin = _plugin(obj, "peer-up", "up{plugin='peerpage'}")
+    outside_plugin = _plugin(obj, "out-up", "up{plugin='outpage'}")
+    _config(peer, peer_plugin)
+    _config(outsider, outside_plugin)
+    calls = []
+    now = time.time()
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {
+                "status": "success",
+                "data": {"result": [_sample("manualb", now), _sample("outb", now), _sample("peerb", now)]},
+            }
+
+    alone = query_collection_rows([manual], vm_api=_RecordingVM())
+    assert alone[0]["collect_mode"] == "手动"
+    assert alone[0]["collect_status"] == "正常"
+    assert alone[0]["report_status"] == "失联"
+    assert alone[0]["last_sample_at"] == ""
+    assert calls == []
+    assert query_collection_count([manual], report_status="unavailable", vm_api=_RecordingVM()) == 1
+
+    calls.clear()
+    page = query_collection_rows([manual, peer], page=1, page_size=1, vm_api=_RecordingVM())
+    assert page["count"] == 2
+    assert page["items"][0]["name"] == "a"
+    assert page["items"][0]["collect_mode"] == "手动"
+    assert page["items"][0]["collect_status"] == "正常"
+    assert page["items"][0]["report_status"] == "正常"
+    assert page["items"][0]["last_sample_at"]
+    sent = " ".join(calls)
+    assert "peerpage" in sent
+    assert "manualb" in sent
+    assert "outpage" not in sent
+    assert "outb" not in sent
+    assert "peerb" not in sent
+
+
+def test_collection_past_deadline_with_no_jobs_fails():
+    obj = _object("collect-empty-deadline")
+    manual = _instance(obj, "quiet", name="quiet")
+    calls = []
+
+    class _RecordingVM:
+        def query(self, query, step=None):
+            calls.append(query)
+            return {"status": "success", "data": {"result": []}}
+
+    with pytest.raises(GenericQueryError, match="采集查询超时"):
+        query_collection_rows([manual], vm_api=_RecordingVM(), deadline=time.monotonic() - 1)
+    with pytest.raises(GenericQueryError, match="采集查询超时"):
+        query_collection_count([manual], report_status="unavailable", vm_api=_RecordingVM(), deadline=time.monotonic() - 1)
+    bare = _plugin(obj, "bare-up", "up")
+    host = _instance(obj, "barehost", name="bare")
+    _config(host, bare)
+    with pytest.raises(GenericQueryError, match="采集查询超时"):
+        query_collection_rows([host], vm_api=_RecordingVM(), deadline=time.monotonic() - 1)
+    assert calls == []
+
+
+def test_collection_requires_page_and_page_size_together():
+    obj = _object("collect-page-pair")
+    item = _instance(obj, "pair-1", name="pair")
+    with pytest.raises(GenericQueryError, match="同时"):
+        query_collection_rows([item], page=1, vm_api=_VM({}))
+
+
 def test_collection_stops_vm_reads_after_the_request_deadline():
     obj = _object("collect-deadline")
     host = _instance(obj, "hostbox", name="host")
@@ -263,6 +518,13 @@ class _InterfaceVM:
         assert 'instance_id=~"^(?:' in query
         assert "interface_ifHighSpeed" not in query
         assert "interface_ifSpeed{" not in query
+        if "count by (instance_id)" in query and "== 2" in query:
+            if "sw" in query:
+                return {
+                    "status": "success",
+                    "data": {"result": [{"metric": {"instance_id": "sw-1"}, "value": [0, "1"]}]},
+                }
+            return {"status": "success", "data": {"result": []}}
         if query.startswith("interface_ifOperStatus"):
             return _vector([("sw-1", "Gi0/1", "2"), ("sw-1", "Gi0/2", "5"), ("sw-1", "Gi0/3", "1"), ("other", "Gi9", "2")])
         if "ifHCInOctets" in query:
@@ -349,6 +611,9 @@ def test_collection_and_interface_handlers_share_category_scope(monkeypatch):
     paged = query_monitor_collection_counts(page=1, page_size=10, user_info=user_info)
     assert paged["result"] is False
     assert "分页" in paged["message"]
+    ordered = query_monitor_collection_counts(order_by="last_sample_at", order_dir="desc", user_info=user_info)
+    assert ordered["result"] is False
+    assert "排序" in ordered["message"]
     interfaces = query_interface_current_counts(monitor_object_type_ids=[network.id], interface_match="down", user_info=user_info)
     assert interfaces["result"] is True
     assert interfaces["data"] == [{"interface_count": 1}]
@@ -402,30 +667,48 @@ def test_interface_page_keeps_the_full_filtered_count():
     assert all(kind == "query" for kind, _query in calls)
 
 
+def _count_vector(rows):
+    return {
+        "status": "success",
+        "data": {
+            "result": [
+                {"metric": {"instance_id": instance_id}, "value": [0, str(count)]}
+                for instance_id, count in rows
+            ]
+        },
+    }
+
+
 def test_interface_count_reads_only_the_match_metrics():
     obj = _object("count-switch")
     switch = _instance(obj, "swcount", name="core")
 
     def responder(query):
-        if query.startswith("interface_ifOperStatus"):
-            return _vector([("swcount", "Gi0/1", "2"), ("swcount", "Gi0/2", "1")])
-        if "ifInErrors" in query:
-            return _vector([("swcount", "Gi0/2", "0.4")])
-        if "ifOutDiscards" in query:
-            return _vector([("swcount", "Gi0/1", "0.2")])
+        assert "count by (instance_id)" in query
+        if "interface_ifOperStatus" in query and "== 2" in query:
+            assert "ifHCInOctets" not in query
+            assert "ifInErrors" not in query
+            return _count_vector([("swcount", 1)])
+        if "ifInErrors" in query or "ifOutErrors" in query:
+            assert "interface_ifOperStatus" not in query
+            assert "ifHCInOctets" not in query
+            assert "ifInErrors" in query and "ifOutErrors" in query
+            return _count_vector([("swcount", 1)])
+        if "ifInDiscards" in query or "ifOutDiscards" in query:
+            return _count_vector([("swcount", 1)])
         return {"status": "success", "data": {"result": []}}
 
     down_vm, down_calls = _recording_vm(responder)
     assert query_interface_current_count([switch], interface_match="down", vm_api=down_vm) == 1
     assert down_calls
-    assert all(query.startswith("interface_ifOperStatus{") for _kind, query in down_calls)
+    assert all("interface_ifOperStatus" in query and "== 2" in query for _kind, query in down_calls)
+    assert 'label_replace(' in down_calls[0][1]
+    assert 'ifDescr!~"^[[:space:]]*$"' in down_calls[0][1]
 
     error_vm, error_calls = _recording_vm(responder)
     assert query_interface_current_count([switch], interface_match="error", vm_api=error_vm) == 1
-    assert {query.split("{", 1)[0] for _kind, query in error_calls} == {
-        "rate(interface_ifInErrors",
-        "rate(interface_ifOutErrors",
-    }
+    assert error_calls
+    assert all("ifInErrors" in query and "ifOutErrors" in query for _kind, query in error_calls)
 
     empty_vm, empty_calls = _recording_vm(responder)
     assert query_interface_current_count([], vm_api=empty_vm) == 0
@@ -543,9 +826,10 @@ def test_interface_count_fans_out_one_vm_label_to_each_owner():
     )
 
     def responder(query):
-        if query.startswith("interface_ifOperStatus"):
-            return _vector([("swfan", "Gi0/1", "2")])
-        return {"status": "success", "data": {"result": []}}
+        assert "count by (instance_id)" in query
+        assert "== 2" in query
+        assert "swfan" in query
+        return _count_vector([("swfan", 1)])
 
     vm, _calls = _recording_vm(responder)
     assert query_interface_current_count([left, right], interface_match="down", vm_api=vm) == 2
@@ -600,3 +884,227 @@ def test_interface_handler_does_not_hold_the_shared_nats_thread(monkeypatch):
         )
 
     asyncio.run(exercise())
+
+
+def test_interface_down_page_counts_every_match_and_rates_only_that_page():
+    obj = _object("down-page-switch", display_name="交换机")
+    switch = _instance(obj, "swdown", name="core")
+
+    def responder(query):
+        if "count by (instance_id)" in query:
+            raise AssertionError("list query must not use the count aggregate")
+        if query.startswith("interface_ifOperStatus"):
+            assert "ifDescr=~" not in query
+            return _vector(
+                [
+                    ("swdown", "Eth3", "2"),
+                    ("swdown", "Eth1", "2"),
+                    ("swdown", "Eth2", "2"),
+                    ("swdown", "Eth9", "1"),
+                ]
+            )
+        if "Octets" in query or "Errors" in query or "Discards" in query:
+            assert "Eth1" in query
+            assert "Eth2" not in query
+            assert "Eth3" not in query
+            assert "Eth9" not in query
+            if "ifHCInOctets" in query:
+                return _vector([("swdown", "Eth1", "12")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, calls = _recording_vm(responder)
+    page = query_interface_current_rows([switch], interface_match="down", page=1, page_size=1, vm_api=vm)
+    assert page["count"] == 3
+    assert len(page["items"]) == 1
+    assert page["items"][0]["if_name"] == "Eth1"
+    assert page["items"][0]["oper_status"] == "Down"
+    assert page["items"][0]["in_rate"] == "12 B/s"
+    rate_queries = [query for _kind, query in calls if "Octets" in query or "Errors" in query or "Discards" in query]
+    assert rate_queries
+    assert all("Eth1" in query and "Eth2" not in query for query in rate_queries)
+
+
+def test_interface_unpaged_cap_fails_before_display_rates(monkeypatch):
+    obj = _object("cap-switch")
+    switch = _instance(obj, "swcap", name="core")
+
+    def responder(query):
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swcap", "Gi0/1", "2"), ("swcap", "Gi0/2", "2")])
+        return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr("apps.monitor.services.interface_current.INSTANCE_LIST_MAX", 1)
+    vm, calls = _recording_vm(responder)
+    with pytest.raises(GenericQueryError, match="1"):
+        query_interface_current_rows([switch], interface_match="down", vm_api=vm)
+    assert any(query.startswith("interface_ifOperStatus") for _kind, query in calls)
+    assert all("Octets" not in query and "Errors" not in query and "Discards" not in query for _kind, query in calls)
+    counted, count_calls = _recording_vm(
+        lambda query: _count_vector([("swcap", 2)]) if "count by (instance_id)" in query else responder(query)
+    )
+    assert query_interface_current_count([switch], interface_match="down", vm_api=counted) == 2
+    assert count_calls
+
+
+def test_interface_rate_sort_still_ranks_the_full_match_before_paging():
+    obj = _object("rank-switch")
+    switch = _instance(obj, "swrank", name="core")
+
+    def responder(query):
+        if query.startswith("interface_ifOperStatus"):
+            return _vector([("swrank", "Gi0/1", "1"), ("swrank", "Gi0/2", "1"), ("swrank", "Gi0/3", "1")])
+        if "ifHCInOctets" in query:
+            assert "ifDescr=~" not in query
+            return _vector([("swrank", "Gi0/1", "1"), ("swrank", "Gi0/2", "900"), ("swrank", "Gi0/3", "50")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, _calls = _recording_vm(responder)
+    page = query_interface_current_rows(
+        [switch],
+        order_by="in_rate",
+        order_dir="desc",
+        page=2,
+        page_size=1,
+        vm_api=vm,
+    )
+    assert page["count"] == 3
+    assert [row["if_name"] for row in page["items"]] == ["Gi0/3"]
+    assert page["items"][0]["in_rate"] == "50 B/s"
+
+
+def test_interface_list_and_count_stop_on_deadline_without_a_partial_result(monkeypatch, caplog):
+    obj = _object("deadline-switch")
+    left = _instance(obj, "alpha", name="alpha")
+    right = _instance(obj, "beta", name="beta")
+    calls = []
+
+    class _VM:
+        def query(self, query, step=None):
+            calls.append(query)
+            time.sleep(0.05)
+            return _count_vector([("alpha", 4)])
+
+    with caplog.at_level(logging.WARNING, logger="monitor"):
+        with pytest.raises(GenericQueryError, match="接口查询超时"):
+            query_interface_current_rows([left], vm_api=_VM(), deadline=time.monotonic() - 1)
+    assert calls == []
+    deadline_logs = [
+        record
+        for record in caplog.records
+        if record.msg == "event=interface_query_deadline_exceeded failed_stage=%s error_type=%s"
+    ]
+    assert deadline_logs
+    assert deadline_logs[0].exc_info is None
+    assert deadline_logs[0].args == ("vm_read", "DeadlineExceeded")
+    formatted = logging.Formatter().format(deadline_logs[0])
+    assert "failed_stage=vm_read" in formatted
+    assert formatted.endswith("error_type=DeadlineExceeded")
+    assert "alpha" not in formatted
+
+    monkeypatch.setattr("apps.monitor.services.interface_current._SELECTOR_BUDGET", 1)
+    calls.clear()
+    with pytest.raises(GenericQueryError, match="接口查询超时"):
+        query_interface_current_count([left, right], interface_match="down", vm_api=_VM(), deadline=time.monotonic() + 0.01)
+    assert len(calls) == 1
+
+
+def _if_descr_pattern(query):
+    found = re.search(r'ifDescr=~"((?:\\.|[^"])*)"', query)
+    assert found, query
+    body = found.group(1)
+    chars = []
+    index = 0
+    while index < len(body):
+        if body[index] == "\\" and index + 1 < len(body):
+            chars.append(body[index + 1])
+            index += 2
+        else:
+            chars.append(body[index])
+            index += 1
+    return "".join(chars)
+
+
+def test_interface_error_page_hydrates_display_when_if_descr_has_surrounding_space():
+    obj = _object("pad-switch")
+    switch = _instance(obj, "swpad", name="core")
+
+    def matches(query, label):
+        return re.search(_if_descr_pattern(query), label) is not None
+
+    def responder(query):
+        if "ifInErrors" in query or "ifOutErrors" in query:
+            assert "ifDescr=~" not in query
+            return _vector([("swpad", " eth0", "3")])
+        if "ifDescr=~" in query:
+            assert matches(query, " eth0")
+            assert matches(query, "eth0 ")
+            assert matches(query, "eth0")
+            assert not matches(query, "eth0x")
+            assert not matches(query, "xeth0")
+            if query.startswith("interface_ifOperStatus"):
+                return _vector([("swpad", " eth0", "2")])
+            if "ifHCInOctets" in query:
+                return _vector([("swpad", " eth0", "12")])
+        return {"status": "success", "data": {"result": []}}
+
+    vm, _calls = _recording_vm(responder)
+    page = query_interface_current_rows([switch], interface_match="error", page=1, page_size=1, vm_api=vm)
+    assert page["count"] == 1
+    assert page["items"][0]["if_name"] == "eth0"
+    assert page["items"][0]["oper_status"] == "Down"
+    assert page["items"][0]["in_rate"] == "12 B/s"
+    assert page["items"][0]["in_errors"] == 3
+
+
+def test_interface_count_fails_closed_on_a_non_success_payload(monkeypatch, caplog):
+    obj = _object("count-fail-switch")
+    left = _instance(obj, "alpha", name="alpha")
+    right = _instance(obj, "beta", name="beta")
+    calls = []
+
+    class _VM:
+        def query(self, query, step=None):
+            calls.append(query)
+            if len(calls) == 1:
+                return {"status": "error", "data": {"result": []}}
+            return _count_vector([("beta", 4)])
+
+    monkeypatch.setattr("apps.monitor.services.interface_current._SELECTOR_BUDGET", 1)
+    with pytest.raises(GenericQueryError, match="接口指标查询失败"):
+        query_interface_current_count([left, right], interface_match="down", vm_api=_VM())
+    assert len(calls) == 1
+
+    calls.clear()
+
+    class _Later:
+        def query(self, query, step=None):
+            calls.append(query)
+            if len(calls) == 1:
+                return _count_vector([("alpha", 4)])
+            return {"status": "error", "error": "SECRET-VM-BODY"}
+
+    with caplog.at_level(logging.ERROR, logger="monitor"):
+        with pytest.raises(GenericQueryError, match="接口指标查询失败") as raised:
+            query_interface_current_count([left, right], interface_match="down", vm_api=_Later())
+    assert len(calls) == 2
+    assert str(raised.value) == "接口指标查询失败"
+    formatted = "\n".join(logging.Formatter().format(record) for record in caplog.records)
+    assert "SECRET-VM-BODY" not in formatted
+    assert "SECRET-VM-BODY" not in str(raised.value)
+
+
+def test_interface_count_requires_no_page_or_sort():
+    from apps.monitor.nats.generic_query import query_interface_current_counts
+
+    network = MonitorObjectType.objects.create(id="ctype-net-count", name="网络设备", order=1)
+    switch = MonitorObject.objects.create(name="count-sort-switch", level="base", type=network, instance_id_keys=["instance_id"])
+    item = _instance(switch, "swsort")
+    MonitorInstanceOrganization.objects.create(monitor_instance=item, organization=1)
+    sorted_count = query_interface_current_counts(
+        monitor_object_id=[str(switch.id)],
+        order_by="if_name",
+        order_dir="asc",
+        user_info={"user": "ada", "team": 1},
+    )
+    assert sorted_count["result"] is False
+    assert "排序" in sorted_count["message"]

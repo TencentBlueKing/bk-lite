@@ -34,11 +34,12 @@ export interface SkillSaveToolPayload {
 }
 
 function serializeTool(tool: SelectTool): SkillSaveToolPayload {
+  const kwargs = normalizeMonitorToolConfig(tool).kwargs;
   return {
     id: tool.id,
     name: tool.rawName || tool.name,
     icon: tool.icon,
-    kwargs: (normalizeMonitorToolConfig(tool).kwargs || []).filter(kwarg => kwarg.key),
+    kwargs: (Array.isArray(kwargs) ? kwargs : []).filter(kwarg => kwarg.key),
   };
 }
 

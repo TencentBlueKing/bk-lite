@@ -17,7 +17,6 @@ import type {
 } from "@/app/ops-analysis/types/screen";
 import { isScreenWidgetItem } from "./screenItems";
 import type { DateRangeValue } from "@/app/ops-analysis/types/dateRange";
-import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
 import {
   bindDiscoveredQueryRefs,
   buildDefaultFilterBindings,
@@ -166,7 +165,7 @@ export const buildFiltersFromScreenItems = ({
       } else if (param.value !== undefined && param.value !== null) {
         defaultValue =
           param.type === "timeRange" && typeof param.value === "number"
-            ? buildRelativeTimeRangeFilterValue(param.value)
+            ? { selectValue: param.value }
             : (param.value as UnifiedFilterDefinition["defaultValue"]);
       }
 

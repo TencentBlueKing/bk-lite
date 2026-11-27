@@ -42,6 +42,7 @@ const SkillCard: React.FC<StudioCardProps> = (props) => {
       is_pinned={is_pinned}
       showPinButton={true}
       permissions={permissions}
+      showExport
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/skill/detail"
       iconTypeMapping={iconTypeMapping}

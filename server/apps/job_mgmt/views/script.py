@@ -1,5 +1,6 @@
 """脚本视图"""
 
+from django.db import transaction
 from django.http import FileResponse
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -9,6 +10,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.script import ScriptFilter
 from apps.job_mgmt.models import Script, ScriptRevision
+from apps.job_mgmt.serializers.organization_batch import OrganizationAdjustmentSerializer
 from apps.job_mgmt.serializers.script import (
     ScriptBatchDeleteSerializer,
     ScriptCreateSerializer,
@@ -20,6 +22,7 @@ from apps.job_mgmt.serializers.script import (
     validate_script_name_unique_in_organizations,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.resource_organizations import organization_ids
 from apps.job_mgmt.services.script_pack_service import ScriptPackService
 from apps.job_mgmt.services.template_revision import (
     DEFAULT_PAGE_SIZE,
@@ -30,11 +33,11 @@ from apps.job_mgmt.services.template_revision import (
     parse_page,
 )
 from apps.job_mgmt.utils.i18n import job_message
-from apps.job_mgmt.views.mixins import BatchDeleteMixin
+from apps.job_mgmt.views.organization_batch import OrganizationBatchMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
+class ScriptViewSet(OrganizationBatchMixin, AuthViewSet):
     """脚本视图集"""
 
     queryset = Script.objects.all()
@@ -47,8 +50,41 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
     batch_delete_serializer_class = ScriptBatchDeleteSerializer
     batch_delete_log_label = "脚本"
 
+    organization_preview_fields = ("id", "name", "team", "content")
+    batch_delete_fields = ("id", "team", "is_built_in")
+
+    def validate_changed_organizations(self, changed, operation, organization):
+        if operation == "add" and changed:
+            names = {script.name for script in changed}
+            existing = Script.objects.filter(name__in=names).values_list("team", flat=True)
+            if len(changed) != len(names) or any(organization in organization_ids(team) for team in existing):
+                raise serializers.ValidationError({"detail": self.loader.get("error.script_name_conflict")})
+        for script in changed:
+            result = DangerousChecker.check_command(script.content, organization_ids(script.team))
+            if not result.can_execute:
+                raise serializers.ValidationError(
+                    {
+                        "detail": job_message(
+                            self.request,
+                            "error.dangerous_command_update_forbidden",
+                            "Script contains high-risk commands and cannot be updated: {rules}",
+                            rules=", ".join(rule["rule_name"] for rule in result.forbidden),
+                        )
+                    }
+                )
+
+    def pre_batch_delete(self, instances):
+        if any(script.is_built_in for script in instances):
+            raise serializers.ValidationError({"detail": self.loader.get("error.builtin_script_delete")})
+
+    def perform_destroy(self, instance):
+        self.pre_batch_delete([instance])
+        return super().perform_destroy(instance)
+
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.action in ("update", "partial_update", "destroy", "restore_revision"):
+            return queryset.select_for_update()
         if self.action == "list":
             queryset = annotate_current_revision_label(queryset, ScriptRevision, "script")
         return queryset
@@ -60,6 +96,8 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
             return ScriptCreateSerializer
         elif self.action in ["update", "partial_update"]:
             return ScriptUpdateSerializer
+        elif self.action == "adjust_organizations":
+            return OrganizationAdjustmentSerializer
         elif self.action == "batch_delete":
             return ScriptBatchDeleteSerializer
         elif self.action == "export":
@@ -115,6 +153,7 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         return response
 
     @HasPermission("script_library-Edit")
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -155,8 +194,19 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         return response
 
     @HasPermission("script_library-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("script_library-View")
+    def selection_ids(self, request):
+        return self.get_selection_ids(request)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("script_library-Edit")
+    def adjust_organizations(self, request):
+        return self.perform_organization_adjustment(request)
 
     @action(detail=False, methods=["post"])
     @HasPermission("script_library-Delete")
@@ -172,9 +222,9 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
 
-        queryset = self.filter_queryset(self.get_queryset()).filter(id__in=ids)
-        found_ids = set(queryset.values_list("id", flat=True))
-        missing = sorted(set(ids) - found_ids)
+        queryset = self.get_queryset_by_permission(request, self.filter_queryset(self.get_queryset()).filter(id__in=ids))
+        scripts_by_id = {script.id: script for script in queryset}
+        missing = sorted(set(ids) - scripts_by_id.keys())
         if missing:
             return Response(
                 {
@@ -189,8 +239,7 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
             )
 
         # 保持请求 ids 顺序，避免 zip 内目录顺序抖动
-        scripts_by_id = {script.id: script for script in queryset}
-        scripts = [scripts_by_id[script_id] for script_id in ids if script_id in scripts_by_id]
+        scripts = [scripts_by_id[script_id] for script_id in ids]
         buffer = ScriptPackService.build_export_zip(scripts)
         log_operation(request, "export", "job", f"批量导出脚本: {len(scripts)} 条")
         return FileResponse(
@@ -255,6 +304,7 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
 
     @action(detail=True, methods=["post"], url_path=r"revisions/(?P<revision_id>[0-9]+)/restore")
     @HasPermission("script_library-Edit")
+    @transaction.atomic
     def restore_revision(self, request, pk=None, revision_id=None):
         """恢复到所选版本，并追加一条新的日期版本。"""
         instance, denied = authorize_job_template(self, request, view_only=False)

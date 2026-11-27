@@ -208,6 +208,17 @@ systemd 会把该变量传给 sidecar 拉起的 ansible-executor 和 nats-execut
 这便于先盘点并迁移没有信任锚的存量任务，再在后续版本翻转默认策略。回滚时从容器参数或
 `/etc/fusion-collectors/environment` 移除该变量并重启对应实例，即可恢复兼容行为；无需数据迁移。
 
+未显式传入 `ansible_ssh_common_args` 或 `ssh_common_args` 的密码 SSH，会在上述主机密钥策略之后
+追加现场已验证的旧算法。`+` 表示追加到客户端默认列表末尾，不替换更强的默认算法：
+
+- `KexAlgorithms=+diffie-hellman-group14-sha1`
+- `HostKeyAlgorithms=+ssh-rsa`
+- `PubkeyAcceptedAlgorithms=+ssh-rsa`；本机 `ssh` 不接受该选项时改用 `PubkeyAcceptedKeyTypes`
+
+配置了 `SSH_KNOWN_HOSTS_FILE` 时仍是严格校验，只是同样追加这三项。显式公共参数整段优先，不会再自动追加。
+调用方传入的 `ssh_extra_args` 仍附加在后面；其中的公钥算法名会改写成当前 `ssh` 接受的那一个。
+这组参数作用于全部密码 SSH，不限于 Solaris。生效需要重新构建并发布含该二进制的 fusion-collector。
+
 ## 任务执行可靠性
 
 - JetStream 开启 `backoff` 时，服务会以 `backoff[0]` 作为实际 ack deadline，并据此计算 `in_progress()` 心跳频率

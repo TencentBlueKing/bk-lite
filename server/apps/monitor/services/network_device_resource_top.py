@@ -16,6 +16,7 @@ sampled_at remains the timestamp on the instant-vector point.
 
 import math
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -25,6 +26,7 @@ from typing import Any
 from apps.monitor.services.metric_query_contract import build_instance_matcher_groups, join_label_queries
 from apps.monitor.services.metric_series import MAX_INSTANCE_IDS
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.query_deadline import past_deadline
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "traffic")
 NETWORK_DEVICE_TYPE_ID = "Network Device"
@@ -127,6 +129,28 @@ def _single_instance_id(instance) -> str | None:
     if len(parsed) != 1 or parsed[0] in (None, ""):
         return None
     return str(parsed[0])
+
+
+def _remaining_timeout(deadline):
+    if deadline is None:
+        return None
+    return max(deadline - time.monotonic(), 0.001)
+
+
+def _deadline_failure(metric_type, *, query_bytes, chunk_count, capability_id="", direction=""):
+    try:
+        raise RuntimeError("网络设备资源指标查询失败")
+    except RuntimeError as exc:
+        return _safe_query_error(
+            exc,
+            metric_type=metric_type,
+            failed_stage="deadline",
+            query_bytes=query_bytes,
+            chunk_count=chunk_count,
+            capability_id=capability_id,
+            direction=direction,
+            error_type="DeadlineExceeded",
+        )
 
 
 def _utf8_len(value: str) -> int:
@@ -301,7 +325,7 @@ class NetworkDeviceResourceTopService:
         self.vm_api = vm_api
         self.now = now
 
-    def run(self, metric_type, authorized_instances, *, limit=10):
+    def run(self, metric_type, authorized_instances, *, limit=10, deadline=None):
         metric_type = validate_metric_type(metric_type)
         if not 1 <= int(limit) <= 100:
             raise ValueError("limit 必须在 1 到 100 之间")
@@ -309,14 +333,19 @@ class NetworkDeviceResourceTopService:
         devices, meta = _collect_devices(authorized_instances)
         if not devices:
             return []
+        if past_deadline(deadline):
+            raise _deadline_failure(metric_type, query_bytes=0, chunk_count=0)
         if metric_type == "traffic":
-            candidates = self._traffic_candidates(devices, reference)
+            candidates = self._traffic_candidates(devices, reference, deadline)
         else:
-            candidates = self._gauge_candidates(metric_type, devices, reference)
+            candidates = self._gauge_candidates(metric_type, devices, reference, deadline)
         return build_ranked_rows(candidates, meta, limit=int(limit))
 
-    def _query_instant(self, query: str, window: str, reference: datetime):
-        response = self.vm_api.query(query, step=window, lookback_delta=window, time=reference.timestamp())
+    def _query_instant(self, query: str, window: str, reference: datetime, *, timeout=None):
+        kwargs = {"step": window, "lookback_delta": window, "time": reference.timestamp()}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        response = self.vm_api.query(query, **kwargs)
         if not isinstance(response, dict) or response.get("status") != "success":
             raise RuntimeError("网络设备资源指标查询失败")
         result = response.get("data", {}).get("result", [])
@@ -344,7 +373,7 @@ class NetworkDeviceResourceTopService:
         if current is None or sampled_at >= current[1]:
             found[instance_id] = (value, sampled_at)
 
-    def _gauge_candidates(self, metric_type: str, devices: list[dict], reference: datetime):
+    def _gauge_candidates(self, metric_type: str, devices: list[dict], reference: datetime, deadline):
         metric_name = GAUGE_METRIC_NAMES[metric_type]
         bindings = load_network_device_detail_metrics()
         groups = {}
@@ -391,9 +420,16 @@ class NetworkDeviceResourceTopService:
         found = {}
         for capability_id, window, batches in plans:
             for chunk_ids, query in batches:
+                if past_deadline(deadline):
+                    raise _deadline_failure(
+                        metric_type,
+                        query_bytes=_utf8_len(query),
+                        chunk_count=len(batches),
+                        capability_id=capability_id,
+                    )
                 failure = None
                 try:
-                    samples = self._query_instant(query, window, reference)
+                    samples = self._query_instant(query, window, reference, timeout=_remaining_timeout(deadline))
                 except TypeError:
                     raise
                 except Exception as exc:
@@ -413,7 +449,7 @@ class NetworkDeviceResourceTopService:
                     self._remember(found, instance_id, value, sampled_at, allowed)
         return [NetworkCandidate(instance_id, value, sampled_at, metric_type) for instance_id, (value, sampled_at) in found.items()]
 
-    def _traffic_candidates(self, devices: list[dict], reference: datetime):
+    def _traffic_candidates(self, devices: list[dict], reference: datetime, deadline):
         by_interval = {}
         for device in devices:
             by_interval.setdefault(device["interval"], []).append(device["instance_id"])
@@ -448,9 +484,16 @@ class NetworkDeviceResourceTopService:
             for chunk_ids, queries in batches:
                 allowed = set(chunk_ids)
                 for direction, query in zip(TRAFFIC_METRIC_NAMES, queries):
+                    if past_deadline(deadline):
+                        raise _deadline_failure(
+                            "traffic",
+                            query_bytes=_utf8_len(query),
+                            chunk_count=len(batches),
+                            direction=direction,
+                        )
                     failure = None
                     try:
-                        samples = self._query_instant(query, window, reference)
+                        samples = self._query_instant(query, window, reference, timeout=_remaining_timeout(deadline))
                     except TypeError:
                         raise
                     except Exception as exc:

@@ -83,6 +83,9 @@ elif db_engine == "dameng":
     #   - alerts/0005_*.py (跳过 ForeignKey 重复索引)
     #   - alerts/0009_*.py (*IfExists 先查库再删，可从中断点重跑)
     #   - alerts/0010_*.py (FakeRemoveIndex 配对 0001)
+    #   - node_mgmt/0044_encrypt_installer_passwords.py 及后续 RunPython 分页锁
+    #     (达梦不支持 LIMIT + SELECT FOR UPDATE；list_locked_batch 按主键加锁。
+    #      SQLCompiler 兜底只在 migrate / batch_init 进程安装)
 
     # ============================================================
     # 达梦数据库 + ASGI 重要提示：

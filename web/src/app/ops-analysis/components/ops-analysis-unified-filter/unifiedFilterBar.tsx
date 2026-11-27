@@ -3,16 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { Input, Button, ConfigProvider, Select, Radio } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import GroupTreeSelect from '@/components/group-tree-select';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
-  TimeRangeValue,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useTranslation } from '@/utils/i18n';
 import { isOrganizationControl, toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import { getUnifiedFilterTimeSelectorDefaultValue, timeRangeValueFromSelector } from '@/app/ops-analysis/utils/filterValue';
 import { normalizeUnifiedFilterInputMode } from './runtime';
 
 interface UnifiedFilterBarProps {
@@ -87,39 +86,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     range: number[],
     originValue: number | null,
   ) => {
-    if (range.length === 2) {
-      const timeRangeValue: TimeRangeValue = {
-        start: dayjs(range[0]).toISOString(),
-        end: dayjs(range[1]).toISOString(),
-        selectValue: originValue ?? 0,
-      };
-      handleLocalValueChange(filterId, timeRangeValue);
-      return;
-    }
-
-    handleLocalValueChange(filterId, null);
-  };
-
-  const getTimeSelectorDefaultValue = (
-    value: FilterValue,
-  ): {
-    selectValue: number;
-    rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
-  } => {
-    const timeValue = value as TimeRangeValue | null | undefined;
-    if (!timeValue || !timeValue.start || !timeValue.end) {
-      return { selectValue: 15, rangePickerVaule: null };
-    }
-
-    const selectVal = timeValue.selectValue ?? 0;
-    if (selectVal > 0) {
-      return { selectValue: selectVal, rangePickerVaule: null };
-    }
-
-    return {
-      selectValue: 0,
-      rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
-    };
+    handleLocalValueChange(filterId, timeRangeValueFromSelector(range, originValue));
   };
 
   const handleSearch = () => {
@@ -146,12 +113,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
     switch (definition.type) {
       case 'timeRange': {
-        const defaultValue = getTimeSelectorDefaultValue(value);
+        const defaultValue = getUnifiedFilterTimeSelectorDefaultValue(value);
 
         return (
           <TimeSelector
             key={`${definition.id}-${JSON.stringify(defaultValue)}`}
             onlyTimeSelect
+            clearable
             defaultValue={defaultValue}
             onChange={(range, originValue) =>
               handleTimeRangeChange(definition.id, range, originValue)
