@@ -80,6 +80,47 @@ describe('执行记录统一详情入口', () => {
     });
   });
 
+  it('流程和选中节点独立计时，流程结束后显示最终耗时', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2026-09-02T01:00:10Z'));
+    let finished = false;
+    const node = { ...approvalNode, reference: 'agent', name: '智能体', state: 'RUNNING' };
+    const pending = { ...node, reference: 'notify', name: '对外通知', state: 'PENDING', instance_count: 0 };
+    mocks.get.mockImplementation(async (url: string) => {
+      const record = { ...execution, status: finished ? 'SUCCEEDED' : 'RUNNING',
+        finished_at: finished ? '2026-09-02T01:00:14Z' : null, duration_ms: finished ? 14000 : null };
+      if (url.endsWith('/executions/execution-1/')) return record;
+      if (url.endsWith('/nodes/')) return { nodes: [node, pending], default_node_reference: 'agent' };
+      if (url.endsWith('/nodes/notify/')) return { node: pending, instances: [], selected_instance_id: null,
+        execution_info: { status: 'PENDING' }, inputs: {}, outputs: {}, artifacts: [] };
+      if (url.endsWith('/nodes/agent/')) return { node, instances: [{ id: 'task', state: finished ? 'SUCCESS' : 'RUNNING' }],
+        selected_instance_id: 'task', inputs: {}, outputs: {}, artifacts: [], execution_info: {
+          started_at: '2026-09-02T01:00:06Z', finished_at: record.finished_at, duration_ms: finished ? 8000 : null,
+        } };
+      return { count: 1, items: [record] };
+    });
+    try {
+      renderPage('execution-1');
+      await screen.findByText('4.0 s');
+      expect(screen.getByText('10.0 s')).toBeTruthy();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(screen.getByText('5.0 s')).toBeTruthy();
+      expect(screen.getByText('11.0 s')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: '查看节点 对外通知' }));
+      const detail = await screen.findByTestId('node-detail-content');
+      expect(await within(detail).findByText('--')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: '查看节点 智能体' }));
+      await screen.findByText('5.0 s');
+      finished = true;
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(screen.getByText('14.0 s')).toBeTruthy();
+      expect(screen.getByText('8.0 s')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('全部执行与待我审批使用页签，全部列表的审批入口直接打开详情抽屉', async () => {
     const { container } = renderPage();
     const viewButton = await screen.findByRole('button', { name: '审批' });

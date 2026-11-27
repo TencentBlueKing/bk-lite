@@ -42,6 +42,11 @@ assert.equal(state.steps[0]?.status, 'failed', 'finalize must keep failed steps'
 
 assert.equal(isToolResultErrorContent('无法加载 Kubernetes 配置: Invalid base64'), true);
 assert.equal(isToolResultErrorContent('{"phase":"Running"}'), false);
+assert.equal(
+  isToolResultErrorContent('Python 执行失败（退出码 1）：Traceback\nSyntaxError: unterminated string literal\nExit code: 1'),
+  true
+);
+assert.equal(isToolResultErrorContent('SyntaxError 告警共 2 条'), false);
 
 let overflow = createPlannedExecutionState();
 overflow = applyPlannedExecutionStep(overflow, {

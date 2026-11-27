@@ -128,3 +128,20 @@ def test_terminal_choice_messages_are_detected():
     assert not messages_include_terminal_choice([AIMessage(content="CPU 使用率是 12%")])
     assert format_choice_text("继续吗", "confirm", None) == "继续吗\n\n1. 是\n2. 否"
     assert format_choice_text("补充说明", "text", None) == "补充说明"
+
+
+@pytest.mark.parametrize(("choice_id", "option", "selected"), [("", "", False), ("card", "a", True), ("card", "unknown", False)])
+def test_free_reply_and_selected_option_are_distinct(choice_id, option, selected):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.chain.node import BasicNode
+    from apps.opspilot.services.chat_service import _attach_pending_question
+
+    question = "请选择来源\n\n1. A\n2. B"
+    save_pending_question("thread:reply", {"kind": "user_choice", "choice_id": "card", "question_text": question, "options": [{"key": "a"}]})
+    chat = {}
+    _attach_pending_question(chat, {"thread_id": "reply", "choice_id": choice_id, "choice_option": option})
+    request = SimpleNamespace(user_message="A" if selected else "我说的是另一个来源", extra_config=chat["extra_config"], enable_query_rewrite=False)
+    state = {"messages": [AIMessage(content=question)]}
+    BasicNode().user_message_node(state, {"configurable": {"graph_request": request}})
+    assert is_answer_after_choice_prompt(state["messages"]) is selected

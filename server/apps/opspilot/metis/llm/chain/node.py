@@ -127,6 +127,7 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    AttachmentStepFinishMiddleware,
     is_progressive_tools_enabled,
 )
 
@@ -766,7 +767,12 @@ class BasicNode:
                 logger.warning("问题改写失败，使用原始问题: %r", e)
                 user_message = request.user_message
 
-        state["messages"].append(human_message_with_images(user_message, _request_current_image_urls(request)))
+        message = human_message_with_images(user_message, _request_current_image_urls(request))
+        extra = getattr(request, "extra_config", None) or {}
+        pending = extra.get("pending_question") or {}
+        if pending.get("kind") == KIND_USER_CHOICE and not pending.get("job_confirmation"):
+            message.response_metadata["selected_choice"] = bool(extra.get("selected_choice"))
+        state["messages"].append(message)
         request.graph_user_message = user_message
         logger.info(
             "[%s] user_message_node 执行结束, appended_user_message(len=%s, preview=%r), message_count=%s",
@@ -2965,6 +2971,8 @@ class ToolsNodes(
                 token_usage_accumulator=token_usage_accumulator,
                 ppt_authoring=ppt_authoring,
             )
+            attachment_finish = AttachmentStepFinishMiddleware()
+            runtime_middleware.insert(0, attachment_finish)
             if job_replay:
                 runtime_middleware.append(job_replay)
             if python_sandbox is not None:
@@ -3174,6 +3182,7 @@ class ToolsNodes(
                     skill_call_nudged = False
                     ppt_write_nudged = 0
                     ppt_recursion_nudged = False
+                    attachment_finish.enabled = step.tools == ["generate_attachment_file"]
                     active_tools[:] = _resolve_step_tools(step.tools)
                     visibility_middleware.include_always_visible = True
                     visible_names = [getattr(tool, "name", "") for tool in active_tools]
@@ -3195,7 +3204,10 @@ class ToolsNodes(
                         type_line = f"file_type 必须是 {prior_type}，禁止改成其他格式。" if prior_type else "修改已有文件时必须保持原格式，禁止把 pptx 改成 md 或 docx。"
                         step_guidance = (
                             "\n【附件】本步调用一次 generate_attachment_file；已在沙箱生成文件时用 sandbox_path 指定文件路径，"
-                            "否则在 content 中写入全部章节。Word 和 PDF 写 Markdown，并用 genre 选成稿。"
+                            "否则在 content 中写入全部章节。HTML 文档用 content_format=markdown，由工具做桌面和手机排版。"
+                            "按内容选结构：分析报告先写结论和核实的数据，指南按步骤，纪要按议题和行动项。"
+                            "需要交互或指定网页设计时，交付含完整响应式样式的原生 HTML。"
+                            "只发布最终成品；占位页发布后无法用脚本覆盖。Word 和 PDF 写 Markdown，并用 genre 选成稿。"
                             "分析、汇总、巡检、报告用 business_report。公文、函、请示、通知用 official。会议纪要、会议记录用 meeting_minutes。"
                             'Excel 的 content 用一份 CSV。表头多于一行时 header_rows 传行数，最后一行是列名；需要合并时 merges 传 A1 范围，例如 ["A1:C1"]。'
                             f"{type_line}"
@@ -3223,13 +3235,15 @@ class ToolsNodes(
                             ppt_workspace=ppt_workspace_text,
                         )
                     else:
-                        is_last_step = not pending_steps
+                        is_last_step = not pending_steps and not step.needs_lookup_result
                         step_guidance = "\n" + self._planned_tool_step_guidance(
                             is_last_step=is_last_step,
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             unattended=not can_ask,
                         )
+                    if "alerts_list_alerts" in step.tools:
+                        step_guidance += "\n查询活跃或未关闭的告警，调用 alerts_list_alerts 时明确传 status='active'。" "空参数查询会包含已恢复与关闭的工单，其 count 不能作为活跃数。按查询返回的数据汇总。"
                     step_guidance += auto_instruction
                     if attachments:
                         step_guidance += "\n" + ATTACHMENT_README.format(workspace=python_sandbox.workspace)
@@ -3253,16 +3267,12 @@ class ToolsNodes(
                     step_finished = False
                     replanned = False
 
-                    async def _replan_remaining(failure_text: str, extra_messages: List[BaseMessage] | None = None) -> None:
-                        nonlocal pending_steps, total_steps, replan_count, replanned, step_finished, agent_state
-                        leftover_steps = list(pending_steps)
-                        replan_count += 1
-                        await _emit_planned_execution_status("replanning", replan_count=replan_count)
-                        replacement = await planner.plan(
+                    async def _plan_after_result(candidates, failure: str = ""):
+                        return await planner.plan(
                             planning_question,
-                            tools,
+                            candidates,
                             completed_steps=completed_steps,
-                            failure=failure_text,
+                            failure=failure,
                             skill_packages=skill_packages,
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
@@ -3270,6 +3280,13 @@ class ToolsNodes(
                             thread_id=missing_params_thread_id,
                             conversation_messages=original_messages,
                         )
+
+                    async def _replan_remaining(failure_text: str, extra_messages: List[BaseMessage] | None = None) -> None:
+                        nonlocal pending_steps, total_steps, replan_count, replanned, step_finished, agent_state
+                        leftover_steps = list(pending_steps)
+                        replan_count += 1
+                        await _emit_planned_execution_status("replanning", replan_count=replan_count)
+                        replacement = await _plan_after_result(tools, failure_text)
                         await _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
                         completed_steps.append(
@@ -3496,7 +3513,8 @@ class ToolsNodes(
                             )
                             step_finished = True
                             break
-                        if step_has_unasked_missing_params(step_messages, conversation_messages=original_messages):
+                        published_attachment = attachment_finish.enabled and attachment_step_produced_file(step_messages)
+                        if not published_attachment and step_has_unasked_missing_params(step_messages, conversation_messages=original_messages):
                             if missing_params_nudged:
                                 logger.warning(
                                     MISSING_PARAMS_ABORT_LOG,
@@ -3601,7 +3619,8 @@ class ToolsNodes(
                                 )
                                 step_finished = True
                                 break
-                        if getattr(graph_request, "_ppt_export_ready", False):
+                        artifact_ready = published_attachment or getattr(graph_request, "_ppt_export_ready", False)
+                        if artifact_ready:
                             limit_kind = ""
                         else:
                             limit_kind = detect_limit_kind(step_messages)
@@ -3635,9 +3654,7 @@ class ToolsNodes(
                             step_finished = True
                             break
 
-                        failure, unrecoverable_failure = _step_failure(step_messages)
-                        if getattr(graph_request, "_ppt_export_ready", False):
-                            failure, unrecoverable_failure = "", False
+                        failure, unrecoverable_failure = ("", False) if artifact_ready else _step_failure(step_messages)
                         agent_state = step_result
                         if k8s_target_lookup_exhausted_from_messages(step_messages):
                             _collect_output_messages(step_messages)
@@ -3742,10 +3759,17 @@ class ToolsNodes(
                                 len(pending_steps) - len(remaining_inventory),
                             )
                             pending_steps = remaining_inventory
+                        lookup_results = [msg for msg in step_messages if isinstance(msg, ToolMessage)] if step.needs_lookup_result else []
                         completed_steps.append(
                             CompletedExecutionStep(
                                 objective=step.objective,
-                                result=_step_summary(step_messages),
+                                result=_step_summary(lookup_results or step_messages),
+                                lookup_source=step.lookup_source,
+                                result_resources=tuple(
+                                    kind
+                                    for msg in lookup_results
+                                    if (kind := (getattr(tool_by_name.get(msg.name), "metadata", None) or {}).get("produces_resource"))
+                                ),
                             )
                         )
                         # 步间只保留摘要，避免巨型 diagnose/logs 结果拖垮后续步与最终总结。
@@ -3761,11 +3785,24 @@ class ToolsNodes(
                                 reused=bool(completed_steps) and not tools_invoked_in_step(step_messages),
                             ),
                         )
+                        if lookup_results and not pending_steps and replan_count < 2:
+                            # 查询已成功。只为尚缺的证据选下一种能力，不重新提交已执行的操作。
+                            invoked = set(tools_invoked_in_step(collected_output_messages))
+                            candidates = [tool for tool in tools if tool.name not in invoked]
+                            if candidates:
+                                replan_count += 1
+                                await _emit_planned_execution_status("replanning", replan_count=replan_count)
+                                replacement = await _plan_after_result(candidates)
+                                await _ensure_skill_runtime_for_plan(replacement)
+                                pending_steps = list(replacement.steps)
+                                total_steps = len(completed_steps) + len(pending_steps)
+                                await _emit_planned_execution_status("planned", step_count=total_steps, replan_count=replan_count)
                         step_finished = True
 
                     if replanned:
                         continue
 
+                attachment_finish.enabled = False
                 active_tools.clear()
                 clear_planned_step_holder(config)
                 visibility_middleware.include_always_visible = False
@@ -3796,7 +3833,14 @@ class ToolsNodes(
                         getattr(message, "type", "") == "tool" and getattr(message, "name", "") == "generate_repair_report"
                         for message in collected_output_messages
                     )
-                    if repair_already_done:
+                    if one_way_reply:
+                        final_message = _internal_message(
+                            f"原问题：{planning_question}\n已完成步骤及结果：\n{completed_text}\n\n"
+                            "现在直接写给企业微信群成员。按实际结果先写结论，再按所问维度分行列出关键数字。"
+                            "正文使用短句、加粗或列表，表格留在附件里。文件由通知节点投递。"
+                            "只输出一份群通知正文，省略工作进度、内部路径和下载链接。不要继续调用工具。"
+                        )
+                    elif repair_already_done:
                         final_message = _internal_message(
                             f"工具执行计划目标：{plan.goal or planning_question}\n"
                             f"已完成步骤及结果：\n{completed_text}\n\n"

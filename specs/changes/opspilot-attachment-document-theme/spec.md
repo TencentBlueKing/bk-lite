@@ -10,6 +10,8 @@ OpsPilot 生成的 Word、PDF 和 Excel 看起来像把 Markdown 或 CSV 原样�
 
 模型仍然提交 Markdown 或 CSV。服务器把 Markdown 解析成同一份文档结构：HTML/CSS 负责排版，并由服务器里的 Chromium 打印成 PDF；同一份结构写成带标题、正文和表格样式的 docx。Excel 按同一套颜色和字体写入一张工作表，表头自动套样式，合并范围由模型显式声明。用户下载到的是 docx、pdf、xlsx。沙箱里已经写好的文件原样交付。
 
+HTML 汇总报告可通过 `generate_attachment_file(file_type="html", content_format="markdown")` 交付。服务器把 Markdown 正文和分组表渲染为完整 HTML。单独的附件步骤收到本轮发布成功回执后结束，外层执行计划继续。
+
 ## User Stories
 
 1. As a user asking for a report, I want the Word or PDF to use headings, paragraph spacing, styled tables, a title header and page numbers, so that the file looks like a document rather than exported notes.
@@ -34,6 +36,8 @@ OpsPilot 生成的 Word、PDF 和 Excel 看起来像把 Markdown 或 CSV 原样�
 - Office and browser libraries stay imported inside the render functions so process startup does not load them.
 
 ## Testing Decisions
+
+独立 HTML 附件默认以适合桌面与手机的网页版式发布，适用于报告、指南、纪要等智能体文档。多章节提供页内导航，宽表格在局部滚动。已有自定义样式和交互的 HTML 以及已生成的沙箱文件保留原作。PDF 继续使用打印版式。
 
 - Test the bytes the user would download: docx styles, HTML used for PDF, and xlsx cell types, fill, freeze and merges.
 - PDF printing is a seam. Tests cover the HTML and the failure log without launching a browser. The failure log records the error type and keeps the document body out of the message.

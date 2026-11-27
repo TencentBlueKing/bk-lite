@@ -911,7 +911,7 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     if distribute_file_ids:
         runtime_extra_config["distribute_file_ids"] = distribute_file_ids
     # 卡片、作业提案和授权决定只来自本会话服务器状态；客户端只能提交选择。
-    for key in ("pending_question", "job_confirmation_reply", "stale_choice", "choice_id", "choice_option", "choice_reply_text"):
+    for key in ("pending_question", "job_confirmation_reply", "stale_choice", "choice_id", "choice_option", "choice_reply_text", "selected_choice"):
         runtime_extra_config.pop(key, None)
     if not allows_user_questions(runtime_extra_config) or not conversation_key:
         return
@@ -920,12 +920,12 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
     current = peek_pending_question(conversation_key)
     marker = (current or {}).get("job_confirmation")
     expected_id = marker.get("choice_id") if marker else (current or {}).get("choice_id")
-    if reply_to_choice_id and reply_to_choice_id != expected_id:
+    if (reply_to_choice_id and reply_to_choice_id != expected_id) or (choice_id and choice_id != expected_id):
         runtime_extra_config["stale_choice"] = True
         return
     if marker:
         owner = job_confirmation_owner(runtime_extra_config.get(CALLER_IDENTITY_CONFIG_KEY))
-        if not owner or owner != marker.get("owner") or (choice_id and marker.get("choice_id") != choice_id):
+        if not owner or owner != marker.get("owner"):
             runtime_extra_config["stale_choice"] = True
             return
         if choice_id:
@@ -940,6 +940,10 @@ def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
         runtime_extra_config["stale_choice"] = True
         return
     runtime_extra_config["pending_question"] = consumed
+    if not marker and choice_id:
+        runtime_extra_config["selected_choice"] = any(
+            isinstance(option, dict) and option.get("key") == kwargs.get("choice_option") for option in consumed.get("options") or []
+        )
     if marker:
         raw = kwargs.get("choice_reply_text", kwargs.get("user_message", ""))
         # Web 明确表示本页没有显示卡片时，先给本页展示原提案。IM 纯文本没有这个字段。

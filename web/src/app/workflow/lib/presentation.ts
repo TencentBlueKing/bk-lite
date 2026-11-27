@@ -170,8 +170,8 @@ export function presentExecutionInfoItem(
     return { label, children: formatStartedBy(value, t) };
   }
   if (key === 'duration_ms') {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    return { label, children: formatDuration(Number.isFinite(numeric) ? numeric : null) };
+    const numeric = typeof value === 'string' && value.trim() ? Number(value) : value;
+    return { label, children: formatDuration(typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : null) };
   }
   return { label, children: formatExecutionInfoValue(value, convertToLocalizedTime) };
 }

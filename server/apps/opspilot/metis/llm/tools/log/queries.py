@@ -43,7 +43,7 @@ def log_list_groups(
 
 @tool(
     description=(
-        "结构化查询日志。关键字只取正文内容，并在 message 上做或匹配。"
+        "日志检索：按关键词查询日志中心的原始记录。关键字只取正文内容，并在 message 上做或匹配。"
         "中文正文必须用 keyword 传入，并且这个词要原样出现在用户原话里。状态、时间和查询口头语不要传，中英文都一样。"
         "问句里的普通英文单词和输出格式不会变成关键字。error、主机名、IP、指标名可以。"
         "服务端不会从整句里再拆中文关键字。"
@@ -80,7 +80,7 @@ def log_search_structured(
 
 @tool(
     description=(
-        "高级日志查询：接受原生 LogsQL 查询语句。" "start 和 end 必须成对出现。没写时区时按当前用户时区理解，例如 2026-10-22 14:28:00；" "写了 Z 或 ±HH:MM 则按该偏移。两者都省略时默认近 24 小时。权限仍按调用方日志分组过滤。"
+        "日志检索：在日志中心执行原生 LogsQL 查询。" "start 和 end 必须成对出现。没写时区时按当前用户时区理解，例如 2026-10-22 14:28:00；" "写了 Z 或 ±HH:MM 则按该偏移。两者都省略时默认近 24 小时。权限仍按调用方日志分组过滤。"
     )
 )
 def log_search_raw(
@@ -103,3 +103,7 @@ def log_search_raw(
         "log_group_ids": log_group_ids or [],
     }
     return call_log_rpc("search_structured", config, query_data=query_data)
+
+
+for _lookup in (log_list_groups, log_search_structured, log_search_raw):
+    _lookup.metadata = {"readOnlyHint": True}

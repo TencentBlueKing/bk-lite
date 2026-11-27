@@ -52,6 +52,8 @@ describe('execution presentation labels', () => {
     expect(presentExecutionInfoItem('trigger_type', 'FORM', t, convert)).toEqual({ label: '触发器', children: '表单' });
     expect(presentExecutionInfoItem('started_by', 'workflow-scheduler', t, convert)).toEqual({ label: '发起人', children: '定时调度' });
     expect(presentExecutionInfoItem('duration_ms', 103056, t, convert)).toEqual({ label: '耗时', children: '1m 43s' });
+    expect(presentExecutionInfoItem('duration_ms', null, t, convert).children).toBe('--');
+    expect(presentExecutionInfoItem('duration_ms', 0, t, convert).children).toBe('0 ms');
     expect(presentExecutionInfoItem('retry_count', 0, t, convert)).toEqual({ label: '重试次数', children: '0' });
   });
 });

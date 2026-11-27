@@ -543,3 +543,33 @@ def test_short_response_does_not_read_another_asgi_message(application, monkeypa
 
     asyncio.run(asyncio.wait_for(application(scope(), receive, send), 2))
     assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_early", [False, True])
+async def test_stream_context_survives_chunks_and_cleanup(close_early):
+    from contextvars import ContextVar
+
+    from apps.core.asgi import _stop_on_disconnect
+
+    locale = ContextVar("test_stream_locale", default="outside")
+    cleaned = []
+
+    async def stream():
+        token = locale.set("zh")
+        try:
+            yield b"first"
+            yield locale.get().encode()
+        finally:
+            locale.reset(token)
+            cleaned.append(True)
+
+    watched = _stop_on_disconnect(stream(), asyncio.Event())
+    assert await anext(watched) == b"first"
+    assert locale.get() == "outside"
+    if close_early:
+        await watched.aclose()
+    else:
+        assert [chunk async for chunk in watched] == [b"zh"]
+    assert cleaned == [True]
+    assert locale.get() == "outside"

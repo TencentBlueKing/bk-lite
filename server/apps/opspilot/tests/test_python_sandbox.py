@@ -440,3 +440,105 @@ def test_ppt_master_materializes_and_exports_in_local_workspace(mocker, tmp_path
     finally:
         sandbox.close()
         discard_ppt_run(request)
+
+
+def test_html_report_placeholder_can_be_retried_with_finished_tables(mocker):
+    import importlib
+
+    module = importlib.import_module("apps.opspilot.metis.llm.tools.attachment.generate_attachment")
+    asset = SimpleNamespace(attachment_id="a", filename="report.html", mime_type="text/html", id=5)
+    create = mocker.patch.object(module, "create_workflow_attachment_asset", return_value=asset)
+    mocker.patch.object(module, "build_signed_attachment_download_url", return_value="/download")
+    config = {"configurable": {"execution_id": "run", "attachment_run_token": "html-report-retry"}}
+    args = {"filename": "report.html", "file_type": "html"}
+    with pytest.raises(ValueError, match="占位"):
+        module.generate_attachment_file.invoke({**args, "content": "<html><head><title>汇总</title></head><body>占位，随后由脚本渲染覆盖</body></html>"}, config)
+    create.assert_not_called()
+    result = module.generate_attachment_file.invoke(
+        {**args, "content_format": "markdown", "content": "## 对象分布\n\n| 对象 | 数量 |\n| --- | --- |\n| order-db | 427 |"}, config
+    )
+    assert result["file_url"] == "/download"
+    body = create.call_args.kwargs["content_bytes"].decode()
+    assert "<table" in body and "order-db" in body and "427" in body
+    assert create.call_count == 1
+    module.release_attachment_run("html-report-retry")
+
+
+@pytest.mark.parametrize(
+    ("content", "extra", "themed"),
+    [
+        ("# 升级指南\n\n## 准备\n\n检查容量。\n\n## 验证\n\n打开服务页。", {}, True),
+        ("<h1>周例会</h1><table><tr><th>事项</th><td>确认排期</td></tr></table>", {}, True),
+        ("<html><style>body{color:navy}</style><main>自定义页面</main></html>", {}, False),
+        ("<html><body><button>选择</button><script>let count = 0;</script></body></html>", {}, False),
+        ("<p>原始代码</p>", {"content_format": "native"}, False),
+    ],
+)
+def test_generated_html_download_uses_web_layout_or_preserves_authored_page(mocker, content, extra, themed):
+    from bs4 import BeautifulSoup
+
+    from apps.opspilot.metis.llm.tools.attachment import generate_attachment as module
+
+    asset = SimpleNamespace(attachment_id="a", filename="test.html", mime_type="text/html", id=1)
+    create = mocker.patch.object(module, "create_workflow_attachment_asset", return_value=asset)
+    mocker.patch.object(module, "build_signed_attachment_download_url", return_value="/download")
+    module.generate_attachment_file.invoke(
+        {"filename": "test.html", "file_type": "html", "content": content, **extra},
+        {"configurable": {"execution_id": "run"}},
+    )
+    html = create.call_args.kwargs["content_bytes"].decode()
+    if not themed:
+        assert html == content
+        return
+    page = BeautifulSoup(html, "html.parser")
+    assert page.select_one('meta[name="viewport"]') and page.style
+    if content.startswith("#"):
+        assert page.title.string == page.h1.string == "升级指南"
+        assert [page.select_one(a["href"]).text for a in page.select("nav a")] == ["准备", "验证"]
+        assert page.select_one("article").find(string="打开服务页。")
+    else:
+        assert page.select_one(".table-scroll table td").text == "确认排期"
+
+
+@pytest.mark.asyncio
+async def test_attachment_only_step_ends_after_current_successful_tool_call():
+    from langchain.agents import create_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langchain_core.tools import tool
+
+    from apps.opspilot.metis.llm.middleware.tool_runtime import AttachmentStepFinishMiddleware
+
+    @tool
+    def generate_attachment_file() -> dict:
+        """Publish the completed file."""
+        return {"filename": "report.html", "file_url": "/download", "attachment_asset_id": 5}
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    finish = AttachmentStepFinishMiddleware()
+    finish.enabled = True
+    model = Model(
+        responses=[
+            AIMessage(content="", tool_calls=[{"name": "generate_attachment_file", "args": {}, "id": "new"}]),
+            AIMessage(content="多余的模型调用"),
+        ]
+    )
+    agent = create_agent(model=model, tools=[generate_attachment_file], middleware=[finish])
+    result = await agent.ainvoke({"messages": [HumanMessage(content="生成 HTML 报告")]})
+    assert result["messages"][-2].name == "generate_attachment_file"
+    assert result["messages"][-1].content == "文件已生成，可以下载。"
+    assert model.i == 1
+
+    # 下一步保留生成记录，也必须能继续执行模型；重复/失败的回执不能宣告完成。
+    published = result["messages"][-2]
+    assert finish.before_model({"messages": [published, HumanMessage(content="下一步")]}, None) is None
+    for receipt in (
+        ToolMessage(name="generate_attachment_file", content='{"skipped":true}', tool_call_id="duplicate"),
+        ToolMessage(name="generate_attachment_file", content='{"filename":"x","file_url":"/x"}', status="error", tool_call_id="failed"),
+    ):
+        assert finish.before_model({"messages": [receipt]}, None) is None
+    finish.enabled = False
+    assert finish.before_model({"messages": [published]}, None) is None

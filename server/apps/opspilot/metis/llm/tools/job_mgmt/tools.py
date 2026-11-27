@@ -113,7 +113,7 @@ def job_mgmt_describe_script(script_id: int, config: RunnableConfig = None):
 
 @tool(
     description=(
-        "按名称或 IP 查找目标。用户说过节点管理或作业管理目标时，结果里只有这个来源。"
+        "按名称或 IP 查询节点管理或作业管理的目标实例，返回来源、目标 ID、名称、IP 和系统。用户指定来源时仅返回该来源。"
         "返回 use 时直接执行，不要再问来源。用户消息里已有 (node_mgmt:编号) 或 (manual:编号) 时，用括号里的编号，不要再搜。"
         "多个命中才用 request_user_choice。用户还没说来源且零命中时，才让用户选来源。"
     )
@@ -122,7 +122,7 @@ def job_mgmt_search_targets(keyword: str, config: RunnableConfig = None):
     return _run(lambda: search_job_targets(config, keyword))
 
 
-@tool(description="在用户选定的来源里分页列出目标。每条含 id、name、ip、os。执行时 target_ids 只复制 id。source 填作业管理目标或节点管理目标。下一页把上次返回的 next_cursor 填进参数 cursor。")
+@tool(description="在节点管理或作业管理中分页列出目标实例。每条含 id、name、ip、os。执行时 target_ids 只复制 id。source 填作业管理目标或节点管理目标。下一页把上次返回的 next_cursor 填进参数 cursor。")
 def job_mgmt_list_targets(
     source: Annotated[str, Field(description="作业管理目标或节点管理目标")],
     cursor: Annotated[str, Field(description="上一页返回的 next_cursor。第一页留空。参数名是 cursor，不是 next_cursor。")] = "",
@@ -168,7 +168,7 @@ def job_mgmt_run_library(
 @tool(
     response_format="content_and_artifact",
     description=(
-        "执行自定义脚本，类型只能是 shell、python、powershell、bat。可以根据用户意图生成脚本。"
+        "按节点管理或作业管理的目标 ID 执行自定义脚本，可检查目标当前状态并返回标准输出。可以根据用户意图生成 shell、python、powershell 或 bat 脚本。"
         "选定目标后调用一次。系统展示完整脚本和目标，接收用户对当前卡片的点击或回复，并按原参数续接。"
         "脚本命中高危规则时，系统展示规则并单独请求确认。"
         "Linux 只能执行 shell 和 python，Windows 只能执行 powershell 和 bat。"
@@ -280,3 +280,10 @@ def job_mgmt_query(task_id: int = 0, config: RunnableConfig = None):
 @tool(description="用户同意定时检查后，按间隔查看同一个作业号，默认 60 分钟，最长 24 小时。不会重新执行。用户没说定时检查时先用 request_user_choice 询问。")
 def job_mgmt_schedule_watch(task_id: int = 0, interval_minutes: int = 60, config: RunnableConfig = None):
     return _run(lambda: schedule_job_watch(config, task_id or None, interval_minutes))
+
+
+for _lookup in (job_mgmt_list_targets, job_mgmt_search_targets):
+    _lookup.metadata = {"readOnlyHint": True, "produces_resource": "job_mgmt.target"}
+for _action in (job_mgmt_run_library, job_mgmt_run_custom, job_mgmt_distribute):
+    _action.metadata = {"readOnlyHint": False, "consumes_resource": "job_mgmt.target"}
+job_mgmt_schedule_watch.metadata = {"readOnlyHint": False}

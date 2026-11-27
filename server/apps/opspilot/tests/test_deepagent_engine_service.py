@@ -1405,6 +1405,32 @@ class TestBuildDeepagentNodes:
             assert "monitor_list_object_instances" in tool_names
             assert any(instance_id in str(getattr(message, "content", "") or "") for message in evidence)
 
+    def test_published_html_step_does_not_replan_after_earlier_file_read_failure(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts"), _tool("generate_attachment_file")]
+        req = _request(user_message="查询活动告警，制作 HTML 报告")
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "生成告警 HTML 报告",
+                    "steps": [
+                        {"objective": "查询告警", "tools": ["alerts_list_alerts"]},
+                        {"objective": "生成 HTML 附件", "tools": ["generate_attachment_file"]},
+                    ],
+                },
+                failing_agent_calls={2: {"name": "read_file", "content": "Error: File '/out/agg.json' not found"}},
+                agent_step_tool_results={
+                    1: ("alerts_list_alerts", '{"success":true,"count":4}'),
+                    2: ("generate_attachment_file", '{"filename":"report.html","file_url":"/report.html"}'),
+                },
+            )
+        assert len(captured["planner_calls"]) == 1
+        _assert_visible_tool_steps(captured["visible_tool_calls"], [["alerts_list_alerts"], ["generate_attachment_file"], []])
+
     def test_pdf_report_continues_after_successful_alert_with_auth_words(self):
         node = ToolsNodes()
         node.all_tools = [_tool("alerts_list_alerts"), _tool("generate_attachment_file")]
@@ -1471,6 +1497,28 @@ class TestBuildDeepagentNodes:
         assert all("request_user_choice" not in names for names in captured["visible_tool_calls"])
         assert "generate_attachment_file" in captured["create_kwargs"]["interrupt_on"]
 
+    def test_wecom_html_request_finishes_file_and_writes_a_separate_group_message(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("alerts_list_alerts"), _tool("generate_attachment_file")]
+        req = _request(user_message="收集告警中心当前活跃告警情况，按对象、指标进行汇总分析。制作HTML报告。", extra_config={"reply_channel": "WECOM_BOT"})
+        captured = {}
+        table = "| 对象 | 数量 |\n| --- | --- |\n| 数据库 | 4 |\n可进入报告生成环节。"
+        body = "当前有 4 条活跃告警。\n- 数据库 4 条，均为连接数告警。"
+        result = self._run_wrapper(
+            node,
+            req,
+            captured,
+            plan_payload={"goal": "查询告警", "steps": [{"objective": "查告警", "tools": ["alerts_list_alerts"]}]},
+            agent_replies={1: table, 2: "文件已生成。", 3: body},
+            agent_step_tool_results={
+                1: ("alerts_list_alerts", '{"success":true,"count":4}'),
+                2: ("generate_attachment_file", '{"filename":"report.html","file_url":"/report.html"}'),
+            },
+        )
+        _assert_visible_tool_steps(captured["visible_tool_calls"], [["alerts_list_alerts"], ["generate_attachment_file"], []])
+        assert "企业微信群" in captured["ainvoke_messages"][-1][-1].content
+        assert result["messages"][-1].content == body
+
     def test_wecom_planned_file_requires_successful_tool_result(self):
         node = ToolsNodes()
         node.all_tools = [_tool("generate_attachment_file")]
@@ -1483,6 +1531,33 @@ class TestBuildDeepagentNodes:
                 plan_payload={"goal": "PDF", "steps": [{"objective": "生成报告", "tools": ["generate_attachment_file"]}]},
                 agent_reply="报告已生成。",
             )
+
+    def test_completed_lookup_plans_followup_from_result(self):
+        node = ToolsNodes()
+        lookup = _tool("find_record")
+        lookup.metadata = {"produces_resource": "inventory.record"}
+        status = _tool("read_status")
+        status.metadata = {"consumes_resource": "inventory.record"}
+        node.all_tools = [lookup, status, _tool("other_lookup")]
+        captured = {}
+        self._run_wrapper(
+            node,
+            _request(user_message="检查这个对象的当前状态"),
+            captured,
+            plan_payloads=[
+                {"goal": "检查状态", "steps": [{"objective": "匹配记录", "tools": ["find_record"], "needs_lookup_result": True}]},
+                {"goal": "检查状态", "steps": [{"objective": "查看匹配记录的状态", "tools": ["read_status"]}]},
+            ],
+            agent_step_tool_results={1: ("find_record", '{"id": "r-42"}')},
+            agent_replies={1: "找到了唯一匹配项。"},
+        )
+        calls = captured["planner_calls"]
+        assert len(calls) == 2
+        assert "r-42" in calls[1][1].content
+        catalog = calls[1][1].content.split("紧凑工具目录:")[-1]
+        assert "- find_record" not in catalog and "- other_lookup" not in catalog
+        assert "- read_status" in catalog
+        assert "read_status" in captured["visible_tool_calls"][1]
 
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
