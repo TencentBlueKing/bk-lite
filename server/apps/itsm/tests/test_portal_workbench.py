@@ -69,7 +69,22 @@ def test_layout_permission_validation_and_roundtrip():
     manager = req("put", config, permissions=["portal-View", "workflow-Edit"])
     assert data(portal_layout(manager))["title"] == config["title"]
     assert data(portal_layout(req())) == config
-    assert data(portal_layout(req(domain="other")))["title"] != config["title"]
+    untouched = data(portal_layout(req(domain="other")))
+    assert untouched["title"] == "服务工作台"
+    assert untouched["subtitle"] == "发现所需服务，让每一次协作更高效"
+    assert untouched["background"] == "blue"
+    assert untouched["title"] != config["title"]
+    assert untouched["widgets"] == [
+        {"type": "stats", "width": 12},
+        {"type": "quick", "width": 6},
+        {"type": "todo", "width": 6},
+        {"type": "services", "width": 6},
+        {"type": "tickets", "width": 6},
+        {"type": "announcements", "width": 6},
+        {"type": "trend", "width": 6},
+        {"type": "recents", "width": 6},
+        {"type": "favorites", "width": 6},
+    ]
     config["widgets"].append({"type": "script", "width": 12})
     assert portal_layout(req("put", config, permissions=["workflow-Edit"])).status_code == 400
 
@@ -226,7 +241,9 @@ def test_directory_search_pages_respect_acl_and_catalog_descendants(service):
     service.description = "Linux"
     service.catalog = child
     service.save()
-    response = data(service_portal(req(payload={"directory": 1, "catalog": parent.pk, "keyword": "linux", "page": 2, "page_size": 10}, user="viewer")))
+    response = data(
+        service_portal(req(payload={"directory": 1, "catalog": parent.pk, "keyword": "linux", "page": 2, "page_size": 10}, user="viewer"))
+    )
     assert response["total"] == 13
     assert len(response["items"]) == 3
     assert data(service_portal(req(payload={"service_id": service.pk})))["services"][0]["id"] == service.pk

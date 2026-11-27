@@ -132,6 +132,7 @@
       "favoriteFailed": "更新收藏失败",
       "emptyFavorites": "暂无收藏的服务",
       "emptyRecents": "暂无最近使用的服务",
+      "emptyHots": "暂无热门服务",
       "noMatch": "未找到匹配的服务",
       "loading": "正在加载服务"
     },

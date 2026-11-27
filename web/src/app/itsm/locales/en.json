@@ -132,6 +132,7 @@
       "favoriteFailed": "Could not update favorite",
       "emptyFavorites": "No favorite services",
       "emptyRecents": "No recently used services",
+      "emptyHots": "No popular services",
       "noMatch": "No matching services",
       "loading": "Loading services"
     },

@@ -27,12 +27,12 @@ DEFAULT_LAYOUT = {
         {"type": key, "width": width}
         for key, width in [
             ("stats", 12),
-            ("services", 12),
+            ("quick", 6),
             ("todo", 6),
+            ("services", 6),
+            ("tickets", 6),
             ("announcements", 6),
             ("trend", 6),
-            ("tickets", 6),
-            ("quick", 12),
             ("recents", 6),
             ("favorites", 6),
         ]
