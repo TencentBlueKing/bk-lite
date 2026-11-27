@@ -26,6 +26,25 @@ def test_build_preview_sql_adds_limit_to_select():
     assert build_preview_sql({"sql": "select id from orders"}, 20) == "select id from orders LIMIT 20"
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "select * from bills limit :page_size",
+        "select * from bills LIMIT :page_size OFFSET :page",
+        "select * from bills offset :page limit :page_size",
+        "select * from bills limit :page, :page_size",
+        "select * from bills limit 20 offset 40",
+    ],
+)
+def test_build_preview_sql_keeps_a_trailing_limit_clause(sql):
+    assert build_preview_sql({"sql": sql}, 20) == sql
+
+
+def test_build_preview_sql_still_caps_a_limit_inside_a_subquery():
+    sql = "select * from (select * from bills limit :page_size) rows"
+    assert build_preview_sql({"sql": sql}, 20) == f"{sql} LIMIT 20"
+
+
 def test_build_database_url_for_mysql_uses_utf8mb4_charset():
     url = build_database_url(
         "mysql",
@@ -59,3 +78,90 @@ def test_build_database_url_escapes_credentials():
 def test_normalize_db_rows_converts_row_mappings():
     rows = [{"id": 1, "name": "a"}]
     assert normalize_db_rows(rows) == [{"id": 1, "name": "a"}]
+
+
+def test_preview_passes_bound_parameters_without_rewriting_sql():
+    from apps.operation_analysis.services.datasource_preview.database import DatabaseConnectorExecutor
+
+    captured = {}
+
+    class FakeResult:
+        def fetchmany(self, _limit):
+            return []
+
+    class FakeConnection:
+        def execute(self, statement, params=None):
+            captured["sql"] = str(statement)
+            captured["params"] = params
+            return FakeResult()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    executor = DatabaseConnectorExecutor("mysql", engine_factory=lambda *_args, **_kwargs: FakeEngine())
+    executor.preview(
+        {
+            "host": "127.0.0.1",
+            "port": 3306,
+            "database": "ops",
+            "username": "root",
+            "password": "secret",
+        },
+        {"sql": "select id from hosts where name = :name"},
+        param_specs=[{"name": "name", "type": "string"}],
+        resolved_params={"name": "'; drop table hosts"},
+    )
+
+    assert "drop table" not in captured["sql"]
+    assert captured["params"] == {"name": "'; drop table hosts"}
+
+
+def test_preview_keeps_a_bound_limit_placeholder():
+    from apps.operation_analysis.services.datasource_preview.database import DatabaseConnectorExecutor
+
+    captured = {}
+
+    class FakeResult:
+        def fetchmany(self, _limit):
+            return []
+
+    class FakeConnection:
+        def execute(self, statement, params=None):
+            captured["sql"] = str(statement)
+            captured["params"] = params
+            return FakeResult()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    executor = DatabaseConnectorExecutor("mysql", engine_factory=lambda *_args, **_kwargs: FakeEngine())
+    executor.preview(
+        {
+            "host": "127.0.0.1",
+            "port": 3306,
+            "database": "ops",
+            "username": "root",
+            "password": "secret",
+        },
+        {"sql": "select * from bills limit :page_size"},
+        param_specs=[{"name": "page_size", "type": "number"}],
+        resolved_params={"page_size": 20},
+    )
+
+    assert captured["sql"].lower().count("limit") == 1
+    assert ":page_size" in captured["sql"]
+    assert captured["params"] == {"page_size": 20}

@@ -227,13 +227,13 @@ def _load_query_body(query_config: dict) -> dict:
 
 
 def validate_stored_query_config(query_config: dict) -> dict:
-    """保存/导入时检查查询形状。查询体原样执行，不替换参数，也不注入画布时间。"""
+    """保存/导入时检查查询形状。占位符留在保存的查询体里，执行前再替换。"""
     validate_query_body(_load_query_body(query_config or {}))
     return query_config or {}
 
 
 def prepare_search_body(query_config: dict) -> dict:
-    """返回已校验的查询体。不替换声明参数，也不注入画布时间。"""
+    """返回已校验的查询体。占位符替换由执行入口在这之后完成。"""
     return validate_query_body(_load_query_body(query_config))
 
 

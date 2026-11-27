@@ -11,7 +11,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR
 from apps.operation_analysis.services.datasource_preview.base import PreviewResult
 from apps.operation_analysis.views import datasource_view
-from apps.operation_analysis.views.datasource_view import _resolve_request_params
+from apps.operation_analysis.views.datasource_view import _resolve_request_params, _resolved_declared_params
 
 
 def _build_request(user, data=None):
@@ -689,7 +689,7 @@ def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
     )
     monkeypatch.setattr(
         "apps.operation_analysis.services.excel_materialize.load_excel_runtime",
-        lambda _instance, limit=100: {"items": business_rows, "warnings": []},
+        lambda _instance, limit=100, **_kwargs: {"items": business_rows, "warnings": []},
     )
 
     response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
@@ -838,6 +838,41 @@ def test_resolve_request_params_keeps_fixed_time_range_empty_instead_of_request(
         {"time": ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"]},
     )
     assert "time" not in resolved
+
+
+def test_declared_string_page_keeps_its_value():
+    instance = SimpleNamespace(
+        rest_api=None,
+        params=[{"name": "page", "type": "string", "value": "cursor-abc", "filterType": "params"}],
+    )
+
+    assert _resolve_request_params(instance, {"page": "cursor-abc"})["page"] == "cursor-abc"
+
+
+def test_undeclared_page_must_still_be_a_positive_integer():
+    instance = SimpleNamespace(rest_api=None, params=[])
+
+    with pytest.raises(ValueError, match="整数"):
+        _resolve_request_params(instance, {"page": "cursor-abc"})
+
+
+def test_row_limit_ignores_a_string_page_size():
+    params = {"page_size": "cursor-abc"}
+    request = SimpleNamespace(data={"limit": 25})
+
+    assert datasource_view._row_limit(params, request) == 25
+    assert datasource_view._row_limit({"page_size": 40}, request) == 40
+
+
+def test_preview_keeps_declared_page_and_drops_undeclared_runtime_keys():
+    resolved = _resolved_declared_params(
+        [
+            {"name": "page", "type": "number", "value": 2, "filterType": "params"},
+            {"name": "city", "type": "string", "value": "shanghai", "filterType": "filter"},
+        ]
+    )
+
+    assert resolved == {"page": 2, "city": "shanghai"}
 
 
 def test_resolve_request_params_allows_organization_param_runtime_marker():
