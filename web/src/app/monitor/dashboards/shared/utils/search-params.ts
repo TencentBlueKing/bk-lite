@@ -63,6 +63,7 @@ export const buildSearchParams = (
   autoConvertUnit: boolean | undefined,
   minStepSeconds: unknown,
   context: DashboardQueryContext,
+  intervalSeconds?: number,
 ): SearchParams => {
   // 仪表盘按声明单位由前端 formatMetricValue。省略 autoConvertUnit 且未传 rawValueMetrics 时默认 false，
   // 避免服务端先缩成 hour/GiB 再按原单位展示。显式 true 仍可用于会读响应 data.unit 的调用方。
@@ -77,6 +78,9 @@ export const buildSearchParams = (
     source_unit: sourceUnit,
     auto_convert_unit: resolvedAutoConvert
   };
+  if (typeof intervalSeconds === 'number' && Number.isInteger(intervalSeconds) && intervalSeconds > 0) {
+    params.interval_seconds = intervalSeconds;
+  }
 
   return applyTimeRange(params, timeValues, minStepSeconds);
 };

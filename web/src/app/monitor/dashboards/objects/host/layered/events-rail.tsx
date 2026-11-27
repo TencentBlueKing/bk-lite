@@ -148,13 +148,16 @@ export default function EventsRail({
   events,
   onFocusAlert,
   loading = false,
-  clipToWindow = true
+  clipToWindow = true,
+  className
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
   loading?: boolean;
   /** 缺省仍按图表窗口裁剪。传 false 时展示调用方给出的全部事件。 */
   clipToWindow?: boolean;
+  /** 调用方只加高度等外观。不传时主机盘轨道保持原样。 */
+  className?: string;
 }) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -164,6 +167,7 @@ export default function EventsRail({
       : events),
     [chartWindow, clipToWindow, events]
   );
+  const railClass = [styles.eventsRail, className].filter(Boolean).join(' ');
   const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useDashboardText();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -206,7 +210,7 @@ export default function EventsRail({
 
   if (loading || proTime?.suspend) {
     return (
-      <div className={styles.eventsRail} data-events-rail="" data-events-empty="" aria-busy="true">
+      <div className={railClass} data-events-rail="" data-events-empty="" aria-busy="true">
         <div className={`${styles.eventsRow} w-full justify-center`}>
           <ProDashLoading layout="inline" />
         </div>
@@ -216,7 +220,7 @@ export default function EventsRail({
 
   if (!shownEvents.length) {
     return (
-      <div className={styles.eventsRail} data-events-rail="" data-events-empty="">
+      <div className={railClass} data-events-rail="" data-events-empty="">
         <div className={styles.eventsRow}>
           <span className={styles.eventsEmpty}>{hostCategoryText(t, 'noEvents')}</span>
         </div>
@@ -240,7 +244,7 @@ export default function EventsRail({
   );
 
   return (
-    <div className={styles.eventsRail} data-events-rail="">
+    <div className={railClass} data-events-rail="">
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
         {shownEvents.map((event) => (
           <span key={event.id} data-event-chip="" className={styles.eventsChip}>

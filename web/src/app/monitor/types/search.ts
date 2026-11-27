@@ -32,6 +32,7 @@ export interface SearchParams {
   end?: number;
   start?: number;
   step?: number;
+  interval_seconds?: number;
   query?: string;
   capability_id?: string;
   capability_params?: Record<string, unknown>;

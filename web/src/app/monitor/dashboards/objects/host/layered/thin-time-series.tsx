@@ -2,7 +2,7 @@
 
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
@@ -13,6 +13,7 @@ import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
 import type { TabAlertLevel } from './tab-level';
 import { clipChartDataToWindow } from '../../../shared/utils/pro-chart-window';
+import { flatZeroStrokeSeries } from './flat-zero-stroke';
 import { describeFocusAxis, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
@@ -122,8 +123,33 @@ interface ThinTimeSeriesProps {
    * 不传时保持原来的刻度和悬浮。
    */
   formatReading?: (value: number) => string;
+  /**
+   * 纵轴只留短数字。悬浮仍走 formatReading。
+   * 单位已经写在标题旁时打开，避免轴端再写一套。
+   */
+  axisNumbersOnly?: boolean;
+  /**
+   * 重点关注折线：轴域上下留边，全 0 和近 0 也不贴底。
+   * 不改常规趋势「从 0 起」。
+   */
+  padValueAxis?: boolean;
   /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
   plotHeight?: number;
+  /**
+   * 全零彩色笔画中心离开 X 轴的像素。缺省不启用，原有贴轴和影子偏移保持不变。
+   * 只移动绘制，采样仍是 0。
+   */
+  floorStrokeLiftPx?: number;
+  /**
+   * 传了才堆叠。缺省不堆叠，已有折线仍是各自的线。
+   * 全图都是 0 时改走统一上移，不再叠在轴上。
+   */
+  stackId?: string;
+  /**
+   * 卡面状态。不传时沿用原来的加载和空态。
+   * error 只显示加载失败和重试，不把失败画成 0 或暂无数据。
+   */
+  status?: 'loading' | 'error' | 'empty' | 'ready';
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -333,12 +359,36 @@ const floorLineLift = (index: number) => (
   FLOOR_LINE_LIFTS[Math.min(index, FLOOR_LINE_LIFTS.length - 1)]
 );
 
-const shortNumber = (value: number) => {
+const trimTick = (text: string) => text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+
+/**
+ * 非计数轴刻度。≥10 最多 1 位小数，≥100 取整，避免 208.815 / 208.18708333333334。
+ * 小于 1 的刻度保留能分辨的短小数，不把 0.002 收成 0.0。
+ */
+export const formatPlainTick = (value: number) => {
   if (!Number.isFinite(value)) return '--';
   const abs = Math.abs(value);
-  const digits = abs >= 100 || abs === 0 ? 0 : abs >= 10 ? 1 : 2;
-  return value.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  if (abs === 0) return '0';
+  if (abs >= 1000) {
+    const rounded = Math.round(value);
+    const sign = rounded < 0 ? '-' : '';
+    return `${sign}${String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  }
+  if (abs >= 100) return trimTick(value.toFixed(0));
+  if (abs >= 1) return trimTick(value.toFixed(1));
+  const digits = Math.min(4, Math.max(1, Math.ceil(-Math.log10(abs))));
+  return trimTick(value.toFixed(digits));
 };
+
+/** 轴上文案里的超长小数收成短刻度。单位后缀保留。 */
+export const sanitizeTickLabel = (text: string) => (
+  text.replace(/-?\d[\d,]*\.\d{2,}/g, (token) => {
+    const numeric = Number(token.replace(/,/g, ''));
+    return Number.isFinite(numeric) ? formatPlainTick(numeric) : token;
+  })
+);
+
+const shortNumber = (value: number) => formatPlainTick(value);
 
 const lockScale = (unit: MetricUnit, peak: number) => {
   const normalized = unit === 'Bps' ? 'byteps' : unit;
@@ -362,12 +412,12 @@ const lockScale = (unit: MetricUnit, peak: number) => {
 /** 轴上把 70.00/s 收成 70/s。tooltip 仍走完整格式。峰值锁定单位，避免一根轴混用 Bytes 和 MiB。 */
 export const formatAxisTick = (value: number, unit: MetricUnit, peak = Math.abs(value)) => {
   const locked = lockScale(unit, peak);
-  if (locked) return `${shortNumber(value / locked.divisor)}${locked.suffix}`;
+  if (locked) return sanitizeTickLabel(`${shortNumber(value / locked.divisor)}${locked.suffix}`);
   const formatted = formatMetricValue(value, unit);
   const text = formatted.value
     .replace(/(\.\d*?[1-9])0+(?=\D|$)/g, '$1')
     .replace(/\.0+(?=\D|$)/g, '');
-  return `${text}${formatted.unit || ''}`;
+  return sanitizeTickLabel(`${text}${formatted.unit || ''}`);
 };
 
 export const axisTickLabels = (bounds: AxisBounds, unit: MetricUnit) => {
@@ -390,7 +440,7 @@ const tickQuantum = (peak: number, unit: MetricUnit) => {
   const locked = lockScale(unit, peak);
   if (!locked || !(locked.divisor > 0)) return 0;
   const scaled = Math.abs(peak) / locked.divisor;
-  const digits = scaled >= 100 || scaled === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  const digits = scaled >= 100 || scaled === 0 ? 0 : scaled >= 1 ? 1 : 2;
   return (10 ** -digits) * locked.divisor;
 };
 
@@ -434,6 +484,41 @@ export const readableAxisBounds = (
   return { min, max, interval };
 };
 
+/**
+ * 重点关注折线的轴域。按数据留边，不把全 0 / 近 0 钉在 0–1 的底边上。
+ * 常规趋势仍走 readableAxisBounds，速率轴继续从 0 起。
+ */
+export const focusPaddedAxisBounds = (values: number[]): AxisBounds | null => {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return null;
+  let lo = Math.min(...finite);
+  let hi = Math.max(...finite);
+  const dataMin = lo;
+  const dataMax = hi;
+  if (!(hi > lo)) {
+    const pad = Math.abs(lo) > 0 ? Math.abs(lo) * 0.5 : 1;
+    lo -= pad;
+    hi += pad;
+  } else {
+    const span = hi - lo;
+    const pad = Math.max(span * 0.18, Math.abs(hi) * 0.05, 1e-6);
+    lo -= pad;
+    hi += pad;
+  }
+  let interval = niceStep(Math.max(hi - lo, Number.EPSILON), 4);
+  let min = tidyAxis(Math.floor(lo / interval) * interval);
+  let max = tidyAxis(Math.ceil(hi / interval) * interval);
+  if (!(max > min)) max = tidyAxis(min + interval);
+  if (min >= dataMin) min = tidyAxis(min - interval);
+  if (max <= dataMax) max = tidyAxis(max + interval);
+  if (dataMin === 0 && dataMax === 0 && !(min < 0 && max > 0)) {
+    min = -1;
+    max = 1;
+    interval = 1;
+  }
+  return { min, max, interval };
+};
+
 
 const formatTooltipReading = (raw: unknown, unit: MetricUnit) => {
   const value = typeof raw === 'number' ? raw : Number.NaN;
@@ -473,7 +558,12 @@ export default function ThinTimeSeries({
   keepSeriesColor = false,
   markZeroCount = false,
   formatReading,
-  plotHeight
+  axisNumbersOnly = false,
+  padValueAxis = false,
+  plotHeight,
+  floorStrokeLiftPx,
+  stackId,
+  status
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -558,10 +648,11 @@ export default function ThinTimeSeries({
       : null;
     const flatAxis = hideFlatAxisLabels && keys.length === 1 && isFlatSeries(plotted, keys[0]);
     const rateAxis = isRateUnit(unit);
-    const useSparse = !flatAxis && (!focusAxis || rateAxis);
-    const layoutOf = (samples: number[], axisUnit: MetricUnit) => (
-      useSparse ? readableAxisBounds(samples, axisUnit, pinAxisZero) : null
-    );
+    const useSparse = !padValueAxis && !flatAxis && (!focusAxis || rateAxis);
+    const layoutOf = (samples: number[], axisUnit: MetricUnit) => {
+      if (padValueAxis) return focusPaddedAxisBounds(samples);
+      return useSparse ? readableAxisBounds(samples, axisUnit, pinAxisZero) : null;
+    };
     const labeledAxis = !flatAxis && !focusAxis;
     const resolvedBounds = resolveValueBounds
       ? resolveValueBounds(keys.flatMap((key) => seriesAxisValues(plotted, key)))
@@ -602,8 +693,9 @@ export default function ThinTimeSeries({
           color,
           show: !flatAxis,
           formatter: (value: number) => {
-            if (formatReading) return formatReading(Number(value));
-            if (focusAxis) return focusAxis.formatTick(Number(value));
+            if (axisNumbersOnly) return formatPlainTick(Number(value));
+            if (formatReading) return sanitizeTickLabel(formatReading(Number(value)));
+            if (focusAxis) return sanitizeTickLabel(focusAxis.formatTick(Number(value)));
             return formatAxisTick(Number(value), axisUnit, peak);
           }
         },
@@ -665,8 +757,8 @@ export default function ThinTimeSeries({
       tooltip: {
         show: true,
         trigger: 'axis' as const,
-        appendToBody: true,
-        confine: false,
+        appendToBody: false,
+        confine: true,
         backgroundColor: panelColor,
         borderColor: axisColor,
         borderWidth: 1,
@@ -712,6 +804,24 @@ export default function ThinTimeSeries({
         const dashed = Boolean(legends[index]?.dashed);
         const samples = seriesAxisValues(plotted, key);
         const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
+        const liftPx = floorStrokeLiftPx && floorStrokeLiftPx > 0 ? floorStrokeLiftPx : 0;
+        const flatZero = samples.length > 0 && samples.every((value) => value === 0);
+        const chartAllZero = keys.every((item) => {
+          const itemSamples = seriesAxisValues(plotted, item);
+          return itemSamples.length > 0 && itemSamples.every((value) => value === 0);
+        });
+        if (liftPx > 0 && flatZero && (!stackId || chartAllZero)) {
+          return flatZeroStrokeSeries({
+            name: legends[index]?.title || legends[index]?.label || key,
+            color,
+            dashed,
+            liftPx,
+            points: plotted.map((point) => {
+              const value = point[key];
+              return [Number(point.time), typeof value === 'number' ? value : null] as const;
+            })
+          });
+        }
         // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
         // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
         const zeroCountLine = markedZeroSeries(markZeroCount, samples);
@@ -724,7 +834,7 @@ export default function ThinTimeSeries({
         // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
         const coloredFloor = sitsOnFloor && keepSeriesColor;
         const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
-        return {
+        const line = {
           type: 'line' as const,
           name: legends[index]?.title || legends[index]?.label || key,
           ...(splitAxes ? { yAxisIndex: index } : {}),
@@ -767,9 +877,15 @@ export default function ThinTimeSeries({
                 type: dashed ? 'dashed' as const : 'solid' as const
               }
         };
+        if (!stackId) return line;
+        return {
+          ...line,
+          stack: stackId,
+          ...(showArea ? {} : { areaStyle: { color, opacity: 0.18 } })
+        };
       })
     };
-  }, [areaOpacity, axisColor, chartWindow, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, axisNumbersOnly, chartWindow, floorStrokeLiftPx, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, padValueAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, stackId, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];
@@ -871,12 +987,27 @@ export default function ThinTimeSeries({
         className={styles.chartBody}
         style={plotHeight ? { height: plotHeight, minHeight: plotHeight, flex: 'none' } : undefined}
       >
-        {suspend || !plotted.length ? (
+        {status === 'error' ? (
           <div className={styles.chartEmpty}>
-            {suspend || loading ? <ProDashLoading /> : (
-              <span className="text-[13px] font-semibold text-[var(--color-text-2)]">{emptyText}</span>
+            <span className="inline-flex flex-col items-center gap-2 text-[14px] text-[var(--color-text-3)]">
+              <ExclamationCircleOutlined className="text-[20px]" />
+              加载失败
+              {onRetry ? (
+                <button type="button" className="text-[var(--color-primary)]" onClick={onRetry}>重试</button>
+              ) : null}
+            </span>
+          </div>
+        ) : status === 'loading' || status === 'empty' || suspend || !plotted.length ? (
+          <div className={styles.chartEmpty}>
+            {status === 'loading' || suspend || (status !== 'empty' && loading) ? <ProDashLoading /> : (
+              <span className={status === 'empty'
+                ? 'text-[14px] text-[var(--color-text-3)]'
+                : 'text-[13px] font-semibold text-[var(--color-text-2)]'}
+              >
+                {emptyText}
+              </span>
             )}
-            {!loading && onRetry ? (
+            {!loading && status !== 'loading' && status !== 'empty' && onRetry ? (
               <button
                 type="button"
                 className="ml-2 text-[var(--color-primary)]"
