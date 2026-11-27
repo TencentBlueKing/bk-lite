@@ -64,7 +64,7 @@ export function NginxCompositionCard({
   return (
     <section
       id={anchor}
-      className="flex h-[280px] flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-3"
+      className="flex !h-[280px] h-full w-full min-w-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-3"
       data-nginx-pie={title}
       data-nginx-chart-kind="pie"
       data-nginx-pie-layout="stack"

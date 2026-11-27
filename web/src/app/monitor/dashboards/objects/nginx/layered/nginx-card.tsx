@@ -10,13 +10,13 @@ import type { NginxHintCopy } from './hints';
 import { NginxPlot } from './nginx-plot';
 import type { NginxQueryPhase } from './query-phase';
 
-const CARD = 'flex min-w-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]';
+const CARD = 'flex h-full w-full min-w-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]';
 
 export const NGINX_SPAN = {
-  quarter: 'flex min-w-0 min-[1100px]:col-span-3',
-  third: 'flex min-w-0 min-[1100px]:col-span-4',
-  half: 'flex min-w-0 min-[1100px]:col-span-6',
-  threeQuarter: 'flex min-w-0 min-[1100px]:col-span-9'
+  quarter: 'flex w-full min-w-0 min-[1100px]:col-span-3',
+  third: 'flex w-full min-w-0 min-[1100px]:col-span-4',
+  half: 'flex w-full min-w-0 min-[1100px]:col-span-6',
+  threeQuarter: 'flex w-full min-w-0 min-[1100px]:col-span-9'
 } as const;
 
 export function NginxRetryBanner({
@@ -449,7 +449,7 @@ export function NginxRankCard({
   const peak = rows.reduce((max, row) => Math.max(max, row.value ?? 0), 0);
   const cap = rows.length <= 1 ? 0.6 : 1;
   return (
-    <section id={anchor} className={`${CARD} h-[280px]`} data-nginx-rank={title}>
+    <section id={anchor} className={`${CARD} !h-[280px]`} data-nginx-rank={title}>
       <div className="flex items-center px-3 pt-3">
         <NginxCardTitle label={title} hint={hint} className="text-[14px] font-semibold text-[var(--color-text-1)]" />
       </div>
