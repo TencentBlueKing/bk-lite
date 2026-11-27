@@ -137,7 +137,7 @@ def test_terminal_failure_keeps_original_jobs_and_blocks_ack(flow):
         assert dispatch.call_count == 2
     execution = ticket.auto_executions.get()
     assert execution.status == "failed" and not execution.detail["retryable"]
-    assert "第 1 行" in execution.detail["reason"]
+    assert "第 1 项" in execution.detail["reason"]
     assert execution.detail["job_template"]["rows"][0]["job_id"] == jobs[0].pk
     client.complete_external_job.assert_not_called()
 
@@ -181,3 +181,145 @@ def test_publisher_requires_live_job_permission_in_selected_team():
     actor.save()
     with pytest.raises(PermissionError):
         require_job_permission(actor.username, actor.domain, group.pk)
+
+
+def configure_execution(ticket, **config):
+    design = ticket.workflow_version.design
+    design["nodes"][1]["auto"].update(config)
+    ticket.workflow_version.save(update_fields=["design"])
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_batches_wait_for_success_and_freeze_parameters(flow, failed):
+    ticket, _, _, client, job = flow
+    configure_execution(ticket, mode="each", collection="form.hosts", batch_size=2, params={"spec": {"source": "item", "key": ""}})
+    ticket.form_data = {"hosts": ["a", "b", "c"]}
+    ticket.save()
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise") as dispatch,
+    ):
+        assert not process_job(client, job)
+        summary = ticket.auto_executions.get().detail["job_template"]
+        assert (summary["mode"], summary["batch_size"], summary["total"]) == ("each", 2, 3)
+        assert dispatch.call_count == 2
+        ticket.form_data = {"hosts": ["changed"]}
+        ticket.save()
+        first, second = JobExecution.objects.order_by("id")
+        JobExecution.objects.filter(pk=first.pk).update(status="success")
+        assert not process_job(client, job)
+        assert dispatch.call_count == 2
+        JobExecution.objects.filter(pk=second.pk).update(status="failed" if failed else "success")
+        assert not process_job(client, job)
+        if failed:
+            assert ticket.auto_executions.get().status == "failed"
+            assert dispatch.call_count == 2
+        else:
+            last = JobExecution.objects.latest("id")
+            assert shlex.split(last.params) == ["c"]
+            assert not process_job(client, job)
+            JobExecution.objects.filter(pk=last.pk).update(status="success")
+            assert process_job(client, job)
+            assert dispatch.call_count == 3
+
+
+@pytest.mark.parametrize("source,key,expected", [("system", "sn", "REQ-1"), ("literal", "sample", "sample"), ("form", "region", "east")])
+def test_once_uses_scalar_parameters_without_collection(flow, source, key, expected):
+    ticket, _, _, client, job = flow
+    configure_execution(ticket, mode="once", params={"spec": {"source": source, "key": key}})
+    ticket.form_data = {"region": "east"}
+    ticket.save()
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise"),
+    ):
+        assert not process_job(client, job)
+        assert shlex.split(JobExecution.objects.get().params) == [expected]
+
+
+def test_uses_upstream_output_collection(flow):
+    ticket, _, _, client, job = flow
+    configure_execution(ticket, mode="each", collection="output.found", params={"spec": {"source": "item", "key": "host"}})
+    ticket.workflow_version.design["nodes"].append({"id": "lookup", "type": "auto", "auto": {"kind": "integration", "result_field": "found"}})
+    ticket.workflow_version.save()
+    ticket.form_data = {"found": [{"host": "abc"}]}
+    ticket.save()
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise"),
+    ):
+        assert not process_job(client, job)
+        assert shlex.split(JobExecution.objects.get().params) == ["abc"]
+
+
+@pytest.mark.parametrize("bad", ["required_last", "invalid_batch", "not_collection", "unknown_output", "no_item", "oversized"])
+def test_batch_preflight_dispatches_nothing_on_invalid_input(flow, bad):
+    ticket, _, _, client, job = flow
+    params = {"spec": {"source": "item", "key": ""}}
+    configure_execution(
+        ticket,
+        mode="once" if bad == "no_item" else "each",
+        collection="output.hosts" if bad == "unknown_output" else "form.hosts",
+        batch_size=0 if bad == "invalid_batch" else 1,
+        params=params,
+    )
+    value = {"required_last": ["first", ""], "not_collection": "a", "oversized": ["a"] * 101}
+    ticket.form_data = {"hosts": value.get(bad, ["a"])}
+    ticket.save()
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise") as dispatch,
+    ):
+        assert not process_job(client, job)
+        assert ticket.auto_executions.get().status == "failed"
+        assert not JobExecution.objects.exists()
+        dispatch.assert_not_called()
+
+
+def test_rechecks_authorization_before_next_batch(flow):
+    ticket, _, _, client, job = flow
+    configure_execution(ticket, batch_size=1)
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission", side_effect=[None, PermissionError("权限已撤回")]),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise") as dispatch,
+    ):
+        assert not process_job(client, job)
+        JobExecution.objects.all().update(status="success")
+        assert not process_job(client, job)
+        assert dispatch.call_count == 1
+        execution = ticket.auto_executions.get()
+        assert not execution.detail["retryable"] and execution.detail["reason"] == "权限已撤回"
+
+
+def test_inflight_legacy_receipts_finish_without_rerunning_jobs(flow):
+    ticket, _, _, client, job = flow
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise") as dispatch,
+    ):
+        assert not process_job(client, job)
+        execution = ticket.auto_executions.get()
+        execution.detail["job_template"] = {"rows": execution.detail["job_template"]["rows"]}
+        execution.save()
+        JobExecution.objects.all().update(status="success")
+        assert process_job(client, job)
+        assert dispatch.call_count == 2
+
+
+def test_parallel_mode_dispatches_all_items_and_waits_for_every_result(flow):
+    ticket, _, _, client, job = flow
+    configure_execution(ticket, mode="each", dispatch_mode="parallel", collection="form.machines")
+    with (
+        patch("apps.itsm.services.job_template_delivery.require_job_permission"),
+        patch("apps.job_mgmt.services.execution_service.ExecutionService._dispatch_or_raise") as dispatch,
+    ):
+        assert not process_job(client, job)
+        records = list(JobExecution.objects.order_by("pk"))
+        assert len(records) == 2
+        progress = ticket.auto_executions.get().detail["job_template"]
+        assert progress["dispatch_mode"] == "parallel" and progress["batch_size"] == 2
+        JobExecution.objects.filter(pk=records[0].pk).update(status="success")
+        assert not process_job(client, job)
+        assert dispatch.call_count == 2
+        JobExecution.objects.filter(pk=records[1].pk).update(status="success")
+        assert process_job(client, job)

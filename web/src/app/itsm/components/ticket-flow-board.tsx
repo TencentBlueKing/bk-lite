@@ -6,6 +6,7 @@ import dagre from 'dagre';
 import { Button, Modal, Popover, Select, Tag, Tooltip } from 'antd';
 import { AimOutlined, LoadingOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
 import { NodeGlyph } from './node-glyph';
+import { jobProgressLabel, TicketJobRecords } from './ticket-job-progress';
 import { NODE_PALETTE, runningNodeLabel } from '../constants/node-catalog';
 import { formatTicketTime } from './ticket-collaboration';
 import { useMemo, useState } from 'react';
@@ -18,6 +19,8 @@ const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'bran
 
 interface FlowNodeData extends Record<string, unknown> {
   label: string;
+  job_progress?: TicketProgressNode['job_progress'];
+  job_records?: TicketProgressNode['job_records'];
   executing?: boolean;
   nodeType: string;
   state: TicketProgressNode['state'];
@@ -42,12 +45,15 @@ const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝
 export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
   const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
   const statusLabel = data.executing ? runningNodeLabel(data.nodeType) : STATE_LABEL[outcome];
+  const progress = data.job_progress && jobProgressLabel(data.job_progress, data.job_records || []);
   const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
   return (
-    <Popover trigger={['hover', 'focus']} title={data.label} content={
+    <Popover trigger={data.job_progress ? ['click', 'focus'] : ['hover', 'focus']} title={data.label} content={
       <div className="flex max-w-xs flex-col gap-2 text-xs">
         <div className="flex flex-wrap gap-1"><Tag>{typeLabel}</Tag><Tag>{statusLabel}</Tag></div>
         {data.assignees.length ? <div className="flex flex-wrap gap-1">{data.assignees.map((name) => <Tag key={name} icon={<UserOutlined />}>{name}</Tag>)}</div> : null}
+        {progress && <span>{progress}</span>}
+        {data.job_progress && !!data.job_progress.total && <TicketJobRecords progress={data.job_progress} records={data.job_records || []} />}
         {data.started_at ? <span>到达时间 {formatTicketTime(data.started_at)}</span> : null}
         {data.finished_at ? <span>处理时间 {formatTicketTime(data.finished_at)}</span> : null}
       </div>
@@ -58,7 +64,7 @@ export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>
         <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
         <div className="flex h-full flex-col justify-center gap-2 rounded-[10px] bg-[var(--color-bg)] px-3 shadow-[inset_0_1px_2px_color-mix(in_srgb,var(--color-text-1)_4%,transparent)]">
           <div className="flex min-w-0 items-center gap-2"><NodeGlyph type={data.nodeType} compact /><span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span></div>
-          {data.assignees.length ? <div className="flex min-w-0 items-center gap-1">
+          {progress ? <span className="truncate text-xs text-[var(--color-text-2)]">{progress}</span> : data.assignees.length ? <div className="flex min-w-0 items-center gap-1">
             <Tag icon={<UserOutlined />} className="!m-0 !flex !max-w-[150px] !items-center !gap-1"><span className="truncate">{data.assignees[0]}</span></Tag>
             {data.assignees.length > 1 ? <Tag className="!m-0">+{data.assignees.length - 1}</Tag> : null}
           </div> : null}
@@ -87,10 +93,11 @@ const layout = (nodes: TicketProgressNode[], edges: TicketProgressEdge[]) => {
     return {
       id: node.id,
       type: 'progress',
+      style: { pointerEvents: 'auto' as const },
       initialWidth: NODE_WIDTH,
       initialHeight: NODE_HEIGHT,
       position: { x: (position?.x || 0) - NODE_WIDTH / 2, y: (position?.y || 0) - NODE_HEIGHT / 2 },
-      data: { label: node.name, nodeType: node.type, state: node.state, executing: node.executing, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
+      data: { label: node.name, job_progress: node.job_progress, job_records: node.job_records, nodeType: node.type, state: node.state, executing: node.executing, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
     };
   });
 };

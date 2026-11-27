@@ -43,6 +43,7 @@ import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
 import { NodeGlyph } from './node-glyph';
+import { jobBadge, upstreamJobOutputs } from './job-node-config';
 import { JobNodeSettings } from './job-node-settings';
 import { IntegrationNodeSettings } from './integration-node-settings';
 import { useTranslation } from '@/utils/i18n';
@@ -90,7 +91,11 @@ function ItsmNode({ data, selected }: NodeProps<ItsmFlowNodeType>) {
       <NodeGlyph type={data.nodeType} />
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span>
-        <span className="truncate text-[11px] text-[var(--color-text-3)]">{typeLabel}</span>
+        {data.auto?.kind === 'job_template' ? (
+          <span className="w-fit max-w-full truncate rounded bg-[var(--color-primary-bg-active)] px-1 text-[11px] text-[var(--color-primary)]">
+            {jobBadge(data.auto)}
+          </span>
+        ) : <span className="truncate text-[11px] text-[var(--color-text-3)]">{typeLabel}</span>}
       </div>
       {data.nodeType === 'end' ? null : (
         <Handle type="source" position={Position.Right} isConnectableEnd={false} className={handleClass} />
@@ -525,7 +530,7 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
                   {selected.data.auto?.kind === 'vmware_provision' ? (
                     <span className="text-xs text-[var(--color-text-3)]">交付环境：{String(selected.data.auto.profile)}</span>
                   ) : selected.data.auto?.kind === 'job_template' ? (
-                    <JobNodeSettings config={selected.data.auto} fields={formFields} onChange={auto => patchSelected({ auto })} />
+                    <JobNodeSettings config={selected.data.auto} fields={formFields} outputs={upstreamJobOutputs(selected.id, nodes, edges)} onChange={auto => patchSelected({ auto })} />
                   ) : selected.data.auto?.kind === 'integration' ? (
                     <IntegrationNodeSettings key={selected.id} config={selected.data.auto} onChange={auto => patchSelected({ auto })} />
                   ) : (

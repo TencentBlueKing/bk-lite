@@ -70,3 +70,16 @@ it('逐行打开对应的作业平台执行记录', () => {
   expect(screen.getByRole('link', { name: '第 1 行 · 作业 #41' }).getAttribute('href')).toBe('/job/execution/job-record?id=41');
   expect(screen.getByRole('link', { name: '第 2 行 · 作业 #67' }).getAttribute('href')).toBe('/job/execution/job-record?id=67');
 });
+
+it('失败后保留该项记录，尚未执行的项无作业链接', () => {
+  const item: TicketHistoryItem = {
+    id: 'auto-1', node_id: 'job', name: '清点资源', operator: '系统', state: 'failed',
+    action: 'auto', action_label: '自动节点失败', started_at: '', finished_at: '', message: '检查失败',
+    job_progress: { mode: 'each', total: 3, batch_size: 1 }, job_records: [{ row: 1, job_id: 8, status: 'timeout' }],
+  };
+  render(<TicketHistory items={[item]} nodes={[]} />);
+  fireEvent.click(screen.getByText('已完成 1/3 项 · 第 1/3 批 · 作业记录'));
+  expect(screen.getByText('超时')).toBeTruthy();
+  expect(screen.getAllByText('未派发')).toHaveLength(2);
+  expect(screen.getAllByRole('link')).toHaveLength(1);
+});

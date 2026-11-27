@@ -190,7 +190,22 @@ export interface TicketLogItem {
   message: string;
 }
 
+export interface TicketJobProgress {
+  dispatch_mode?: 'batch' | 'parallel';
+  mode: 'once' | 'each';
+  total?: number;
+  batch_size?: number;
+}
+
+export interface TicketJobRecord {
+  row: number;
+  job_id: number;
+  status?: string;
+}
+
 export interface TicketProgressNode {
+  job_progress?: TicketJobProgress;
+  job_records?: TicketJobRecord[];
   executing?: boolean;
   outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected' | 'failed';
   id: string;
@@ -235,7 +250,8 @@ export interface AutoExecutionReview {
 }
 
 export interface TicketHistoryItem {
-  job_records?: { row: number; job_id: number }[];
+  job_progress?: TicketJobProgress;
+  job_records?: TicketJobRecord[];
   executing?: boolean;
   id: string;
   node_id: string;

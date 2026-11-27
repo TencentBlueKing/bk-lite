@@ -7,6 +7,7 @@ import { LoadingOutlined, UserOutlined } from '@ant-design/icons';
 import { NODE_PALETTE, runningNodeLabel } from '../constants/node-catalog';
 import type { AutoExecutionReview, TicketHistoryItem, TicketProgressNode } from '../types';
 import { NodeGlyph } from './node-glyph';
+import { jobProgressLabel, TicketJobRecords } from './ticket-job-progress';
 import { formatTicketTime } from './ticket-collaboration';
 
 interface TicketHistoryProps {
@@ -69,7 +70,10 @@ export function TicketHistory({ items, nodes, retry, reconcile, busy }: TicketHi
           {item.action === 'auto_retry' || item.action === 'return' || item.action === 'auto_reconcile' ? <Tag>{item.action_label}</Tag> : null}
         </div>
         {note ? <span className="whitespace-pre-wrap break-words text-xs text-[var(--color-text-2)]">{note}</span> : null}
-        {item.job_records?.map(record => <a key={record.job_id} className="self-start text-xs" target="_blank" rel="noopener noreferrer"
+        {item.job_progress && !!item.job_progress.total ? <details className="max-w-sm text-xs">
+          <summary className="cursor-pointer py-1 text-[var(--color-primary)]">{jobProgressLabel(item.job_progress, item.job_records || [])} · 作业记录</summary>
+          <TicketJobRecords progress={item.job_progress} records={item.job_records || []} />
+        </details> : item.job_records?.map(record => <a key={record.job_id} className="self-start text-xs" target="_blank" rel="noopener noreferrer"
           href={`/job/execution/job-record?id=${record.job_id}`}>
           第 {record.row} 行 · 作业 #{record.job_id}
         </a>)}

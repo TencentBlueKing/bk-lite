@@ -1,5 +1,6 @@
 import React, { type ComponentProps } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProgressNode } from './ticket-flow-board';
 
@@ -42,4 +43,16 @@ it.each(['call', 'subprocess', 'subprocess_submit'])('调用节点 %s 显示正�
   const props = { data: { label: '调用交付子流程', nodeType, state: 'current', executing: true, assignees: [] } } as ComponentProps<typeof ProgressNode>;
   render(<ProgressNode {...props} />);
   expect(screen.getByText('等待子流程办理')).toBeTruthy();
+});
+
+it('逐项节点展示实际回执进度，点开查看已派发和未派发项', async () => {
+  const props = { data: { label: '清点资源', nodeType: 'auto', state: 'current', executing: true, assignees: [],
+    job_progress: { mode: 'each', total: 3, batch_size: 1 },
+    job_records: [{ row: 1, job_id: 15, status: 'success' }, { row: 2, job_id: 16, status: 'running' }],
+  } } as ComponentProps<typeof ProgressNode>;
+  render(<ProgressNode {...props} />);
+  expect(screen.getByText('已完成 1/3 项 · 第 2/3 批')).toBeTruthy();
+  await userEvent.click(screen.getByLabelText('清点资源，执行中'));
+  expect(await screen.findByText('未派发')).toBeTruthy();
+  expect(screen.getByRole('link', { name: '作业 #16' }).getAttribute('href')).toBe('/job/execution/job-record?id=16');
 });

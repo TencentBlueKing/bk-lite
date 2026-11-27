@@ -108,3 +108,27 @@ def test_integration_catalog_read_grants_do_not_require_execution_or_target_acce
         assert json.loads(integration_job_catalog(request).content)["data"]["can_execute"] is True
         request.user.permission["itsm"] = set()
         assert integration_job_catalog(request).status_code == 403
+
+
+def test_job_sources_depend_on_execution_mode_and_upstream_outputs():
+    from apps.itsm.views.workflow_jobs import validate_job_sources
+
+    fields = {"sizes": {"key": "sizes", "type": "multiselect"}, "reason": {"key": "reason", "type": "textarea"}}
+    params = [{"name": "size", "is_required": True}]
+    mapping = {"params": {"size": {"source": "system", "key": "sn"}}}
+    validate_job_sources(mapping, params, fields, {"response"})
+    each = {**mapping, "mode": "each", "collection": "form.sizes", "batch_size": 1, "params": {"size": {"source": "item", "key": ""}}}
+    validate_job_sources(each, params, fields, {"response"})
+    validate_job_sources({**each, "collection": "output.response"}, params, fields, {"response"})
+    for invalid in (
+        {**each, "batch_size": False},
+        {**each, "batch_size": 0},
+        {**each, "collection": "form.reason"},
+        {**each, "collection": "output.future"},
+        {**each, "mode": "once"},
+        {"params": {"size": {"source": "system", "key": "password"}}},
+        {"params": {"size": {"source": "form", "key": "sizes"}}},
+        {"params": {}},
+    ):
+        with pytest.raises(ValueError):
+            validate_job_sources(invalid, params, fields, {"response"})

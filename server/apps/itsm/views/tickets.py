@@ -19,7 +19,7 @@ from apps.itsm.services.form.fetch import walk
 from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, protected_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
-from apps.itsm.services.ticket.history import node_progress, ticket_history
+from apps.itsm.services.ticket.history import index_history_by_node, node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.returns import return_targets
 from apps.itsm.services.ticket.service import TicketService, _find_node, applicant_can_submit, workflow_schema
@@ -458,6 +458,8 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
 
         progress_history = [row for row in history if row["started_at"] and parse_datetime(row["started_at"]) >= round_start]
 
+    progress_history_by_node = index_history_by_node(progress_history)
+
     task_rows = []
     for task in pending:
         node = _find_node(design, node_id=task.node_id)
@@ -529,7 +531,8 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
                     "state": "failed" if node.get("id") in failed_ids else _node_state(node, done_ids, pending_ids, status_key),
                     "assignees": [task.assignee for task in pending if task.node_id == (node.get("id") or "") and task.assignee],
                 },
-                progress_history,
+                progress_history_by_node,
+                node.get("auto"),
             )
             for node in (design.get("nodes") or [])
         ],
