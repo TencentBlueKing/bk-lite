@@ -53,6 +53,59 @@ def _uses_bucket_window(template: str) -> bool:
     return any(token in template for token in _BUCKET_COUNT_TOKENS)
 
 
+def _positive_int(value) -> int | None:
+    if isinstance(value, bool) or isinstance(value, float):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.isdigit():
+        number = int(value)
+        return number if number > 0 and str(number) == value else None
+    return None
+
+
+_DEFAULT_COLLECTION_INTERVAL_SECONDS = 60
+
+
+def _collection_interval_seconds(value) -> int:
+    """采集间隔。缺省或非法时按 60 秒，其它对象不传这个字段也不受影响。"""
+    parsed = _positive_int(value)
+    return parsed if parsed is not None else _DEFAULT_COLLECTION_INTERVAL_SECONDS
+
+
+def _fill_dashboard_placeholders(
+    query: str,
+    template: str,
+    *,
+    start: int,
+    end: int,
+    step_seconds: int | None,
+    interval_seconds,
+) -> str:
+    """__$window__ 仍是整段范围，稀疏计数桶只改这一处。
+
+    有步长时 __$step__ 跟请求步长，__$rate_window__ 是 max(4×采集间隔, step)。
+    没有步长（即时查询、prepare）时 __$step__ 用采集间隔，__$rate_window__ 用
+    4×采集间隔，不退回整段 __$window__。采集间隔缺失或非法时按 60 秒。
+    没有这两个占位的模板不读采集间隔，替换结果与原来一致。
+    """
+    window = _query_window(start, end)
+    if step_seconds and _uses_bucket_window(template):
+        window = _format_duration(step_seconds)
+    query = query.replace("__$window__", window)
+    if "__$step__" not in query and "__$rate_window__" not in query:
+        return query
+    interval = _collection_interval_seconds(interval_seconds)
+    if step_seconds:
+        step_text = _format_duration(int(step_seconds))
+        rate_window = max(4 * interval, int(step_seconds))
+    else:
+        step_text = _format_duration(interval)
+        rate_window = 4 * interval
+    query = query.replace("__$step__", step_text)
+    return query.replace("__$rate_window__", _format_duration(rate_window))
+
+
 @dataclass(frozen=True)
 class DashboardQueryCapability:
     id: str
@@ -156,6 +209,7 @@ def build_dashboard_query(
     end: int,
     params=None,
     step_seconds: int | None = None,
+    interval_seconds=None,
 ) -> str:
     instance_keys = [str(key).strip() for key in monitor_object.instance_id_keys or [] if str(key).strip()]
     if not instance_keys:
@@ -179,10 +233,14 @@ def build_dashboard_query(
         raise AuthorizedMetricQueryError("查询能力与监控对象不匹配", code="capability_object_mismatch")
 
     query = join_label_queries(capability.template, matcher_groups)
-    window = _query_window(start, end)
-    if step_seconds and _uses_bucket_window(capability.template):
-        window = _format_duration(step_seconds)
-    query = query.replace("__$window__", window)
+    query = _fill_dashboard_placeholders(
+        query,
+        capability.template,
+        start=start,
+        end=end,
+        step_seconds=step_seconds,
+        interval_seconds=interval_seconds,
+    )
     if "__$" in query:
         raise AuthorizedMetricQueryError("查询能力参数不完整", code="capability_template_invalid")
     return exclude_script_series(query)

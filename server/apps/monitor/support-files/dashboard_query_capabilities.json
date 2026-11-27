@@ -277,6 +277,13 @@
       "template": "mongodb_member_status{__$labels__}"
     },
     {
+      "id": "dashboard:v1:07462ae7",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "max by (instance_id) (elasticsearch_thread_pool_write_queue{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:07527e4f",
       "object_names": [
         "Redis"
@@ -557,6 +564,13 @@
       "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
     },
     {
+      "id": "dashboard:v1:10c55b7d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_process_open_file_descriptors{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:10ddbbf7",
       "object_names": [
         "Switch"
@@ -667,6 +681,13 @@
         "K3SNode"
       ],
       "template": "mem_shared{instance_type=\"k3s\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:1459c875",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (rate(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[__$rate_window__]) * 1024))"
     },
     {
       "id": "dashboard:v1:145e9382",
@@ -811,6 +832,13 @@
       "template": "win_ad_DRA_Pending_Replication_Operations{instance_type=\"active_directory\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:188086da",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_request_tripped{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:18caab92",
       "object_names": [
         "Apache"
@@ -856,6 +884,13 @@
       "template": "min by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_status_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:19e21829",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_fielddata_tripped{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:1a1c8bea",
       "object_names": [
         "K3SCluster"
@@ -875,6 +910,13 @@
         "Cluster"
       ],
       "template": "count(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:1ab7c0d1",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_request_tripped{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:1adbf7f6",
@@ -910,6 +952,13 @@
         "Docker"
       ],
       "template": "topk(8, max by (container_name) (docker_container_mem_usage_percent{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:1b678d73",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_cluster_health_status_code{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:1befba65",
@@ -1188,6 +1237,13 @@
       "template": "host_mem_swap_total_bytes{instance_type=\"os\", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type=\"os\", __$labels__} or mem_swap_total{instance_type=\"os\", __$labels__} or mem_swap_total_gauge{instance_type=\"os\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:24f3964e",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (elasticsearch_http_current_open{__$labels__})"
+    },
+    {
       "id": "dashboard:v1:24fd55fd",
       "object_names": [
         "Host"
@@ -1342,6 +1398,13 @@
       "template": "http_response_result_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:2b0aea94",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_thread_pool_write_queue{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:2b101c51",
       "object_names": [
         "Mysql"
@@ -1382,6 +1445,20 @@
         "Pod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k8s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:2c07adc1",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:2c32e586",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_process_open_file_descriptors{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:2d0e5ee1",
@@ -1489,6 +1566,13 @@
       "template": "count({instance_type='mongodb', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:31101f50",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_thread_pool_search_queue{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:3142769f",
       "object_names": [
         "TCPPort"
@@ -1559,6 +1643,13 @@
       "template": "rate(mysql_table_locks_waited{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:32d0939a",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_thread_pool_search_queue{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:32fb7fd4",
       "object_names": [
         "MongoDB"
@@ -1620,6 +1711,13 @@
         "Host"
       ],
       "template": "max by (instance_id) (disk_used_percent{instance_type=\"os\", __$labels__} or host_disk_used_percent_gauge{instance_type=\"os\", __$labels__} or disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_used_percent_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:3507cd91",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_thread_pool_search_queue{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:350832a9",
@@ -1841,6 +1939,13 @@
       "template": "max by (instance_id, schema, digest, digest_text) (mysql_perf_schema_events_statements_total{__$labels__}) and on (instance_id, digest) topk(20, max by (instance_id, digest) (mysql_perf_schema_events_statements_seconds_total{__$labels__}))"
     },
     {
+      "id": "dashboard:v1:3a2e7083",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_unassigned_shards{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:3a6fe79e",
       "object_names": [
         "Mysql"
@@ -1967,6 +2072,20 @@
         "K3SNode"
       ],
       "template": "rate(net_packets_recv{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:3f5870dc",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_jvm_mem_heap_used_percent{__$labels__}[24h])"
+    },
+    {
+      "id": "dashboard:v1:3f93689d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_jvm_mem_heap_used_percent{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:3f98dbb9",
@@ -2430,6 +2549,13 @@
       "template": "mem_cached{instance_type=\"k3s\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:4d451386",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_fs_data_0_available_in_bytes{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:4d8c5eda",
       "object_names": [
         "IIS"
@@ -2780,6 +2906,13 @@
       "template": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__} * 1000"
     },
     {
+      "id": "dashboard:v1:593323ca",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_request_tripped{__$labels__}[__$window__]))"
+    },
+    {
       "id": "dashboard:v1:59661395",
       "object_names": [
         "Nginx"
@@ -2871,6 +3004,13 @@
       "template": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:5c718964",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_unassigned_shards{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:5c738e40",
       "object_names": [
         "Node"
@@ -2918,6 +3058,13 @@
         "K3SPod"
       ],
       "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:5dd39522",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_cluster_health_unassigned_shards{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:5ddfa051",
@@ -3053,6 +3200,13 @@
       "template": "topk(10, sum by (pod) (rate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])))"
     },
     {
+      "id": "dashboard:v1:6287e453",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$step__]))"
+    },
+    {
       "id": "dashboard:v1:62ad801a",
       "object_names": [
         "Active Directory"
@@ -3158,6 +3312,13 @@
         "Kafka"
       ],
       "template": "topk(10, max by (consumergroup, topic, partition) (kafka_consumergroup_lag_gauge{__$labels__} >= 0))"
+    },
+    {
+      "id": "dashboard:v1:648f5473",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_thread_pool_write_queue{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:64d07958",
@@ -3560,6 +3721,13 @@
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:742645c8",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_process_cpu_percent{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:74481caa",
       "object_names": [
         "Kafka"
@@ -3579,6 +3747,13 @@
         "Host"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
+      "id": "dashboard:v1:75c512bc",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (rate(elasticsearch_http_total_opened{__$labels__}[__$rate_window__]))"
     },
     {
       "id": "dashboard:v1:76ff4618",
@@ -3733,6 +3908,13 @@
         "RabbitMQ"
       ],
       "template": "100 * (rabbitmq_node_mem_used{__$labels__} / clamp_min(rabbitmq_node_mem_limit{__$labels__}, 1))"
+    },
+    {
+      "id": "dashboard:v1:7c5c2bd7",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_active_primary_shards{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:7c7235e5",
@@ -3967,6 +4149,13 @@
         "Host"
       ],
       "template": "mem_shared{instance_type=\"os\", __$labels__} or mem_shared_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:832e148f",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_indices_docs_deleted{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:839d52b6",
@@ -4272,11 +4461,25 @@
       "template": "100 * clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}) - (sum(prometheus_remote_write_kube_deployment_status_replicas_unavailable{instance_type=\"k8s\",__$labels__}) or vector(0)), 0) / clamp_min(sum(prometheus_remote_write_kube_deployment_spec_replicas{instance_type=\"k8s\",__$labels__}),1)"
     },
     {
+      "id": "dashboard:v1:8d9f371d",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_parent_tripped{__$labels__}[__$step__]))"
+    },
+    {
       "id": "dashboard:v1:8e9c1f97",
       "object_names": [
         "IIS"
       ],
       "template": "win_iis_web_service_Bytes_Received_persec{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8ea3b1c8",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:8ebd3e28",
@@ -4305,6 +4508,13 @@
         "Host"
       ],
       "template": "(100 - cpu_usage_idle{cpu=\"cpu-total\", instance_type=\"os\", __$labels__}) or host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__} or cpu_usage_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or cpu_usage_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:8f9b0dcb",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:904bf908",
@@ -4503,6 +4713,13 @@
       "template": "topk(10, avg_over_time((sum(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, src_port, dst, protocol, dst_port))[__$window__]))"
     },
     {
+      "id": "dashboard:v1:966d463f",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_fs_data_0_available_in_bytes{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:969bb3f3",
       "object_names": [
         "Haproxy"
@@ -4573,6 +4790,13 @@
       "template": "count({instance_type='elasticsearch', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:98a1a300",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_fs_data_0_available_in_bytes{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:98f119bb",
       "object_names": [
         "Etcd"
@@ -4634,6 +4858,13 @@
         "Docker"
       ],
       "template": "sum(rate(docker_container_net_tx_errors{__$labels__}[__$window__])) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:9abc6bf9",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "rate(elasticsearch_process_cpu_total_in_millis{__$labels__}[__$rate_window__]) / 1000 * 100"
     },
     {
       "id": "dashboard:v1:9ad0f351",
@@ -4923,6 +5154,13 @@
       "template": "count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)"
     },
     {
+      "id": "dashboard:v1:a48ac085",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_process_cpu_percent{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:a5122dbd",
       "object_names": [
         "K3SCluster"
@@ -5082,6 +5320,13 @@
         "Hardware Server"
       ],
       "template": "max by (name) (redfish_fan_speed_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__} or ipmi_sensor_value{instance_type='hardware_server', unit=\"rpm\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:aa210a4b",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id) (increase(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__]))"
     },
     {
       "id": "dashboard:v1:aa39e9d2",
@@ -5267,6 +5512,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (max by (instance_id, pxname) (haproxy_bck{svname=\"BACKEND\",__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:b3cbce23",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_jvm_mem_heap_used_percent{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:b44e88a3",
@@ -5502,11 +5754,25 @@
       "template": "sum by (instance_id) (rate(oracledb_activity_user_rollbacks_gauge{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:ba4a99c4",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:ba7292ee",
       "object_names": [
         "Hardware Server"
       ],
       "template": "count({instance_type='hardware_server', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:ba8c453f",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_process_cpu_percent{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:ba92b79a",
@@ -5535,6 +5801,13 @@
         "RabbitMQ"
       ],
       "template": "rabbitmq_overview_messages{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:bb140db1",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_indices_docs_deleted{__$labels__}))"
     },
     {
       "id": "dashboard:v1:bbeaba49",
@@ -5663,6 +5936,13 @@
       "template": "tomcat_connector_max_time{__$labels__}"
     },
     {
+      "id": "dashboard:v1:c11a5623",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_http_total_opened{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:c1a856cc",
       "object_names": [
         "MongoDB"
@@ -5696,6 +5976,13 @@
         "Apache"
       ],
       "template": "apache_IdleWorkers{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:c2904c26",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "sum by (instance_id)(increase(elasticsearch_breakers_request_tripped{__$labels__}[__$step__]))"
     },
     {
       "id": "dashboard:v1:c29c1921",
@@ -5966,6 +6253,13 @@
       "template": "prometheus_remote_write_mem_swap_free{instance_type=\"k8s\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:cbbc6eb6",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_cluster_health_active_primary_shards{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:cc33995b",
       "object_names": [
         "Kafka"
@@ -6057,6 +6351,13 @@
         "Ping"
       ],
       "template": "avg(ping_result_code{__$labels__} == bool 1) * 100"
+    },
+    {
+      "id": "dashboard:v1:ce4a8c54",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_http_current_open{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:ce8c83e1",
@@ -6250,6 +6551,13 @@
       "template": "mongodb_cursor_timed_out_count{__$labels__}"
     },
     {
+      "id": "dashboard:v1:d509b13f",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_fs_io_stats_total_write_kilobytes{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:d55dbd27",
       "object_names": [
         "K3SCluster"
@@ -6346,6 +6654,13 @@
         "Mysql"
       ],
       "template": "mysql_uptime{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:d7cfe35b",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_thread_pool_search_queue{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:d7efb00d",
@@ -6504,6 +6819,13 @@
       "template": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
     },
     {
+      "id": "dashboard:v1:ddbddb56",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_process_open_file_descriptors{__$labels__}))"
+    },
+    {
       "id": "dashboard:v1:ddc94289",
       "object_names": [
         "K3SNode"
@@ -6581,6 +6903,13 @@
       "template": "rate(sqlserver_waitstats_wait_time_ms{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:e07d4f78",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_active_primary_shards{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:e0d437df",
       "object_names": [
         "IIS"
@@ -6614,6 +6943,13 @@
         "K3SPod"
       ],
       "template": "100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k3s\",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k3s\", resource=\"memory\",__$labels__}) by (instance_id,pod) )"
+    },
+    {
+      "id": "dashboard:v1:e1684e85",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_status_code{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:e16e05c3",
@@ -6672,6 +7008,20 @@
       "template": "avg(ping_result_code{__$labels__} == bool 2) * 100"
     },
     {
+      "id": "dashboard:v1:e347033c",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "max by (instance_id) (elasticsearch_thread_pool_search_queue{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:e35d6f04",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_http_total_opened{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:e39095be",
       "object_names": [
         "MSSQL"
@@ -6691,6 +7041,13 @@
         "MongoDB"
       ],
       "template": "mongodb_vsize_megabytes{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e46482d0",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_indices_docs_deleted{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:e47a12b1",
@@ -6721,6 +7078,13 @@
         "Exchange"
       ],
       "template": "http_response_response_time{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e614b70e",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_cluster_health_status_code{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:e61b30e3",
@@ -6793,6 +7157,13 @@
       "template": "rate(mysql_created_tmp_tables{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:e9e59945",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_parent_tripped{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:ea21a694",
       "object_names": [
         "Cluster"
@@ -6835,6 +7206,13 @@
       "template": "100 * sum(prometheus_remote_write_mem_used{instance_type=\"k8s\",__$labels__}) / sum(prometheus_remote_write_mem_total{instance_type=\"k8s\",__$labels__})"
     },
     {
+      "id": "dashboard:v1:ec07d833",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_http_current_open{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:ec2e434f",
       "object_names": [
         "Exchange"
@@ -6854,6 +7232,20 @@
         "MSSQL"
       ],
       "template": "avg_over_time(sqlserver_cpu_sqlserver_process_cpu{__$labels__}[5m])"
+    },
+    {
+      "id": "dashboard:v1:ec958b0e",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_indices_docs_deleted{__$labels__}[20m])"
+    },
+    {
+      "id": "dashboard:v1:ecd1a0db",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_process_open_file_descriptors{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:ecd2bdad",
@@ -6952,6 +7344,27 @@
         "Cluster"
       ],
       "template": "sum(prometheus_remote_write_kube_node_status_condition{instance_type=\"k8s\",condition=\"Ready\",status=\"true\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f19581af",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (elasticsearch_thread_pool_write_queue{__$labels__}))"
+    },
+    {
+      "id": "dashboard:v1:f1b79962",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_fielddata_tripped{__$labels__}[20m])"
+    },
+    {
+      "id": "dashboard:v1:f1cfe8b6",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_http_current_open{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:f1d6e75b",
@@ -7222,6 +7635,13 @@
       "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:f947af2e",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "last_over_time(elasticsearch_thread_pool_write_queue{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:f95302dc",
       "object_names": [
         "Postgres"
@@ -7341,6 +7761,13 @@
       "template": "max by (instance_id) (redfish_memory_health_rollup_gauge{instance_type='hardware_server', collect_type='redfish', __$labels__})"
     },
     {
+      "id": "dashboard:v1:fed75804",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "topk(8, max by (node_name) (rate(elasticsearch_jvm_gc_collectors_young_collection_time_in_millis{__$labels__}[__$rate_window__])))"
+    },
+    {
       "id": "dashboard:v1:fed85ec2",
       "object_names": [
         "Redis"
@@ -7360,6 +7787,13 @@
         "Host"
       ],
       "template": "processes_sleeping{instance_type=\"os\", __$labels__} or processes_sleeping_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ff3e757e",
+      "object_names": [
+        "ElasticSearch"
+      ],
+      "template": "tlast_over_time(elasticsearch_breakers_parent_tripped{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:ff57711c",
