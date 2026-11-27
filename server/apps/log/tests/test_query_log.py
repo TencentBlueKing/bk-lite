@@ -3,6 +3,7 @@ import json
 import logging
 
 import pytest
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 
@@ -312,6 +313,31 @@ def test_tail_endpoint_requires_log_groups(api_client, authenticated_user, mocke
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["message"] == "缺少日志分组"
+
+
+@pytest.mark.django_db
+def test_tail_endpoint_accepts_event_stream(api_client, authenticated_user, mocker):
+    """浏览器终端只发送 Accept: text/event-stream，协商失败时界面会一直空白。"""
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+    mocker.patch(
+        "apps.log.views.search.SearchService.tail",
+        return_value=StreamingHttpResponse(
+            iter([b'data: {"message":"live-log"}\n\n']),
+            content_type="text/event-stream",
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(
+        "/api/v1/log/search/tail/?query=*&log_groups=g-1",
+        HTTP_ACCEPT="text/event-stream",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response["Content-Type"].startswith("text/event-stream")
+    assert b"live-log" in b"".join(response.streaming_content)
 
 
 @pytest.mark.django_db
@@ -1063,3 +1089,36 @@ async def test_tail_async_iter_lines_runs_in_thread_not_event_loop(mocker):
     # 修复后：iter_lines 在线程里阻塞，事件循环自由调度，counter 应已递增
     assert collected == ["line1", "line2", "line3"], f"收到的行不匹配: {collected}"
     assert counter > 0, "counter 未递增——iter_lines 仍在事件循环线程里阻塞，事件循环被冻结。" "这说明修复未生效（iter_lines 没有被卸载到线程池）。"
+
+
+class _TenLineStreamResponse:
+    status_code = 200
+    encoding = "utf-8"
+
+    def __init__(self, lines):
+        self._lines = lines
+
+    def raise_for_status(self):
+        pass
+
+    def iter_lines(self, chunk_size=None, decode_unicode=False):
+        yield from self._lines
+
+    def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_tail_reader_sleeps_every_tenth_line(mocker):
+    lines = [f"line-{index}" for index in range(10)]
+    fake_resp = _TenLineStreamResponse(lines)
+    mocker.patch("apps.log.utils.query_log.requests.post", return_value=fake_resp)
+    delays = []
+    mocker.patch("apps.log.utils.query_log.time.sleep", side_effect=delays.append)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
+    collected = [line async for line in api.tail_async("*")]
+
+    assert collected == lines
+    assert delays == [0.01]

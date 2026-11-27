@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findMatchedMenuPath,
+  findSectionMenuChildren,
   getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
   isMenuPathMatch,
@@ -349,5 +350,81 @@ describe('integration center second-layer tabs', () => {
       '/system-manager/integration-center',
     ).filter((item) => !item.isNotMenuItem);
     expect(tabs.map((item) => item.name)).toEqual(['integration_instances', 'provider_packs']);
+  });
+});
+
+describe('findSectionMenuChildren', () => {
+  const application = menu({
+    title: '应用管理',
+    url: '/system-manager/application',
+    name: 'application_list',
+    hasDetail: true,
+    children: [
+      menu({ title: '角色', url: '/system-manager/application/manage/role', name: 'application_role' }),
+      menu({ title: '数据权限', url: '/system-manager/application/manage/data', name: 'data_permission' }),
+      menu({
+        title: '自定义菜单',
+        url: '/system-manager/application/manage/menu',
+        name: 'custom_menu',
+        children: [
+          menu({
+            title: '菜单配置',
+            url: '/system-manager/application/manage/menu/config',
+            name: 'menu_config',
+            isNotMenuItem: true,
+          }),
+        ],
+      }),
+    ],
+  });
+
+  it('keeps the section sidebar when the page is nested under a directory', () => {
+    const menus = [
+      menu({
+        title: '新目录',
+        url: '',
+        name: 'folder',
+        isDirectory: true,
+        children: [application],
+      }),
+    ];
+    const names = findSectionMenuChildren(menus, '/system-manager/application/manage/role').map((item) => item.name);
+    expect(names).toEqual(['application_role', 'data_permission', 'custom_menu']);
+  });
+
+  it('keeps the asset tabs when a directory borrows an earlier page url', () => {
+    const asset = menu({
+      title: '资产',
+      url: '/cmdb/assetData',
+      name: 'asset_info',
+      children: [
+        menu({ title: '基础信息', url: '/cmdb/assetData/detail/baseInfo', name: 'asset_basic_information' }),
+        menu({ title: '资源详情', url: '/cmdb/assetData/detail/k8sResources', name: 'asset_k8s_resources' }),
+      ],
+    });
+    const names = findSectionMenuChildren(
+      [
+        menu({
+          title: '新目录',
+          url: '/cmdb/assetSearch',
+          name: 'folder',
+          isDirectory: true,
+          children: [
+            menu({ title: '搜索', url: '/cmdb/assetSearch', name: 'search' }),
+            asset,
+          ],
+        }),
+      ],
+      '/cmdb/assetData/detail/baseInfo',
+    ).map((item) => item.name);
+    expect(names).toEqual(['asset_basic_information', 'asset_k8s_resources']);
+  });
+
+  it('keeps the same sidebar on a hidden child when the page is top-level', () => {
+    const names = findSectionMenuChildren(
+      [application],
+      '/system-manager/application/manage/menu/config',
+    ).map((item) => item.name);
+    expect(names).toEqual(['application_role', 'data_permission', 'custom_menu']);
   });
 });

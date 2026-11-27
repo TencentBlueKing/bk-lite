@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncSource
 from apps.system_mgmt.services.archived_group_query import ArchivedGroupQuery
@@ -126,16 +126,33 @@ def test_archive_rejects_synced_subtree():
     assert parent.is_delete is False
 
 
-def test_archive_rejects_default_and_virtual_top():
+def test_archive_rejects_default_and_virtual_top(monkeypatch):
+    Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(name="Default", parent_id=0).delete()
-    default = Group.objects.create(name="Default", parent_id=0)
+    named_only = Group.objects.create(name="Default", parent_id=0, is_builtin=False)
+    flagged = Group.objects.create(name="BuiltinRoot", parent_id=0, is_builtin=True)
     virtual = Group.objects.create(name="VTopArch", parent_id=0, is_virtual=True)
 
-    assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=default.id)["result"] is False
+    assert GroupArchiveService._is_protected_root(flagged) is True
+    assert GroupArchiveService._is_protected_root(named_only) is False
+    assert GroupArchiveService._is_protected_root(virtual) is True
+
+    # sqlite 不支持 JSONField contains；Postgres 走真实 overlapping 查询。
+    if connection.vendor == "sqlite":
+        monkeypatch.setattr(
+            GroupArchiveService,
+            "_users_overlapping_groups",
+            staticmethod(lambda subtree_ids: User.objects.none()),
+        )
+
+    assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=flagged.id)["result"] is False
+    assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=named_only.id)["result"] is True
     assert GroupArchiveService.archive_subtree(actor=_super_actor(), group_id=virtual.id)["result"] is False
-    default.refresh_from_db()
+    flagged.refresh_from_db()
+    named_only.refresh_from_db()
     virtual.refresh_from_db()
-    assert default.is_delete is False
+    assert flagged.is_delete is False
+    assert named_only.is_delete is True
     assert virtual.is_delete is False
 
 
@@ -345,9 +362,7 @@ def test_list_archived_roots_caps_descendants_per_root(monkeypatch):
     for index in range(5):
         Group.objects.create(name=f"cap-child-{index}", parent_id=root.id, is_delete=True)
 
-    matched = next(
-        item for item in ArchivedGroupQuery.list_archived_roots(actor=_super_actor()).items if item.id == root.id
-    )
+    matched = next(item for item in ArchivedGroupQuery.list_archived_roots(actor=_super_actor()).items if item.id == root.id)
     assert matched.children_truncated is True
     assert len(matched.children) == 2
 

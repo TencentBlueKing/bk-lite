@@ -709,7 +709,10 @@ def test_init_default_groups_skips_builtin_datasource():
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
     from apps.system_mgmt.models.user import Group
 
-    Group.objects.get_or_create(name="Default", parent_id=0)
+    default, _ = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not default.is_builtin:
+        default.is_builtin = True
+        default.save(update_fields=["is_builtin"])
     builtin = DataSourceAPIModel.objects.create(
         name="keep-empty",
         rest_api="keep/empty",
@@ -734,7 +737,10 @@ def test_init_default_groups_skips_builtin_datasource():
 def test_init_default_groups_fills_empty_groups():
     from apps.system_mgmt.models.user import Group
 
-    Group.objects.get_or_create(name="Default")
+    default, _ = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not default.is_builtin:
+        default.is_builtin = True
+        default.save(update_fields=["is_builtin"])
     obj = Directory.objects.create(name="无组织目录", groups=[], created_by="system")
     skip = Directory.objects.create(name="有组织目录", groups=[5], created_by="system")
 
@@ -750,7 +756,10 @@ def test_init_default_groups_fills_empty_groups():
 def test_init_default_groups_covers_all_registered_canvas_models():
     from apps.system_mgmt.models.user import Group
 
-    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not root_default.is_builtin:
+        root_default.is_builtin = True
+        root_default.save(update_fields=["is_builtin"])
     records = []
     directory = Directory.objects.create(
         name="网络拓扑测试目录",
@@ -789,7 +798,10 @@ def test_init_default_groups_covers_all_registered_canvas_models():
 def test_init_default_groups_uses_root_default_group_when_child_has_same_name():
     from apps.system_mgmt.models.user import Group
 
-    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not root_default.is_builtin:
+        root_default.is_builtin = True
+        root_default.save(update_fields=["is_builtin"])
     parent = Group.objects.create(name="业务组织", parent_id=0)
     Group.objects.create(name="Default", parent_id=parent.id)
     obj = Directory.objects.create(name="无组织目录", groups=[], created_by="system")
@@ -802,9 +814,10 @@ def test_init_default_groups_uses_root_default_group_when_child_has_same_name():
 
 @pytest.mark.django_db
 def test_init_default_groups_without_default_group_returns_early():
-    # 没有名为 Default 的组织 → 捕获异常并提前返回，不抛出
+    # 没有内置根组织 → 捕获异常并提前返回，不抛出
     from apps.system_mgmt.models.user import Group
 
+    Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(name="Default").delete()
     call_command("init_default_groups")
     assert True

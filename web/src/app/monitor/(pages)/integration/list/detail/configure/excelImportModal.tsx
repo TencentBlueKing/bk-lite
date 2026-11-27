@@ -11,7 +11,7 @@ import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import type { UploadProps } from 'antd';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { excelCellToText } from '@/utils/excelCellText';
 import {
@@ -52,13 +52,13 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
     const [pluginName, setPluginName] = useState<string>('');
     const { t } = useTranslation();
     const { Dragger } = Upload;
-    const userContext = useUserInfoContext();
+    const operableGroupTree = useOperableGroupTree();
 
-    // 默认从 userContext 获取组织列表
+    // 默认从当前应用可操作组织树获取组织列表
     const defaultGroupList = useMemo(() => {
-      if (!userContext?.groupTree) return [];
+      if (!operableGroupTree?.length) return [];
       const treeSelectData = convertGroupTreeToTreeSelectData(
-        userContext.groupTree
+        operableGroupTree
       );
       // 递归提取所有组织节点，包含完整路径
       const flattenTree = (nodes: any[], parentPath = ''): any[] => {
@@ -79,7 +79,7 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         }, [] as any[]);
       };
       return flattenTree(treeSelectData);
-    }, [userContext?.groupTree]);
+    }, [operableGroupTree]);
 
     // 优先使用传入的 groupList,否则使用默认值
     const groupList =

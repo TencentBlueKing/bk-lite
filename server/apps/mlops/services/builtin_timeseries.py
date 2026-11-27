@@ -48,13 +48,13 @@ def ensure_builtin_timeseries_records() -> dict[str, int | bool]:
 
     from apps.core.logger import mlops_logger as logger
     from apps.mlops.models.timeseries_predict import TimeSeriesPredictServing, TimeSeriesPredictTrainJob
-    from apps.system_mgmt.models import Group
+    from apps.system_mgmt.utils.group_utils import GroupUtils
 
     if not preset_base_url():
         logger.info("event=builtin_timeseries_init_skipped reason=preset_base_url_absent")
         return {"created_train_jobs": 0, "created_servings": 0, "skipped": True}
 
-    group = Group.objects.filter(name="Default", parent_id=0).order_by("id").first()
+    group = GroupUtils.builtin_root()
     if group is None:
         raise CommandError("默认组织 Default 不存在，无法写入预置时序发布记录")
 

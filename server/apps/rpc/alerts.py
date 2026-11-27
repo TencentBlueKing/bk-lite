@@ -4,6 +4,10 @@ import os
 from apps.rpc.base import AppClient, BaseOperationAnaRpc
 
 
+class Alerts:
+    """告警已登记到数据权限。数据对象目录接口尚未提供。"""
+
+
 class AlertOperationAnaRpc(BaseOperationAnaRpc):
     def __init__(self, *args, **kwargs):
         is_local_client = kwargs.pop("is_local_client", False)

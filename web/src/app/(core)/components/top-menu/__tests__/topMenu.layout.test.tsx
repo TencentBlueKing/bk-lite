@@ -212,6 +212,8 @@ describe('TopMenu chrome layouts', () => {
     chromeLayout = 'app-top';
     search = 'screen=true';
     render(<TopMenu />);
-    expect(screen.getByRole('link', { name: 'CMDB' }).getAttribute('href')).toBe('/cmdb?screen=true');
+    expect(screen.getByRole('link', { name: 'CMDB' }).getAttribute('href')).toBe(
+      '/cmdb/assetSearch?screen=true',
+    );
   });
 });

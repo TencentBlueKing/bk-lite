@@ -94,7 +94,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
     try {
       setRoleLoading(true);
       const roleData = await loadRoleList({ client_list: resolvedClientData });
-      setRoleTreeData(processRoleTreeData(roleData, t('common.externalApp')));
+      setRoleTreeData(processRoleTreeData(roleData, t('common.externalApp'), false));
     } catch (error) {
       console.error('Failed to fetch roles:', error);
       message.error(t('common.fetchFailed'));
@@ -162,7 +162,8 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
         const firstFieldErrorMessage = error.errorFields[0].errors[0];
         message.error(firstFieldErrorMessage || t('common.valFailed'));
       } else {
-        message.error(t('common.saveFailed'));
+        const backendMessage = error instanceof Error ? error.message.trim() : '';
+        message.error(backendMessage && backendMessage !== 'Request failed' ? backendMessage : t('common.saveFailed'));
       }
       console.error('Failed to update group:', error);
     } finally {

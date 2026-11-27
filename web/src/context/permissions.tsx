@@ -22,6 +22,12 @@ import {
 } from '@/utils/route';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
 import { hasRoutePermission } from '@/context/permission-path';
+import {
+  buildParentPermissionIndex,
+  collectMenuUrls,
+  extractPermissions,
+  filterMenusByPermission,
+} from '@/context/menuAccess';
 
 interface Permissions {
   [url: string]: string[];
@@ -41,25 +47,19 @@ interface PermissionsContextValue {
 
 const defaultPermissions: Permissions = {};
 
+const appMenuInvalidators = new Set<() => void>();
+
+/** Drop the in-memory menu cache so the next read uses the latest grants. */
+export function invalidateAppMenus() {
+  appMenuInvalidators.forEach((invalidate) => invalidate());
+}
+
 const PermissionsContext = createContext<PermissionsContextValue>({
   menus: [],
   permissions: defaultPermissions,
   loading: true,
   hasPermission: () => false,
 });
-
-const collectMenuNamesAsView = (
-  menus: MenuItem[],
-  permissionMap: { [key: string]: string[] } = {},
-): { [key: string]: string[] } => {
-  for (const item of menus) {
-    permissionMap[item.name] = item.operation?.length ? item.operation : ['View'];
-    if (item.children?.length) {
-      collectMenuNamesAsView(item.children, permissionMap);
-    }
-  }
-  return permissionMap;
-};
 
 export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
@@ -73,27 +73,6 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   const [menuClientId, setMenuClientId] = useState<string | null>(null);
   const [requestGuard] = useState(createLatestRequestGuard);
   const clientMenuCacheRef = useRef<Record<string, ClientMenuCacheEntry>>({});
-
-  const extractPermissions = (
-    menus: MenuItem[],
-    accumulated: Permissions = {},
-    parentMenu?: MenuItem
-  ): Permissions => {
-    for (const item of menus) {
-      if (item.url && item.operation?.length) {
-        accumulated[item.url] = item.operation;
-      } else if (item.url && item.withParentPermission && parentMenu) {
-        accumulated[item.url] = parentMenu.operation || [];
-      }
-      if (item.url && item.isNotMenuItem) {
-        accumulated[item.url] = ['View', ...(parentMenu?.operation || [])];
-      }
-      if (item.children) {
-        extractPermissions(item.children, accumulated, item);
-      }
-    }
-    return accumulated;
-  };
 
   const collectPermissionOperations = (permissions: MenuItem[]): { [key: string]: string[] } => {
     const permissionMap: { [key: string]: string[] } = {};
@@ -109,78 +88,6 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
 
     collectOperations(permissions);
     return permissionMap;
-  };
-
-  const filterMenusByPermission = (
-    permissionMap: { [key: string]: string[] },
-    menus: MenuItem[],
-    routeClientId?: string,
-    parentMenu?: MenuItem
-  ): MenuItem[] => {
-    return menus
-      .filter((menu) => {
-        if (menu.children && menu.children.length > 0 && !menu.url) {
-          const hasChildPermission = menu.children.some((child) =>
-            permissionMap.hasOwnProperty(child.name) ||
-            (child.children && child.children.length > 0)
-          );
-          if (!hasChildPermission) {
-            console.warn(`Directory ${menu.name} has no accessible children`);
-            return false;
-          }
-          return true;
-        }
-
-        const hasParentPermission = parentMenu && menu.withParentPermission;
-        const hasChildPermission = menu.children?.some((child) =>
-          permissionMap.hasOwnProperty(child.name)
-        );
-        const hasPermission =
-          permissionMap.hasOwnProperty(menu.name) ||
-          menu.isNotMenuItem ||
-          hasParentPermission ||
-          hasChildPermission;
-
-        if (!hasPermission) {
-          console.warn(`No permission for menu: ${menu.name}`);
-          return false;
-        }
-
-        if (routeClientId && menu.url) {
-          const normalizedUrl = menu.url.replace(/\/+$/, '') || '/';
-          const clientRoot = `/${routeClientId}`;
-          const urlBelongsToClient =
-            normalizedUrl === clientRoot || normalizedUrl.startsWith(`${clientRoot}/`);
-          if (!urlBelongsToClient) {
-            console.warn(`Menu ${menu.name} URL does not contain routeClientId: ${routeClientId}`);
-            return false;
-          }
-        }
-
-        return true;
-      })
-      .map((menu) => {
-        if (menu.children && menu.children.length > 0 && !menu.url) {
-          const filteredChildren = filterMenusByPermission(permissionMap, menu.children, routeClientId, menu);
-          const firstChildWithUrl = filteredChildren.find(child => child.url);
-          return {
-            ...menu,
-            operation: ['View'],
-            isDirectory: true,
-            icon: firstChildWithUrl?.icon || menu.icon,
-            url: firstChildWithUrl?.url || menu.url,
-            children: filteredChildren
-          };
-        }
-
-        return {
-          ...menu,
-          operation: permissionMap[menu.name],
-          children: menu.children
-            ? filterMenusByPermission(permissionMap, menu.children, routeClientId, menu)
-            : []
-        };
-      });
   };
 
   useEffect(() => {
@@ -228,12 +135,8 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const requestId = requestGuard.begin();
-    const optimisticMenus = filterMenusByPermission(
-      collectMenuNamesAsView(configMenus),
-      configMenus,
-      routeClientId,
-    );
-    setMenuItems(optimisticMenus);
+    setMenuItems([]);
+    setPermissions(defaultPermissions);
     setMenuClientId(routeClientId);
     setLoading(true);
 
@@ -254,13 +157,24 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
       ]);
 
       let menusToFilter: MenuItem[] = configMenus;
-      if (customMenuData && !customMenuData.is_build_in && customMenuData.menus) {
-        menusToFilter = customMenuData.menus;
+      if (customMenuData && customMenuData.is_build_in === false) {
+        menusToFilter = Array.isArray(customMenuData.menus) ? customMenuData.menus : [];
       }
 
       const permissionMap = collectPermissionOperations(menuData || []);
-      const filteredMenus = filterMenusByPermission(permissionMap, menusToFilter, routeClientId);
-      const parsedPermissions = extractPermissions(filteredMenus);
+      const filteredMenus = filterMenusByPermission(
+        permissionMap,
+        menusToFilter,
+        routeClientId,
+        undefined,
+        buildParentPermissionIndex(configMenus),
+      );
+      const parsedPermissions = extractPermissions(
+        filteredMenus,
+        {},
+        undefined,
+        collectMenuUrls(menusToFilter),
+      );
       requestGuard.commitIfCurrent(requestId, () => {
         clientMenuCacheRef.current[routeClientId] = {
           menus: filteredMenus,
@@ -274,11 +188,27 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       console.error('Failed to fetch menus:', err);
       requestGuard.commitIfCurrent(requestId, () => {
+        setMenuItems([]);
+        setPermissions(defaultPermissions);
         setMenuClientId(routeClientId);
         setLoading(false);
       });
     }
   }, [get, apiLoading, menuLoading, configMenus, routeClientId, shouldFetchAppMenus, requestGuard]);
+
+  const fetchMenusRef = useRef(fetchMenus);
+  fetchMenusRef.current = fetchMenus;
+
+  useEffect(() => {
+    const invalidate = () => {
+      clientMenuCacheRef.current = {};
+      void fetchMenusRef.current();
+    };
+    appMenuInvalidators.add(invalidate);
+    return () => {
+      appMenuInvalidators.delete(invalidate);
+    };
+  }, []);
 
   useEffect(() => {
     fetchMenus();

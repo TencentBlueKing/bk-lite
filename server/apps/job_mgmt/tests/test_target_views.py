@@ -10,6 +10,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.views import target as target_views
+from apps.system_mgmt.models import Group
 
 pytestmark = pytest.mark.django_db
 
@@ -136,6 +137,27 @@ class TestTargetCrud:
         assert resp.status_code == 200
         assert "api-key-host" in str(resp.data)
 
+    def test_mixed_legacy_teams_list_select_and_edit_representation(self, api_client, authenticated_user):
+        a = Group.objects.create(name="legacy-target-A")
+        b = Group.objects.create(name="legacy-target-B")
+        target = Target.objects.create(name="mixed", ip="192.0.2.1", team=[b.pk, {"id": str(a.pk)}])
+        foreign = Target.objects.create(name="dictionary-only", ip="192.0.2.2", team=[{"id": str(b.pk)}])
+        authenticated_user.group_list = [{"id": a.pk, "name": a.name}, {"id": b.pk, "name": b.name}]
+        authenticated_user.permission = {"job": {"target-View", "target-Edit"}}
+        api_client.cookies["current_team"] = str(b.pk)
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value={"team": [b.pk], "instance": []}):
+            selection = api_client.get(f"{URL}selection_ids/")
+            listed = api_client.get(URL, {"page_size": 20})
+            detail = api_client.get(f"{URL}{target.pk}/")
+            denied = api_client.post(f"{URL}adjust_organizations/", {"ids": [foreign.pk], "operation": "add", "organization": a.pk}, format="json")
+
+        assert selection.data["ids"] == [target.pk]
+        assert listed.data["count"] == 1
+        for row in (listed.data["items"][0], detail.data):
+            assert row["team"] == [b.pk, a.pk]
+            assert row["team_name"] == [b.name, a.name]
+        assert denied.status_code == 403
+
     @pytest.mark.parametrize(
         ("submitted_value", "expected_value"),
         [
@@ -250,6 +272,68 @@ class TestTargetCrud:
         resp = su_client.post(f"{URL}batch_delete/", {"ids": [t1.id, t2.id]}, format="json")
         assert resp.status_code == 200
         assert resp.data["deleted_count"] == 2
+        retry = su_client.post(f"{URL}batch_delete/", {"ids": [t1.id, t2.id]}, format="json")
+        assert retry.status_code == 200
+        assert retry.data["deleted_count"] == 0
+
+    @pytest.mark.parametrize("reason", ["foreign", "missing", "view_only", "function_permission", "auditor", "legacy_string"])
+    def test_batch_delete_rejects_whole_selection(self, api_client, authenticated_user, reason):
+        own = Target.objects.create(name="own", ip="192.0.2.1", team=[1])
+        other = Target.objects.create(name="other", ip="192.0.2.2", team={"foreign": [2], "legacy_string": ["1"]}.get(reason, [1]))
+        authenticated_user.is_auditor = reason == "auditor"
+        authenticated_user.permission = {"job": {"target-Edit" if reason == "function_permission" else "target-Delete"}}
+        authenticated_user.group_list = [{"id": 1}, {"id": 2}]
+        api_client.cookies["current_team"] = "1"
+        rules = {
+            "team": [],
+            "instance": [
+                {"id": own.pk, "permission": ["Operate"]},
+                {"id": other.pk, "permission": ["View"] if reason == "view_only" else ["Operate"]},
+            ],
+        }
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            ids = [own.pk, other.pk + 1000 if reason == "missing" else other.pk]
+            response = api_client.post(f"{URL}batch_delete/", {"ids": ids}, format="json")
+        assert response.status_code == 403
+        assert set(Target.objects.values_list("pk", flat=True)) == {own.pk, other.pk}
+
+    def test_batch_delete_with_child_scope_and_repeated_request(self, api_client, authenticated_user):
+        child = Target.objects.create(name="child", ip="192.0.2.1", team=[2, 10])
+        authenticated_user.permission = {"job": {"target-Delete"}}
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.group_tree = [{"id": 1, "subGroups": [{"id": 2}]}]
+        api_client.cookies["current_team"] = "1"
+        api_client.cookies["include_children"] = "1"
+        data = {"ids": [child.pk, child.pk]}
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value={"team": [1], "instance": []}):
+            response = api_client.post(f"{URL}batch_delete/", data, format="json")
+            retry = api_client.post(f"{URL}batch_delete/", data, format="json")
+        assert response.status_code == 200
+        assert retry.status_code == 403
+        assert response.data["deleted_count"] == 1
+        assert not Target.objects.filter(pk=child.pk).exists()
+
+    def test_batch_delete_child_grant_is_limited_to_its_targets(self, api_client, authenticated_user):
+        child = Target.objects.create(name="child", ip="192.0.2.1", team=[2])
+        sibling = Target.objects.create(name="sibling", ip="192.0.2.2", team=[3])
+        authenticated_user.permission = {"job": {"target-Delete"}}
+        authenticated_user.group_list = [1]
+        authenticated_user.group_tree = [{"id": 1, "subGroups": [{"id": 2}, {"id": 3}]}]
+        api_client.cookies["current_team"] = "1"
+        api_client.cookies["include_children"] = "1"
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value={"team": [2], "instance": []}):
+            denied = api_client.post(f"{URL}batch_delete/", {"ids": [child.pk, sibling.pk]}, format="json")
+            assert denied.status_code == 403
+            response = api_client.post(f"{URL}batch_delete/", {"ids": [child.pk]}, format="json")
+        assert response.status_code == 200
+        assert response.data["deleted_count"] == 1
+        assert list(Target.objects.values_list("pk", flat=True)) == [sibling.pk]
+
+    def test_batch_delete_rejects_oversized_selection(self, su_client):
+        target = Target.objects.create(name="keep", ip="192.0.2.1", team=[1])
+        response = su_client.post(f"{URL}batch_delete/", {"ids": [target.pk] * 1001}, format="json")
+        assert response.status_code == 400
+        assert Target.objects.filter(pk=target.pk).exists()
 
 
 @pytest.mark.integration

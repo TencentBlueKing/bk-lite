@@ -835,7 +835,7 @@ def _bind_virtual_organizations(user, *groups):
     user.group_list = list(user.group_list) + extra
 
 
-def test_virtual_and_guest_assets_are_visible_under_other_organizations(apm_api_client, apm_user):
+def test_virtual_and_guest_assets_stay_in_their_own_organization(apm_api_client, apm_user):
     from apps.system_mgmt.models import Group
 
     virtual, _ = Group.objects.get_or_create(name="虚拟团队", parent_id=0, defaults={"is_virtual": True})
@@ -851,42 +851,39 @@ def test_virtual_and_guest_assets_are_visible_under_other_organizations(apm_api_
 
     listed = apm_api_client.get("/api/v1/apm/applications/")
     assert listed.status_code == 200
-    assert {item["application_id"] for item in listed.data} == {
-        "shop",
-        "virtual-app",
-        "guest-app",
-        "custom-virtual-app",
-    }
+    assert {item["application_id"] for item in listed.data} == {"shop"}
 
     catalog = DjangoTelemetryCatalogService()
     visible = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
     virtual_row = catalog.discover(CatalogDiscovery("virtual-app", "api", "pod-v", "prod"))
-    guest_row = catalog.discover(CatalogDiscovery("guest-app", "api", "pod-g", "prod"))
-    custom_row = catalog.discover(CatalogDiscovery("custom-virtual-app", "api", "pod-c", "prod"))
+    catalog.discover(CatalogDiscovery("guest-app", "api", "pod-g", "prod"))
+    catalog.discover(CatalogDiscovery("custom-virtual-app", "api", "pod-c", "prod"))
     hidden = catalog.discover(CatalogDiscovery("billing", "invoice", "pod-b", "prod"))
 
     services = apm_api_client.get("/api/v1/apm/services/")
     instances = apm_api_client.get("/api/v1/apm/instances/")
-    service_ids = {item["id"] for item in services.data}
-    instance_ids = {item["id"] for item in instances.data}
-
-    assert service_ids == {
-        str(visible.service.id),
-        str(virtual_row.service.id),
-        str(guest_row.service.id),
-        str(custom_row.service.id),
-    }
-    assert instance_ids == {
-        str(visible.instance.id),
-        str(virtual_row.instance.id),
-        str(guest_row.instance.id),
-        str(custom_row.instance.id),
-    }
+    assert {item["id"] for item in services.data} == {str(visible.service.id)}
+    assert {item["id"] for item in instances.data} == {str(visible.instance.id)}
     assert apm_api_client.get(f"/api/v1/apm/services/{hidden.service.id}/").status_code == 404
+    assert apm_api_client.get(f"/api/v1/apm/services/{virtual_row.service.id}/").status_code == 404
     hidden_app = ApmApplication.objects.get(application_id="billing")
     virtual_app = ApmApplication.objects.get(application_id="virtual-app")
     assert apm_api_client.get(f"/api/v1/apm/applications/{hidden_app.id}/").status_code == 404
+    assert apm_api_client.get(f"/api/v1/apm/applications/{virtual_app.id}/").status_code == 404
+
+    apm_api_client.cookies["current_team"] = str(virtual.id)
+    switched = apm_api_client.get("/api/v1/apm/applications/")
+    assert {item["application_id"] for item in switched.data} == {"virtual-app"}
     assert apm_api_client.get(f"/api/v1/apm/applications/{virtual_app.id}/").status_code == 200
+    assert {item["id"] for item in apm_api_client.get("/api/v1/apm/services/").data} == {str(virtual_row.service.id)}
+
+    apm_api_client.cookies["current_team"] = str(guest.id)
+    guest_listed = apm_api_client.get("/api/v1/apm/applications/")
+    assert {item["application_id"] for item in guest_listed.data} == {"guest-app"}
+
+    apm_api_client.cookies["current_team"] = str(custom.id)
+    custom_listed = apm_api_client.get("/api/v1/apm/applications/")
+    assert {item["application_id"] for item in custom_listed.data} == {"custom-virtual-app"}
 
 
 def test_virtual_assets_stay_hidden_without_virtual_organization_permission(apm_api_client):
@@ -901,3 +898,8 @@ def test_virtual_assets_stay_hidden_without_virtual_organization_permission(apm_
     listed = apm_api_client.get("/api/v1/apm/applications/")
     assert listed.status_code == 200
     assert {item["application_id"] for item in listed.data} == {"shop"}
+
+    apm_api_client.cookies["current_team"] = str(virtual.id)
+    switched = apm_api_client.get("/api/v1/apm/applications/")
+    assert switched.status_code == 200
+    assert switched.data == []

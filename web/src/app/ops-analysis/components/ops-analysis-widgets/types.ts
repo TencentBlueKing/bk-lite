@@ -80,8 +80,8 @@ export interface DatasourceItem {
 }
 
 export interface TimeRangeValue {
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
   selectValue?: number;
 }
 

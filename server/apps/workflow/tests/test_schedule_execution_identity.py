@@ -1,8 +1,10 @@
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -120,6 +122,48 @@ def test_due_schedule_rechecks_account_and_both_scopes(scheduled_workflow, chang
     assert run_due_cron_triggers(now=now)["failed"] == 1
     assert not workflow.executions.exists()
     conductor.start_workflow.assert_not_called()
+
+
+def test_workflow_module_admin_can_bind_schedule_outside_membership():
+    from apps.workflow.services.schedules import schedule_execution_identity
+
+    own = Group.objects.create(name="schedule-own", parent_id=0)
+    foreign = Group.objects.create(name="schedule-foreign", parent_id=0)
+    user = SimpleNamespace(
+        username="wf-module-admin",
+        domain="example.com",
+        is_superuser=False,
+        is_auditor=False,
+        roles=["workflow--module_admin"],
+        group_list=[own.id],
+    )
+    identity = schedule_execution_identity({"execution_team_id": foreign.id}, user=user, current_team=own.id)
+    assert identity["team_id"] == foreign.id
+
+
+@pytest.mark.parametrize(
+    "roles,is_auditor",
+    [
+        (["cmdb--module_admin"], False),
+        (["workflow--module_auditor"], False),
+        (["workflow--module_admin"], True),
+    ],
+)
+def test_schedule_org_stays_closed_for_other_module_roles_and_auditors(roles, is_auditor):
+    from apps.workflow.services.schedules import schedule_execution_identity
+
+    own = Group.objects.create(name="schedule-home", parent_id=0)
+    foreign = Group.objects.create(name="schedule-other", parent_id=0)
+    user = SimpleNamespace(
+        username="wf-limited",
+        domain="example.com",
+        is_superuser=False,
+        is_auditor=is_auditor,
+        roles=roles,
+        group_list=[own.id],
+    )
+    with pytest.raises(PermissionDenied):
+        schedule_execution_identity({"execution_team_id": foreign.id}, user=user, current_team=own.id)
 
 
 @pytest.mark.parametrize("selected_team", [9, [7, 8], True, 0])

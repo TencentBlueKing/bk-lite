@@ -6,6 +6,7 @@ import type { UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard
 import {
   getUnifiedFilterTimeSelectorDefaultValue,
   normalizeTimeRangeFilterValue,
+  timeRangeValueFromSelector,
 } from '@/app/ops-analysis/utils/filterValue';
 import {
   applyChangedDefaultsIfStillOnPrevious,
@@ -72,9 +73,25 @@ describe('统一筛选时间默认展示', () => {
       rangePickerVaule: null,
     });
     expect(getUnifiedFilterTimeSelectorDefaultValue(null)).toEqual({
-      selectValue: 15,
+      selectValue: null,
       rangePickerVaule: null,
     });
+    expect(getUnifiedFilterTimeSelectorDefaultValue('')).toEqual({
+      selectValue: null,
+      rangePickerVaule: null,
+    });
+
+    const request = buildWidgetRequestParams({
+      config: {
+        dataSourceParams: [
+          { name: 'time', type: 'timeRange', value: '', filterType: 'filter' },
+        ],
+      },
+      unifiedFilterValues: { [TIME_ID]: null },
+      filterBindings: { [TIME_ID]: true },
+      filterDefinitions: [timeDefinition('')],
+    });
+    expect(request).toEqual({});
   });
 
   test('绝对区间仍交给范围选择器', () => {
@@ -145,7 +162,7 @@ describe('取消编辑与保存后的时间当前值', () => {
       env__string: 'prod',
     });
 
-    expect(next[TIME_ID]).toMatchObject({ selectValue: 360 });
+    expect(next[TIME_ID]).toEqual({ selectValue: 360 });
     expect(next.env__string).toBe('prod');
   });
 
@@ -159,7 +176,7 @@ describe('取消编辑与保存后的时间当前值', () => {
       { [TIME_ID]: stillOnPrevious },
     );
     expect(applied.updatedIds).toEqual([TIME_ID]);
-    expect(applied.values[TIME_ID]).toMatchObject({ selectValue: 15 });
+    expect(applied.values[TIME_ID]).toEqual({ selectValue: 15 });
 
     const customized = normalizeTimeRangeFilterValue(60, REFERENCE);
     const kept = applyChangedDefaultsIfStillOnPrevious(
@@ -212,5 +229,25 @@ describe('仪表盘加载不因资源回调身份变化重拉', () => {
     expect(modal).toContain('getUnifiedFilterTimeSelectorDefaultValue');
     expect(bar).not.toContain('!timeValue.start || !timeValue.end');
     expect(modal).not.toContain('!timeValue.start || !timeValue.end');
+  });
+});
+
+describe('时间控件落盘', () => {
+  test('快捷项只留分钟数，自定义区间留下起止', () => {
+    expect(timeRangeValueFromSelector([
+      Date.parse('2026-07-17T02:00:00.000Z'),
+      Date.parse('2026-07-17T03:00:00.000Z'),
+    ], 60)).toEqual({ selectValue: 60 });
+
+    expect(timeRangeValueFromSelector([
+      Date.parse('2026-08-19T00:00:00.000Z'),
+      Date.parse('2026-08-20T00:00:00.000Z'),
+    ], 0)).toEqual({
+      start: '2026-08-19T00:00:00.000Z',
+      end: '2026-08-20T00:00:00.000Z',
+      selectValue: 0,
+    });
+
+    expect(timeRangeValueFromSelector([], null)).toBeNull();
   });
 });

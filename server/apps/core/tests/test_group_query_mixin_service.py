@@ -1,7 +1,5 @@
 import pydantic.root_model  # noqa
-
 import pytest
-
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils import group_query_mixin as gqm
@@ -77,7 +75,7 @@ class TestGetUserGroupList:
         qs.values_list.return_value = [10, 20]
         mocker.patch.object(SysGroup.objects, "filter", return_value=qs)
         req = _Req(user=_User(is_superuser=True))
-        assert GroupQueryMixin._get_user_group_list(req) == [10, 20]
+        assert GroupQueryMixin()._get_user_group_list(req) == [10, 20]
         SysGroup.objects.filter.assert_called_once_with(is_delete=False)
 
     def test_normal_user_omits_archived_group_ids(self, mocker):
@@ -87,12 +85,12 @@ class TestGetUserGroupList:
         qs.values_list.return_value = [3, 4]
         mocker.patch.object(SysGroup.objects, "filter", return_value=qs)
         req = _Req(user=_User(group_list=[{"id": 3}, {"id": "4"}, {"id": 9}]))
-        assert GroupQueryMixin._get_user_group_list(req) == [3, 4]
+        assert GroupQueryMixin()._get_user_group_list(req) == [3, 4]
         SysGroup.objects.filter.assert_called_once_with(id__in=[3, 4, 9], is_delete=False)
 
     def test_user_without_group_list_returns_empty(self):
         req = _Req(user=_User())  # no group_list attr
-        assert GroupQueryMixin._get_user_group_list(req) == []
+        assert GroupQueryMixin()._get_user_group_list(req) == []
 
 
 class TestFilterByGroups:

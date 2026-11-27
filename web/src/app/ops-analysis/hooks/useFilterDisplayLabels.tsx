@@ -16,6 +16,8 @@ import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganizati
 import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import type { Group } from '@/types/index';
 import { UserInfoContext } from '@/context/userInfo';
+import { usePathname } from 'next/navigation';
+import { resolveOperableGroupTree } from '@/app/system-manager/utils/moduleRoles';
 import { useTimeRangeList } from '@/constants/shared';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -166,6 +168,7 @@ export const useFilterDisplayLabels = (
   const shareMode = useShareMode();
   const shareOrganization = useShareOrganization();
   const userInfo = useContext(UserInfoContext);
+  const pathname = usePathname();
   const timeRanges = useTimeRangeList();
   const subscribe = useCallback((listener: () => void) => (
     enabled ? store.subscribe(listener) : subscribeNop()
@@ -219,9 +222,15 @@ export const useFilterDisplayLabels = (
       return collectOrgNames(shareOrganization.groupTree);
     }
     if (!userInfo) return undefined;
-    if (userInfo.loading && userInfo.groupTree.length === 0) return undefined;
-    return collectOrgNames(userInfo.groupTree);
-  }, [definitions, shareMode, shareOrganization, userInfo]);
+    const operableTree = resolveOperableGroupTree(
+      userInfo.groupTree,
+      userInfo.moduleGroupTree,
+      userInfo.roles,
+      pathname,
+    );
+    if (userInfo.loading && operableTree.length === 0) return undefined;
+    return collectOrgNames(operableTree);
+  }, [definitions, shareMode, shareOrganization, userInfo, pathname]);
 
   const optionLabelsByFilterId = useMemo(() => {
     if (!enabled) return EMPTY_OPTION_LABELS;

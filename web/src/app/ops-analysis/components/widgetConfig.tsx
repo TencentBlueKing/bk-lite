@@ -2091,20 +2091,23 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               />
             )}
 
-            {(chartType === 'topN' || chartType === 'pie' || chartType === 'bar') && (
-              <ChartDisplayFields t={t} chartType={chartType} />
-            )}
+            {chartType !== 'cardList' ? (
+              <ChartDisplayFields t={t} chartType={chartType} surface={surface} />
+            ) : null}
 
             {chartType === 'cardList' && (
-              <CardListSettingsSection
-                key={resolveCardListSettingsRemountKey(widgetItem)}
-                t={t}
-                availableFields={availableFields}
-                previewRawData={previewRawData}
-                loadingFields={loadingRoleFields}
-                onRefreshFields={fetchRoleFields}
-                resetToken={open ? configReloadKey : 'closed'}
-              />
+              <>
+                <CardListSettingsSection
+                  key={resolveCardListSettingsRemountKey(widgetItem)}
+                  t={t}
+                  availableFields={availableFields}
+                  previewRawData={previewRawData}
+                  loadingFields={loadingRoleFields}
+                  onRefreshFields={fetchRoleFields}
+                  resetToken={open ? configReloadKey : 'closed'}
+                />
+                <ChartDisplayFields t={t} chartType={chartType} surface={surface} />
+              </>
             )}
           </WidgetQueryFields>
         )}

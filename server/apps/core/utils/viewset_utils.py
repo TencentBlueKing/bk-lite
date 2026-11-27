@@ -7,8 +7,9 @@ from rest_framework.response import Response
 
 from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.module_scope import client_id_from_module
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
-from apps.core.utils.platform_scope import bypasses_write_guard, has_unrestricted_org_scope
+from apps.core.utils.platform_scope import bypasses_write_guard, has_unrestricted_org_scope, is_readonly_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
@@ -65,6 +66,9 @@ def build_json_membership_query(queryset, field_name, expected_values):
             current_values = [current_values]
         comparable_values = set()
         for value in current_values:
+            # PostgreSQL 在这里匹配标量成员，不会从嵌套对象或数组中取 ID。
+            if isinstance(value, (dict, list)):
+                continue
             comparable_values.add(value)
             comparable_values.add(str(value))
             try:
@@ -96,16 +100,15 @@ class GenericViewSetFun(object):
 
     def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
         """获取规则实例ID"""
+        app_name = client_id_from_module(self.__class__.__module__)
+        write = not is_check
         try:
             normalized_current_team = int(current_team)
         except (TypeError, ValueError):
             normalized_current_team = current_team
         scoped_groups = {normalized_current_team}
         if include_children:
-            group_tree = getattr(user, "group_tree", [])
-            child_groups = self.extract_child_group_ids(group_tree, current_team)
-            if child_groups:
-                scoped_groups = set(child_groups)
+            scoped_groups = set(self._team_ids_for_include_children(user, current_team))
         org_field = getattr(self, "ORGANIZATION_FIELD", "team")
         if is_list:
             instance_id = list(instance.values_list("id", flat=True))
@@ -113,14 +116,18 @@ class GenericViewSetFun(object):
                 if hasattr(i, org_field):
                     # 判断两个集合是否有交集
                     org_value = getattr(i, org_field)
-                    if not set(org_value).intersection(scoped_groups):
+                    if scoped_groups.isdisjoint(value for value in org_value if isinstance(value, (int, str))):
                         return False
         else:
             if hasattr(instance, org_field):
                 org_value = getattr(instance, org_field)
-                if not set(org_value).intersection(scoped_groups):
+                if scoped_groups.isdisjoint(value for value in org_value if isinstance(value, (int, str))):
                     return False
             instance_id = [instance.id]
+        if write and is_readonly_scope(user, app_name):
+            return False
+        if (write and bypasses_write_guard(user, app_name)) or (not write and has_unrestricted_org_scope(user, app_name)):
+            return True
         try:
             app_name = self._get_app_name()
             permission_rules = get_permission_rules(user, current_team, app_name, self.permission_key, include_children)
@@ -141,6 +148,16 @@ class GenericViewSetFun(object):
         except Exception as e:
             logger.error(f"Error getting rule instances: {e}")
             return False
+
+    @classmethod
+    def _team_ids_for_include_children(cls, user, current_team):
+        if has_unrestricted_org_scope(user, client_id_from_module(cls.__module__)):
+            from apps.system_mgmt.utils.group_utils import GroupUtils
+
+            return GroupUtils.get_group_with_descendants(current_team)
+        group_tree = getattr(user, "group_tree", [])
+        team_ids = cls.extract_child_group_ids(group_tree, current_team)
+        return team_ids or [current_team]
 
     @staticmethod
     def extract_child_group_ids(group_tree, current_team_id):
@@ -206,8 +223,8 @@ class GenericViewSetFun(object):
     @classmethod
     def filter_by_group(cls, queryset, request, user):
         current_team = cls._parse_current_team_cookie(request)
-        # 验证 current_team 权限（超管/审计员豁免）
-        if not has_unrestricted_org_scope(user):
+        # 验证 current_team 权限（超管/审计员/当前应用的模块角色豁免）
+        if not has_unrestricted_org_scope(user, client_id_from_module(cls.__module__)):
             user_group_ids = user_group_id_set(user)
 
             if current_team not in user_group_ids:
@@ -218,9 +235,8 @@ class GenericViewSetFun(object):
         org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
         if org_field in fields:
             if include_children:
-                # 提取当前组及其所有子组的 ID
-                group_tree = getattr(user, "group_tree", [])
-                team_ids = cls.extract_child_group_ids(group_tree, current_team)
+                # 提取当前组及其所有子组的 ID。模块角色按真实子孙展开，不读归属组织树。
+                team_ids = cls._team_ids_for_include_children(user, current_team)
 
                 if team_ids:
                     # 查询组织 ID 在子组列表中
@@ -343,7 +359,7 @@ class AuthViewSet(MaintainerViewSet):
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
             raise PermissionDenied(team_access_denied_message(request, self.loader))
-        if not has_unrestricted_org_scope(request.user):
+        if not has_unrestricted_org_scope(request.user, client_id_from_module(self.__class__.__module__)):
             user_group_ids = user_group_id_set(request.user)
             if current_team not in user_group_ids:
                 raise PermissionDenied(team_access_denied_message(request, self.loader))
@@ -385,7 +401,7 @@ class AuthViewSet(MaintainerViewSet):
             raise PermissionDenied(message)
 
         # 超级管理员跳过校验。审计员 group_list 会被填成全组织，不能据此获得写权限。
-        if bypasses_write_guard(user):
+        if bypasses_write_guard(user, client_id_from_module(self.__class__.__module__)):
             return
         if getattr(user, "is_auditor", False):
             message = self.core_loader.get("error.no_permission_for_groups", "您没有权限创建或修改该组织下的数据") if self.core_loader else "您没有权限创建或修改该组织下的数据"
@@ -433,7 +449,8 @@ class AuthViewSet(MaintainerViewSet):
     def create(self, request, *args, **kwargs):
         """重写创建方法以支持组织权限校验"""
         user = getattr(request, "user", None)
-        if getattr(user, "is_auditor", False) and not bypasses_write_guard(user):
+        scope_app = client_id_from_module(self.__class__.__module__)
+        if is_readonly_scope(user, scope_app):
             message = self.core_loader.get("error.no_permission_create", "您没有权限创建数据") if getattr(self, "core_loader", None) else "您没有权限创建数据"
             raise PermissionDenied(message)
 
@@ -586,7 +603,7 @@ class AuthViewSet(MaintainerViewSet):
         """获取详情"""
         user = getattr(request, "user", None)
         instance = self.get_object()
-        if has_unrestricted_org_scope(user):
+        if has_unrestricted_org_scope(user, client_id_from_module(self.__class__.__module__)):
             return super().retrieve(request, *args, **kwargs)
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)
@@ -614,9 +631,10 @@ class AuthViewSet(MaintainerViewSet):
     def _validate_destroy_access(self, request, instance):
         """在删除产生外部副作用前执行完整、无副作用的实例授权校验。"""
         user = getattr(request, "user", None)
-        if bypasses_write_guard(user):
+        scope_app = client_id_from_module(self.__class__.__module__)
+        if bypasses_write_guard(user, scope_app):
             return None
-        if getattr(user, "is_auditor", False):
+        if is_readonly_scope(user, scope_app):
             message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
             return self.value_error(message)
         # 验证 current_team 权限
@@ -635,9 +653,10 @@ class AuthViewSet(MaintainerViewSet):
     def _validate_update_access(self, request, instance, data):
         """在更新产生外部副作用前执行完整、无副作用的实例授权校验。"""
         user = getattr(request, "user", None)
-        if bypasses_write_guard(user):
+        scope_app = client_id_from_module(self.__class__.__module__)
+        if bypasses_write_guard(user, scope_app):
             return None
-        if getattr(user, "is_auditor", False):
+        if is_readonly_scope(user, scope_app):
             message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
             return self.value_error(message)
 

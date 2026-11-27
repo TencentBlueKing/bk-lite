@@ -33,7 +33,7 @@
       ]
     },
     {
-      "title": "安全治理",
+      "title": "安全管理",
       "icon": "guanlipingju",
       "name": "Security",
       "url": "/system-manager/user/security-settings",
@@ -200,7 +200,7 @@
       ]
     },
     {
-      "title": "Security Governance",
+      "title": "Security",
       "icon": "guanlipingju",
       "name": "Security",
       "url": "/system-manager/user/security-settings",

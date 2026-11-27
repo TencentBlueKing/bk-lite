@@ -27,7 +27,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
 import { createLatestRequestGuard } from '@/context/latestRequestGuard';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useModuleReadOnly, useOperableFlatGroups } from '@/hooks/useOperableGroupTree';
 import {
   buildIntegrationEventSearchParams,
   buildMonitorSourceFilter,
@@ -61,7 +61,8 @@ const IntegrationDetail: FC = () => {
     revealTeamSecret,
     getPushSourceStats,
   } = useSourceApi();
-  const { flatGroups } = useUserInfoContext();
+  const flatGroups = useOperableFlatGroups();
+  const moduleReadOnly = useModuleReadOnly();
   const { getEventList } = useAlarmApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceItem>();
@@ -251,6 +252,7 @@ const IntegrationDetail: FC = () => {
   };
 
   const handleInlineAddTeamSecret = async () => {
+    if (moduleReadOnly) return;
     if (!source?.id || !inlineAddTeamId) {
       message.warning(t('incidents.teamRequired'));
       return;
@@ -794,7 +796,7 @@ const IntegrationDetail: FC = () => {
                     type="primary"
                     size="small"
                     loading={inlineAddSubmitting}
-                    disabled={!inlineAddTeamId || availableTeams.length === 0}
+                    disabled={moduleReadOnly || !inlineAddTeamId || availableTeams.length === 0}
                     onClick={handleInlineAddTeamSecret}
                   >
                     {t('common.confirm')}
@@ -814,6 +816,7 @@ const IntegrationDetail: FC = () => {
                   type="link"
                   size="small"
                   icon={<PlusOutlined />}
+                  disabled={moduleReadOnly}
                   onClick={() => setShowInlineAddTeam(true)}
                 >
                   {t('integration.addTeamSecretInline')}

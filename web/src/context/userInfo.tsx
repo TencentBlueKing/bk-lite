@@ -12,10 +12,26 @@ import {
   persistUserTeamPreference,
   resolveInitialGroup,
 } from '@/utils/userTeamPreference';
+import { usePathname } from 'next/navigation';
+import { hasModulePrivilege } from '@/app/system-manager/utils/moduleRoles';
 
 export const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
 
 // Filter out groups with name "OpsPilotGuest" (recursive processing for tree structure)
+const flattenSubGroups = (nodes: Group[] = []): Group[] => {
+  const flat: Group[] = [];
+  const walk = (list: Group[]) => {
+    list.forEach((node) => {
+      flat.push(node);
+      if (node.subGroups?.length) {
+        walk(node.subGroups);
+      }
+    });
+  };
+  walk(nodes);
+  return flat;
+};
+
 const filterOpsPilotGuest = (groups: Group[]): Group[] => {
   return groups
     .filter(group => group.name !== 'OpsPilotGuest')
@@ -29,6 +45,9 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { get } = useApiClient();
   const { data: session, status } = useSession();
   const { isCheckingAuth } = useAuth(); // 添加 auth context
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const sessionUser = session?.user as any;
   const sessionUserIdentity = status === 'authenticated' && sessionUser?.id
     ? String(sessionUser.id)
@@ -46,6 +65,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [groups, setGroups] = useState<Group[]>([]);
   const [flatGroups, setFlatGroups] = useState<Group[]>([]);
   const [groupTree, setGroupTree] = useState<Group[]>([]);
+  const [moduleGroupTree, setModuleGroupTree] = useState<Group[]>([]);
   const [isSuperUser, setIsSuperUser] = useState<boolean>(true);
   const [isFirstLogin, setIsFirstLogin] = useState<boolean>(false);
   const [loadedSessionIdentity, setLoadedSessionIdentity] = useState<string>('');
@@ -69,12 +89,13 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      const { group_list: groupList, group_tree: groupTreeData, roles, is_superuser, is_auditor, is_first_login, user_id, display_name, username } = data;
+      const { group_list: groupList, group_tree: groupTreeData, module_group_tree: moduleGroupTreeData, roles, is_superuser, is_auditor, is_first_login, user_id, display_name, username } = data;
       const currentUserId = String(user_id || expectedSessionIdentity);
       setGroups(groupList || []);
       const shouldSkipFilter = username === 'kayla';
       const unrestricted = !!is_superuser || !!is_auditor;
       setGroupTree(unrestricted || shouldSkipFilter ? (groupTreeData || []) : filterOpsPilotGuest(groupTreeData || []));
+      setModuleGroupTree(moduleGroupTreeData || []);
       setRoles(roles || []);
       setIsSuperUser(!!is_superuser);
       setIsFirstLogin(!!is_first_login);
@@ -89,8 +110,18 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const filteredGroups = unrestricted || shouldSkipFilter
           ? [...flattenedGroups]
           : flattenedGroups.filter((group: Group) => group.name !== 'OpsPilotGuest');
+        const selectableGroups = [...flattenedGroups];
+        const seenGroupIds = new Set(flattenedGroups.map((group) => String(group.id)));
+        if (hasModulePrivilege(roles, pathnameRef.current)) {
+          flattenSubGroups(moduleGroupTreeData || []).forEach((group) => {
+            const id = String(group.id);
+            if (seenGroupIds.has(id)) return;
+            seenGroupIds.add(id);
+            selectableGroups.push(group);
+          });
+        }
         const initialGroup = resolveInitialGroup({
-          groups: flattenedGroups,
+          groups: selectableGroups,
           defaultGroup: filteredGroups[0],
           rememberedGroupId: Cookies.get(CURRENT_TEAM_COOKIE),
           rememberedOwnerId: Cookies.get(CURRENT_TEAM_OWNER_COOKIE),
@@ -133,6 +164,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setGroups([]);
       setFlatGroups([]);
       setGroupTree([]);
+      setModuleGroupTree([]);
       setRoles([]);
       setUserId('');
       setUsername('');
@@ -167,7 +199,7 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 
   return (
-    <UserInfoContext.Provider value={{ loading: loading || isSessionIdentityChanging, roles, groups, groupTree, selectedGroup: hasCurrentSessionData ? selectedGroup : null, flatGroups, isSuperUser, isFirstLogin, userId, username, displayName, setSelectedGroup, refreshUserInfo }}>
+    <UserInfoContext.Provider value={{ loading: loading || isSessionIdentityChanging, roles, groups, groupTree, moduleGroupTree, selectedGroup: hasCurrentSessionData ? selectedGroup : null, flatGroups, isSuperUser, isFirstLogin, userId, username, displayName, setSelectedGroup, refreshUserInfo }}>
       {children}
     </UserInfoContext.Provider>
   );

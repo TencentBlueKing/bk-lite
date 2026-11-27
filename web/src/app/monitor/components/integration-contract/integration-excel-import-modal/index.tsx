@@ -11,7 +11,7 @@ import ImportFileModalShell from '@/components/import-file-modal-shell';
 import { useTranslation } from '@/utils/i18n';
 import type { UploadProps } from 'antd';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useUserInfoContext } from '@/context/userInfo';
+import { useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import ExcelJS from 'exceljs';
 
@@ -75,11 +75,11 @@ const IntegrationExcelImportModal = forwardRef<
   const [groupListProp, setGroupListProp] = useState<{ label: string; value: unknown }[]>([]);
   const [pluginName, setPluginName] = useState('');
   const { t } = useTranslation();
-  const userContext = useUserInfoContext();
+  const operableGroupTree = useOperableGroupTree();
 
   const defaultGroupList = useMemo(() => {
-    if (!userContext?.groupTree) return [];
-    const treeSelectData = convertGroupTreeToTreeSelectData(userContext.groupTree);
+    if (!operableGroupTree?.length) return [];
+    const treeSelectData = convertGroupTreeToTreeSelectData(operableGroupTree);
     const flattenTree = (nodes: any[], parentPath = ''): any[] => {
       return nodes.reduce((acc, node) => {
         const currentPath = parentPath ? `${parentPath}/${node.title}` : node.title;
@@ -96,7 +96,7 @@ const IntegrationExcelImportModal = forwardRef<
       }, [] as any[]);
     };
     return flattenTree(treeSelectData);
-  }, [userContext?.groupTree]);
+  }, [operableGroupTree]);
 
   const groupList = groupListProp.length > 0 ? groupListProp : defaultGroupList;
 

@@ -1,5 +1,5 @@
 import {NextRequest, NextResponse} from 'next/server';
-import {consumeProxyTimeoutMs, getProxyBodyTimeoutMs, scheduleProxyAbort} from '@/utils/proxyTimeout';
+import {consumeProxyTimeoutMs, getProxyBodyTimeoutMs, linkAbortSignal, proxyAbortStatus, scheduleProxyAbort} from '@/utils/proxyTimeout';
 
 import {isLegacyThirdLoginExchangePath} from './legacyThirdLoginCors';
 import {buildProxyTargets} from './proxyTarget';
@@ -85,8 +85,9 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
   headers.set('X-Forwarded-For', req.headers.get('x-forwarded-for') || '');
   headers.set('X-Forwarded-Proto', req.nextUrl.protocol || 'http');
 
-  // 创建 AbortController 用于超时控制
+  // 创建 AbortController 用于超时控制。客户端断开也要关掉上游，否则 SSE 会一直占着后端。
   const controller = new AbortController();
+  linkAbortSignal(req.signal, controller);
   // fetch 返回前无法从响应 Content-Type 判断 SSE，因此由请求契约选择并消费内部首包超时。
   let timeoutId = scheduleProxyAbort(controller, Math.max(consumeProxyTimeoutMs(headers), getProxyBodyTimeoutMs(targetPath, req.method)));
 
@@ -127,10 +128,14 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
     // 区分超时错误和其他错误
     if (error.name === 'AbortError') {
+      const status = proxyAbortStatus(req.signal.aborted);
+      if (status === 499) {
+        return new NextResponse(null, { status });
+      }
       console.error(`[PROXY ERROR] Request timeout: ${logTarget}`);
       return NextResponse.json(
         { error: 'Gateway Timeout', message: 'Request timed out' },
-        { status: 504 }
+        { status }
       );
     }
 

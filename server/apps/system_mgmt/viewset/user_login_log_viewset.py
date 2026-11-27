@@ -83,11 +83,11 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         return (queryset | unassigned).order_by("-created_at")
 
     def _include_unassigned_failed_logins(self):
-        """超管查看根组织 Default 时，附带对不上任何平台用户的失败登录。"""
+        """超管查看内置根组织时，附带对不上任何平台用户的失败登录。"""
         if not getattr(self.request.user, "is_superuser", False):
             return False
         team_id = self._parse_current_team_cookie(self.request)
-        return GroupUtils.active_queryset(id=team_id, name="Default", parent_id=0).exists()
+        return GroupUtils.active_queryset(id=team_id, parent_id=0, is_builtin=True).exists()
 
     @HasPermission("audit_log-View")
     def list(self, request, *args, **kwargs):

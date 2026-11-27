@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import yaml
 from django.db.models import Case, Q, When
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -45,6 +45,15 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillRequestLogSerializer,
     SkillTemplateSerializer,
     SkillToolsSerializer,
+)
+from apps.opspilot.services.agent_transfer import (
+    AgentArchiveError,
+    build_agent_zip,
+    import_agent_recipe,
+    missing_builtin_message,
+    permission_denied_message,
+    read_agent_zip,
+    read_bounded_upload,
 )
 from apps.opspilot.services.asset_tags import apply_fallback_tool_tags
 from apps.opspilot.services.builtin_tools import (
@@ -98,6 +107,7 @@ from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params, merge_package_params, validate_package_params
+from apps.opspilot.utils.skill_tool_log import log_skill_tools_replaced, skill_tools_before_save
 from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
 from apps.opspilot.utils.user_message import user_message
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
@@ -235,6 +245,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         instance = getattr(serializer, "instance", None)
+        if instance is not None and "tools" in params:
+            log_skill_tools_replaced(skill_id=instance.id, actor=request.user.username, before=[], after=instance.tools)
         if instance is not None and "skill_package_params" in params:
             instance.skill_package_params = params["skill_package_params"]
             instance.save(update_fields=["skill_package_params"])
@@ -359,6 +371,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 if i.get("type") == "password":
                     EncryptMixin.decrypt_field("value", i)
                     EncryptMixin.encrypt_field("value", i)
+        previous_tools = skill_tools_before_save(params, instance.tools)
         self._normalize_skill_param_passwords(params, instance)
         package_params_error = self._normalize_skill_package_params_for_update(request, params, instance)
         if package_params_error is not None:
@@ -378,6 +391,12 @@ class LLMViewSet(PinMixin, AuthViewSet):
         instance.updated_by = request.user.username
         update_fields.add("updated_by")
         instance.save(update_fields=update_fields)
+        log_skill_tools_replaced(
+            skill_id=instance.id,
+            actor=request.user.username,
+            before=previous_tools,
+            after=instance.tools,
+        )
         sync_skill_channel_usage_teams(instance)
         # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
         # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
@@ -408,6 +427,75 @@ class LLMViewSet(PinMixin, AuthViewSet):
         response = JsonResponse({"result": True, "data": {"usage_team": obj.usage_team}})
         log_operation(request, "update", "opspilot", f"授权使用组织: {obj.name}")
         return response
+
+    @action(methods=["get"], detail=True, url_path="export")
+    def export_agent(self, request, pk=None):
+        denied = permission_denied_message(request.user, "skill_setting-Edit")
+        if denied:
+            return JsonResponse({"result": False, "message": denied}, status=403)
+        skill = self.get_object()
+        if not getattr(request.user, "is_superuser", False):
+            try:
+                current_team = self._validate_current_team_permission(request)
+            except PermissionDenied as exc:
+                detail = getattr(exc, "detail", None)
+                return JsonResponse({"result": False, "message": str(detail if detail is not None else exc)}, status=403)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            if not self.get_has_permission(request.user, skill, current_team, include_children=include_children):
+                message = self.loader.get("error.permission_update_denied") if self.loader else ""
+                return JsonResponse(
+                    {"result": False, "message": message or "You do not have permission to update this instance"},
+                    status=403,
+                )
+        try:
+            payload = build_agent_zip(skill)
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        logger.info("agent export finished skill_id=%s", skill.id)
+        response = HttpResponse(payload, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="agent-{skill.id}.zip"'
+        log_operation(request, "export", "opspilot", f"导出智能体: {skill.name}")
+        return response
+
+    @action(methods=["post"], detail=False, url_path="import_agent")
+    def import_agent(self, request):
+        upload = request.FILES.get("file")
+        try:
+            data = read_bounded_upload(upload)
+            recipe = read_agent_zip(data)
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        if recipe is None:
+            return JsonResponse({"result": False, "message": "文件无法识别，导入已取消"}, status=400)
+        denied = permission_denied_message(request.user, "skill_list-Add")
+        if denied:
+            return JsonResponse({"result": False, "message": denied}, status=403)
+        if recipe.needs_tool_add:
+            denied = permission_denied_message(request.user, "tool_list-Add")
+            if denied:
+                return JsonResponse({"result": False, "message": denied}, status=403)
+        try:
+            team_id = self._validate_current_team_permission(request)
+        except PermissionDenied:
+            return JsonResponse({"result": False, "message": "当前组织无效，导入已取消"}, status=400)
+        missing = missing_builtin_message(recipe)
+        if missing:
+            return JsonResponse({"result": False, "message": missing}, status=400)
+        try:
+            result = import_agent_recipe(
+                recipe,
+                team_id=team_id,
+                user=request.user,
+                name_taken=lambda name: bool(self._validate_name(name, request.user.group_list or [], [team_id])),
+            )
+        except AgentArchiveError as exc:
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        except Exception:
+            logger.exception("agent import failed")
+            return JsonResponse({"result": False, "message": "导入失败"}, status=500)
+        logger.info("agent import finished skill_id=%s note_count=%s", result["id"], len(result["notes"]))
+        log_operation(request, "create", "opspilot", f"导入智能体: {result['name']}")
+        return JsonResponse({"result": True, "data": result})
 
     @staticmethod
     def create_error_stream_response(error_message):
@@ -924,12 +1012,13 @@ class SkillRequestLogViewSet(LanguageViewSet):
             message = self.loader.get("error.skill_not_found") if self.loader else "Skill not found"
             return JsonResponse({"result": False, "message": message})
 
-        # 验证 current_team 权限
+        # 验证 current_team 权限。模块角色不必属于该组织，但仍只能看当前组织下的技能日志。
         if not request.user.is_superuser:
             current_team = self._parse_current_team_cookie(request)
-            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
-            if current_team not in user_group_ids:
-                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+            if not has_unrestricted_org_scope(request.user, "opspilot"):
+                user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+                if current_team not in user_group_ids:
+                    raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
             if current_team not in (skill.team or []):
                 raise PermissionDenied(self.loader.get("error.no_permission_access_skill") if self.loader else "无权访问该技能的日志")
 

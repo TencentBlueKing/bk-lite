@@ -3,10 +3,12 @@ import { Skeleton, Popconfirm } from 'antd';
 import Icon from '@/components/icon';
 import PermissionWrapper from "@/components/permission";
 import { Role } from '@/app/system-manager/types/application';
+import { isModuleBuiltinRole, moduleRoleLabel } from '@/app/system-manager/utils/moduleRoles';
 
-type TranslateFunction = (key: string) => string;
+type TranslateFunction = (key: string, fallback?: string, values?: { app: string }) => string;
 
 interface RoleListProps {
+  appName?: string;
   loadingRoles: boolean;
   roleList: Role[];
   selectedRole: Role | null;
@@ -17,6 +19,7 @@ interface RoleListProps {
 }
 
 const RoleList: React.FC<RoleListProps> = ({
+  appName,
   loadingRoles,
   roleList,
   selectedRole,
@@ -32,8 +35,9 @@ const RoleList: React.FC<RoleListProps> = ({
       className={`flex items-center rounded-md justify-between p-2 mb-2 hover:bg-[var(--color-fill-1)] group ${selectedRole?.id === role.id ? 'bg-[var(--color-fill-2)] text-[var(--color-primary)]' : ''}`}
     >
       <div className="cursor-pointer text-sm" onClick={() => onSelectRole(role)}>
-        {role.name}
+        {moduleRoleLabel(role.name, t, appName)}
       </div>
+      {!isModuleBuiltinRole(role.name) && (
       <div className="flex text-base items-center text-[var(--color-text-3)]">
         <PermissionWrapper requiredPermissions={['Edit']} className="inline-block">
           <span className="hidden group-hover:inline cursor-pointer hover:text-[var(--color-text-active)]" onClick={() => showRoleModal(role)}>
@@ -53,6 +57,7 @@ const RoleList: React.FC<RoleListProps> = ({
           </Popconfirm>
         </PermissionWrapper>
       </div>
+      )}
     </div>
   );
 

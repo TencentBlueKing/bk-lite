@@ -257,11 +257,11 @@ class ControllerBulkInstallRequestSerializer(serializers.Serializer):
         min_value=InstallerConstants.BULK_MIN_SUCCESS_COUNT,
         max_value=InstallerConstants.BULK_MAX_SUCCESS_COUNT,
     )
-    expires_in_hours = serializers.IntegerField(
+    expires_in_days = serializers.IntegerField(
         required=False,
-        min_value=1,
-        max_value=InstallerConstants.BULK_MAX_EXPIRE_HOURS,
-        default=InstallerConstants.BULK_DEFAULT_EXPIRE_HOURS,
+        min_value=InstallerConstants.BULK_MIN_EXPIRE_DAYS,
+        max_value=InstallerConstants.BULK_MAX_EXPIRE_DAYS,
+        default=InstallerConstants.BULK_DEFAULT_EXPIRE_DAYS,
     )
     push_targets = serializers.ListField(
         child=serializers.CharField(allow_blank=False),

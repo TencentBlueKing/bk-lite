@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.operation_analysis.services.datasource_params.binding import apply_json_template
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.elasticsearch_client import ElasticsearchSearchClient, normalize_elasticsearch_config
 from apps.operation_analysis.services.datasource_preview.elasticsearch_query import (
@@ -66,10 +67,12 @@ class ElasticsearchConnectorExecutor(BaseConnectorExecutor):
         query_config: dict[str, Any],
         *,
         limit: int = MAX_ROWS,
+        param_specs: list | None = None,
+        resolved_params: dict | None = None,
     ) -> tuple[list[dict], list[str]]:
         normalized = normalize_elasticsearch_config(connection_config)
         index = validate_index_name(normalized.get("index") or "")
-        body = prepare_search_body(query_config)
+        body = apply_json_template(prepare_search_body(query_config), param_specs, resolved_params)
         info = self.client.info(normalized)
         assert_supported_cluster(info)
         payload = self.client.search(normalized, index, body)
@@ -94,7 +97,13 @@ class ElasticsearchConnectorExecutor(BaseConnectorExecutor):
         **kwargs,
     ) -> PreviewResult:
         try:
-            rows, warnings = self.execute(connection_config, query_config, limit=limit)
+            rows, warnings = self.execute(
+                connection_config,
+                query_config,
+                limit=limit,
+                param_specs=kwargs.get("param_specs"),
+                resolved_params=kwargs.get("resolved_params"),
+            )
         except ConnectorError:
             raise
         except Exception as exc:

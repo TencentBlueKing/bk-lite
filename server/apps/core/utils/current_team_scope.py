@@ -23,7 +23,15 @@ class CurrentTeamDataScope:
     is_auditor: bool = False
 
 
+def _actor_app_id(actor_context) -> str:
+    ctx = actor_context or {}
+    app = ctx.get("app") or ctx.get("client_id") or ""
+    return str(app).strip()
+
+
 def _get_actor_context(request):
+    from apps.core.utils.module_scope import client_id_from_request
+
     user = request.user
     is_superuser = bool(getattr(user, "is_superuser", False))
     return {
@@ -32,6 +40,7 @@ def _get_actor_context(request):
         "group_list": list(getattr(user, "group_list", []) or []),
         "is_superuser": is_superuser,
         "is_auditor": bool(getattr(user, "is_auditor", False)) and not is_superuser,
+        "app": client_id_from_request(request),
     }
 
 
@@ -141,7 +150,7 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
 
     scope = actor_context.get("data_scope")
     if isinstance(scope, CurrentTeamDataScope):
-        return {
+        payload = {
             "username": scope.username,
             "domain": scope.domain,
             "current_team": int(scope.current_team),
@@ -151,6 +160,10 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
             "group_list": list(actor_context.get("group_list") or []),
             "data_team_ids": sorted(int(x) for x in scope.data_team_ids),
         }
+        app = _actor_app_id(actor_context)
+        if app:
+            payload["app"] = app
+        return payload
 
     current_team = actor_context.get("current_team")
     raw_ids = actor_context.get("data_team_ids") or []
@@ -163,7 +176,7 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
         return None
     if team is None or not team_ids:
         return None
-    return {
+    payload = {
         "username": str(actor_context.get("username") or ""),
         "domain": str(actor_context.get("domain") or "domain.com"),
         "current_team": team,
@@ -173,6 +186,10 @@ def actor_context_to_wire(actor_context: dict | None) -> dict | None:
         "group_list": list(actor_context.get("group_list") or []),
         "data_team_ids": team_ids,
     }
+    app = _actor_app_id(actor_context)
+    if app:
+        payload["app"] = app
+    return payload
 
 
 def hydrate_actor_context_data_scope(actor_context: dict | None) -> CurrentTeamDataScope | None:

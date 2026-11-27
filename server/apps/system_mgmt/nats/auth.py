@@ -2,6 +2,7 @@
 from django.db import InterfaceError, OperationalError
 
 from apps.core.constants import PASSWORD_CHANGED_ERROR_CODE, PASSWORD_CHANGED_TOKEN_MESSAGE
+from apps.core.utils.module_scope import module_apps_from_roles, overlay_module_permissions
 from apps.system_mgmt.services.platform_roles import is_platform_admin, is_platform_auditor, view_permission_map
 from apps.system_mgmt.services.user_access import is_account_expired, is_user_access_disabled
 
@@ -20,14 +21,25 @@ def build_user_authorization_context(user):
 
     if unrestricted_scope:
         queryset = list(GroupUtils.active_queryset().prefetch_related("roles").order_by("id"))
-        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
+        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id, "is_builtin": group.is_builtin} for group in queryset]
     else:
         visible_ids = _collect_ancestor_group_ids(user.group_list)
         queryset = list(GroupUtils.active_queryset(id__in=visible_ids).prefetch_related("roles").order_by("id"))
         direct_group_ids = set(user.group_list)
-        groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset if group.id in direct_group_ids]
+        groups = [
+            {"id": group.id, "name": group.name, "parent_id": group.parent_id, "is_builtin": group.is_builtin}
+            for group in queryset
+            if group.id in direct_group_ids
+        ]
 
     group_tree = GroupUtils.build_group_tree(queryset, unrestricted_scope, [group["id"] for group in groups])
+    admin_apps, auditor_apps = module_apps_from_roles(role_list)
+    module_group_list = []
+    module_group_tree = []
+    if admin_apps or auditor_apps:
+        full_queryset = list(GroupUtils.active_queryset().prefetch_related("roles").order_by("id"))
+        module_group_list = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in full_queryset]
+        module_group_tree = GroupUtils.build_group_tree(full_queryset, True, [group["id"] for group in module_group_list])
     permissions = {}
     if is_auditor:
         permissions = view_permission_map()
@@ -35,6 +47,7 @@ def build_user_authorization_context(user):
         menu_ids = {menu_id for menu_list in role_list.values_list("menu_list", flat=True) for menu_id in menu_list}
         for app, name in Menu.objects.filter(id__in=menu_ids).values_list("app", "name"):
             permissions.setdefault(app, []).append(name)
+        permissions = overlay_module_permissions(permissions, admin_apps, auditor_apps)
 
     return {
         "username": user.username,
@@ -50,6 +63,10 @@ def build_user_authorization_context(user):
         "locale": user.locale,
         "permission": permissions,
         "timezone": user.timezone,
+        "module_admin_apps": sorted(admin_apps),
+        "module_auditor_apps": sorted(auditor_apps),
+        "module_group_list": module_group_list,
+        "module_group_tree": module_group_tree,
     }
 
 

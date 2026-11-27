@@ -92,6 +92,11 @@ class EventAction:
     CLOSED = "closed"
     RECOVERY = "recovery"
     RECORD = "record"
+    # 各中心内部状态词；接入时归一成 RECOVERY，匹配时仍认这笔历史误发。
+    RECOVERED_ALIAS = "recovered"
+
+    INGEST_ALIASES = {RECOVERED_ALIAS: RECOVERY}
+    END_ACTIONS = (RECOVERY, CLOSED, RECOVERED_ALIAS)
 
     CHOICES = (
         (CREATED, "产生"),
@@ -99,6 +104,15 @@ class EventAction:
         (RECOVERY, "恢复"),
         (RECORD, "记录"),
     )
+
+    @classmethod
+    def normalize_ingest(cls, action):
+        if action is None:
+            return action
+        token = str(action).strip()
+        if not token:
+            return action
+        return cls.INGEST_ALIASES.get(token, token)
 
 
 class EventType:

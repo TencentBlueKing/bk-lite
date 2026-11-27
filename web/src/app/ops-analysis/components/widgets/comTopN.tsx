@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useWidgetDataLink } from '@/app/ops-analysis/components/interactionTitleIcon';
 import { topNLinkPoints } from '@/app/ops-analysis/utils/interactionPoints';
 import { Spin } from 'antd';
@@ -27,6 +27,7 @@ import {
   presentRanking,
   readChartDisplay,
 } from '@/app/ops-analysis/utils/chartDisplay';
+import { rowScrollRead, startRowAutoScroll } from '@/app/ops-analysis/utils/rowAutoScroll';
 import {
   buildTopNItems,
   resolveConfiguredTopNBarPercent,
@@ -122,6 +123,8 @@ const TopN: React.FC<TopNProps> = ({
   const cellPadding = scaleScreenMetric(8, screenRenderContext);
   const minBarWidth = scaleScreenMetric(56, screenRenderContext);
   const gridTemplateColumns = `minmax(0, max-content) minmax(${minBarWidth}px, 1fr) max-content`;
+  const frameRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const items = presentRanking(
     buildTopNItems(rawData, labelField, valueField, {
       scalarFields: config?.topNScalarFields,
@@ -144,6 +147,17 @@ const TopN: React.FC<TopNProps> = ({
     onReady?.(isTopNContentReady(contentState));
   }, [contentState, onReady]);
 
+  useEffect(() => {
+    const viewport = listRef.current;
+    if (!viewport) return undefined;
+    return startRowAutoScroll(
+      viewport,
+      () => rowScrollRead(config, screenRenderContext?.enabled === true),
+      '[data-auto-scroll-row]',
+      frameRef.current ?? viewport,
+    );
+  }, [config, items, screenRenderContext?.enabled]);
+
   let content: React.ReactNode;
   if (contentState === 'loading') {
     content = (
@@ -158,6 +172,7 @@ const TopN: React.FC<TopNProps> = ({
   } else {
     content = (
       <div
+        ref={frameRef}
         className="flex h-full min-h-0 flex-col overflow-hidden"
         style={{
           paddingBottom: scaleScreenMetric(4, screenRenderContext),
@@ -208,7 +223,7 @@ const TopN: React.FC<TopNProps> = ({
             </span>
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           <div
             className="grid items-center"
             style={{
@@ -223,6 +238,7 @@ const TopN: React.FC<TopNProps> = ({
               return (
                 <React.Fragment key={`${item.name}-${index}`}>
                   <span
+                    data-auto-scroll-row
                     className={`flex h-7 min-w-0 items-center truncate whitespace-nowrap rounded-l-md text-[13px] ${dataLinkActive ? 'cursor-pointer' : ''}`}
                     onClick={dataLinkActive ? () => openPoint(points[index]) : undefined}
                     style={{

@@ -57,6 +57,7 @@ class NodeService:
                 "domain": permission_data["domain"],
                 "current_team": current_team,
                 "is_superuser": permission_data.get("is_superuser", False),
+                "app": "node",
             },
             include_children=include_children,
         )

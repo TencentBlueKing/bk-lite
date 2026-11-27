@@ -12,23 +12,26 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.core.utils.module_scope import client_id_from_request
 from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
-from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
+from apps.job_mgmt.serializers.organization_batch import OrganizationAdjustmentSerializer
+from apps.job_mgmt.serializers.target import TargetSerializer, TargetTestConnectionSerializer
 from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.target_vault import request_credential_actor
 from apps.job_mgmt.utils.i18n import job_message
-from apps.job_mgmt.views.mixins import BatchDeleteMixin
+from apps.job_mgmt.views.organization_batch import OrganizationBatchMixin
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.services.instance_rule_cleanup import remove_organization_instance_rules
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -102,12 +105,13 @@ def _build_actor_context(request):
         "username": request.user.username,
         "domain": request.user.domain,
         "current_team": current_team,
+        "app": client_id_from_request(request),
         "include_children": request.COOKIES.get("include_children", "0") == "1",
         "is_superuser": request.user.is_superuser,
     }
 
 
-class TargetViewSet(BatchDeleteMixin, AuthViewSet):
+class TargetViewSet(OrganizationBatchMixin, AuthViewSet):
     """目标管理视图集"""
 
     queryset = Target.objects.all()
@@ -117,12 +121,14 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
     ORGANIZATION_FIELD = "team"
     permission_key = "job"
 
-    batch_delete_serializer_class = TargetBatchDeleteSerializer
+    normalize_membership_for_edit = True
     batch_delete_log_label = "目标"
 
     def get_serializer_class(self):
         if self.action == "batch_delete":
-            return TargetBatchDeleteSerializer
+            return self.batch_delete_serializer_class
+        elif self.action == "adjust_organizations":
+            return OrganizationAdjustmentSerializer
         elif self.action == "test_connection":
             return TargetTestConnectionSerializer
         return TargetSerializer
@@ -153,6 +159,21 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
             target_name = response.data.get("name") if isinstance(response.data, dict) else request.data.get("name", "")
             log_operation(request, "create", "job", f"新增目标: {target_name}")
         return response
+
+    @action(detail=False, methods=["get"])
+    @HasPermission("target-View")
+    def selection_ids(self, request):
+        return self.get_selection_ids(request)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("target-Edit")
+    def adjust_organizations(self, request):
+        return self.perform_organization_adjustment(request)
+
+    def write_changed_organizations(self, changed, operation, organization, user):
+        super().write_changed_organizations(changed, operation, organization, user)
+        if operation == "remove":
+            remove_organization_instance_rules(app="job", module="job", organization=organization, instance_ids=[target.pk for target in changed])
 
     @action(detail=False, methods=["get"])
     @HasPermission("target-View")
@@ -320,7 +341,9 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         target = self.get_object()
         user = request.user
         team = self._validate_current_team_permission(request)
-        if not has_unrestricted_org_scope(user):
+        from apps.core.utils.module_scope import client_id_from_module
+
+        if not has_unrestricted_org_scope(user, client_id_from_module(self.__class__.__module__)):
             include_children = request.COOKIES.get("include_children") == "1"
             if not self.get_has_permission(user, target, team, is_check=True, include_children=include_children):
                 raise PermissionDenied()

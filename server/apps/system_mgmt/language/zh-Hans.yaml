@@ -20,6 +20,10 @@ error:
   order_required: 排序值不能为空
   time_range_required: 时间范围是必填项
   cannot_delete_admin_normal_roles: admin和normal角色不允许删除
+  module_role_locked: 模块管理员和模块审计员不能修改、删除或分配给组织
+  module_role_grant_forbidden: 只有平台超级管理员可以授予或收回模块管理员和模块审计员
+  module_role_identity_transition_forbidden: 身份转换会收回模块管理员或模块审计员角色，需由平台超级管理员操作
+  platform_identity_cannot_take_module_role: 平台超级管理员和平台超级审计员不能分配模块角色
   group_id_required: 组织ID不能为空
   group_has_users_remove_first: 此组或子组中有用户，请先移除用户！
   update_failed: 更新失败
@@ -35,7 +39,6 @@ error:
   no_permission_delete_group: 您没有权限删除此组。
   some_roles_not_exist: 角色不存在
   login_module_name_exists: 已存在同名且同类型的登录模块。
-  default_group_cannot_modify: 默认组无法修改。
   time_range_too_large: 时间跨度不能超过90天
   cannot_modify_builtin_menu_group: 内置菜单组不允许修改
   cannot_delete_menu_with_children: 无法删除包含子菜单的菜单
@@ -43,6 +46,7 @@ error:
   invalid_time_format: 时间格式无效,请使用ISO 8601格式
   domain_required_for_login_module: 创建登录模块需要提供域名。
   module_not_found: 未找到模块
+  data_object_api_unavailable: 该应用没有可用的数据对象接口
   cannot_delete_menu_group_with_menus: 无法删除包含菜单的菜单组
   delete_failed: 删除失败
   cannot_delete_builtin_menu_group: 内置菜单组不允许删除
@@ -139,6 +143,7 @@ error:
   account_association_not_found: 账号关联不存在
   account_association_not_ready: 账号关联还不能用于发送，请先完成更新
   account_association_test_receiver_unavailable: 当前登录用户在该账号关联中没有可用的接收标识
+  empty_custom_menu_not_allowed: 自定义菜单至少要有一项
   custom_menu_group_display_name_exists: 应用 {app} 下已存在相同显示名称的菜单组
   custom_menu_group_enabled_exists: 应用 {app} 已有启用的菜单组，每个应用只能启用一个菜单组
   custom_menu_group_name_exists: 应用 {app} 下已存在名称为 {display_name} 的菜单组
@@ -178,6 +183,7 @@ error:
   synced_group_child_creation_forbidden: 同步组织下不能手动创建子组织
   cannot_create_under_archived_group: 不能在已归档组织下创建子组织
   synced_child_group_name_immutable: 同步子组织名称不能修改
+  group_name_exists: 同一层级已存在同名组织
   synced_groups_delete_forbidden: 同步组织不能直接删除
   synced_groups_archive_forbidden: 同步组织不能直接归档
   group_archive_users_need_active_org: 归档后部分用户将没有活动组织，请先为这些用户分配其他活动组织

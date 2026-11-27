@@ -220,6 +220,9 @@ class AlertSourceAdapter(ABC):
                 if model_field.max_length and len(_value) > model_field.max_length:
                     raise InvalidMonitorIdentity(key)
 
+            if key == "action":
+                _value = EventAction.normalize_ingest(_value)
+
             result[key] = _value
 
         self.add_start_time(result)
@@ -366,7 +369,7 @@ class AlertSourceAdapter(ABC):
         return str(value).strip()
 
     def resolve_recovery_external_id(self, event: Event) -> Optional[str]:
-        if event.action not in [EventAction.RECOVERY, EventAction.CLOSED]:
+        if event.action not in EventAction.END_ACTIONS:
             return None
 
         item = self._normalize_lookup_value(event.item)
@@ -714,7 +717,7 @@ class AlertSourceAdapter(ABC):
 
         for event_batch in bulk_events:
             # 过滤出 RECOVERY 和 CLOSED 类型的事件
-            recovery_events = [e for e in event_batch if e.action in [EventAction.RECOVERY, EventAction.CLOSED]]
+            recovery_events = [e for e in event_batch if e.action in EventAction.END_ACTIONS]
 
             if recovery_events:
                 try:

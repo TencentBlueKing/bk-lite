@@ -6,13 +6,13 @@ import React, {
   useCallback,
   useMemo
 } from 'react';
-import { Alert, Button, Checkbox, Form, Select, Segmented } from 'antd';
+import { Alert, Button, Checkbox, Form, InputNumber, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
 import { ManualInstallController } from '@/app/node-manager/types/controller';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   CPU_ARCHITECTURE_OPTIONS,
   OPERATE_SYSTEMS
@@ -33,6 +33,8 @@ import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { useInstallWays } from '@/app/node-manager/hooks/node';
 import { useHandleCopy } from '@/app/node-manager/hooks';
 import { useUserInfoContext } from '@/context/userInfo';
+import { hasModulePrivilege } from '@/app/system-manager/utils/moduleRoles';
+import { useOperableFlatGroups, useOperableGroupTree } from '@/hooks/useOperableGroupTree';
 import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
@@ -58,13 +60,18 @@ import {
 } from '@/app/node-manager/utils/winrm';
 import { countAccessAssets } from './installNodeCount';
 import {
-  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_EXPIRE_COUNT,
+  BULK_DEFAULT_EXPIRE_UNIT,
   BULK_DEFAULT_SUCCESS_COUNT,
-  BULK_EXPIRE_DAY_OPTIONS,
+  BULK_EXPIRE_UNIT_MAX,
+  BULK_EXPIRE_UNITS,
   BULK_INSTALL_METHOD,
   BULK_SUCCESS_COUNT_OPTIONS,
+  BulkExpireUnit,
   bulkCommandIncludesNodeIp,
-  bulkExpireHours,
+  bulkExpireDays,
+  bulkExpirePreviewTime,
+  clampBulkExpireCount,
   dedupeControllerPackages,
   installWaysForOs
 } from './bulkInstall';
@@ -93,6 +100,9 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     useControllerApi();
   const { handleCopy } = useHandleCopy();
   const commonContext = useUserInfoContext();
+  const operableGroupTree = useOperableGroupTree();
+  const operableFlatGroups = useOperableFlatGroups();
+  const pathname = usePathname();
   const { clientData } = useClientData();
   const soldPushTargets = useMemo(
     () => getSoldModulePushTargets(clientData),
@@ -102,20 +112,32 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
+  const expiresCount = Form.useWatch('expires_count', form);
+  const expiresUnit = Form.useWatch('expires_unit', form) as BulkExpireUnit | undefined;
+  const expireUnit = expiresUnit ?? BULK_DEFAULT_EXPIRE_UNIT;
+  const expireCount = typeof expiresCount === 'number' ? expiresCount : null;
+  const expireDays = expireCount == null ? null : bulkExpireDays(expireCount, expireUnit);
+  const expirePreviewAt =
+    expireCount == null ? null : bulkExpirePreviewTime(expireCount, expireUnit, Date.now());
+  const expireUnitLabels: Record<BulkExpireUnit, string> = {
+    day: t('node-manager.cloudregion.node.bulkExpireUnitDay', '天'),
+    month: t('node-manager.cloudregion.node.bulkExpireUnitMonth', '月'),
+    year: t('node-manager.cloudregion.node.bulkExpireUnitYear', '年')
+  };
   const installWays = useInstallWays();
   const name = searchParams.get('name') || '';
-  const groupList = (commonContext?.groups || []).map((item) => ({
-    label: item.name,
-    value: item.id
-  }));
+  const groupList = (hasModulePrivilege(commonContext.roles, pathname)
+    ? operableFlatGroups
+    : commonContext.groups || []
+  ).map((item) => ({ label: item.name, value: item.id }));
   const excelGroupList = useMemo(
     () =>
       buildOrganizationOptions(
-        commonContext?.groupTree?.length
-          ? commonContext.groupTree
+        operableGroupTree?.length
+          ? operableGroupTree
           : commonContext?.groups || []
       ),
-    [commonContext?.groupTree, commonContext?.groups]
+    [operableGroupTree, commonContext?.groups]
   );
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
@@ -287,17 +309,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     if (versionLoading) {
       return false;
     }
-    if (isBulk) {
-      return Boolean(os) && filteredSidecarVersionList.length === 0;
-    }
     return !!selectedPlatform && filteredSidecarVersionList.length === 0;
-  }, [
-    filteredSidecarVersionList.length,
-    isBulk,
-    os,
-    selectedPlatform,
-    versionLoading
-  ]);
+  }, [filteredSidecarVersionList.length, selectedPlatform, versionLoading]);
 
   const getControllerPlatforms = useCallback(async () => {
     setPlatformLoading(true);
@@ -421,13 +434,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }, [getControllerPlatforms, isLoading]);
 
   useEffect(() => {
-    const ready = isBulk ? Boolean(os) : Boolean(os && cpuArchitecture);
-    if (!isLoading && ready) {
+    if (!isLoading && os && cpuArchitecture) {
       getSidecarList();
       return;
     }
     setSidecarVersionList([]);
-  }, [cpuArchitecture, isBulk, isLoading, os]);
+  }, [cpuArchitecture, isLoading, os]);
 
   useEffect(() => {
     form.setFieldValue('install', installMethod);
@@ -696,7 +708,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     try {
       const data = await getPackages({
         os,
-        ...(isBulk ? {} : { cpu_architecture: cpuArchitecture }),
+        cpu_architecture: cpuArchitecture,
         type: 'controller',
         object: 'Controller'
       });
@@ -713,11 +725,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     setConfirmLoading(true);
     try {
       const values = await form.validateFields();
+      const expiresInDays = bulkExpireDays(
+        values.expires_count ?? BULK_DEFAULT_EXPIRE_COUNT,
+        values.expires_unit ?? BULK_DEFAULT_EXPIRE_UNIT
+      );
+      if (expiresInDays == null) {
+        return;
+      }
       const payload = await createBulkInstall({
         cloud_region_id: cloudId,
         package_id: Number(values.sidecar_package),
         max_success_count: values.max_success_count ?? BULK_DEFAULT_SUCCESS_COUNT,
-        expires_in_hours: bulkExpireHours(values.expires_in_days ?? BULK_DEFAULT_EXPIRE_DAYS),
+        expires_in_days: expiresInDays,
         push_targets: values.push_targets || []
       });
       setBulkBatch(payload);
@@ -844,9 +863,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         name="basic"
         layout="vertical"
         onValuesChange={(changed) => {
+          if ('expires_unit' in changed) {
+            form.setFieldValue(
+              'expires_count',
+              clampBulkExpireCount(form.getFieldValue('expires_count'), changed.expires_unit)
+            );
+          }
           if (
             'max_success_count' in changed ||
-            'expires_in_days' in changed ||
+            'expires_count' in changed ||
+            'expires_unit' in changed ||
             'sidecar_package' in changed ||
             'push_targets' in changed
           ) {
@@ -886,25 +912,24 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             disabled={platformLoading || availableOSOptions.length <= 1}
           />
         </Form.Item>
-        {!isBulk && (
-          <Form.Item<ControllerInstallFields>
-            name="cpu_architecture"
-            required
-            label={t('node-manager.cloudregion.node.cpuArchitecture')}
-            rules={[{ required: true, message: t('common.required') }]}
-          >
-            <Segmented
-              options={architectureOptions}
-              disabled={platformLoading || architectureOptions.length <= 1}
-              value={cpuArchitecture}
-              onChange={(value) => {
-                setCpuArchitecture(value);
-                form.setFieldValue('cpu_architecture', value);
-                form.setFieldValue('sidecar_package', null);
-              }}
-            />
-          </Form.Item>
-        )}
+        <Form.Item<ControllerInstallFields>
+          name="cpu_architecture"
+          required
+          label={t('node-manager.cloudregion.node.cpuArchitecture')}
+          rules={[{ required: true, message: t('common.required') }]}
+        >
+          <Segmented
+            options={architectureOptions}
+            disabled={platformLoading || architectureOptions.length <= 1}
+            value={cpuArchitecture}
+            onChange={(value) => {
+              setCpuArchitecture(value);
+              setBulkBatch(null);
+              form.setFieldValue('cpu_architecture', value);
+              form.setFieldValue('sidecar_package', null);
+            }}
+          />
+        </Form.Item>
         <Form.Item<ControllerInstallFields>
           required
           label={t('node-manager.cloudregion.node.installationMethod')}
@@ -984,11 +1009,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
                 showIcon
                 message={t('node-manager.cloudregion.node.noControllerVersionTitle')}
                 description={t('node-manager.cloudregion.node.noControllerVersionDesc', undefined, {
-                  architecture: isBulk
-                    ? 'x86_64 / ARM64'
-                    : cpuArchitecture === 'arm64'
-                      ? 'ARM64'
-                      : cpuArchitecture,
+                  architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture,
                   os: os === 'windows' ? 'Windows' : 'Linux'
                 })}
               />
@@ -1045,20 +1066,53 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               required
               label={t('node-manager.cloudregion.node.bulkExpireDays')}
             >
-              <Form.Item
-                name="expires_in_days"
-                noStyle
-                initialValue={BULK_DEFAULT_EXPIRE_DAYS}
-                rules={[{ required: true, message: t('common.required') }]}
-              >
-                <Select
-                  style={{ width: 300 }}
-                  options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
-                    value: count,
-                    label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
-                  }))}
-                />
-              </Form.Item>
+              <div className="flex w-[300px]">
+                <Form.Item
+                  name="expires_count"
+                  noStyle
+                  initialValue={BULK_DEFAULT_EXPIRE_COUNT}
+                  rules={[
+                    {
+                      validator: (_, value) => {
+                        if (bulkExpireDays(value, expireUnit) == null) {
+                          return Promise.reject(new Error(t('node-manager.cloudregion.node.bulkExpireInvalid')));
+                        }
+                        return Promise.resolve();
+                      }
+                    }
+                  ]}
+                >
+                  <InputNumber
+                    min={1}
+                    max={BULK_EXPIRE_UNIT_MAX[expireUnit]}
+                    precision={0}
+                    step={1}
+                    style={{ width: 180 }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="expires_unit"
+                  noStyle
+                  initialValue={BULK_DEFAULT_EXPIRE_UNIT}
+                >
+                  <Select
+                    className="ml-2"
+                    style={{ width: 112 }}
+                    options={BULK_EXPIRE_UNITS.map((unit) => ({
+                      value: unit,
+                      label: expireUnitLabels[unit]
+                    }))}
+                  />
+                </Form.Item>
+              </div>
+              {expireDays != null && expirePreviewAt != null && (
+                <div className={fieldHintClass}>
+                  {t('node-manager.cloudregion.node.bulkExpirePreview', '', {
+                    days: expireDays,
+                    time: new Date(expirePreviewAt).toLocaleString()
+                  })}
+                </div>
+              )}
               <div className={fieldHintClass}>
                 {t('node-manager.cloudregion.node.bulkExpireDaysHint')}
               </div>

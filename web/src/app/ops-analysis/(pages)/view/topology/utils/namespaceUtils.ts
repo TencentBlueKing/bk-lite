@@ -10,12 +10,9 @@ import {
 import { findReusableFilterDefinition } from '@/app/ops-analysis/utils/scanUnifiedFilterParams';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import {
-  buildRelativeTimeRangeFilterValue,
-} from '@/app/ops-analysis/utils/filterValue';
-import {
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
-import { chartDisplayPatch } from '@/app/ops-analysis/utils/chartDisplay';
+import { applyChartDisplay } from '@/app/ops-analysis/utils/chartDisplay';
 import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export { syncFilterValuesWithDefinitions };
@@ -165,7 +162,7 @@ export const buildFiltersFromNodes = (
       defaultValue = existing.defaultValue;
     } else if (param.value !== undefined && param.value !== null) {
       if (param.type === 'timeRange' && typeof param.value === 'number') {
-        defaultValue = buildRelativeTimeRangeFilterValue(param.value);
+        defaultValue = { selectValue: param.value };
       } else {
         defaultValue = param.value as FilterValue;
       }
@@ -355,12 +352,6 @@ export const buildValueConfig = (
     if (values.scalarCalc) valueConfig.scalarCalc = values.scalarCalc;
   }
   copySavedChartFields(valueConfig, values);
-  const displayPatch = chartDisplayPatch(values);
-  if (displayPatch.displayLimit !== undefined) {
-    valueConfig.displayLimit = displayPatch.displayLimit;
-  }
-  if (displayPatch.sortByValue !== undefined) {
-    valueConfig.sortByValue = displayPatch.sortByValue;
-  }
+  applyChartDisplay(valueConfig, values);
   return valueConfig;
 };

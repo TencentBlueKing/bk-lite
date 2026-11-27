@@ -2,6 +2,7 @@
 
 from rest_framework.exceptions import PermissionDenied
 
+from apps.core.utils.platform_scope import has_unrestricted_org_scope
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.models import Bot
 
@@ -40,7 +41,7 @@ class TeamPermissionMixin:
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
             raise PermissionDenied(self._get_permission_error_message())
-        if not getattr(request.user, "is_superuser", False):
+        if not has_unrestricted_org_scope(request.user, "opspilot"):
             user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
             if current_team not in user_group_ids:
                 raise PermissionDenied(self._get_permission_error_message())

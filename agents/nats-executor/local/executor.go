@@ -384,7 +384,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	defer cancel()
 
 	var cmd *exec.Cmd
-	launch, prepareErr := prepareWindowsLocalScript(shell, req.Command, runtime.GOOS)
+	launch, prepareErr := prepareWindowsLocalScript(shell, req.Command, runtime.GOOS, req.BatArgs)
 	if prepareErr != nil {
 		return invalidExecuteResponse(instanceId, prepareErr.Error())
 	}
@@ -413,6 +413,10 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		for k, v := range req.Env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
+	}
+
+	if launch != nil && len(launch.Env) > 0 {
+		cmd.Env = append(cmd.Environ(), launch.Env...)
 	}
 
 	startTime := time.Now()

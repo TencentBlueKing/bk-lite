@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ModelViewSet, ViewSet
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -15,6 +16,7 @@ from apps.core.utils.current_team_scope import (
     validate_assignable_organizations,
 )
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.permission_utils import get_instance_permission_map, get_instance_permissions, get_permission_rules, get_permissions_rules
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
@@ -341,6 +343,23 @@ class CollectTypeViewSet(ModelViewSet):
 
 
 class CollectInstanceViewSet(ViewSet):
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (
+            self.action
+            in (
+                "batch_create",
+                "remove_collect_instance",
+                "clear_removed_collector",
+                "reassign_collector_node",
+                "instance_update",
+                "set_organizations",
+            )
+            and not getattr(request.user, "is_superuser", False)
+            and effective_module_privilege(request.user, "log") == "auditor"
+        ):
+            raise PermissionDenied()
+
     OPERATE_PERMISSION = "Operate"
     PAGE_SIZE_MAX = 500
     PAGE_SIZE_ALL = -1
@@ -748,6 +767,15 @@ class CollectInstanceViewSet(ViewSet):
 
 
 class CollectConfigViewSet(ViewSet):
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (
+            self.action in ("update_instance_collect_config",)
+            and not getattr(request.user, "is_superuser", False)
+            and effective_module_privilege(request.user, "log") == "auditor"
+        ):
+            raise PermissionDenied()
+
     @staticmethod
     def _extract_config_instance_ids(config_objs):
         return list({config_obj.collect_instance_id for config_obj in config_objs})

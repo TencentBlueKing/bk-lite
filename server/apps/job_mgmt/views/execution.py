@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
+from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.filters.execution import JobExecutionFilter
@@ -65,7 +66,7 @@ class JobExecutionViewSet(AuthViewSet):
         Target / DistributionFile 后校验对象归属，防止跨团队越权引用（BL-NEW-002）。
         """
         user = getattr(request, "user", None)
-        if getattr(user, "is_superuser", False):
+        if getattr(user, "is_superuser", False) or effective_module_privilege(user, "job") == "admin":
             return None
         return normalize_authorized_team_ids(getattr(user, "group_list", []))
 

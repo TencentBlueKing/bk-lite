@@ -1,5 +1,6 @@
 interface DataSourceParamDeclaration {
   name?: string;
+  type?: string;
   value?: unknown;
 }
 
@@ -36,13 +37,9 @@ export const readExplicitPagePair = (
 export const supportsServerPagination = (
   params?: DataSourceParamDeclaration[],
 ): boolean => {
-  const paramNames = new Set(
-    (Array.isArray(params) ? params : [])
-      .map((param) => param?.name)
-      .filter((name): name is string => typeof name === 'string'),
-  );
-
-  return paramNames.has('page') && paramNames.has('page_size');
+  const page = (Array.isArray(params) ? params : []).find((param) => param?.name === 'page');
+  const pageSize = (Array.isArray(params) ? params : []).find((param) => param?.name === 'page_size');
+  return page?.type === 'number' && pageSize?.type === 'number';
 };
 
 export const buildTableQueryParams = ({

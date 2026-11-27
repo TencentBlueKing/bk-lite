@@ -96,7 +96,7 @@
 
 | 分类（display_category） | 采集类型（预置字段数） | 采集器 |
 |---|---|---|
-| 通用（general，4 种） | file 文件（9）、kafka_subscribe Kafka 日志订阅（12）、syslog（16）、snmp_trap（8） | Vector / Vector / Vector / Snmptrapd |
+| 通用（general，4 种） | file 文件（9）、kafka_subscribe Kafka 日志订阅（12）、syslog（16）、snmp_trap（11） | Vector / Vector / Vector / Snmptrapd |
 | Kubernetes（k8s，1 种） | kubernetes（10） | Vector |
 | 数据库（database，5 种） | mysql（17）、postgresql（18）、redis（15）、mongodb（11）、elasticsearch（24） | Filebeat |
 | 中间件（middleware，4 种） | apache（22）、nginx（22）、kafka（14）、rabbitmq（10） | Filebeat |
@@ -287,18 +287,21 @@
 | `collect_timestamp` | 日志采集时间 |
 | `topic` | Kafka Topic 名称 |
 
-#### snmp_trap（采集器 Snmptrapd · 8 字段）
+#### snmp_trap（采集器 Snmptrapd · 11 字段）
 
 | 字段 | 中文含义 |
 |---|---|
 | `collect_type` | 采集类型标识 |
 | `collector` | 采集器名称 |
 | `event_type` | 事件类型标识 |
-| `node_ip` | 发送Trap的设备IP |
+| `node_ip` | 接收节点 IP |
 | `timestamp` | 日志时间戳 |
+| `collect_timestamp` | 日志采集时间 |
 | `received_at` | Trap接收时间 |
-| `trap_message` | SNMP Trap消息内容 |
-| `raw_message` | 原始Trap报文 |
+| `message` | Trap 正文 |
+| `source_ip` | 发送 Trap 的来源 IP，解析不到为空字符串 |
+| `cloud_region_id` | 云区域 ID |
+| `agent_addr` | Trap 中的 agent 地址，解析不到为空字符串 |
 
 #### syslog（采集器 Vector · 16 字段）
 

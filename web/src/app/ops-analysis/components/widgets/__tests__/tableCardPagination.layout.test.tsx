@@ -37,7 +37,10 @@ afterEach(() => {
 });
 
 const dataSource = {
-  params: [{ name: 'page' }, { name: 'page_size' }],
+  params: [
+    { name: 'page', type: 'number' },
+    { name: 'page_size', type: 'number' },
+  ],
   field_schema: [{ key: 'name', title: '名称', value_type: 'string' }],
 } as any;
 

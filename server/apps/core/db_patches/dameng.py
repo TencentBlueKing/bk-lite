@@ -94,6 +94,7 @@ def apply_early_patches():
     1. _patch_cursor_execute_with_lock: 串行化 cursor.execute，解决 ASGI 并发死锁
     2. _patch_database_cache_set: 禁用 DatabaseCache 写入
     3. _patch_cursor_wrapper_suppress_cache_error: 抑制缓存错误日志
+    4. _patch_select_for_update_with_limit: 仅 migrate / batch_init 进程去掉 LIMIT + FOR UPDATE
     """
     global _early_patches_applied
     if _early_patches_applied:
@@ -108,6 +109,10 @@ def apply_early_patches():
 
     # 3. 抑制缓存错误日志
     _patch_cursor_wrapper_suppress_cache_error()
+
+    # 4. 只在 migrate / batch_init 进程里去掉 LIMIT + FOR UPDATE。常驻进程保留原报错，
+    #    避免 .first() 这类 [:1] 查询把行锁静默拿掉。
+    _patch_select_for_update_with_limit()
 
     logger.info("DamengDB early patches applied (cursor lock, DatabaseCache, CursorWrapper)")
 
@@ -248,6 +253,14 @@ def _patch_cursor_execute_with_lock():
     logger.info("[DAMENG_LOCK] cursor.execute patched with global lock for ASGI concurrency safety")
 
 
+def _patch_select_for_update_with_limit():
+    """Install the LIMIT + FOR UPDATE workaround for migrate and batch_init only."""
+    from apps.core.utils.queryset_lock import install_select_for_update_limit_compat_for_schema_init
+
+    if install_select_for_update_limit_compat_for_schema_init():
+        logger.info("SQLCompiler.as_sql patched to skip FOR UPDATE when combined with LIMIT during schema init")
+
+
 def patch():
     """
     应用常规的达梦数据库补丁。
@@ -265,6 +278,9 @@ def patch():
     _patch_jsonfield_for_bulk_update()
     _patch_bulk_create_ignore_conflicts()
     _patch_jsonfield_contains_lookup()
+    from migrate_patch.patches.compat_ops import install_idempotent_schema_editor
+
+    install_idempotent_schema_editor()
     logger.info("DamengDB ORM patches applied (JSONField, bulk_create, JSON contains)")
 
 

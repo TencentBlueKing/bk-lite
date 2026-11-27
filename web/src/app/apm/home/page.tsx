@@ -263,7 +263,9 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
         <span className="text-center">{t('apm.home.sloStatus', '状态')}</span>
       </div>
       {items.map((row, index) => {
-        const retention = sloRetentionLabel(row.reason, t);
+        const hint = sloRetentionLabel(row.reason, t)
+          ?? (row.reason === 'no_samples' ? t('apm.slo.noSamples', '评估窗内没有匹配的请求，请核对环境和端点名称') : null);
+        const noRate = row.current_rate == null;
         const met = row.met === true;
         return (
           <div
@@ -280,8 +282,8 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
               >
                 {row.service_name}
               </Link>
-              {retention ? (
-                <div className="truncate text-xs text-[var(--color-text-3)]" title={retention}>{retention}</div>
+              {hint ? (
+                <div className="truncate text-xs text-[var(--color-text-3)]" title={hint}>{hint}</div>
               ) : null}
             </div>
             <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
@@ -289,14 +291,14 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
             </span>
             <span
               className="text-right text-sm font-semibold tabular-nums"
-              style={{ color: row.current_rate == null ? 'var(--color-text-3)' : met ? 'var(--color-success)' : 'var(--color-fail)' }}
+              style={{ color: noRate ? 'var(--color-text-3)' : met ? 'var(--color-success)' : 'var(--color-fail)' }}
             >
               {row.current_rate == null ? '—' : formatPercentage(row.current_rate, 2)}
             </span>
             <span className="flex justify-center">
               <StatusPill
-                label={retention ? t('apm.common.noData', '无数据') : met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')}
-                tone={retention ? 'warning' : met ? 'success' : 'danger'}
+                label={noRate ? t('apm.common.noData', '无数据') : met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')}
+                tone={noRate ? 'warning' : met ? 'success' : 'danger'}
               />
             </span>
           </div>

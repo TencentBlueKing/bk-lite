@@ -23,7 +23,10 @@ const wideColumns = [
 const narrowColumns = wideColumns.map((column) => ({ ...column, width: 90 }));
 
 const dataSource = {
-  params: [{ name: 'page' }, { name: 'page_size' }],
+  params: [
+    { name: 'page', type: 'number' },
+    { name: 'page_size', type: 'number' },
+  ],
   field_schema: wideColumns.map((column) => ({
     key: column.key,
     title: column.title,

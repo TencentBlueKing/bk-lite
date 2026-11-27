@@ -42,6 +42,7 @@ export interface Group {
   parentId?: string;
   subGroupCount?: number;
   subGroups?: Group[];
+  is_builtin?: boolean;
 }
 
 export interface UserInfoContextType {
@@ -49,6 +50,7 @@ export interface UserInfoContextType {
   roles: string[];
   groups: Group[];
   groupTree: Group[];
+  moduleGroupTree?: Group[];
   selectedGroup: Group | null;
   flatGroups: Group[];
   isSuperUser: boolean;

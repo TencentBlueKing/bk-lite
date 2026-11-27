@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import shlex
 import sys
@@ -242,3 +243,97 @@ async def test_winrm_stream_slow_publisher_does_not_block_output_receive():
     assert "line99" in output
     assert time.monotonic() - started < 0.5
     assert meta["stream_lines_dropped"] > 0
+
+
+@pytest.mark.asyncio
+async def test_bat_arguments_reach_winrm_in_order_without_entering_command_text():
+    class BatProtocol(_Protocol):
+        def run_command(self, shell_id, command, arguments, *, skip_cmd_shell=False):
+            if command == "powershell.exe":
+                assert skip_cmd_shell
+                self.commands.append((command, list(arguments)))
+                return "command-exec"
+            return super().run_command(shell_id, command, arguments)
+
+        def send_command_input(self, shell_id, command_id, data, end):
+            assert (shell_id, command_id, end) == ("shell-1", "command-exec", True)
+            self.launch = json.loads(data.decode("ascii"))
+
+    protocol = BatProtocol()
+    code, _, _ = await run_winrm_stream(
+        [{"host": "windows"}],
+        script_content="@echo %1 %2",
+        script_type="bat",
+        timeout=30,
+        stream_publish=lambda *_: asyncio.sleep(0),
+        stream_log_topic="job.stream.1.ansible",
+        execution_id="1",
+        protocol_factory=lambda _: protocol,
+        skip_put_file=True,
+        copy_token="example",
+        bat_args=["北京", "", "D:\\app logs", "90% & ok!"],
+    )
+    assert code == 0
+    assert protocol.launch["environment"] == {
+        "BK_JOB_BAT_ARGS_READY": "1",
+        "BK_JOB_BAT_ARG_1": "北京",
+        "BK_JOB_BAT_ARG_2": '""',
+        "BK_JOB_BAT_ARG_3": '"D:\\app logs"',
+        "BK_JOB_BAT_ARG_4": '"90% & ok!"',
+    }
+    assert protocol.launch["command"] == (
+        '/d /q /v:off /s /c ""%TEMP%\\.bklite-stream-example.cmd" %BK_JOB_BAT_ARG_1% %BK_JOB_BAT_ARG_2% %BK_JOB_BAT_ARG_3% %BK_JOB_BAT_ARG_4%"'
+    )
+    launcher = base64.b64decode(protocol.commands[0][1][-1]).decode("utf-16-le")
+    assert "90% & ok!" not in launcher
+    assert protocol.closed and protocol.cleaned
+
+
+@pytest.mark.parametrize("args", [['a"b'], ["a\nb"], ["a\x00b"], ["🙂" * 4100], [""] * 600, "bad", [None]])
+@pytest.mark.asyncio
+async def test_unrepresentable_bat_arguments_fail_before_file_delivery(args):
+    with pytest.raises((TypeError, ValueError), match="BAT"):
+        await run_winrm_stream(
+            [{"host": "windows"}],
+            script_content="echo ok",
+            script_type="bat",
+            timeout=1,
+            stream_publish=lambda *_: asyncio.sleep(0),
+            stream_log_topic="job.stream.1.ansible",
+            execution_id="1",
+            bat_args=args,
+            script_copier=lambda *_: pytest.fail("unexpected upload"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_winrm_shell_failure_cleans_staged_bat_without_echoing_parameters():
+    class FailingShell(_Protocol):
+        def run_command(self, shell_id, command, arguments, *, skip_cmd_shell=False):
+            if command == "powershell.exe":
+                return "command-exec"
+            return super().run_command(shell_id, command, arguments)
+
+        def send_command_input(self, shell_id, command_id, data, end):
+            raise RuntimeError(data.decode("ascii"))
+
+    protocol = FailingShell()
+    code, output, _ = await run_winrm_stream(
+        [{"host": "windows"}],
+        script_content="@echo ready",
+        script_type="bat",
+        timeout=30,
+        stream_publish=lambda *_: asyncio.sleep(0),
+        stream_log_topic="job.stream.1.ansible",
+        execution_id="1",
+        bat_args=["private-value"],
+        protocol_factory=lambda _: protocol,
+        copy_token="example",
+        skip_put_file=True,
+    )
+    assert code != 0
+    assert "private-value" not in output
+    assert "RuntimeError" in output
+    assert len(protocol.commands) == 1
+    assert "del " in " ".join(protocol.commands[0][1])
+    assert protocol.closed

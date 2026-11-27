@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 
 from apps.base.models import User as AuthUser
+from apps.core.utils.platform_scope import bypasses_write_guard, has_unrestricted_org_scope
 from apps.opspilot.models import WikiKnowledgeBase
 
 
@@ -23,7 +24,7 @@ def _normalized_team_ids(values):
 
 def user_can_operate_knowledge_base(user, knowledge_base) -> bool:
     """超级管理员，或 group_list 与这个库的管理组织有交集。只看这一个库。"""
-    if _is_superuser(user):
+    if _is_superuser(user) or bypasses_write_guard(user, "opspilot"):
         return True
     return bool(_normalized_team_ids(getattr(user, "group_list", None)) & _normalized_team_ids(getattr(knowledge_base, "team", None)))
 
@@ -49,7 +50,7 @@ def accessible_wiki_knowledge_base_ids(user):
     ``None`` means unrestricted (superuser). A normal user with no valid groups
     receives an empty set, so permission data always fails closed.
     """
-    if getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False) or has_unrestricted_org_scope(user, "opspilot"):
         return None
     user_group_ids = _normalized_team_ids(getattr(user, "group_list", []) or [])
     if not user_group_ids:
@@ -149,7 +150,7 @@ class WikiTeamScopeMixin:
         )
 
     def validate_team_assignment(self, team):
-        if getattr(self.request.user, "is_superuser", False):
+        if getattr(self.request.user, "is_superuser", False) or bypasses_write_guard(self.request.user, "opspilot"):
             return
         requested_team_ids = _normalized_team_ids(team)
         user_group_ids = _normalized_team_ids(getattr(self.request.user, "group_list", []) or [])

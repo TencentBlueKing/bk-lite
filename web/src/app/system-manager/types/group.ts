@@ -44,6 +44,7 @@ interface OriginalGroup {
   path: string;
   hasAuth: boolean;
   is_virtual?: boolean;
+  is_builtin?: boolean;
   role_ids?: number[];
   sync_source?: number | null;
   subGroups: OriginalGroup[];

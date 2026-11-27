@@ -30,7 +30,8 @@ def _append_gauge(lines: list[str], name: str, labels: str, value: Any, timestam
 
 SOLARIS_SCRIPT_PATH = Path(__file__).parent / "scripts" / "solaris" / "os_monitor.ksh"
 SOLARIS_COLLECT_EOF = "STARGAZER_SOLARIS_COLLECT_EOF"
-SOLARIS_KSH_PREFIX = "LC_ALL=C LANG=C /usr/bin/ksh"
+# 登录 shell 为 csh 时不认 Bourne 的 VAR=value 前缀，交给 env 设置语言环境。
+SOLARIS_KSH_PREFIX = "/usr/bin/env LC_ALL=C LANG=C /usr/bin/ksh"
 
 COMMAND_EXECUTE_TIMEOUT = int(os.getenv("COMMAND_EXECUTE_TIMEOUT", "900"))
 

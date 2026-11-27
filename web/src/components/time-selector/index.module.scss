@@ -202,6 +202,17 @@
     }
 }
 
+// 可清空且已选快捷项时，日历让到清空按钮左侧，避免两个图标叠在一起。
+.timeSelector.clearableValue {
+    .customSlect .calenIcon {
+        right: 32px;
+    }
+
+    .customSlect :global(.ant-select-selector) {
+        padding-inline-end: 56px !important;
+    }
+}
+
 .timeSelector .customSlect :global(.ant-select-arrow) {
     visibility: hidden;
 }

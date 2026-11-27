@@ -3,7 +3,6 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-
 from service.task_store import SENSITIVE_CREDENTIAL_KEYS, TaskStore, _sanitize_payload_for_storage
 
 
@@ -207,6 +206,7 @@ def test_sanitize_payload_redacts_sensitive_extra_vars():
     payload = {
         "task_id": "extra-vars-test",
         "extra_vars": {
+            "bklite_secret_bat_args": ["private-value"],
             "bklite_session_url": "https://server.example/session/secret",
             "api_token": "token-value",
             "target_path": "C:/Windows/Temp/bootstrap.exe",
@@ -216,6 +216,7 @@ def test_sanitize_payload_redacts_sensitive_extra_vars():
     sanitized = _sanitize_payload_for_storage(payload)
 
     assert sanitized["extra_vars"]["bklite_session_url"] == "***"
+    assert sanitized["extra_vars"]["bklite_secret_bat_args"] == "***"
     assert sanitized["extra_vars"]["api_token"] == "***"
     assert sanitized["extra_vars"]["target_path"] == "C:/Windows/Temp/bootstrap.exe"
 
@@ -581,11 +582,7 @@ def test_init_clears_legacy_terminal_payloads_without_touching_active_tasks(tmp_
     }
     for task_id_suffix, (status, execution_status) in stored_statuses.items():
         task_id = f"legacy-{task_id_suffix}"
-        callback = (
-            {"subject": "job.callback", "context": {"token": "callback-secret"}}
-            if task_id_suffix == "callback-terminal"
-            else {}
-        )
+        callback = {"subject": "job.callback", "context": {"token": "callback-secret"}} if task_id_suffix == "callback-terminal" else {}
         store.create_if_absent(task_id, "queued", payload_with_creds, callback, "2026-04-23T00:00:00+00:00")
         with sqlite3.connect(db_path) as conn:
             conn.execute(
@@ -633,9 +630,7 @@ def test_init_rolls_back_failed_terminal_cleanup_and_recovers_after_restart(tmp_
     with pytest.raises(sqlite3.IntegrityError, match="blocked cleanup"):
         TaskStore(str(db_path))
     with sqlite3.connect(db_path) as connection:
-        assert "legacy-secret" in connection.execute(
-            "SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'"
-        ).fetchone()[0]
+        assert "legacy-secret" in connection.execute("SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'").fetchone()[0]
         connection.execute("DROP TRIGGER reject_terminal_cleanup")
 
     recovered_store = TaskStore(str(db_path))
@@ -653,9 +648,7 @@ def test_init_clears_terminal_fernet_payload_without_the_original_key(tmp_path):
         "2026-04-23T00:00:00+00:00",
     )
     with old_store._connect() as connection:
-        ciphertext = connection.execute(
-            "SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'"
-        ).fetchone()[0]
+        ciphertext = connection.execute("SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'").fetchone()[0]
         connection.execute("UPDATE task_state SET status = 'success' WHERE task_id = 'terminal'")
 
     new_store = TaskStore(str(db_path), "replacement-key")

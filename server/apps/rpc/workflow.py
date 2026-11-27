@@ -5,6 +5,11 @@ from rest_framework.exceptions import PermissionDenied
 from apps.core.utils.internal_event_auth import sign_internal_event
 from apps.rpc.base import RpcClient
 
+
+class WorkflowMgmt:
+    """编排中心已登记到数据权限。数据对象目录接口尚未提供。"""
+
+
 NATS_TRIGGER_SCOPE = "workflow.trigger_nats"
 MANAGED_NATS_TRIGGER_SCOPE = "workflow.trigger_nats.managed_channel"
 MANAGED_NATS_ACTOR = "managed-nats-channel"

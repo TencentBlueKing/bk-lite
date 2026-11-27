@@ -23,13 +23,18 @@ const partialPaginationParams = [
   { name: 'page', value: 1 },
 ];
 const pagedParams = [
-  { name: 'page', value: 1 },
-  { name: 'page_size', value: 20 },
+  { name: 'page', type: 'number', value: 1 },
+  { name: 'page_size', type: 'number', value: 20 },
+];
+const stringPageParams = [
+  { name: 'page', type: 'string', value: 'cursor-abc' },
+  { name: 'page_size', type: 'string', value: '20' },
 ];
 
 assert.equal(supportsServerPagination(unpagedParams), false);
 assert.equal(supportsServerPagination(partialPaginationParams), false);
 assert.equal(supportsServerPagination(pagedParams), true);
+assert.equal(supportsServerPagination(stringPageParams), false);
 
 assert.deepEqual(
   buildTableQueryParams({

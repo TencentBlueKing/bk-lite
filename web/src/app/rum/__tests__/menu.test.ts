@@ -96,8 +96,8 @@ describe('RUM 顶栏信息架构', () => {
     expect(findMatchedMenuPath(asMenus('zh'), '/rum/views')?.[0].title).toBe('体验');
   });
 
-  it('RUM 根路径仍落到应用列表', () => {
-    expect(readFileSync(join(rumRoot, 'page.tsx'), 'utf8')).toMatch(/redirect\('\/rum\/applications'\)/);
+  it('RUM 根路径交给第一个有权菜单', () => {
+    expect(readFileSync(join(rumRoot, 'page.tsx'), 'utf8')).toContain('RedirectToFirstMenu');
   });
 
   it('总览带四个分派入口并返回应用列表', () => {

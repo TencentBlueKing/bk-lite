@@ -209,6 +209,46 @@ describe('console chrome layout resolve', () => {
       mode: 'same-tab',
       href: '/cmdb/assetSearch',
     });
+    expect(resolveAppLandingHref(
+      { url: '/cmdb/assetSearch', is_build_in: true },
+      origin,
+      [menu({ title: '视图', url: '/cmdb/assetOverview', name: 'asset_views' })],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb/assetOverview',
+    });
+    expect(resolveAppLandingHref(
+      { url: '/rum/applications', is_build_in: true },
+      origin,
+      [menu({ title: '工作台', url: '/opspilot/studio', name: 'studio' })],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/rum',
+    });
+    expect(resolveAppLandingHref(
+      { url: '/ops-console/home', is_build_in: true },
+      origin,
+      [menu({ title: '搜索', url: '/cmdb/assetSearch', name: 'search' })],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/ops-console',
+    });
+    expect(resolveAppLandingHref(
+      { url: '/cmdb/assetSearch', is_build_in: true },
+      origin,
+      [],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/cmdb',
+    });
+    expect(resolveAppLandingHref(
+      { url: '/ops-console/home', is_build_in: true },
+      origin,
+      [],
+    )).toEqual({
+      mode: 'same-tab',
+      href: '/ops-console',
+    });
     expect(shouldStayOnCurrentAppPage(true, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(true);
     expect(shouldStayOnCurrentAppPage(false, { mode: 'same-tab', href: '/cmdb/assetSearch' })).toBe(false);
     expect(shouldStayOnCurrentAppPage(true, { mode: 'new-tab', href: 'https://mail.example' })).toBe(false);
