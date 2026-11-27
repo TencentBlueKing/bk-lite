@@ -1321,6 +1321,13 @@
       "template": "sum without (db) (rate(postgresql_xact_commit{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:295dd961",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_mem_usage_percent{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:29def2cf",
       "object_names": [
         "Router"
@@ -1340,6 +1347,13 @@
         "Exchange"
       ],
       "template": "http_response_result_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2a745774",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "max by (container_name) (docker_container_mem_usage{__$labels__})"
     },
     {
       "id": "dashboard:v1:2b101c51",
@@ -1445,6 +1459,13 @@
         "IIS"
       ],
       "template": "win_iis_web_service_Maximum_Connections{instance_type=\"iis\", instance=\"_Total\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:2f6dab93",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_n_containers_stopped{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:2fc2832b",
@@ -1804,6 +1825,13 @@
         "Zookeeper"
       ],
       "template": "zookeeper_outstanding_requests{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:394be190",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_cpu_usage_percent{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:394cf2e3",
@@ -2654,6 +2682,13 @@
       "template": "count({instance_type='activemq', collect_type='middleware', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:55471060",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_status_restart_count{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:55833b43",
       "object_names": [
         "Postgres"
@@ -3195,6 +3230,13 @@
       "template": "prometheus_remote_write_mem_shared{instance_type=\"k8s\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:65eb467c",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:65ffa41a",
       "object_names": [
         "MSSQL"
@@ -3560,6 +3602,13 @@
       "template": "histogram_quantile(0.99, sum by (instance_id, le) (label_replace(rate({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\") or label_replace(rate({__name__=\"sglang:e2e_request_latency_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
     },
     {
+      "id": "dashboard:v1:7438dbc9",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_n_containers{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:74481caa",
       "object_names": [
         "Kafka"
@@ -3798,6 +3847,13 @@
       "template": "tomcat_connector_current_thread_count{__$labels__}"
     },
     {
+      "id": "dashboard:v1:7e67a20d",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_n_containers_running{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:7fa081b4",
       "object_names": [
         "Host"
@@ -4009,6 +4065,13 @@
         "ActiveMQ"
       ],
       "template": "rate(activemq_topics_enqueue_count{__$labels__}[__$window__]) - rate(activemq_topics_dequeue_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:85357c7e",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_container_status_restart_count{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:856f14b7",
@@ -4447,6 +4510,13 @@
       "template": "apache_ReqPerSec{__$labels__}"
     },
     {
+      "id": "dashboard:v1:94cb4d2a",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_mem_usage_percent{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:94d3febf",
       "object_names": [
         "Redis"
@@ -4746,6 +4816,13 @@
         "Mysql"
       ],
       "template": "clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]) - rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]), 0)"
+    },
+    {
+      "id": "dashboard:v1:9ec2781d",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_container_mem_usage{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:9ef6dee8",
@@ -5537,6 +5614,13 @@
       "template": "rabbitmq_overview_messages{__$labels__}"
     },
     {
+      "id": "dashboard:v1:bb9b78d0",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers_running{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:bbeaba49",
       "object_names": [
         "VoiceGateway"
@@ -5577,6 +5661,13 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_process_list_threads_executing{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:bd3ba182",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers_stopped{__$labels__}[24h])"
     },
     {
       "id": "dashboard:v1:bd8b7c1f",
@@ -5656,6 +5747,13 @@
       "template": "sum(jvm_memorypool_usage_used_value{__$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:bfc02277",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_mem_usage{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:c02f2273",
       "object_names": [
         "Tomcat"
@@ -5663,11 +5761,25 @@
       "template": "tomcat_connector_max_time{__$labels__}"
     },
     {
+      "id": "dashboard:v1:c0cbdf67",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_container_mem_usage_percent{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:c1a856cc",
       "object_names": [
         "MongoDB"
       ],
       "template": "rate(mongodb_net_out_bytes_count{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:c1c264a7",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers_running{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:c1dd6762",
@@ -6427,6 +6539,13 @@
       "template": "max((device_temperature_celsius{collect_type!~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} or (device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__} != 65535))) by (instance_id) or max(device_temperature_celsius{collect_type=~\"snmp_h3c|snmp_h3c_firewall\", __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:db0c7519",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers_stopped{__$labels__}[20m])"
+    },
+    {
       "id": "dashboard:v1:db942c72",
       "object_names": [
         "Host"
@@ -6947,6 +7066,13 @@
       "template": "100 * (1 - rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__]) / clamp_min(rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__]), 1e-6))"
     },
     {
+      "id": "dashboard:v1:f162284f",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_cpu_usage_percent{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:f16c4a64",
       "object_names": [
         "Cluster"
@@ -7003,6 +7129,13 @@
       "template": "sum by (instance_id) (rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:f2a76f20",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_container_mem_usage{__$labels__}[24h])"
+    },
+    {
       "id": "dashboard:v1:f2a8c4d1",
       "object_names": [
         "Host"
@@ -7043,6 +7176,13 @@
         "IIS"
       ],
       "template": "sum(win_iis_app_pool_was_Total_Application_Pool_Recycles{instance_type=\"iis\", instance!=\"_Total\", __$labels__})"
+    },
+    {
+      "id": "dashboard:v1:f3ab58c3",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "tlast_over_time(docker_n_containers{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:f3b7fb69",
@@ -7157,6 +7297,13 @@
         "Mysql"
       ],
       "template": "mysql_open_files{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:f651a75a",
+      "object_names": [
+        "Docker"
+      ],
+      "template": "last_over_time(docker_container_cpu_usage_percent{__$labels__}[20m])"
     },
     {
       "id": "dashboard:v1:f68a5120",

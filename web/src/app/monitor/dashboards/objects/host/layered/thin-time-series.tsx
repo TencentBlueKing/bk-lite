@@ -17,6 +17,7 @@ import { describeFocusAxis, seriesSampleValues } from './focus-axis';
 import { useProTimeWindow } from './pro-time-window';
 import { useThemeColors } from './theme-color';
 import ProDashLoading from './pro-dash-loading';
+import { FLAT_ZERO_STROKE_SERIES_PREFIX, flatZeroStrokeLift } from './flat-zero-stroke';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -124,6 +125,11 @@ interface ThinTimeSeriesProps {
   formatReading?: (value: number) => string;
   /** 图区高度。等待构成用它和右侧 Top 5 行对齐。 */
   plotHeight?: number;
+  /**
+   * 全 0 序列把彩色笔画中心抬离底轴。只认 8。
+   * 不传时其它盘的贴地描边保持原样。采样值和轴下限不动，悬浮仍读原来的 0。
+   */
+  flatZeroStrokeLiftPx?: number;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -473,7 +479,8 @@ export default function ThinTimeSeries({
   keepSeriesColor = false,
   markZeroCount = false,
   formatReading,
-  plotHeight
+  plotHeight,
+  flatZeroStrokeLiftPx
 }: ThinTimeSeriesProps) {
   const proTime = useProTimeWindow();
   const chartWindow = proTime?.window ?? null;
@@ -676,13 +683,16 @@ export default function ThinTimeSeries({
           lineStyle: { color: mutedColor, width: 1, type: 'dashed' as const }
         },
         formatter: (params: any[]) => {
-          if (!params.length) return '';
-          const time = dayjs(Number(params[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
+          const visible = (Array.isArray(params) ? params : []).filter(
+            (item) => !String(item?.seriesName || '').startsWith(FLAT_ZERO_STROKE_SERIES_PREFIX)
+          );
+          if (!visible.length) return '';
+          const time = dayjs(Number(visible[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
           const items = keepLegend
             ? keys.map((key, index) => {
               const name = legends[index]?.title || legends[index]?.label || key;
-              const found = params.find((item) => item.seriesIndex === index)
-                || params.find((item) => item.seriesName === name);
+              const found = visible.find((item) => item.seriesIndex === index)
+                || visible.find((item) => item.seriesName === name);
               return found || {
                 seriesName: name,
                 seriesIndex: index,
@@ -690,7 +700,7 @@ export default function ThinTimeSeries({
                 value: null
               };
             })
-            : params;
+            : visible;
           const rows = items
             .map((item) => {
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
@@ -707,69 +717,127 @@ export default function ThinTimeSeries({
           return `<div style="min-width:160px"><div style="margin-bottom:6px;color:var(--color-text-3)">${time}</div>${rows}</div>`;
         }
       },
-      series: keys.map((key, index) => {
-        const color = seriesColors[index];
-        const dashed = Boolean(legends[index]?.dashed);
-        const samples = seriesAxisValues(plotted, key);
-        const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
-        // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
-        // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
-        const zeroCountLine = markedZeroSeries(markZeroCount, samples);
-        const sitsOnFloor = !zeroCountLine && Boolean(
-          axisColor
+      series: (() => {
+        const lifted: { index: number; color: string; data: [number, number | null][]; liftPx: number }[] = [];
+        const lines = keys.map((key, index) => {
+          const color = seriesColors[index];
+          const dashed = Boolean(legends[index]?.dashed);
+          const samples = seriesAxisValues(plotted, key);
+          const extent = splitAxes ? extentOf(samples, unitAt(index)) : sharedExtent;
+          const liftPx = flatZeroStrokeLift(
+            samples,
+            flatZeroStrokeLiftPx,
+            extent ? extent.min : Number.NaN
+          );
+          const data = plotted.map((point) => {
+            const value = point[key];
+            const row: [number, number | null] = [point.time, typeof value === 'number' ? value : null];
+            return row;
+          });
+          if (liftPx != null) lifted.push({ index, color, data, liftPx });
+          // 贴底描边改成轴线色，彩色影子抬进图区。数值仍是采样本身，不造非零点。
+          // 全 0 的这条线不走贴底：留在 0，靠序列色和采样点认出来。对照序列没点时也不要把主序列藏掉。
+          // flatZeroStrokeLiftPx 只给显式要求 8px 的盘：彩色笔画另画，采样仍是 0。
+          const zeroCountLine = liftPx == null && markedZeroSeries(markZeroCount, samples);
+          const sitsOnFloor = liftPx == null && !zeroCountLine && Boolean(
+            axisColor
           && extent
           && seriesSitsOnAxisFloor(samples, extent.min, extent.max)
-        );
-        const onFloor = sitsOnFloor && !keepSeriesColor;
-        // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
-        const coloredFloor = sitsOnFloor && keepSeriesColor;
-        const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
-        return {
-          type: 'line' as const,
-          name: legends[index]?.title || legends[index]?.label || key,
-          ...(splitAxes ? { yAxisIndex: index } : {}),
-          showSymbol: zeroCountLine,
-          symbol: zeroCountLine ? 'circle' as const : 'none' as const,
-          ...(zeroCountLine ? { showAllSymbol: true, symbolSize: ZERO_COUNT_SYMBOL_SIZE, large: false } : {}),
-          smooth: onFloor || coloredFloor || zeroCountLine ? 0 : 0.15,
-          connectNulls: true,
-          ...(onFloor ? { clip: false as const, z: 8 } : {}),
-          ...(coloredFloor ? { clip: false as const, z: 5 } : {}),
-          ...(zeroCountLine ? { clip: false as const, z: 4 } : {}),
-          itemStyle: { color },
-          data: plotted.map((point) => {
-            const value = point[key];
-            return [point.time, typeof value === 'number' ? value : null];
-          }),
-          ...(showArea ? { areaStyle: { color, opacity: areaOpacity } } : {}),
-          lineStyle: onFloor
-            ? {
-              width: dashed ? 1.2 : 2,
-              color: axisColor,
-              type: dashed ? 'dashed' as const : 'solid' as const,
-              shadowColor: color,
-              shadowBlur: 0,
-              shadowOffsetY: floorLineLift(index)
+          );
+          const onFloor = sitsOnFloor && !keepSeriesColor;
+          // 保留序列色时，0 仍贴在共用轴底部，描边抬 2px，避免被轴线裁掉。
+          const coloredFloor = sitsOnFloor && keepSeriesColor;
+          const showArea = !zeroCountLine && !dashed && typeof areaOpacity === 'number' && areaOpacity > 0;
+          return {
+            type: 'line' as const,
+            name: legends[index]?.title || legends[index]?.label || key,
+            ...(splitAxes ? { yAxisIndex: index } : {}),
+            showSymbol: zeroCountLine,
+            symbol: zeroCountLine ? 'circle' as const : 'none' as const,
+            ...(zeroCountLine ? { showAllSymbol: true, symbolSize: ZERO_COUNT_SYMBOL_SIZE, large: false } : {}),
+            smooth: onFloor || coloredFloor || zeroCountLine ? 0 : 0.15,
+            connectNulls: true,
+            ...(onFloor ? { clip: false as const, z: 8 } : {}),
+            ...(coloredFloor ? { clip: false as const, z: 5 } : {}),
+            ...(zeroCountLine ? { clip: false as const, z: 4 } : {}),
+            itemStyle: { color },
+            data,
+            ...(showArea ? { areaStyle: { color, opacity: areaOpacity } } : {}),
+            lineStyle: liftPx != null
+              ? { width: 0, opacity: 0, color }
+              : onFloor
+                ? {
+                  width: dashed ? 1.2 : 2,
+                  color: axisColor,
+                  type: dashed ? 'dashed' as const : 'solid' as const,
+                  shadowColor: color,
+                  shadowBlur: 0,
+                  shadowOffsetY: floorLineLift(index)
+                }
+                : coloredFloor
+                  ? {
+                    width: dashed ? 1.2 : 2,
+                    color,
+                    type: dashed ? 'dashed' as const : 'solid' as const,
+                    shadowColor: color,
+                    shadowBlur: 0,
+                    shadowOffsetY: -2
+                  }
+                  : {
+                    width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
+                    color,
+                    ...(showArea ? { opacity: 1 } : {}),
+                    type: dashed ? 'dashed' as const : 'solid' as const
+                  }
+          };
+        });
+        return [
+          ...lines,
+          ...lifted.map((item) => ({
+            type: 'custom' as const,
+            name: `${FLAT_ZERO_STROKE_SERIES_PREFIX}${item.index}`,
+            coordinateSystem: 'cartesian2d' as const,
+            silent: true,
+            tooltip: { show: false },
+            z: 6,
+            clip: true,
+            data: item.data,
+            renderItem: (
+              params: { dataIndex: number; dataInsideLength?: number },
+              api: {
+                value: (dimension: number, dataIndex?: number) => number | string | null;
+                coord: (point: [number, number]) => number[];
+              }
+            ) => {
+              const count = params.dataInsideLength ?? item.data.length;
+              if (params.dataIndex !== 0 || count < 1) return undefined;
+              const points: number[][] = [];
+              for (let cursor = 0; cursor < count; cursor += 1) {
+                const x = Number(api.value(0, cursor));
+                const y = Number(api.value(1, cursor));
+                if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+                const coord = api.coord([x, y]);
+                points.push([coord[0], coord[1] - item.liftPx]);
+              }
+              if (!points.length) return undefined;
+              if (points.length === 1) {
+                return {
+                  type: 'circle' as const,
+                  shape: { cx: points[0][0], cy: points[0][1], r: 1.6 },
+                  style: { fill: item.color, stroke: item.color }
+                };
+              }
+              return {
+                type: 'polyline' as const,
+                shape: { points },
+                style: { stroke: item.color, lineWidth: 1.6, fill: 'none' }
+              };
             }
-            : coloredFloor
-              ? {
-                width: dashed ? 1.2 : 2,
-                color,
-                type: dashed ? 'dashed' as const : 'solid' as const,
-                shadowColor: color,
-                shadowBlur: 0,
-                shadowOffsetY: -2
-              }
-              : {
-                width: zeroCountLine ? ZERO_COUNT_LINE_WIDTH : (dashed ? 1.2 : 1.6),
-                color,
-                ...(showArea ? { opacity: 1 } : {}),
-                type: dashed ? 'dashed' as const : 'solid' as const
-              }
-        };
-      })
+          }))
+        ];
+      })()
     };
-  }, [areaOpacity, axisColor, chartWindow, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
+  }, [areaOpacity, axisColor, chartWindow, flatZeroStrokeLiftPx, formatReading, hideFlatAxisLabels, keepLegend, keepSeriesColor, keys, legendKey, markZeroCount, mutedColor, numericAxis, panelColor, pinAxisZero, plotted, resolveValueBounds, seriesColors, splitAxes, suspend, textColor, unit, valueBounds?.min, valueBounds?.max]);
   const { containerRef } = useECharts(option);
   const drawnSeriesCount = keys.filter((key) => plotted.some((point) => {
     const value = point[key];

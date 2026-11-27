@@ -1,5 +1,22 @@
 @use '../common/simple-dashboard.module.scss';
 
+.proPage.proPage {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.proShell.proShell {
+  padding-bottom: 0;
+}
+
+.fitContent.fitContent {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 // 区块小标题:给分区加语义标题,提升可扫读性(与 redis/postgresql 同款)
 .sectionLabel {
   margin: 2px 2px 4px;
