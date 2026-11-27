@@ -388,6 +388,9 @@ def is_answer_after_choice_prompt(messages: list[Any] | None) -> bool:
             last_human = index
     if last_human <= 0:
         return False
+    metadata = getattr(items[last_human], "response_metadata", {}) or {}
+    if "selected_choice" in metadata:
+        return metadata["selected_choice"] is True
     for message in reversed(items[:last_human]):
         message_type = str(getattr(message, "type", "") or "")
         if message_type in {"tool", "system"} or isinstance(message, ToolMessage):

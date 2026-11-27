@@ -1,13 +1,16 @@
 import re
 import threading
 import time
+from typing import Literal
 
 from django.core.cache import cache
+from django.utils.html import strip_tags
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WorkflowAttachmentAsset
+from apps.opspilot.services.attachment_web import render_web_attachment
 from apps.opspilot.services.workflow_attachment_service import (
     build_attachment_bytes,
     build_signed_attachment_download_url,
@@ -111,6 +114,7 @@ def generate_attachment_file(
     header_rows: int = 1,
     merges: list[str] | None = None,
     config: RunnableConfig = None,
+    content_format: Literal["auto", "native", "markdown"] = "auto",
 ) -> dict:
     """Generate a new downloadable file and return its download URL.
 
@@ -134,6 +138,10 @@ def generate_attachment_file(
                 into an xlsx sheet. For pptx, a level-1 heading is the cover, level-2 headings start
                 pages, a list whose items start with a number becomes metric cards, level-3 headings
                 sit side by side, and a bold-led ordered list becomes action cards.
+    - content_format: HTML documents use a responsive reading layout by default. Pass complete Markdown
+      with headings, lists, code or tables for reports, guides and notes. For a custom interactive
+      page, supply complete HTML with its own responsive CSS. Use "native" for verbatim source.
+      The server renders the HTML. Use "native" for literal HTML or an existing file. Publish only the final document.
     - file_type: File format — "txt", "md", "html", "pdf", "docx", "pptx", "xlsx", or "csv".
                  Defaults to "md". Use "txt" for a text file; do not substitute md.
                  Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.
@@ -169,6 +177,9 @@ def generate_attachment_file(
             db_names = WorkflowAttachmentAsset.objects.filter(execution_id=execution_id).order_by("id").values_list("filename", flat=True)
             priors.extend(db_names)
         normalized_filename = version_attachment_filename(normalized_filename, priors)
+    if content_format == "markdown":
+        if normalized_type != "html" or sandbox_path or not content.strip():
+            raise ValueError("HTML 报告需要在 content 中提供完整 Markdown 正文")
     run_token = str(configurable.get("attachment_run_token") or "").strip()
     if not run_token:
         # 没有轮次 token 时无法做跨进程去重，仍生成文件，避免无 token 的直接调用被静默跳过。
@@ -202,6 +213,17 @@ def generate_attachment_file(
                 header_rows=header_rows,
                 merges=merges,
             )
+        if normalized_type == "html" and "占位".encode() in attachment_bytes:
+            # 已发布附件不能被后续脚本覆盖。只拦正文明确声明稍后覆盖的占位页。
+            html = attachment_bytes.decode("utf-8", errors="replace")
+            body = re.search(r"<body\b[^>]*>(.*?)</body\s*>", html, re.I | re.S)
+            visible = strip_tags(body.group(1) if body else html).strip()
+            if re.fullmatch(r"占位(?:页|文件)?[，,。\s]+(?:稍后|随后)[^。！？\n]{0,40}(?:覆盖|替换)[。.]?", visible):
+                raise ValueError("不能发布占位页。请将完整统计和表格作为 content 传入，content_format 使用 markdown。")
+        if normalized_type == "html" and not sandbox_path and content_format != "native":
+            attachment_bytes = render_web_attachment(
+                content, title=title, filename=normalized_filename, genre=genre, markdown=content_format == "markdown"
+            ).encode("utf-8")
         asset = create_workflow_attachment_asset(
             execution_id=execution_id,
             attachment_id=attachment_id,

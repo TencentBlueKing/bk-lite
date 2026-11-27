@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 
 import django
 from asgiref.sync import sync_to_async
@@ -38,13 +38,19 @@ async def _watch_client_disconnect(receive, disconnect: asyncio.Event) -> None:
 
 async def _stop_on_disconnect(iterator, disconnect: asyncio.Event):
     """客户端断开后停止异步流。uvicorn 的 send() 在断开后直接返回，不会打断生成器。"""
+    stream_context = copy_context()
+
+    async def call_iterator(method):
+        return await method()
+
     pending_next = None
     pending_wait = None
     try:
         while True:
             if disconnect.is_set():
                 return
-            pending_next = asyncio.ensure_future(iterator.__anext__())
+            # 同一生成器跨 yield 保留 ContextVar，结束或断开时也在原上下文清理。
+            pending_next = asyncio.create_task(call_iterator(iterator.__anext__), context=stream_context)
             pending_wait = asyncio.ensure_future(disconnect.wait())
             done, _pending = await asyncio.wait(
                 {pending_next, pending_wait},
@@ -74,7 +80,7 @@ async def _stop_on_disconnect(iterator, disconnect: asyncio.Event):
         aclose = getattr(iterator, "aclose", None)
         if aclose is not None:
             with contextlib.suppress(RuntimeError):
-                await aclose()
+                await asyncio.create_task(call_iterator(aclose), context=stream_context)
 
 
 async def _finish_disconnect_watch(watch_task: asyncio.Task | None) -> None:

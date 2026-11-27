@@ -53,6 +53,14 @@ def test_workflow_notification_audience_reaches_system_prompt_without_rewriting_
     assert formatted["extra_config"].get("reply_channel") == reply_channel
     assert formatted["extra_config"]["trigger_type"] == "interactive"
 
+    table = "| 对象 | 数量 |\n| --- | --- |\n| 数据库 | 4 |\n| 主机 | 7 |"
+    intro = "**当前有 11 条活跃告警。**\n\n"
+    code = "\n\n```text\n" + table + "\n```"
+    invoke.return_value = ({"success": True, "message": intro + table + code}, None, None)
+    output = execute_agent({"agent_id": skill.id, "message": message, "__bklite_context": context})
+    expected = "- 对象：数据库，数量：4\n- 对象：主机，数量：7" if reply_channel else table
+    assert output["message"] == intro + expected + code
+
     invoke.return_value = ({"success": True, "message": "PDF 报告已生成，是否将其保存为附件？\n1. 是\n2. 否"}, None, None)
     if reply_channel:
         with pytest.raises(ValueError, match="等待用户选择"):

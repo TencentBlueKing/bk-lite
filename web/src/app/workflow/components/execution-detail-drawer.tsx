@@ -125,7 +125,16 @@ function ArtifactDownloadButton({ artifact, showFilename = false }: { artifact: 
   ><span className="truncate">{showFilename ? artifact.filename : t('common.download', '下载')}</span></Button>;
 }
 
-function NodeDetail({ detail, instancePermissions, onChanged }: { detail: ExecutionNodeDetail; instancePermissions?: string[]; onChanged: () => Promise<void> }) {
+function LiveDuration({ startedAt }: { startedAt: string }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return formatDuration(Math.max(0, now - Date.parse(startedAt)));
+}
+
+function NodeDetail({ detail, executionActive, instancePermissions, onChanged }: { detail: ExecutionNodeDetail; executionActive: boolean; instancePermissions?: string[]; onChanged: () => Promise<void> }) {
   const { post } = useApiClient();
   const { message } = App.useApp();
   const { t } = useTranslation();
@@ -135,6 +144,13 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
 
   const approval = detail.interaction?.type === 'APPROVAL' ? detail.interaction : undefined;
   const showFrozenConfigNotice = ['PENDING', 'SKIPPED', 'UNREACHABLE'].includes(detail.node.state) && detail.instances.length === 0;
+  const instance = detail.instances.find(({ id }) => id === detail.selected_instance_id);
+  const instanceState = instance?.state ?? detail.node.state;
+  const info = detail.execution_info;
+  const liveDuration = executionActive && ['RUNNING', 'WAITING', 'ACTIONABLE'].includes(instanceState)
+    && info.finished_at == null && typeof info.started_at === 'string'
+    ? <LiveDuration key={info.started_at} startedAt={info.started_at} />
+    : null;
   const hasNodeNotice = Boolean(detail.error) || detail.node.state === 'WARNING' || showFrozenConfigNotice;
 
   const decide = async (decision: 'APPROVED' | 'REJECTED') => {
@@ -160,9 +176,9 @@ function NodeDetail({ detail, instancePermissions, onChanged }: { detail: Execut
         </div>
       ) : null}
       <section aria-label={t('workflowOrchestration.node.executionInfo', '节点执行信息')} className="py-1">
-        <Descriptions size="small" column={2} items={Object.entries(detail.execution_info).map(([key, value]) => {
+        <Descriptions size="small" column={2} items={Object.entries(showFrozenConfigNotice ? { ...info, duration_ms: null } : info).map(([key, value]) => {
           const item = presentExecutionInfoItem(key, value, t, convertToLocalizedTime);
-          return { key, label: item.label, children: item.children };
+          return { key, label: item.label, children: key === 'duration_ms' ? liveDuration ?? item.children : item.children };
         })} />
       </section>
       {detail.artifacts.length ? <section className="flex flex-col gap-3"><h3 className="m-0 text-sm font-medium">{t('workflowOrchestration.node.artifacts', '产物')}</h3><div className="space-y-2">{detail.artifacts.map((artifact) => <div key={artifact.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border-1)] p-3"><div className="min-w-0"><div className="truncate">{artifact.filename}</div><div className="mt-1 text-xs text-[var(--color-text-3)]">{artifact.format.toUpperCase()} · {(artifact.size / 1024).toFixed(1)} KiB</div></div><WorkflowPermission operation="View" area="executions" instancePermissions={instancePermissions}><ArtifactDownloadButton artifact={artifact} /></WorkflowPermission></div>)}</div></section> : null}
@@ -321,6 +337,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
   }, [execution, load, open]);
 
   const availableFiles = execution?.artifacts?.filter((file) => !file.deleted_at && Date.parse(file.expires_at) > Date.now()) ?? [];
+  const executionActive = Boolean(open && execution && ACTIVE.has(execution.status) && !execution.finished_at);
   const status = execution ? executionStatusPresentation[execution.status] : undefined;
   const selectedNode = nodes.find((node) => node.reference === selectedNodeReference);
   const normalizedNodeSearch = nodeSearch.trim().toLowerCase();
@@ -374,7 +391,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
                 { key: 'actor', label: t('workflowOrchestration.execution.startedBy', '发起人'), children: formatStartedBy(execution.started_by, t) },
                 { key: 'organization', label: t('workflowOrchestration.execution.organization', '执行组织'), children: executionOrganizationText(execution.execution_team_id, flatGroups) },
                 { key: 'started', label: t('workflowOrchestration.execution.startedAt', '开始时间'), children: execution.created_at ? convertToLocalizedTime(execution.created_at) : '--' },
-                { key: 'duration', label: t('workflowOrchestration.execution.duration', '耗时'), children: formatDuration(execution.duration_ms) },
+                { key: 'duration', label: t('workflowOrchestration.execution.duration', '耗时'), children: executionActive && execution.created_at ? <LiveDuration key={execution.created_at} startedAt={execution.created_at} /> : formatDuration(execution.duration_ms) },
                 ...(availableFiles.length ? [{
                   key: 'attachments', label: t('workflowOrchestration.execution.artifacts', '产物'), span: 2,
                   children: <WorkflowPermission operation="View" area="executions" instancePermissions={execution.permission}>
@@ -445,6 +462,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
                       <NodeDetail
                         key={selectedNode.reference}
                         detail={selectedNodeDetail}
+                        executionActive={executionActive}
                         instancePermissions={execution.permission}
                         onChanged={async () => { await load(true); onExecutionChanged?.(); }}
                       />

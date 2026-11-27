@@ -130,6 +130,27 @@ def test_execute_agent_happy_path_and_failure_modes(mocker, monkeypatch):
         atoms.execute_agent({"agent_id": 11, "message": "x", "__bklite_context": _context()})
 
 
+def test_wecom_report_requires_a_registered_file_before_notification(mocker, monkeypatch):
+    mocker.patch.object(atoms, "_scoped_skill", return_value=SimpleNamespace(id=11))
+    mocker.patch.object(atoms, "resolve_uploaded_agent_knowledge", return_value=[])
+    mocker.patch.object(atoms.AtomExecution.objects, "select_related")
+    register = mocker.patch.object(atoms, "register_agent_artifacts", return_value=[])
+    _install_variable_manager(monkeypatch)
+    _install_agent_node(monkeypatch, lambda *a, **k: {"message": "可进入报告生成环节。"})
+    inputs = {
+        "agent_id": 11,
+        "message": "汇总当前告警。制作HTML报告。",
+        "__atom_execution_id": 12,
+        "__bklite_context": _context(reply_channel="WECOM_BOT", task_reference="agent"),
+    }
+    with pytest.raises(ValueError, match="未生成.*附件"):
+        atoms.execute_agent(inputs)
+    register.return_value = [{"filename": "告警汇总.html", "size": 7289}]
+    assert atoms.execute_agent(inputs)["artifacts"] == register.return_value
+    register.return_value = []
+    assert atoms.execute_agent({**inputs, "message": "汇总当前告警。"})["artifacts"] == []
+
+
 def test_execute_intent_classification_validates_intents_and_result(mocker, monkeypatch):
     model = SimpleNamespace(id=3)
     mocker.patch.object(atoms, "_scoped_model", return_value=model)

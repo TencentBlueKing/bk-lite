@@ -127,6 +127,30 @@ def _clean_text(value: Any, *, label: str, maximum: int, required: bool = True) 
     return result
 
 
+def _wecom_agent_body(message: str) -> str:
+    """企微不渲染 Markdown 表格。只替换正文表格，原样保留其余段落和代码。"""
+    if "|" not in message:
+        return message
+    from markdown_it import MarkdownIt
+    from markdown_it.tree import SyntaxTreeNode
+
+    document = SyntaxTreeNode(MarkdownIt("commonmark").enable("table").parse(message))
+    lines = message.splitlines(keepends=True)
+    for block in reversed(document.children):
+        if block.type != "table" or len(block.children) != 2:
+            continue
+        head, body = block.children
+        labels = [cell.children[0].content for cell in head.children[0].children]
+        rows = []
+        for row in body.children:
+            values = [cell.children[0].content for cell in row.children]
+            rows.append("- " + "，".join(f"{label}：{value}" if label else value for label, value in zip(labels, values)))
+        start, end = block.map
+        newline = "\n" if lines[end - 1].endswith("\n") else ""
+        lines[start:end] = ["\n".join(rows) + newline]
+    return "".join(lines)
+
+
 def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
     from apps.opspilot.utils.pending_question import is_numbered_question
@@ -162,8 +186,10 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
     output = result.get("message")
     if not isinstance(output, str):
         raise ValueError("智能体返回结果非法")
-    if context.get("reply_channel") == "WECOM_BOT" and is_numbered_question(output):
-        raise ValueError("智能体执行失败: 群通知无法等待用户选择")
+    if context.get("reply_channel") == "WECOM_BOT":
+        if is_numbered_question(output):
+            raise ValueError("智能体执行失败: 群通知无法等待用户选择")
+        output = _wecom_agent_body(output)
     artifacts = []
     if inputs.get("__atom_execution_id") is not None:
         atom_execution = AtomExecution.objects.select_related("execution").get(
@@ -174,6 +200,11 @@ def execute_agent(inputs: dict[str, Any]) -> dict[str, Any]:
             atom_key="bklite_agent",
         )
         artifacts = register_agent_artifacts(atom_execution)
+        if context.get("reply_channel") == "WECOM_BOT" and not artifacts:
+            from apps.opspilot.metis.llm.agent.tool_execution_planner import looks_like_attachment_file_task
+
+            if looks_like_attachment_file_task(message):
+                raise ValueError("智能体未生成本次请求的执行附件")
     return {"message": output[:MAX_AGENT_OUTPUT_CHARS], "artifacts": artifacts}
 
 

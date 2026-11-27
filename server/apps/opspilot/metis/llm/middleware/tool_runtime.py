@@ -17,6 +17,7 @@ from apps.core.logger import safe_exception_info
 from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     _DEFAULT_PLANNED_AI_TEXT_CHARS,
     _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
+    attachment_step_produced_file,
     compact_planned_execution_messages,
 )
 from apps.opspilot.metis.llm.common.tool_failure import POLICY_RESULT_MARKER, is_non_replanable_tool_failure, is_tool_result_failure
@@ -702,6 +703,22 @@ class ToolTimeoutMiddleware(AgentMiddleware):
             return await asyncio.wait_for(handler(request), timeout=self._timeout_for(request))
         except asyncio.TimeoutError:
             return self._timeout_message(request)
+
+
+class AttachmentStepFinishMiddleware(AgentMiddleware):
+    """附件单工具步骤收到本批次的发布回执后交回外层计划。"""
+
+    enabled = False
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state, runtime):
+        if self.enabled:
+            for message in reversed(state["messages"]):
+                if not isinstance(message, ToolMessage):
+                    break
+                if attachment_step_produced_file([message]):
+                    return {"jump_to": "end", "messages": [AIMessage(content="文件已生成，可以下载。")]}
+        return None
 
 
 class PptExportFinishMiddleware(AgentMiddleware):

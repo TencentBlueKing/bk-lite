@@ -1002,6 +1002,25 @@ def test_rewrite_generic_alert_query_replaces_monitor_active_alerts(caplog):
     assert "现在还有没有没关的告警啊？" not in records[0].getMessage()
 
 
+@pytest.mark.parametrize("monitor_first", [True, False])
+def test_center_report_skips_redundant_monitor_objective(monitor_first):
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        rewrite_generic_alert_query_to_alerts_center,
+    )
+
+    center = ToolExecutionStep(objective="查询告警中心当前活跃工单", tools=["alerts_list_alerts"])
+    monitor = ToolExecutionStep(objective="查询监控策略扫描的实例", tools=["monitor_list_active_alerts"])
+    report = ToolExecutionStep(objective="汇总并生成 HTML", tools=["generate_attachment_file"])
+    question = "收集告警中心当前活跃告警情况，按对象、指标进行汇总分析。制作HTML报告。"
+    plan = ToolExecutionPlan(goal=question, steps=([monitor, center] if monitor_first else [center, monitor]) + [report])
+    fixed = rewrite_generic_alert_query_to_alerts_center(
+        plan, {"alerts_list_alerts", "monitor_list_active_alerts", "generate_attachment_file"}, question
+    )
+    assert fixed.steps == [center, report]
+
+
 def test_rewrite_host_scoped_alert_keeps_monitor_and_alerts_center():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         ToolExecutionPlan,
@@ -1349,7 +1368,8 @@ async def test_planner_recovers_from_markdown_wrapped_plan():
 
 
 @pytest.mark.asyncio
-async def test_planner_retries_when_model_claims_empty_message():
+@pytest.mark.parametrize("invalid", ["It looks like your message came through empty! How can I help you today?", '{"source":"日志检索"}'])
+async def test_planner_retries_when_output_is_not_a_plan(invalid):
     tools = [_tool("list_events"), _tool("get_logs")]
     calls = []
 
@@ -1357,7 +1377,7 @@ async def test_planner_retries_when_model_claims_empty_message():
         async def ainvoke(self, messages, config=None):
             calls.append(messages)
             if len(calls) == 1:
-                return AIMessage(content="It looks like your message came through empty! How can I help you today?")
+                return AIMessage(content=invalid)
             return AIMessage(content='{"goal":"排查探针失败","steps":[{"objective":"查事件","tools":["list_events","get_logs"]}]}')
 
     plan = await ToolExecutionPlanner(FakeLLM()).plan(
@@ -1393,6 +1413,91 @@ async def test_planner_catalog_respects_char_budget():
     assert "紧凑工具目录" in catalog
     assert catalog.count("- tool_") == 40
     assert len(catalog) < 2500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source,scoped", [("合同台账", True), ("告警中心", False), ("", False)])
+async def test_source_correction_scopes_only_to_user_named_source_and_can_fall_back(source, scoped):
+    history = [
+        HumanMessage(content="看看这一笔续期记录"),
+        AIMessage(content="是告警中心的工单吗？"),
+        HumanMessage(content="我说的是合同台账"),
+    ]
+    tools = [_tool("read_events", "查询告警中心工单"), _tool("read_contract", "查询合同台账续期记录")]
+    catalogs = []
+
+    class Model:
+        async def ainvoke(self, messages, config=None):
+            if not catalogs and "紧凑工具目录:" not in messages[-1].content:
+                assert "告警中心" not in messages[-1].content.split("可用工具:")[0]
+                return AIMessage(content=json.dumps({"source": source}))
+            catalog = messages[-1].content.split("紧凑工具目录:")[-1]
+            catalogs.append(catalog)
+            steps = [] if scoped and len(catalogs) == 1 else [{"objective": "查续期记录", "tools": ["read_contract"]}]
+            return AIMessage(content=json.dumps({"steps": steps}))
+
+    plan = await ToolExecutionPlanner(Model()).plan(history[-1].content, tools, conversation_messages=history)
+    assert ("read_events" not in catalogs[0]) is scoped
+    assert "read_contract" in catalogs[0]
+    assert "read_events" in catalogs[-1]
+    assert [step.tools for step in plan.steps] == [["read_contract"]]
+
+
+@pytest.mark.asyncio
+async def test_source_selection_with_a_supported_lookup_is_executed_as_one_plan():
+    calls = []
+    history = [HumanMessage(content="查续期记录"), AIMessage(content="要查告警吗？"), HumanMessage(content="查合同台账里的 C-19")]
+
+    class Model:
+        async def ainvoke(self, messages, config=None):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "source": "合同台账",
+                        "goal": "查续期记录",
+                        "objective": "按 C-19 查合同台账",
+                        "tools": ["read_contract", "update_contract", "absent_tool"],
+                    }
+                )
+            )
+
+    read = _tool("read_contract", "按合同号查协议库")
+    read.metadata = {"readOnlyHint": True}
+    write = _tool("update_contract", "修改协议")
+    write.metadata = {"readOnlyHint": False}
+    tools = [_tool("read_events", "查询告警"), read, write]
+    plan = await ToolExecutionPlanner(Model()).plan(history[-1].content, tools, conversation_messages=history)
+    assert len(calls) == 1
+    assert len(plan.steps) == 1
+    lookup = plan.steps[0]
+    assert lookup.tools == ["read_contract"] and lookup.objective == "按 C-19 查合同台账"
+    assert lookup.needs_lookup_result and lookup.lookup_source == "合同台账"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("need_more_tools", [True, False])
+async def test_lookup_evidence_keeps_source_and_can_request_a_different_capability(need_more_tools):
+    calls = []
+
+    class Model:
+        async def ainvoke(self, messages, config=None):
+            prompt = messages[-1].content
+            calls.append(prompt)
+            if len(calls) == 1:
+                return AIMessage(content=json.dumps({"steps": [], "need_more_tools": need_more_tools}))
+            return AIMessage(content=json.dumps({"steps": [{"objective": "核对原件", "tools": ["read_document"]}]}))
+
+    tools = [_tool("search_records", "合同台账记录查询"), _tool("read_document", "按文档 ID 读取已签原件")]
+    tools[0].metadata = {"consumes_resource": "contract.ref"}
+    completed = CompletedExecutionStep(objective="定位合同", result="签署文档 ID 为 doc-9", lookup_source="协议库", result_resources=("contract.ref",))
+    plan = await ToolExecutionPlanner(Model()).plan("检查续签情况", tools, completed_steps=[completed])
+    assert "doc-9" in calls[0] and "read_document" not in calls[0]
+    if need_more_tools:
+        assert len(calls) == 2 and "read_document" in calls[1]
+        assert [step.tools for step in plan.steps] == [["read_document"]]
+    else:
+        assert len(calls) == 1 and plan.steps == []
 
 
 def test_is_context_size_error_detects_provider_messages():
@@ -2375,6 +2480,8 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
     assert looks_like_attachment_file_task("文件内容是什么") is False
     assert looks_like_attachment_file_task("这个上传的 txt 讲了什么") is False
     assert looks_like_attachment_file_task("生成一个excel文件") is True
+    assert looks_like_attachment_file_task("请制作 HTML 报告") is True
+    assert looks_like_attachment_file_task("讲解如何制作 HTML 报告") is False
     revision = "报告中要有表格展示每个主机的概况"
     assert looks_like_attachment_file_task(revision) is False
     prior_file = [{"name": "generate_attachment_file", "content": '{"filename":"报告.docx","file_url":"/api/proxy/x"}'}]
