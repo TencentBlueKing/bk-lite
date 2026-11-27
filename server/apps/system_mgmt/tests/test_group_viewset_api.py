@@ -268,6 +268,24 @@ def test_update_group_invalidates_descendant_users(super_client):
     assert {user["username"] for user in affected_users} == {"update-descendant"}
 
 
+def test_update_group_rejects_sibling_name(super_client):
+    Group.objects.filter(is_builtin=True).delete()
+    Group.objects.filter(name="Default", parent_id=0).delete()
+    builtin = Group.objects.create(name="Default", parent_id=0, is_builtin=True)
+    Group.objects.get_or_create(name="Guest", parent_id=0)
+    resp = super_client.post(
+        f"{BASE}/update_group/",
+        {"group_id": builtin.id, "group_name": "Guest", "role_ids": []},
+        format="json",
+    )
+    builtin.refresh_from_db()
+    assert resp.status_code == 200
+    assert resp.json()["result"] is False
+    assert resp.json()["message"]
+    assert builtin.name == "Default"
+    assert builtin.is_builtin is True
+
+
 def test_update_group_default_protected(super_client):
     Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(name="Default", parent_id=0).delete()

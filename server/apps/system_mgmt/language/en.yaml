@@ -182,6 +182,7 @@ error:
   synced_group_child_creation_forbidden: Synced groups cannot have manually created child groups
   cannot_create_under_archived_group: Cannot create a group under an archived organization
   synced_child_group_name_immutable: Synced child group name cannot be changed
+  group_name_exists: A group with this name already exists at the same level
   synced_groups_delete_forbidden: Synced groups cannot be deleted directly
   synced_groups_archive_forbidden: Synced groups cannot be archived directly
   group_archive_users_need_active_org: Archiving would leave some users without an active organization. Please assign them another active organization first

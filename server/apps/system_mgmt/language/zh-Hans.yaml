@@ -178,6 +178,7 @@ error:
   synced_group_child_creation_forbidden: 同步组织下不能手动创建子组织
   cannot_create_under_archived_group: 不能在已归档组织下创建子组织
   synced_child_group_name_immutable: 同步子组织名称不能修改
+  group_name_exists: 同一层级已存在同名组织
   synced_groups_delete_forbidden: 同步组织不能直接删除
   synced_groups_archive_forbidden: 同步组织不能直接归档
   group_archive_users_need_active_org: 归档后部分用户将没有活动组织，请先为这些用户分配其他活动组织
