@@ -19,7 +19,7 @@ from apps.itsm.services.form.fetch import walk
 from apps.itsm.services.form.table_columns import TABLE_FIELDS, configured_table_columns, hidden_column, protected_column, visible_table_rows
 from apps.itsm.services.ticket.actions import node_action_display, node_actions, node_required_opinions, side_action_enabled, side_required_opinions
 from apps.itsm.services.ticket.form_filters import InvalidFormFilter
-from apps.itsm.services.ticket.history import node_progress, ticket_history
+from apps.itsm.services.ticket.history import index_history_by_node, node_progress, ticket_history
 from apps.itsm.services.ticket.listing import COLUMNS, FILTER_KEYS, filtered_tickets, project_columns, validate_filters
 from apps.itsm.services.ticket.returns import return_targets
 from apps.itsm.services.ticket.service import TicketService, _find_node, applicant_can_submit, workflow_schema
@@ -43,12 +43,13 @@ def _http_creation_key(value):
 
 
 def _service(request=None):
+    from apps.core.utils.team_utils import get_current_team
     from apps.itsm.services.integrations import request_identity
 
     identity = request_identity(request) if request is not None else None
-    if not settings.FLOWABLE_PASSWORD:
-        return TicketService(None, identity=identity)
-    return TicketService(FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD), identity=identity)
+    team = get_current_team(request) if request is not None else None
+    client = FlowableClient(settings.FLOWABLE_URL, settings.FLOWABLE_USER, settings.FLOWABLE_PASSWORD) if settings.FLOWABLE_PASSWORD else None
+    return TicketService(client, identity=identity, current_team=team)
 
 
 def _user(request):
@@ -456,6 +457,7 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         from django.utils.dateparse import parse_datetime
 
         progress_history = [row for row in history if row["started_at"] and parse_datetime(row["started_at"]) >= round_start]
+    progress_history_by_node = index_history_by_node(progress_history)
 
     task_rows = []
     for task in pending:
@@ -528,7 +530,8 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
                     "state": "failed" if node.get("id") in failed_ids else _node_state(node, done_ids, pending_ids, status_key),
                     "assignees": [task.assignee for task in pending if task.node_id == (node.get("id") or "") and task.assignee],
                 },
-                progress_history,
+                progress_history_by_node,
+                node.get("auto"),
             )
             for node in (design.get("nodes") or [])
         ],
@@ -581,11 +584,6 @@ def ticket_detail(request, ticket_id):
         can_operate and has_permission(request, "workflow-Edit"),
         task_id=request.GET.get("task_id"),
         can_apply=has_permission(request, "ticket-Add"),
-    )
-    permissions = getattr(request.user, "permission", {})
-    cmdb_permissions = permissions.get("cmdb", ()) if isinstance(permissions, dict) else permissions
-    detail["can_view_vmware_assets"] = (bool(getattr(request.user, "is_superuser", False)) or "asset_info-View" in (cmdb_permissions or ())) and any(
-        machine.get("receipt") for item in ticket.auto_executions.all() for machine in item.detail.get("delivery", {}).get("machines", {}).values()
     )
     _mark_executing_nodes(request, ticket, detail)
     return WebUtils.response_success(detail)

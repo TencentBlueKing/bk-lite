@@ -74,3 +74,68 @@ it('查看子表单行时使用动态选项的名称，覆盖默认值与重新�
   fireEvent.click(east);
   expect(rememberOptions).toHaveBeenLastCalledWith([options[1]]);
 });
+
+it('多行动态取数限制并发，请求完成后继续处理排队的行', async () => {
+  const resolvers: Array<(value: unknown) => void> = [];
+  api.fetchField.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve); }));
+  render(<Form>{Array.from({ length: 8 }, (_, index) => <ScopedFetchControl key={index}
+    field={{ key: 'area', type: 'input', label: '区域', fetch: { source: 'integration', mode: 'value', integration_id: 1, dependencies: ['name'], inputs: { name: '${form.name}' } } }}
+    path="machines.area" context={{ service_id: 1 }} depKey={JSON.stringify([`row-${index}`])}
+    store={{ getFieldValue: key => key === 'name' ? `row-${index}` : undefined, setFieldValue: () => {}, requestValues: () => ({ machines: [{ name: `row-${index}` }] }), isFieldTouched: () => false }}>
+    <Input aria-label={`区域 ${index}`} />
+  </ScopedFetchControl>)}</Form>);
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(6));
+  resolvers[0]({ options: [], fills: {}, receipt: '' });
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(7));
+  for (const resolve of resolvers.slice(1)) resolve({ options: [], fills: {}, receipt: '' });
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(8));
+  resolvers[7]({ options: [], fills: {}, receipt: '' });
+});
+
+it('无同行依赖的选项列共用一次取数', async () => {
+  api.fetchField.mockResolvedValue({ options: [{ value: 'a', label: '选项 A' }], fills: {}, receipt: 'same-proof' });
+  const sharedFetches = new Map();
+  render(<Form>{Array.from({ length: 8 }, (_, index) => <ScopedFetchControl key={index}
+    field={{ key: 'area', type: 'select', label: '区域', fetch: { source: 'integration', mode: 'options', integration_id: 1 } }}
+    path="machines.area" context={{ service_id: 1 }} depKey="[]" sharedFetches={sharedFetches}
+    store={{ getFieldValue: () => undefined, setFieldValue: () => {}, requestValues: () => ({ machines: [{ name: `row-${index}` }] }), isFieldTouched: () => false }}>
+    <Radio.Group aria-label={`区域 ${index}`} />
+  </ScopedFetchControl>)}</Form>);
+  await waitFor(() => expect(screen.getAllByText('选项 A')).toHaveLength(8));
+  expect(api.fetchField).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getAllByRole('button', { name: '刷新取数' })[0]);
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(2));
+});
+
+it('有同行依赖的选项列仍按行取数且不串值', async () => {
+  api.fetchField.mockImplementation(async body => {
+    const region = body.values.machines[0].region;
+    return { options: [{ value: region, label: `区域 ${region}` }], fills: {}, receipt: `${region}-proof` };
+  });
+  const sharedFetches = new Map();
+  render(<Form>{['east', 'west'].map(region => <ScopedFetchControl key={region}
+    field={{ key: 'area', type: 'radio', label: '区域', fetch: { source: 'integration', mode: 'options', integration_id: 1, inputs: { region: '${form.region}' }, dependencies: ['region'] } }}
+    path="machines.area" context={{ service_id: 1 }} depKey={JSON.stringify([region])} sharedFetches={sharedFetches}
+    store={{ getFieldValue: key => key === 'region' ? region : undefined, setFieldValue: () => {}, requestValues: () => ({ machines: [{ region }] }), isFieldTouched: () => false }}>
+    <Radio.Group />
+  </ScopedFetchControl>)}</Form>);
+  await waitFor(() => expect(screen.getByText('区域 east')).toBeTruthy());
+  expect(screen.getByText('区域 west')).toBeTruthy();
+  expect(api.fetchField).toHaveBeenCalledTimes(2);
+});
+
+it('关闭表单后排队的同行取数不再发出请求', async () => {
+  const resolvers: Array<(value: unknown) => void> = [];
+  api.fetchField.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve); }));
+  const view = render(<Form>{Array.from({ length: 8 }, (_, index) => <ScopedFetchControl key={index}
+    field={{ key: 'area', type: 'input', label: '区域', fetch: { source: 'integration', mode: 'value', integration_id: 1, inputs: { name: '${form.name}' }, dependencies: ['name'] } }}
+    path="machines.area" context={{ service_id: 1 }} depKey={JSON.stringify([`row-${index}`])}
+    store={{ getFieldValue: key => key === 'name' ? `row-${index}` : undefined, setFieldValue: () => {}, requestValues: () => ({ machines: [{ name: `row-${index}` }] }), isFieldTouched: () => false }}>
+    <Input />
+  </ScopedFetchControl>)}</Form>);
+  await waitFor(() => expect(api.fetchField).toHaveBeenCalledTimes(6));
+  view.unmount();
+  for (const resolve of resolvers) resolve({ value: 'done', options: [], fills: {}, receipt: '' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(api.fetchField).toHaveBeenCalledTimes(6);
+});

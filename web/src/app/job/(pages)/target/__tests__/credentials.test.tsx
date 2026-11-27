@@ -15,6 +15,8 @@ const job = vi.hoisted(() => ({
 }));
 
 vi.mock('@/app/job/api', () => ({ default: () => job }));
+vi.mock('@/context/userInfo', () => ({ useUserInfoContext: () => ({ selectedGroup: { id: '4' }, userId: '1' }) }));
+vi.mock('@/hooks/usePermissions', () => ({ default: () => ({ hasPermission: () => true }) }));
 vi.mock('@/utils/request', () => ({ default: () => ({ isLoading: false }) }));
 vi.mock('@/utils/i18n', () => ({ useTranslation: () => ({ t: (id: string) => id }) }));
 vi.mock('@/app/node-manager/api/useCloudRegionApi', () => ({

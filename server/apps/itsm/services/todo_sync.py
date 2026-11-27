@@ -5,14 +5,13 @@ import json
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Max
 from django.utils import timezone
 
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.safe_requests import SafeRequestsError, safe_request
 from apps.itsm.models import Ticket, TicketTask
 from apps.itsm.models.integration import Integration, TodoDelivery
-
 
 UNKNOWN_OUTCOME = "请按事件标识核对接收结果"
 
@@ -53,7 +52,17 @@ def sync_todos(ticket_id):
     integrations = list(Integration.objects.filter(domain=ticket.domain, kind="todo", is_enabled=True))
     if not integrations:
         return
-    for task in ticket.tasks.all():
+    tasks = list(ticket.tasks.all())
+    if not tasks:
+        return
+    latest_ids = (
+        TodoDelivery.objects.filter(task_id__in=[task.id for task in tasks], integration_id__in=[item.id for item in integrations])
+        .values("integration_id", "task_id")
+        .annotate(last_id=Max("id"))
+        .values_list("last_id", flat=True)
+    )
+    latest = {(delivery.integration_id, delivery.task_id): delivery for delivery in TodoDelivery.objects.filter(id__in=latest_ids)}
+    for task in tasks:
         active = task.status in [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
         snapshot = {
             "ticket_id": ticket.id,
@@ -66,7 +75,7 @@ def sync_todos(ticket_id):
             "url": f"/itsm/tickets/{ticket.id}",
         }
         for item in integrations:
-            last = item.deliveries.filter(task=task).order_by("-id").first()
+            last = latest.get((item.id, task.id))
             if not last and not active:
                 continue
             previous = {key: value for key, value in (last.payload if last else {}).items() if key not in {"event", "event_id"}}

@@ -1,43 +1,22 @@
 # ITSM 流程设计
 
-Status: ready
+Status: done
 
-## Problem Statement
+## 流程、草稿和已发布版本
 
-流程设计器的顶栏占掉画布高度，节点属性曾经用覆盖抽屉，决策表又和流程列表挤在同一组切换里。设计人分不清这里是在画流程，还是在维护规则。
+流程管理提供按发布状态分组的列表，支持从列表全局导入流程。导入创建独立流程，标识附加后缀，可在导入后检查表单与节点。设计人编辑草稿并发布；已发布版本保留表单和流程设计快照，运行中的工单按所绑定的版本办理。[流程管理验收](../../../server/apps/itsm/tests/test_workflow_management.py) · [导入验收](../../../server/apps/itsm/tests/test_import_copies.py)
 
-## Solution
+## 表单模板与节点预览
 
-流程管理只保留流程列表和流程设计。设计器顶栏固定，左中右三栏各自滚动，节点属性留在右栏。决策表改到规则与时效。
+设计人可从可搜索的表单模板列表预览并选择模板。应用模板会替换草稿表单并清除依赖旧字段的节点权限；保存后的流程表单独立于源模板。每个节点复用该表单，再叠加字段可编辑、只读、隐藏或必填等配置。父级字段限制同时约束子字段。
 
-## User Stories
+在预览页切换节点，可直接对照该节点的可见字段、必填提示和操作按钮，校验示例输入。预览使用业务表单渲染器，不创建工单、推进实例或触发外部取数动作。[表单模板和节点设计](../itsm-node-form-design/spec.md) · [节点预览测试](../../../web/src/app/itsm/components/workflow-preview.test.tsx)
 
-1. As a 流程设计人, I want the header to stay fixed and the canvas to use the remaining height, so that the drawing area is not pushed down by empty margin.
-2. As a 流程设计人, I want the palette, canvas, and property column to scroll independently and collapse with the same round button, so that a long node list does not scroll the canvas away.
-3. As a 流程设计人, I want node properties in the right column, so that opening a node does not cover the canvas with a drawer.
-4. As a 流程设计人, I want 决策表 to live with 规则与时效, so that 流程管理 only keeps the flow list and the designer.
+## 节点配置与发布
 
-## Implementation Decisions
+- 画布保留节点选择与属性入口，详细节点设置在抽屉中分为「处理人」「操作按钮」「字段配置」。在抽屉中应用后写入流程草稿，取消关闭放弃本次设置。
+- 人工节点可从指定人员、处理组、提单人或人员字段解析办理人。根据节点配置执行单人、或签或会签。指定转交范围时，由服务端校验目标人员或处理组。
+- 节点按类型配置可用按钮、显示名、顺序和处理意见要求。改名不改变操作标识和权限。工单详情叠加当前任务状态、办理人和工单权限展示按钮。直接提交停用的动作、缺少必填意见或修改只读字段时，服务端也应拒绝。
+- 通知、决策、知识发布和自动派单等自动节点在引擎中通过外部作业推进。子流程使用调用活动。发布时校验设计引用；未发布的子流程不能作为可执行目标。
 
-- 流程设计器是三栏：节点、画布、属性。属性不是覆盖抽屉。
-- 顶栏包含返回、版本、预览、保存、发布，固定在内容区顶部。
-- 左右收起按钮外观一致，只是箭头方向不同。
-- 流程管理只剩流程设计这一项可见子菜单时，不再显示切换条。
-- 旧的流程管理决策表地址转到规则与时效下的决策表。
-- 流程图继续使用现有流程图组件，不引入另一套 BPMN 设计器。
-- 通知、决策、知识发布、自动派单和子流程在画布上是独立节点；运行时如何走完见工单规格。
-
-## Testing Decisions
-
-- 流程编译用现有 BPMN 构建测试。节点别名和默认分支在发布前校验。
-- 菜单只断言流程管理下不再把决策表当作可见子项，规则与时效下可以打开决策表。
-
-## Out of Scope
-
-- 表单画布的插入规则。
-- 工单认领、退回和重开。
-- 决策表的规则编辑器。决策表页面的列表见规则规格。
-
-## Further Notes
-
-- 流程设计页里的表单页签遵守表单设计规格，不在本规格重复。
+**验收**　从模板建立草稿，把同一字段在提单设为可编辑、在审批设为只读，再调整审批按钮顺序和名称。逐节点预览后发布，用有权办理和仅可查看的账号分别检查工单详情。可见按钮、操作结果、字段值和流转日志须与版本内配置一致。[节点契约](../../../server/apps/itsm/tests/test_node_design_contract.py) · [按钮行为](../../../server/apps/itsm/tests/test_node_action_options.py) · [引擎节点用例](../../../server/apps/itsm/tests/test_remaining_nodes.py)

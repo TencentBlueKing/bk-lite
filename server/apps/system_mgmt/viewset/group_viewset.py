@@ -1,7 +1,7 @@
 from dataclasses import asdict
 
 from django.core.cache import cache
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -289,9 +289,6 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if isinstance(role_ids, list) and {str(role_id) for role_id in role_ids}.intersection(str(role_id) for role_id in module_builtin_role_ids()):
             return JsonResponse({"result": False, "message": self._loader(request).get("error.module_role_locked")}, status=400)
         group_name = request.data.get("group_name")
-        if obj.name == "Default" and obj.parent_id == 0:
-            message = self.loader.get("error.default_group_cannot_modify")
-            return JsonResponse({"result": False, "message": message})
         if obj.sync_source_id and obj.parent_id != 0 and group_name != obj.name:
             return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_child_group_name_immutable")})
         if not request.user.is_superuser:
@@ -299,6 +296,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             if request.data.get("group_id") not in groups:
                 message = self.loader.get("error.no_permission_edit_group")
                 return JsonResponse({"result": False, "message": message})
+        if group_name != obj.name and Group.objects.filter(parent_id=obj.parent_id, name=group_name).exclude(id=obj.id).exists():
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.group_name_exists")})
 
         # 准备更新的字段
         update_fields = {"name": group_name}
@@ -311,26 +310,31 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if "allow_inherit_roles" in request.data:
             update_fields["allow_inherit_roles"] = request.data.get("allow_inherit_roles", False)
 
-        with transaction.atomic():
-            Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
-            if obj.sync_source_id and obj.parent_id == 0 and group_name != obj.name:
-                UserSyncSource.objects.filter(id=obj.sync_source_id).update(root_group_name=group_name)
+        try:
+            with transaction.atomic():
+                Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
+                if obj.sync_source_id and obj.parent_id == 0 and group_name != obj.name:
+                    UserSyncSource.objects.filter(id=obj.sync_source_id).update(root_group_name=group_name)
 
-            # 更新组的角色
-            if isinstance(role_ids, list):
-                obj.roles.set(role_ids)
-                # 清除该组织及其后代组织中所有用户的权限缓存和菜单缓存
-                group_id = request.data.get("group_id")
-                affected_group_ids = GroupUtils.get_group_with_descendants(group_id)
-                affected_users_query = Q()
-                for affected_group_id in affected_group_ids:
-                    affected_users_query |= Q(group_list__contains=int(affected_group_id))
-                affected_users = User.objects.filter(affected_users_query).values("id", "username", "domain")
-                affected_users_list = list(affected_users)
-                if affected_users_list:
-                    clear_users_permission_cache(affected_users_list)
-                    menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users_list]
-                    transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
+                # 更新组的角色
+                if isinstance(role_ids, list):
+                    obj.roles.set(role_ids)
+                    # 清除该组织及其后代组织中所有用户的权限缓存和菜单缓存
+                    group_id = request.data.get("group_id")
+                    affected_group_ids = GroupUtils.get_group_with_descendants(group_id)
+                    affected_users_query = Q()
+                    for affected_group_id in affected_group_ids:
+                        affected_users_query |= Q(group_list__contains=int(affected_group_id))
+                    affected_users = User.objects.filter(affected_users_query).values("id", "username", "domain")
+                    affected_users_list = list(affected_users)
+                    if affected_users_list:
+                        clear_users_permission_cache(affected_users_list)
+                        menu_cache_keys = [f"menus-user:{user['id']}" for user in affected_users_list]
+                        transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
+        except IntegrityError as error:
+            if "system_mgmt_group_name_parent_id" not in str(error):
+                raise
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.group_name_exists")})
 
         # 同步组织数据到CMDB
         try:

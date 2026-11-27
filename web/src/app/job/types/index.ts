@@ -131,6 +131,26 @@ export interface TargetParams {
   source?: TargetSource;
 }
 
+export type BatchResource = 'target' | 'script' | 'playbook';
+
+export type OrganizationOperation = 'add' | 'remove';
+
+export interface OrganizationAdjustment {
+  ids: number[];
+  operation: OrganizationOperation;
+  organization: number;
+  preview_token?: string;
+  exclude_blocked?: boolean;
+}
+
+export interface OrganizationPreview {
+  changed: number;
+  unchanged: number;
+  blocked: { id: number; name: string }[];
+  preview_token: string;
+  groups: { before: number[]; after: number[]; count: number }[];
+}
+
 export interface TargetFormData {
   name: string;
   ip: string;
@@ -159,6 +179,7 @@ export type ScriptParamType = 'text' | 'enum';
 
 export interface ScriptParam {
   name: string;
+  label?: string;
   description?: string;
   default?: string;
   is_encrypted?: boolean;

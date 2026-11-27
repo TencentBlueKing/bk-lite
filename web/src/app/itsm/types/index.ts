@@ -190,7 +190,22 @@ export interface TicketLogItem {
   message: string;
 }
 
+export interface TicketJobProgress {
+  dispatch_mode?: 'batch' | 'parallel';
+  mode: 'once' | 'each';
+  total?: number;
+  batch_size?: number;
+}
+
+export interface TicketJobRecord {
+  row: number;
+  job_id: number;
+  status?: string;
+}
+
 export interface TicketProgressNode {
+  job_progress?: TicketJobProgress;
+  job_records?: TicketJobRecord[];
   executing?: boolean;
   outcome?: 'waiting' | 'current' | 'passed' | 'accepted' | 'rejected' | 'failed';
   id: string;
@@ -235,6 +250,8 @@ export interface AutoExecutionReview {
 }
 
 export interface TicketHistoryItem {
+  job_progress?: TicketJobProgress;
+  job_records?: TicketJobRecord[];
   executing?: boolean;
   id: string;
   node_id: string;
@@ -300,7 +317,6 @@ export interface ManualRecoveryDecision { decision: 'abandon'; token: string; se
 export type StartRecoveryRequest = { id: number; action: 'check' } | { id: number; action: 'confirmed_not_started'; sent_at: string; reason: string };
 
 export interface TicketDetail {
-  can_view_vmware_assets?: boolean;
   can_rename?: boolean;
   reopen_from?: string | null;
   engine_pending?: boolean;

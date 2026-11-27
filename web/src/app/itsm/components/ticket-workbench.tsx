@@ -19,7 +19,7 @@ import { TicketExportDialog } from './ticket-export-dialog';
 import { TicketExportHistory } from './ticket-export-history';
 import { readTicketListView, rememberTicketListView } from './ticket-list-view';
 import { ItsmCreateButton } from './list-controls';
-import { QuickSubmitDrawer } from './quick-submit-drawer';
+import { QuickSubmitModal } from './quick-submit-modal';
 import { useItsmApi } from '../api/useItsmApi';
 import type { TicketCenterFilters as Filters, TicketListItem } from '../types';
 
@@ -283,7 +283,7 @@ export function TicketWorkbench({ initialTab = 'all', restoreView = false }: { i
         message.success('已提交导出任务');
       }} />}
     {exportHistoryOpen && <TicketExportHistory onClose={() => setExportHistoryOpen(false)} />}
-    {canApply && quickSubmitOpen && <QuickSubmitDrawer onClose={() => setQuickSubmitOpen(false)} onNavigate={saveReturnView} />}
+    {canApply && quickSubmitOpen && <QuickSubmitModal onClose={() => setQuickSubmitOpen(false)} onNavigate={saveReturnView} />}
     {selected.length > 0 && availability?.reason ? <Alert className="mb-3" type="warning" message={availability.reason} /> : null}
     <Modal confirmLoading={batchBusy} formValue={results ? undefined : opinion} title={results ? '批量操作结果' : `批量${ACTIONS.find(item => item.value === action)?.label}`} open={batchOpen} closable={!batchBusy} maskClosable={!batchBusy} onCancel={() => !batchBusy && setBatchOpen(false)} footer={results ? <Button onClick={() => setBatchOpen(false)}>关闭</Button> : <Button type="primary" danger={action === 'reject'} loading={batchBusy} disabled={!canConfirmBatch} onClick={() => void runBatch()}>确认执行</Button>}>
       {results ? <><Alert className="mb-3" type={results.every(item => item.ok) ? 'success' : 'warning'} message={`成功 ${results.filter(item => item.ok).length} 项，失败 ${results.filter(item => !item.ok).length} 项`} /><Table size="small" rowKey="id" pagination={false} dataSource={results} columns={[{ title: '工单', render: (_value, record: BatchResult) => batchNames[record.id] || record.id }, { title: '结果', render: (_value, record: BatchResult) => record.ok ? <Tag color="success">成功</Tag> : record.error }]} /></> : <><Alert type="info" className="mb-3" message={`将对选中的 ${selected.length} 张工单执行操作，逐单校验权限、节点和必填字段。`} /><div className="mb-3 max-h-36 overflow-auto text-sm">{selected.map(id => <div key={id} className="py-1">{batchNames[Number(id)]}</div>)}</div>{!['follow', 'unfollow'].includes(action) ? <div className="flex flex-col gap-2">

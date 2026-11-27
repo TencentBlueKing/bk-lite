@@ -126,7 +126,7 @@ def _create_batch(region, package, **overrides):
         "cloud_region_id": region.id,
         "package_id": package.id,
         "max_success_count": 10,
-        "expires_in_hours": 24,
+        "expires_in_days": 1,
         "push_targets": [],
     }
     payload.update(overrides)
@@ -809,8 +809,57 @@ def test_bulk_command_defaults_to_one_day(region, package):
     expires_at = datetime.fromisoformat(json.loads(response.content)["data"]["expires_at"])
     remaining = expires_at - timezone.now()
     assert timedelta(hours=23, minutes=59) < remaining < timedelta(hours=24, minutes=1)
-    assert InstallerConstants.BULK_DEFAULT_EXPIRE_HOURS == 24
-    assert InstallerConstants.BULK_MAX_EXPIRE_HOURS == 24 * 7
+    assert InstallerConstants.BULK_MIN_EXPIRE_DAYS == 1
+    assert InstallerConstants.BULK_DEFAULT_EXPIRE_DAYS == 1
+    assert InstallerConstants.BULK_MAX_EXPIRE_DAYS == 1095
+
+
+def _remaining(payload):
+    expires_at = datetime.fromisoformat(payload["expires_at"])
+    if expires_at.tzinfo is None:
+        expires_at = timezone.make_aware(expires_at)
+    return expires_at - timezone.now()
+
+
+def test_bulk_command_accepts_up_to_three_years_and_rejects_longer(region, package):
+    created = _create_batch(region, package, expires_in_days=1095)
+    remaining = _remaining(created)
+    assert timedelta(days=1095) - timedelta(minutes=1) < remaining < timedelta(days=1095) + timedelta(minutes=1)
+
+    for illegal in (0, 1096, 1.5):
+        response = installer_view.InstallerViewSet.as_view({"post": "controller_bulk_install"})(
+            _auth(
+                "post",
+                "/node_mgmt/api/installer/controller/bulk_install/",
+                {
+                    "cloud_region_id": region.id,
+                    "package_id": package.id,
+                    "max_success_count": 10,
+                    "expires_in_days": illegal,
+                },
+            )
+        )
+        assert response.status_code == 400, response.content
+
+
+def test_bulk_command_ignores_an_hour_field_and_still_defaults_to_one_day(region, package):
+    view = installer_view.InstallerViewSet.as_view({"post": "controller_bulk_install"})
+    response = view(
+        _auth(
+            "post",
+            "/node_mgmt/api/installer/controller/bulk_install/",
+            {
+                "cloud_region_id": region.id,
+                "package_id": package.id,
+                "max_success_count": 10,
+                "expires_in_hours": 1,
+            },
+        )
+    )
+
+    assert response.status_code == 200, response.content
+    remaining = _remaining(json.loads(response.content)["data"])
+    assert timedelta(hours=23, minutes=59) < remaining < timedelta(hours=24, minutes=1)
 
 
 def _write_exec(path, content):

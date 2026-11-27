@@ -24,6 +24,50 @@ export function fetchDependencies(cfg?: FieldFetchBinding): string[] {
 
 export interface FetchContext { service_id?: number; ticket_id?: number; task_id?: number; preview?: boolean; schema?: FormSchema }
 interface Result { options: FormChoice[]; fills: Record<string, Record<string, unknown>>; value: unknown; receipt: string; has_more?: boolean }
+export type SharedFieldFetches = Map<string, { promise: Promise<unknown>; expiresAt: number; checks: Array<() => boolean> }>;
+const MAX_CONCURRENT_FETCHES = 6;
+let activeFetches = 0;
+const pendingFetches: Array<() => void> = [];
+let nextFetch = 0;
+
+function drainFetches() {
+  while (activeFetches < MAX_CONCURRENT_FETCHES && nextFetch < pendingFetches.length) pendingFetches[nextFetch++]();
+  if (nextFetch === pendingFetches.length) {
+    pendingFetches.length = 0;
+    nextFetch = 0;
+  }
+}
+
+function fetchWithLimit<T>(request: () => Promise<T>, isCurrent: () => boolean): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    pendingFetches.push(() => {
+      if (!isCurrent()) { resolve(undefined); return; }
+      activeFetches += 1;
+      Promise.resolve().then(request).then(resolve, reject).finally(() => { activeFetches -= 1; drainFetches(); });
+    });
+    drainFetches();
+  });
+}
+
+function fetchShared<T>(cache: SharedFieldFetches, key: string, request: () => Promise<T>, isCurrent: () => boolean): Promise<T | undefined> {
+  const now = Date.now();
+  for (const [savedKey, saved] of cache) if (saved.expiresAt <= now) cache.delete(savedKey);
+  const existing = cache.get(key);
+  if (existing) {
+    existing.checks.push(isCurrent);
+    return existing.promise as Promise<T | undefined>;
+  }
+  const checks = [isCurrent];
+  const promise = fetchWithLimit(request, () => checks.some(check => check()));
+  const entry = { promise, expiresAt: now + 30_000, checks };
+  cache.set(key, entry);
+  void promise.then(
+    result => { if (result === undefined && cache.get(key) === entry) cache.delete(key); },
+    () => { if (cache.get(key) === entry) cache.delete(key); },
+  );
+  return promise;
+}
+
 interface FetchProps {
   field: FormFieldSchema; context: FetchContext; children: ReactElement; id?: string; value?: unknown; onChange?: (...args: unknown[]) => void;
 }
@@ -61,8 +105,8 @@ export function FieldFetchControl(props: FetchProps) {
   }} />;
 }
 
-export function ScopedFetchControl({ field, context, children, value, onChange, id, store, path, depKey }: FetchProps & {
-  store: FieldStore; path: string; depKey?: string;
+export function ScopedFetchControl({ field, context, children, value, onChange, id, store, path, depKey, sharedFetches }: FetchProps & {
+  store: FieldStore; path: string; depKey?: string; sharedFetches?: SharedFieldFetches;
 }) {
   const api = useItsmApi();
   const currentStore = useRef(store);
@@ -117,7 +161,14 @@ export function ScopedFetchControl({ field, context, children, value, onChange, 
         manualRequest.current = undefined;
         setAwaitingRefresh(false);
       }
-      void api.fetchField({ ...JSON.parse(contextKey), field: path, values: cfg.trigger === 'manual' ? request!.values : form.requestValues(), query, page: dependenciesChanged ? 1 : page }).then(raw => {
+      const values = cfg.trigger === 'manual' ? request!.values : form.requestValues();
+      const fetchRequest = () => api.fetchField({ ...JSON.parse(contextKey), field: path, values, query, page: dependenciesChanged ? 1 : page });
+      const isCurrent = () => sequence.current === seq;
+      const share = sharedFetches && !context.ticket_id && !refs.length && !field.visibleWhen && cfg.mode === 'options' && cfg.trigger !== 'manual';
+      const cacheKey = JSON.stringify([contextKey, path, binding, query, page]);
+      if (refresh) sharedFetches?.delete(cacheKey);
+      void (share ? fetchShared(sharedFetches, cacheKey, fetchRequest, isCurrent) : fetchWithLimit(fetchRequest, isCurrent)).then(raw => {
+        if (raw === undefined) return;
         if (sequence.current !== seq || JSON.stringify(refs.map(key => form.getFieldValue(key) ?? null)) !== depKey) return;
         const next = raw as Result;
         const prior = page > 1 && !dependenciesChanged ? resultRef.current : null;
@@ -142,7 +193,7 @@ export function ScopedFetchControl({ field, context, children, value, onChange, 
     }, 300);
     return () => { clearTimeout(timer); sequence.current++; };
     // 配置和上下文以稳定序列化值参与依赖，避免表单重绘触发重复请求。
-  }, [api.ready, api.fetchField, binding, contextKey, depKey, query, page, refresh, path, field.key, defaultFirst]);
+  }, [api.ready, api.fetchField, binding, contextKey, depKey, query, page, refresh, path, field.key, defaultFirst, sharedFetches]);
   const refreshCurrent = (nextPage: number) => {
     manualRequest.current = { depKey, contextKey, binding, query, page: nextPage, values: currentStore.current.requestValues() };
     setPage(nextPage);

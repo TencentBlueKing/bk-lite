@@ -173,6 +173,20 @@ class ExecutionService:
             username: 执行人。
             timeout_explicit: 请求体是否显式传了 timeout（决定是否回退脚本默认超时）。
         """
+        execution = cls.prepare_quick_execution(
+            data=data,
+            team=team,
+            authorized_team_ids=authorized_team_ids,
+            username=username,
+            timeout_explicit=timeout_explicit,
+            credential_actor=credential_actor,
+        )
+        cls._dispatch_or_raise(execution)
+        return execution
+
+    @classmethod
+    def prepare_quick_execution(cls, *, data, team, authorized_team_ids, username, timeout_explicit, credential_actor=None, client_request_id=None):
+        """执行快速作业的相同校验并持久化，允许调用方将作业与业务回执在同一事务提交。"""
         target_source = data["target_source"]
         target_list = data["target_list"]
         if target_source == TargetSource.MANUAL:
@@ -217,6 +231,16 @@ class ExecutionService:
                 name=name,
                 job_type=JobType.SCRIPT,
                 status=ExecutionStatus.PENDING,
+                **(
+                    {
+                        "client_request_id": client_request_id,
+                        "domain": credential_actor["domain"],
+                        "updated_by_domain": credential_actor["domain"],
+                        "trigger_source": TriggerSource.API,
+                    }
+                    if client_request_id
+                    else {}
+                ),
                 script=script,
                 params=ScriptParamsService.params_to_string(resolved_params),
                 script_type=script_type,
@@ -232,7 +256,6 @@ class ExecutionService:
                 updated_by=username,
             )
 
-        cls._dispatch_or_raise(execution)
         return execution
 
     @classmethod

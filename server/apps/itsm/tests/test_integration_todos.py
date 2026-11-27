@@ -1,7 +1,10 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
+from apps.itsm.models import TicketTask
 from apps.itsm.models.integration import Integration, TodoDelivery
 from apps.itsm.services.todo_sync import deliver, sync_todos
 from apps.itsm.tests.test_review_regressions import sample as sample_fixture
@@ -59,3 +62,24 @@ def test_test_tickets_do_not_push(sample):
     Integration.objects.create(name="目标", kind="todo", config={"url": "https://example.com/hook"})
     sync_todos(ticket.id)
     assert not TodoDelivery.objects.exists()
+
+
+def test_unchanged_todo_sync_queries_do_not_grow_per_task_and_integration(sample):
+    ticket, task = sample
+    for index in range(6):
+        TicketTask.objects.create(ticket=ticket, node_id=f"approval_{index}", assignee=f"handler_{index}")
+    for index in range(3):
+        Integration.objects.create(name=f"目标{index}", kind="todo", config={"url": "https://example.com/hook"})
+
+    sync_todos(ticket.id)
+    assert TodoDelivery.objects.count() == 21
+    with CaptureQueriesContext(connection) as captured:
+        sync_todos(ticket.id)
+    assert len(captured) <= 7
+    assert TodoDelivery.objects.count() == 21
+
+    task.assignee = "next"
+    task.save(update_fields=["assignee"])
+    sync_todos(ticket.id)
+    assert TodoDelivery.objects.count() == 24
+    assert set(TodoDelivery.objects.order_by("-id").values_list("payload__event", flat=True)[:3]) == {"update"}

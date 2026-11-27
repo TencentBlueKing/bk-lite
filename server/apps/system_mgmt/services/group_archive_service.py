@@ -91,7 +91,7 @@ class GroupArchiveService:
     def _is_protected_root(group: Group) -> bool:
         if group.parent_id not in (0, None):
             return False
-        return group.name == "Default" or bool(group.is_virtual)
+        return bool(group.is_builtin) or bool(group.is_virtual)
 
     @classmethod
     def _refresh_remaining_locks(cls, users: list[User], subtree_id_set: set[int], locked_by_id: dict[int, Group]):

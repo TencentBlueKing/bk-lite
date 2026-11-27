@@ -127,7 +127,7 @@ class TestBuiltinSkillPackageSeed:
         assert pkg.system_tags == ["container"]
         assert pkg.user_tags == []
         assert pkg.category != "container"
-        default_group = Group.objects.filter(name="Default", parent_id=0).only("id").first()
+        default_group = Group.objects.filter(parent_id=0, is_builtin=True).only("id").first()
         assert pkg.team == ([default_group.id] if default_group else [1])
         assert (Path(pkg.storage_path) / "extracted" / "SKILL.md").is_file()
 

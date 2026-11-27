@@ -43,6 +43,8 @@ import { ConditionBuilder } from './condition-builder';
 import { CanvasTools } from './canvas-tools';
 import { UserSelector } from './user-selector';
 import { NodeGlyph } from './node-glyph';
+import { jobBadge, upstreamJobOutputs } from './job-node-config';
+import { JobNodeSettings } from './job-node-settings';
 import { IntegrationNodeSettings } from './integration-node-settings';
 import { useTranslation } from '@/utils/i18n';
 
@@ -89,7 +91,11 @@ function ItsmNode({ data, selected }: NodeProps<ItsmFlowNodeType>) {
       <NodeGlyph type={data.nodeType} />
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span>
-        <span className="truncate text-[11px] text-[var(--color-text-3)]">{typeLabel}</span>
+        {data.auto?.kind === 'job_template' ? (
+          <span className="w-fit max-w-full truncate rounded bg-[var(--color-primary-bg-active)] px-1 text-[11px] text-[var(--color-primary)]">
+            {jobBadge(data.auto)}
+          </span>
+        ) : <span className="truncate text-[11px] text-[var(--color-text-3)]">{typeLabel}</span>}
       </div>
       {data.nodeType === 'end' ? null : (
         <Handle type="source" position={Position.Right} isConnectableEnd={false} className={handleClass} />
@@ -515,13 +521,21 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
                   <span className="text-xs">执行动作</span>
                   {selected.data.nodeType === 'manual_trigger' && <span className="text-xs text-[var(--color-text-3)]">处理人提交确认后执行动作；保存不会执行。</span>}
                   {selected.data.nodeType === 'rule_trigger' && <><span className="text-xs">触发条件（不设置则始终执行）</span><ConditionBuilder fields={fields} fieldTypes={fieldTypes} value={selected.data.auto?.when as ConditionGroup | ConditionItem | undefined} onChange={when => patchSelected({ auto: { ...selected.data.auto, when } })} /></>}
-                  {selected.data.auto?.kind === 'vmware_provision' ? <div className="flex flex-col gap-1">
-                    <span>VMware 虚拟机交付</span>
-                    <span className="text-xs text-[var(--color-text-3)]">交付环境：{String(selected.data.auto.profile)}</span>
-                  </div> : <>
-                  <Select value={String(selected.data.auto?.kind || 'table')} options={[{ value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' }, { value: 'integration', label: '集成 · API / Python' }]} onChange={(kind) => patchSelected({ auto: { ...selected.data.auto, kind } })} />
-                  {selected.data.auto?.kind === 'integration' ? <IntegrationNodeSettings key={selected.id} config={selected.data.auto} onChange={auto => patchSelected({ auto })} /> : <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />}
-                  </>}
+                  <Select aria-label="执行动作" value={String(selected.data.auto?.kind || 'table')} options={[
+                    { value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' },
+                    { value: 'integration', label: '集成 · API / Python' },
+                    ...(selected.data.nodeType === 'auto' ? [{ value: 'job_template', label: '作业平台 · 已有作业' }] : []),
+                    ...(!['table', 'http', 'integration', 'job_template'].includes(String(selected.data.auto?.kind || 'table')) ? [{ value: String(selected.data.auto?.kind), label: '未支持的旧动作' }] : []),
+                  ]} onChange={kind => patchSelected({ auto: { kind, when: selected.data.auto?.when } })} />
+                  {selected.data.auto?.kind && !['table', 'http', 'integration', 'job_template'].includes(String(selected.data.auto.kind)) ? (
+                    <span className="text-xs text-[var(--color-text-3)]">旧动作已停用，请改选通用作业或集成动作后重新发布。</span>
+                  ) : selected.data.auto?.kind === 'job_template' ? (
+                    <JobNodeSettings config={selected.data.auto} fields={formFields} outputs={upstreamJobOutputs(selected.id, nodes, edges)} onChange={auto => patchSelected({ auto })} />
+                  ) : selected.data.auto?.kind === 'integration' ? (
+                    <IntegrationNodeSettings key={selected.id} config={selected.data.auto} onChange={auto => patchSelected({ auto })} />
+                  ) : (
+                    <Input aria-label="数据表标识或请求地址" placeholder={selected.data.auto?.kind === 'http' ? '请求地址' : '数据表标识'} value={String(selected.data.auto?.[selected.data.auto?.kind === 'http' ? 'url' : 'table_key'] || '')} onChange={(event) => patchSelected({ auto: { kind: 'table', ...selected.data.auto, [selected.data.auto?.kind === 'http' ? 'url' : 'table_key']: event.target.value } })} />
+                  )}
 
                 </>}
                 {['notice', 'cc'].includes(selected.data.nodeType) && <>

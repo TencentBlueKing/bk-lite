@@ -31,7 +31,6 @@ import {
   coerceValueForMultiple,
   isMultipleSelectInputConfig,
 } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
-import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import {
@@ -58,12 +57,11 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
-import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
+import { getUnifiedFilterTimeSelectorDefaultValue, timeRangeValueFromSelector } from '@/app/ops-analysis/utils/filterValue';
 import { hasInvalidDateRangeDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
-  TimeRangeValue,
   LayoutItem,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
@@ -581,18 +579,15 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             <TimeSelector
               key={`${record.id}-${JSON.stringify(value)}`}
               onlyTimeSelect
+              clearable
               className="w-full"
               defaultValue={getUnifiedFilterTimeSelectorDefaultValue(value)}
               onChange={(range, originValue) => {
-                if (range.length === 2) {
-                  handleFieldChange(record.id, 'defaultValue', {
-                    start: dayjs(range[0]).toISOString(),
-                    end: dayjs(range[1]).toISOString(),
-                    selectValue: originValue ?? 0,
-                  } as TimeRangeValue);
-                } else {
-                  handleFieldChange(record.id, 'defaultValue', null);
-                }
+                handleFieldChange(
+                  record.id,
+                  'defaultValue',
+                  timeRangeValueFromSelector(range, originValue),
+                );
               }}
             />
           );
@@ -601,6 +596,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         if (record.type === 'dateRange') {
           return (
             <DateRangeSelector
+              className="w-full"
               value={value as DateRangeValue | null | undefined}
               onChange={(nextValue) =>
                 handleFieldChange(record.id, 'defaultValue', nextValue)

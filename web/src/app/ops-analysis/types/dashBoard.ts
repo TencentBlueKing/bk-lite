@@ -400,8 +400,9 @@ export interface WidgetDefinition {
 
 /** 时间范围值 */
 export interface TimeRangeValue {
-  start: string; // ISO 8601 格式
-  end: string;
+  /** 自定义区间才有。快捷项只留 selectValue，避免把点选时的起止写死。 */
+  start?: string;
+  end?: string;
   selectValue?: number; // 快捷选择的分钟数，0表示自定义时间
 }
 

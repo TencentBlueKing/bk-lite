@@ -1,7 +1,9 @@
 """使用任务实例和操作记录还原流转，不把技术动作名作为步骤名。"""
 
 from apps.itsm.services.ticket.actions import SIDE_OPINION_ACTIONS, TASK_ACTIONS
+from apps.job_mgmt.constants import ExecutionStatus
 
+JOB_STATUSES = frozenset(status for status, _ in ExecutionStatus.CHOICES)
 OPINION_ACTIONS = TASK_ACTIONS | SIDE_OPINION_ACTIONS | {"resume", "auto_reconcile"}
 
 ACTION_LABELS = {
@@ -26,6 +28,28 @@ ACTION_LABELS = {
     "auto_reconcile": "人工核对",
     "auto_retry": "请求重试",
 }
+
+
+def job_execution_progress(delivery):
+    if not delivery:
+        return {}
+    records = [
+        {
+            "row": record["row"],
+            "job_id": record["job_id"],
+            **({"status": record["status"]} if record.get("status") in JOB_STATUSES else {}),
+        }
+        for record in delivery.get("rows", [])
+        if record.get("job_id")
+    ]
+    progress = {
+        "mode": delivery.get("mode", "each"),
+        "dispatch_mode": delivery.get("dispatch_mode", "batch" if delivery.get("batch_size") else "parallel"),
+        "total": delivery.get("total", len(records)),
+    }
+    if delivery.get("batch_size"):
+        progress["batch_size"] = delivery["batch_size"]
+    return {"job_progress": progress, "job_records": records}
 
 
 def ticket_history(ticket, tasks, design):
@@ -81,6 +105,7 @@ def ticket_history(ticket, tasks, design):
                 "finished_at": execution.updated_at.isoformat() if execution.status == "done" or failed else "",
                 "message": execution.detail.get("reason") or ("执行结果未确认，请先核对外部系统" if failed else ""),
                 "execution_id": execution.id,
+                **job_execution_progress(execution.detail.get("job_template") or {}),
             }
         )
     rows.sort(key=lambda row: row["finished_at"] or row["started_at"])
@@ -102,16 +127,37 @@ def ticket_history(ticket, tasks, design):
     return rows
 
 
-def node_progress(node, history):
-    rows = [row for row in history if row["node_id"] == node["id"]]
+def index_history_by_node(history):
+    indexed = {}
+    for row in history:
+        indexed.setdefault(row["node_id"], []).append(row)
+    return indexed
+
+
+def node_progress(node, history, auto=None):
+    rows = history.get(node["id"], []) if isinstance(history, dict) else [row for row in history if row["node_id"] == node["id"]]
     current = [row for row in rows if row["state"] in {"current", "failed"}]
     selected = current or rows[-1:]
     outcome = node["state"]
     if outcome == "done":
         action = selected[-1].get("action") if selected else None
         outcome = {"approve": "accepted", "reject": "rejected"}.get(action, "passed")
+    job = next((row for row in reversed(rows) if "job_progress" in row), None)
+    job_data = {}
+    if job:
+        job_data = {"job_progress": job["job_progress"], "job_records": job["job_records"]}
+    elif auto and auto.get("kind") == "job_template":
+        mode = auto.get("mode") or ("each" if auto.get("table_key") else "once")
+        job_data = {
+            "job_progress": {
+                "mode": mode,
+                "dispatch_mode": auto.get("dispatch_mode", "batch" if auto.get("batch_size") else "parallel"),
+                **({"batch_size": auto["batch_size"]} if auto.get("batch_size") else {}),
+            }
+        }
     return {
         **node,
+        **job_data,
         "outcome": outcome,
         "assignees": list(dict.fromkeys(row["operator"] for row in selected if row["operator"])),
         "started_at": selected[0]["started_at"] if selected else "",

@@ -97,6 +97,15 @@ def _normalize_preview_limit(value):
         raise ValueError(oa_message("messages.limit_must_be_int", "limit 必须是整数"))
 
 
+def _row_limit(params, request):
+    """page_size 只有在已是正整数时才当作返回条数。字符串游标不能拿来截断。"""
+    page_size = params.get("page_size") if isinstance(params, dict) else None
+    if isinstance(page_size, int) and not isinstance(page_size, bool) and page_size > 0:
+        return _normalize_preview_limit(page_size)
+    request_data = request.data if isinstance(getattr(request, "data", None), dict) else {}
+    return _normalize_preview_limit(request_data.get("limit"))
+
+
 def _normalize_preview_config(value):
     if isinstance(value, dict):
         return value
@@ -153,6 +162,8 @@ def _execute_inline_preview(
     *,
     transform_config=None,
     org_id=None,
+    param_specs=None,
+    resolved_params=None,
 ):
     executor = get_preview_executor(source_type)
     result = executor.preview(
@@ -161,8 +172,35 @@ def _execute_inline_preview(
         limit=limit,
         transform_config=transform_config,
         org_id=org_id,
+        param_specs=param_specs,
+        resolved_params=resolved_params,
     )
     return result.as_dict()
+
+
+def _param_specs_from_payload(payload, fallback=None):
+    raw = payload.get("params") if isinstance(payload, dict) else None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = None
+    if isinstance(raw, list):
+        return raw
+    return fallback if isinstance(fallback, list) else []
+
+
+def _resolved_declared_params(specs):
+    from types import SimpleNamespace
+
+    declared = {item.get("name") for item in specs or [] if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name")}
+    resolved = _resolve_request_params(SimpleNamespace(params=specs or [], rest_api=None), {})
+    return {key: value for key, value in resolved.items() if key in declared}
+
+
+def _preview_param_context(payload, fallback_specs=None):
+    specs = _param_specs_from_payload(payload, fallback_specs)
+    return specs, _resolved_declared_params(specs)
 
 
 def _query_non_nats_source(request, instance, params, current_team):
@@ -172,17 +210,20 @@ def _query_non_nats_source(request, instance, params, current_team):
             executor = get_preview_executor(instance.source_type)
             result = executor.execute(instance.connection_config or {}, params)
             return Response({"data": result.data, "warnings": result.warnings or []})
-        runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
+        runtime_limit = _row_limit(params, request)
         if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
             from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
-            payload = load_excel_runtime(instance, limit=runtime_limit)
+            payload = load_excel_runtime(
+                instance,
+                limit=runtime_limit,
+                param_specs=instance.params or [],
+                resolved_params=params,
+            )
+            items = payload.get("items", [])
             return Response(
                 {
-                    "data": apply_query_list_to_payload(
-                        payload.get("items", []),
-                        params.get("query_list"),
-                    ),
+                    "data": apply_query_list_to_payload(items, params.get("query_list")),
                     "warnings": payload.get("warnings", []),
                 }
             )
@@ -202,6 +243,8 @@ def _query_non_nats_source(request, instance, params, current_team):
             runtime_limit,
             transform_config=instance.transform_config or {},
             org_id=current_team,
+            param_specs=instance.params or [],
+            resolved_params=params,
         )
     except ConnectionResolveError as exc:
         return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
@@ -613,7 +656,8 @@ def _resolve_request_params(instance, request_data):
 
         resolved[param_name] = _normalize_param_value(param_name, param_type, raw_value)
 
-    resolved.update(_normalize_runtime_params(sanitized_request))
+    undeclared_request = {key: value for key, value in sanitized_request.items() if key not in allowed_specs}
+    resolved.update(_normalize_runtime_params(undeclared_request))
 
     return resolved
 
@@ -871,6 +915,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 )
             limit = _normalize_preview_limit(request.data.get("limit"))
             transform_config = _normalize_transform_config_payload(request.data.get("transform_config"))
+            param_specs, resolved_params = _preview_param_context(request.data)
             payload = _execute_inline_preview(
                 source_type,
                 connection_config,
@@ -878,6 +923,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 limit,
                 transform_config=transform_config,
                 org_id=current_team,
+                param_specs=param_specs,
+                resolved_params=resolved_params,
             )
         except ConnectionResolveError as exc:
             return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
@@ -913,6 +960,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 transform_config = _normalize_transform_config_payload(request.data.get("transform_config"))
                 if not transform_config:
                     transform_config = instance.transform_config or {}
+                param_specs, resolved_params = _preview_param_context(request.data, instance.params or [])
+
                 if isinstance(transform_config, dict) and transform_config.get("enabled"):
                     from apps.operation_analysis.services.datasource_preview.excel import preview_excel_from_saved_source
 
@@ -921,12 +970,19 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                         transform_config=transform_config,
                         limit=limit,
                         org_id=current_team,
+                        param_specs=param_specs,
+                        resolved_params=resolved_params,
                     )
                     return Response(result.as_dict())
 
                 from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
-                payload = load_excel_runtime(instance, limit=limit)
+                payload = load_excel_runtime(
+                    instance,
+                    limit=limit,
+                    param_specs=param_specs,
+                    resolved_params=resolved_params,
+                )
                 return Response(
                     {
                         "items": payload.get("items", []),
@@ -946,6 +1002,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             transform_config = _normalize_transform_config_payload(request.data.get("transform_config"))
             if not transform_config:
                 transform_config = instance.transform_config or {}
+            param_specs, resolved_params = _preview_param_context(request.data, instance.params or [])
             payload = _execute_inline_preview(
                 source_type,
                 connection_config,
@@ -953,6 +1010,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 limit,
                 transform_config=transform_config,
                 org_id=current_team,
+                param_specs=param_specs,
+                resolved_params=resolved_params,
             )
         except ConnectionResolveError as exc:
             return _build_error_response(exc.message, exc.status_code, {"code": exc.code})

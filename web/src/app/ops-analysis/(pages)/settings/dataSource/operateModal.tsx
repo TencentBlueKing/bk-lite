@@ -48,9 +48,11 @@ import {
   createPrometheusDefaultParams,
   ELASTICSEARCH_DEFAULT_QUERY_BODY,
   getDatasourceSourceFlags,
+  sourceShowsDeclaredParamTable,
   getPreviewFieldNames,
   normalizeFieldSchema,
   normalizeParams,
+  resolvePreviewParams,
   normalizeTransformConfig,
   PASSWORD_PLACEHOLDER,
   PROMETHEUS_DEFAULT_CHART_TYPES,
@@ -194,6 +196,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
     supportsTransform,
     supportsSharedConnection,
   } = getDatasourceSourceFlags(sourceType);
+  const showsDeclaredParams = sourceShowsDeclaredParamTable(sourceType);
+  const declaredParamTypes = isNatsSource
+    ? undefined
+    : ["string", "number", "boolean", "date", "timeRange", "dateRange"];
+  const declaredParamHintKey = isExcelSource
+    ? "paramHintExcel"
+    : isRestApiSource
+      ? "paramHintRest"
+      : isElasticsearchSource
+        ? "paramHintEs"
+        : "paramHintSql";
   const useSharedConnection =
     supportsSharedConnection && connectionMode !== "inline";
   const connectSubsectionTitle = isExcelSource
@@ -809,6 +822,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
               enabled: transformEnabled,
             }),
           );
+          formData.append("params", JSON.stringify(resolvePreviewParams(params)));
           response = await previewDataSourceConfig(formData);
           applyPreviewResponse(response);
         } else if (
@@ -826,6 +840,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           response = await previewDataSource(currentRow.id, {
             source_type: SOURCE_TYPE_EXCEL,
             limit: 50,
+            params: resolvePreviewParams(params),
             transform_config: transformEnabled
               ? transformConfig
               : { ...transformConfig, enabled: false },
@@ -847,6 +862,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             t,
           }),
           groups: values.groups || [],
+          params: resolvePreviewParams(params),
           limit: 50,
           transform_config: isRestApiSource
             ? {
@@ -1066,7 +1082,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         return;
       }
 
-      if (isNatsSource) {
+      if (showsDeclaredParams) {
         if (!paramTableRef.current?.validate()) {
           scrollToFormError(undefined, "process", "connect");
           setLoading(false);
@@ -1132,7 +1148,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         groups: values.groups || [],
         field_schema: fieldSchema,
         params:
-          isNatsSource || isPrometheusSource ? normalizeParams(params) : [],
+          showsDeclaredParams || isPrometheusSource ? normalizeParams(params) : [],
       };
 
       const isEdit = Boolean(currentRow?.id);
@@ -1365,7 +1381,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           id="connect"
           title={connectSubsectionTitle}
           extra={
-            isNatsSource && !definitionReadOnly ? (
+            showsDeclaredParams && isNatsSource && !definitionReadOnly ? (
               <Button
                 type="link"
                 size="small"
@@ -1451,13 +1467,47 @@ const OperateModal: React.FC<OperateModalProps> = ({
             }
           />
         )}
-        {isNatsSource && (
-          <ParamTable
-            ref={paramTableRef}
-            params={params}
-            onChange={setParams}
-            readOnly={definitionReadOnly}
-          />
+        {showsDeclaredParams && (
+          <>
+            {!isNatsSource && (
+              <div className="mb-3 flex min-h-[22px] items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="text-sm font-semibold leading-[22px] text-[var(--color-text-1)]">
+                    {t("dataSource.queryParams")}
+                  </span>
+                  <Tooltip
+                    placement="topLeft"
+                    overlayStyle={{ maxWidth: 420 }}
+                    overlayInnerStyle={{ maxWidth: 420 }}
+                    title={t(`dataSource.${declaredParamHintKey}`)}
+                  >
+                    <QuestionCircleOutlined
+                      aria-label={t("dataSource.queryParams")}
+                      className="cursor-help text-[14px] text-[var(--color-text-3)]"
+                    />
+                  </Tooltip>
+                </div>
+                {!definitionReadOnly ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    className="!px-1"
+                    onClick={() => setParams([...params, createDefaultParam()])}
+                  >
+                    {t("dataSource.addParam")}
+                  </Button>
+                ) : null}
+              </div>
+            )}
+            <ParamTable
+              ref={paramTableRef}
+              params={params}
+              onChange={setParams}
+              readOnly={definitionReadOnly}
+              sourceType={sourceType}
+              allowedTypes={declaredParamTypes}
+            />
+          </>
         )}
         </FormSubsection>
 

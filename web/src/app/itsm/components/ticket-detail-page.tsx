@@ -10,7 +10,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useItsmApi } from '../api/useItsmApi';
 import { FormRenderer } from './form-renderer';
 import { TicketHeaderSocial, TicketRelations } from './ticket-social';
-import { VmwareDeliveryAssets } from './vmware-delivery-assets';
 import { TicketHistory } from './ticket-history';
 import { useItsmRuntimeSettings } from '../settings/runtime-settings';
 import { TicketSla } from './ticket-sla';
@@ -22,6 +21,7 @@ import { TicketActions, type OperationInput } from './ticket-actions';
 import { TicketCollaboration, formatTicketTime } from './ticket-collaboration';
 import { useTranslation } from '@/utils/i18n';
 import { useServiceDraft } from './use-service-draft';
+import { TicketFormTemplates } from './ticket-form-templates';
 import type { AutoExecutionReview, TicketDetail, TicketTaskItem } from '../types';
 
 const STATUS_LABEL: Record<string, { id: string; color: string }> = {
@@ -84,7 +84,6 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
   useEffect(() => {
     if (formData) {
       form.resetFields();
-      form.setFieldsValue(formData);
     }
   }, [formData, form]);
 
@@ -192,7 +191,7 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
             ) : <h1 title={ticket.title} className="!m-0 truncate !text-sm !font-semibold text-[var(--color-text-1)]">{ticket.title}</h1>}
             {!serviceId && <TicketHeaderSocial ticketId={ticketId} sn={ticket.sn} />}
           </div>
-          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
+          <div className="flex flex-wrap items-center gap-2">{serviceId ? <><TicketFormTemplates serviceId={serviceId} form={form} fields={ticket.fields} disabled={busy} /><Button disabled={busy} onClick={() => void draft.save(false)}>保存草稿</Button><Button type="primary" loading={busy} onClick={() => void draft.save(true)}>提交申请</Button></> : <><Button type="text" icon={<ReloadOutlined />} disabled={busy} onClick={() => { void load().catch((error: unknown) => message.error(error instanceof Error ? error.message : '刷新失败')); }}>刷新</Button><Button type="text" icon={<PrinterOutlined />} onClick={() => router.push(`/itsm/tickets/${ticketId}/print${fromTicketCenter ? "?from=tickets" : ""}`)}>{t("itsm.print.action")}</Button><TicketActions ticket={ticket} busy={busy || Boolean(ticket.engine_pending || ticket.manual_recovery || ticket.start_recovery)} operate={operate} onTaskChange={taskId => void load(taskId)} /></>}</div>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
           <span>提单人：<span className="text-[var(--color-text-1)]">{ticket.creator}</span></span>
@@ -214,7 +213,6 @@ function TicketContent({ ticketId, serviceId, fromTicketCenter }: { ticketId: nu
           <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">{t('itsm.ticket.form')}</div>
           <div className="mb-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-3)]">{ticket.sla?.map((item) => <span key={item.target}>{item.target === 'response' ? '响应期限' : '解决期限'}：{formatTicketTime(item.due_at)}{item.paused ? ' · 已暂停' : item.breached ? ' · 已超时' : item.finished_at ? ' · 已达标' : ''}</span>)}</div>
           <FormRenderer fetchContext={serviceId ? { service_id: serviceId } : { ticket_id: ticketId, task_id: selectedTask?.id }} form={form} schema={{ version: 1, fields: ticket.fields, rules: ticket.form_rules }} initialValues={ticket.form_data} fieldPerm={serviceId ? draft.fieldPerm : selectedTask?.field_perm} readOnly={!serviceId && (!selectedTask || loading)} hideSubmit onSubmit={() => undefined} />
-          {!serviceId && ticket.can_view_vmware_assets && <VmwareDeliveryAssets key={ticketId} ticketId={ticketId} />}
         </div>
 
         <aside aria-label="工单协作" className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--color-border)]">

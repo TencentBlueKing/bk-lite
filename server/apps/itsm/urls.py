@@ -64,7 +64,7 @@ from apps.itsm.views.m2 import test_start, ticket_tags, todo_summary, view_templ
 from apps.itsm.views.m2 import workflow_variables as variable_admin
 from apps.itsm.views.m2 import workflow_versions
 from apps.itsm.views.portal_workbench import portal_dashboard, portal_layout
-from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_hot, service_portal, service_use
+from apps.itsm.views.services import CatalogView, ServiceView, service_favorite, service_form_templates, service_hot, service_portal, service_use
 from apps.itsm.views.ticket_center import center_settings, filter_fields, filter_tags
 from apps.itsm.views.ticket_export import download_export, export_fields, export_tasks, export_tickets, retry_export
 from apps.itsm.views.ticket_operations import batch_operate, batch_options, create_child, preview_print_template, render_print, run_auto
@@ -85,13 +85,14 @@ from apps.itsm.views.tickets import (
 )
 from apps.itsm.views.triggers import trigger_logs, trigger_options
 from apps.itsm.views.users import PublicStatusView, UserSearchView
-from apps.itsm.views.vmware_assets import ticket_vmware_assets
+from apps.itsm.views.workflow_jobs import integration_job_catalog, workflow_job_options
 
 urlpatterns = [
     path("api/fields/gateway/", field_gateway, name="itsm-field-gateway"),
     path("api/fields/catalog/", field_catalog),
     path("api/fields/fetch/", field_fetch),
     path("api/integrations/", integrations),
+    path("api/integrations/job-catalog/", integration_job_catalog, name="itsm-integration-job-catalog"),
     path("api/integrations/catalog/", integration_catalog),
     path("api/integrations/<int:item_id>/", integration_detail),
     path("api/integrations/<int:item_id>/test/", integration_test),
@@ -148,6 +149,7 @@ urlpatterns = [
     path("api/dictionaries/export/", export_dictionaries, name="itsm-dictionary-export"),
     path("api/dictionaries/import/", import_dictionaries, name="itsm-dictionary-import"),
     path("api/workflows/", workflows, name="itsm-workflows"),
+    path("api/workflows/job-options/", workflow_job_options, name="itsm-workflow-job-options"),
     path("api/workflows/handler-group-options/", handler_group_options, name="itsm-handler-group-options"),
     path("api/workflows/<int:workflow_id>/name/", rename_workflow, name="itsm-workflow-name"),
     path("api/workflows/<int:workflow_id>/versions/<int:version_no>/copy/", duplicate_workflow_version, name="itsm-workflow-copy"),
@@ -162,6 +164,7 @@ urlpatterns = [
     path("api/services/", ServiceView.as_view(), name="itsm-services"),
     path("api/services/portal/", service_portal, name="itsm-service-portal"),
     path("api/services/drafts/", portal_draft, name="itsm-portal-draft"),
+    path("api/services/<int:service_id>/form-templates/", service_form_templates, name="itsm-service-form-templates"),
     path("api/services/hot/", service_hot, name="itsm-service-hot"),
     path("api/services/<int:service_id>/favorite/", service_favorite, name="itsm-service-favorite"),
     path("api/services/<int:service_id>/use/", service_use, name="itsm-service-use"),
@@ -201,7 +204,6 @@ urlpatterns = [
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/reconcile/", reconcile_auto_node, name="itsm-auto-reconcile"),
     path("api/tickets/<int:ticket_id>/auto/<int:execution_id>/retry/", retry_auto_node, name="itsm-auto-retry"),
     path("api/tickets/<int:ticket_id>/logs/", ticket_logs, name="itsm-ticket-logs"),
-    path("api/tickets/<int:ticket_id>/vmware-assets/", ticket_vmware_assets, name="itsm-ticket-vmware-assets"),
     path("api/tickets/<int:ticket_id>/trigger-logs/", trigger_logs, name="itsm-ticket-trigger-logs"),
     path("api/tickets/<int:ticket_id>/survey/", ticket_survey, name="itsm-ticket-survey"),
 ]

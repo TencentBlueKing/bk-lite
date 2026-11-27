@@ -70,6 +70,30 @@ def test_excel_preview_rejects_missing_file_or_saved_rows():
         ExcelConnectorExecutor().preview({}, {}, limit=10)
 
 
+def test_excel_preview_filters_rows_past_the_sample_limit():
+    workbook = openpyxl.Workbook(write_only=True)
+    sheet = workbook.create_sheet("orders")
+    sheet.append(["city", "amount"])
+    for _ in range(1000):
+        sheet.append(["beijing", 1])
+    sheet.append(["shanghai", 30])
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    stream.name = "orders.xlsx"
+
+    result = ExcelConnectorExecutor().preview(
+        {"file": stream},
+        {},
+        limit=10,
+        param_specs=[{"name": "city", "type": "string"}],
+        resolved_params={"city": "shanghai"},
+    )
+
+    assert result.items == [{"city": "shanghai", "amount": 30}]
+    assert result.count == 1
+
+
 def test_excel_preview_rejects_legacy_xls_extension():
     stream = _build_excel_file()
     stream.name = "orders.xls"

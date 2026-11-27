@@ -8,10 +8,18 @@ import type { PortalLayout } from '../portal/workbench-types';
 import type { ManualRecoveryDecision, StartRecoveryRequest, AutoExecutionReview, HandoverCandidate, HandoverDraft, HandoverRecord, PortalData, SurveySubmission, TicketCenterFilters, TicketExportCatalog, TicketExportRecord } from '../types';
 import useApiClient from '@/utils/request';
 
-export interface VmwareDeliveryAsset {
-  delivery_id: string;
-  hostname: string | null;
-  url: string | null;
+export interface JobParameter {
+  name: string;
+  label?: string;
+  description?: string;
+  type?: 'text' | 'enum';
+  options?: string[];
+  is_required?: boolean;
+}
+
+export interface WorkflowJobOptions {
+  scripts: { id: number; name: string; description?: string; params: JobParameter[] }[];
+  targets: { id: number; name: string }[];
 }
 
 export interface TicketTriggerLogPage {
@@ -45,6 +53,7 @@ export function useItsmApi() {
   const fieldCatalog = useCallback(() => get('/itsm/api/fields/catalog/'), [get]);
 
   const listIntegrations = useCallback((summary = false) => get('/itsm/api/integrations/', { params: summary ? { summary: '1' } : {} }), [get]);
+  const integrationJobCatalog = useCallback(() => get<WorkflowJobOptions & { can_execute: boolean }>('/itsm/api/integrations/job-catalog/', { suppressErrorNotification: true }), [get]);
   const integrationCatalog = useCallback(() => get('/itsm/api/integrations/catalog/'), [get]);
   const getIntegration = useCallback((id: number, filters?: Record<string, string>) => get(`/itsm/api/integrations/${id}/${filters ? `?${new URLSearchParams(filters)}` : ''}`), [get]);
   const saveIntegration = useCallback((body: Record<string, unknown>, id?: number) => id ? put(`/itsm/api/integrations/${id}/`, body) : post('/itsm/api/integrations/', body), [post, put]);
@@ -94,6 +103,7 @@ export function useItsmApi() {
     (id: number, name: string) => put(`/itsm/api/workflows/${id}/name/`, { name }),
     [put],
   );
+  const listJobOptions = useCallback(() => get<WorkflowJobOptions>('/itsm/api/workflows/job-options/', { suppressErrorNotification: true }), [get]);
   const getDesign = useCallback((id: number) => get(`/itsm/api/workflows/${id}/design/`), [get]);
   const saveDesign = useCallback(
     (id: number, design: unknown) => put(`/itsm/api/workflows/${id}/design/`, design),
@@ -163,9 +173,6 @@ export function useItsmApi() {
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
   const renameTicket = useCallback((id: number, title: string) => put(`/itsm/api/tickets/${id}/title/`, { title }), [put]);
   const getTicket = useCallback((id: number, taskId?: number) => get(`/itsm/api/tickets/${id}/`, { params: { task_id: taskId }, suppressErrorNotification: true }), [get]);
-  const getTicketVmwareAssets = useCallback((id: number) => get<{ items: VmwareDeliveryAsset[] }>(
-    `/itsm/api/tickets/${id}/vmware-assets/`, { suppressErrorNotification: true },
-  ), [get]);
   const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
     `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
   ), [get]);
@@ -178,12 +185,16 @@ export function useItsmApi() {
     [post],
   );
   const portal = useCallback((serviceId?: number) => get<PortalData>(`/itsm/api/services/portal/?${serviceId ? `service_id=${serviceId}` : 'summary=1'}`), [get]);
+  const portalAll = useCallback(() => get<PortalData>('/itsm/api/services/portal/'), [get]);
   const directoryPage = useCallback((query: Record<string, string>) => get<{items: PortalData['services']; total: number; page: number}>(`/itsm/api/services/portal/?directory=1&${new URLSearchParams(query)}`), [get]);
   const portalLayout = useCallback(() => get('/itsm/api/services/layout/'), [get]);
   const savePortalLayout = useCallback((value: PortalLayout) => put('/itsm/api/services/layout/', value), [put]);
   const portalDashboard = useCallback(() => get('/itsm/api/services/dashboard/'), [get]);
   const loadDrafts = useCallback(() => get('/itsm/api/services/drafts/'), [get]);
   const saveDraft = useCallback((body: { service_id: number; form_data?: Record<string, unknown>; clear?: boolean }) => post('/itsm/api/services/drafts/', body), [post]);
+  const listFormTemplates = useCallback((serviceId: number) => get<{ items: { id: number; name: string; form_data: Record<string, unknown>; changed: boolean }[] }>(`/itsm/api/services/${serviceId}/form-templates/`), [get]);
+  const saveFormTemplate = useCallback((serviceId: number, body: { name: string; form_data: Record<string, unknown> }) => post(`/itsm/api/services/${serviceId}/form-templates/`, body), [post]);
+  const deleteFormTemplate = useCallback((serviceId: number, id: number) => del(`/itsm/api/services/${serviceId}/form-templates/?id=${id}`), [del]);
   const listCatalogs = useCallback(() => get('/itsm/api/catalogs/'), [get]);
   const createCatalog = useCallback((body: { id?: number; name: string; parent_id?: number | null }) => post('/itsm/api/catalogs/', body), [post]);
   const deleteCatalog = useCallback((id: number) => del(`/itsm/api/catalogs/?id=${id}`), [del]);
@@ -301,7 +312,7 @@ export function useItsmApi() {
 
   return {
     ready: !isLoading,
-    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery, reconcileDelivery,
+    fetchField, fieldCatalog, bindFieldGateway, listIntegrations, integrationJobCatalog, integrationCatalog, getIntegration, saveIntegration, testIntegration, retryDelivery, reconcileDelivery,
     searchTicketTags, centerSettings, saveTicketColumns, saveTicketGroup, deleteTicketGroup, batchTickets, batchOptions,
     listForms,
     createForm,
@@ -312,6 +323,7 @@ export function useItsmApi() {
     listWorkflows,
     createWorkflow,
     renameWorkflow,
+    listJobOptions,
     getDesign,
     saveDesign,
     publishWorkflow,
@@ -328,7 +340,6 @@ export function useItsmApi() {
     getTicket,
     renameTicket,
     getTicketTriggerLogs,
-    getTicketVmwareAssets,
     retryAutoNode,
     reconcileAutoNode,
     listScheduleRuns,
@@ -336,11 +347,15 @@ export function useItsmApi() {
     listTicketWorkflows,
     submitSurvey,
     directoryPage, portal,
+    portalAll,
     portalLayout,
     savePortalLayout,
     portalDashboard,
     loadDrafts,
     saveDraft,
+    listFormTemplates,
+    saveFormTemplate,
+    deleteFormTemplate,
     listCatalogs,
     createCatalog,
     deleteCatalog,

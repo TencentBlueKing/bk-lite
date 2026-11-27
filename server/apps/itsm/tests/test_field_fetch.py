@@ -90,6 +90,21 @@ def test_write_api_cannot_be_used_for_fields():
         )
 
 
+def test_retired_platform_field_source_has_actionable_error():
+    from apps.itsm.services.form.fetch import active_snapshot
+
+    item = Integration.objects.create(name="旧查询接口", kind="api", config={"path": "itsm/removed-catalog", "method": "GET"})
+    schema = {"fields": [{"key": "x", "type": "select", "fetch": {"source": "integration", "integration_id": item.id, "mode": "options"}}]}
+    with pytest.raises(ValueError, match="接口已下线"):
+        freeze_schema(schema, "domain.com")
+    with pytest.raises(ValueError, match="接口已下线"):
+        active_snapshot(
+            {"snapshot": {"id": item.id, "kind": "api", "config": item.config}},
+            "snapshot",
+            CallerIdentity("reader", "domain.com", "jwt"),
+        )
+
+
 def test_failure_never_returns_unrestricted_options(setup):
     _, schema, identity = setup
     with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "failed", "code": "timeout"}):
@@ -516,3 +531,38 @@ def test_generic_row_value_fetch_uses_its_sibling_scope(setup):
         schema, {"machines": [{**row, "capacity": 1000, "_field_receipts": {"capacity": [proof["receipt"]]}}]}, identity, "v1"
     )
     assert value["machines"] == [{**row, "capacity": 8}]
+
+
+def test_row_options_without_sibling_dependencies_accept_one_shared_receipt(setup):
+    from apps.itsm.services.form.fetch import validate_submission
+
+    _, _, identity = setup
+    api = Integration.objects.create(
+        name="通用选项",
+        kind="api",
+        config={"transport": "external", "method": "GET", "request_schema": {"type": "object", "properties": {}}},
+    )
+    schema = freeze_schema(
+        {
+            "fields": [
+                {
+                    "type": "table",
+                    "key": "machines",
+                    "children": [
+                        {"key": "name", "type": "input"},
+                        {
+                            "key": "flavor",
+                            "type": "select",
+                            "fetch": {"source": "integration", "integration_id": api.pk, "mode": "options", "label_path": "name", "value_path": "id"},
+                        },
+                    ],
+                }
+            ]
+        },
+        identity.domain,
+    )
+    with patch("apps.itsm.services.form.fetch.execute", return_value={"status": "done", "output": [{"id": "small", "name": "小规格"}]}):
+        result = fetch_field(schema, "machines.flavor", {"machines": [{"name": "one"}]}, identity, context="create")
+    rows = [{"name": name, "flavor": "small", "_field_receipts": {"flavor": [result["receipt"]]}} for name in ("one", "two")]
+    submitted = validate_submission(schema, {"machines": rows}, identity, "create")
+    assert submitted["machines"] == [{"name": name, "flavor": "small"} for name in ("one", "two")]

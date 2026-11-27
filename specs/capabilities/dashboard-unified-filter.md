@@ -104,7 +104,7 @@
 
 ### Requirement: 统一时间范围协议由取数网关适配
 
-系统 SHALL 让前端对 `timeRange` 发送统一筛选协议，由 `get_source_data` 在调用下游前适配为 RFC3339 起止对。相对快捷项不得由单个组件在请求路径上预结算成 ISO。
+系统 SHALL 让前端对 `timeRange` 发送统一筛选协议，由 `get_source_data` 在调用下游前适配为 RFC3339 起止对。未开启周期对比时，相对快捷项不得由单个组件在请求路径上预结算成 ISO。开启周期对比时，当前窗口和上一窗口在同一次发送前按同一时刻现算成 RFC3339 起止对，算完不写回筛选值。
 
 协议：
 
@@ -115,6 +115,12 @@
 #### Scenario: 快捷相对时间由网关滚动
 - **WHEN** 绑定组件请求携带 `{ "selectValue": 15 }`（可带 `rangePickerVaule: null`）
 - **THEN** 网关将 `time` / `time_range` 适配为当前时刻往前 15 分钟的 RFC3339 二元数组，再交给 NATS / 下游
+
+#### Scenario: 周期对比在发送时现算两段
+- **WHEN** 组件开启周期对比，且时间参数为最近 N 分钟
+- **THEN** 当前请求与上一周期请求都携带按同一时刻现算的 RFC3339 起止对，上一窗口结束于当前窗口开始
+- **AND** 筛选里保存的快捷项仍是 `selectValue`，这次算出来的起止不写回筛选
+- **AND** 取数响应不带回 `resolved_time_ranges`
 
 #### Scenario: 相对快捷优先于过期起止
 - **WHEN** 请求值为 `{ "selectValue": 15, "start": "<6小时前>", "end": "<现在>" }`

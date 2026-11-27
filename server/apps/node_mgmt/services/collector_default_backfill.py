@@ -37,7 +37,7 @@ def render_builtin_default_template(collector, variables, *, is_container_node):
     return build_sandboxed_env().from_string(config_template).render(variables)
 
 
-def _is_container_node(node):
+def is_container_node(node):
     if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
         return True
     if not isinstance(node.tags, list):
@@ -87,7 +87,7 @@ def _candidate_nodes(collector):
     )
 
 
-def _load_region_env(region_id, cache):
+def load_region_env(region_id, cache):
     if region_id in cache:
         cached = cache[region_id]
         if isinstance(cached, Exception):
@@ -139,24 +139,22 @@ def execute_collector_default_backfill(collector_id, *, after_id=""):
         processed += len(chunk)
         chunk_ids = [node.id for node in chunk]
         taken_names = set(
-            CollectorConfiguration.objects.filter(name__in=[f"{collector.name}-{node_id}" for node_id in chunk_ids]).values_list(
-                "name", flat=True
-            )
+            CollectorConfiguration.objects.filter(name__in=[f"{collector.name}-{node_id}" for node_id in chunk_ids]).values_list("name", flat=True)
         )
         for node in chunk:
             config_name = f"{collector.name}-{node.id}"
             normalized_arch = normalize_cpu_architecture(node.cpu_architecture)
-            is_container_node = _is_container_node(node)
+            container_node = is_container_node(node)
             if config_name in taken_names or normalized_arch not in winning_architectures:
                 continue
-            if container_only and not is_container_node:
+            if container_only and not container_node:
                 continue
             try:
-                variables = _load_region_env(node.cloud_region_id, env_cache)
+                variables = load_region_env(node.cloud_region_id, env_cache)
                 rendered = render_builtin_default_template(
                     collector,
                     variables,
-                    is_container_node=is_container_node,
+                    is_container_node=container_node,
                 )
                 if rendered is None:
                     continue

@@ -6,6 +6,7 @@ import dagre from 'dagre';
 import { Button, Modal, Popover, Select, Tag, Tooltip } from 'antd';
 import { AimOutlined, LoadingOutlined, DownOutlined, UpOutlined, UserOutlined, ZoomInOutlined } from '@ant-design/icons';
 import { NodeGlyph } from './node-glyph';
+import { jobProgressLabel, TicketJobRecords } from './ticket-job-progress';
 import { NODE_PALETTE, runningNodeLabel } from '../constants/node-catalog';
 import { formatTicketTime } from './ticket-collaboration';
 import { useMemo, useState } from 'react';
@@ -13,10 +14,13 @@ import type { TicketProgressEdge, TicketProgressNode } from '../types';
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 88;
+const OVERVIEW = { minZoom: 0.01, maxZoom: 1, padding: 0.15 };
 const GATEWAY_TYPES = new Set(['parallel', 'parallel_condition', 'branch', 'branch_condition', 'exclusive', 'converge']);
 
 interface FlowNodeData extends Record<string, unknown> {
   label: string;
+  job_progress?: TicketProgressNode['job_progress'];
+  job_records?: TicketProgressNode['job_records'];
   executing?: boolean;
   nodeType: string;
   state: TicketProgressNode['state'];
@@ -41,12 +45,15 @@ const STATE_LABEL = { passed: '已流转', accepted: '接受', rejected: '拒绝
 export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>) {
   const outcome = data.state === 'done' ? data.outcome || 'passed' : data.state;
   const statusLabel = data.executing ? runningNodeLabel(data.nodeType) : STATE_LABEL[outcome];
+  const progress = data.job_progress && jobProgressLabel(data.job_progress, data.job_records || []);
   const typeLabel = NODE_PALETTE.find((item) => item.type === (data.nodeType === 'handle' ? 'manual' : data.nodeType))?.label || '流程节点';
   return (
-    <Popover trigger={['hover', 'focus']} title={data.label} content={
+    <Popover trigger={data.job_progress ? ['click', 'focus'] : ['hover', 'focus']} title={data.label} content={
       <div className="flex max-w-xs flex-col gap-2 text-xs">
         <div className="flex flex-wrap gap-1"><Tag>{typeLabel}</Tag><Tag>{statusLabel}</Tag></div>
         {data.assignees.length ? <div className="flex flex-wrap gap-1">{data.assignees.map((name) => <Tag key={name} icon={<UserOutlined />}>{name}</Tag>)}</div> : null}
+        {progress && <span>{progress}</span>}
+        {data.job_progress && !!data.job_progress.total && <TicketJobRecords progress={data.job_progress} records={data.job_records || []} />}
         {data.started_at ? <span>到达时间 {formatTicketTime(data.started_at)}</span> : null}
         {data.finished_at ? <span>处理时间 {formatTicketTime(data.finished_at)}</span> : null}
       </div>
@@ -57,7 +64,7 @@ export function ProgressNode({ data }: NodeProps<Node<FlowNodeData, 'progress'>>
         <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-[var(--color-border)]" />
         <div className="flex h-full flex-col justify-center gap-2 rounded-[10px] bg-[var(--color-bg)] px-3 shadow-[inset_0_1px_2px_color-mix(in_srgb,var(--color-text-1)_4%,transparent)]">
           <div className="flex min-w-0 items-center gap-2"><NodeGlyph type={data.nodeType} compact /><span className="truncate text-xs font-semibold text-[var(--color-text-1)]">{data.label}</span></div>
-          {data.assignees.length ? <div className="flex min-w-0 items-center gap-1">
+          {progress ? <span className="truncate text-xs text-[var(--color-text-2)]">{progress}</span> : data.assignees.length ? <div className="flex min-w-0 items-center gap-1">
             <Tag icon={<UserOutlined />} className="!m-0 !flex !max-w-[150px] !items-center !gap-1"><span className="truncate">{data.assignees[0]}</span></Tag>
             {data.assignees.length > 1 ? <Tag className="!m-0">+{data.assignees.length - 1}</Tag> : null}
           </div> : null}
@@ -86,8 +93,11 @@ const layout = (nodes: TicketProgressNode[], edges: TicketProgressEdge[]) => {
     return {
       id: node.id,
       type: 'progress',
+      style: { pointerEvents: 'auto' as const },
+      initialWidth: NODE_WIDTH,
+      initialHeight: NODE_HEIGHT,
       position: { x: (position?.x || 0) - NODE_WIDTH / 2, y: (position?.y || 0) - NODE_HEIGHT / 2 },
-      data: { label: node.name, nodeType: node.type, state: node.state, executing: node.executing, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
+      data: { label: node.name, job_progress: node.job_progress, job_records: node.job_records, nodeType: node.type, state: node.state, executing: node.executing, outcome: node.outcome, assignees: node.assignees || [], started_at: node.started_at, finished_at: node.finished_at },
     };
   });
 };
@@ -111,14 +121,21 @@ const withPassedGateways = (nodes: TicketProgressNode[], edges: TicketProgressEd
   return nodes.map((node) => ({ ...node, state: state.get(node.id) || node.state, outcome: state.get(node.id) !== node.state ? 'passed' : node.outcome }));
 };
 
+const focusOptions = (ids: string[]) => ({
+  nodes: ids.map(id => ({ id })),
+  minZoom: 0.75,
+  maxZoom: 1,
+  padding: 0.3,
+});
+
 function FlowNavigation({ nodes, focusIds }: { nodes: TicketProgressNode[]; focusIds: string[] }) {
   const { fitView } = useReactFlow();
-  const focus = (ids: string[]) => { void fitView({ nodes: ids.map(id => ({ id })), minZoom: .75, maxZoom: 1, padding: .3, duration: 250 }); };
+  const focus = (ids: string[]) => { void fitView({ ...focusOptions(ids), duration: 250 }); };
   return <div className="flex shrink-0 items-center gap-2 pb-2">
     <Select aria-label="定位流程节点" placeholder="搜索并定位节点" className="w-64" showSearch optionFilterProp="label" value={null}
       options={nodes.map(node => ({ value: node.id, label: node.name }))} onChange={id => focus([id])} />
-    <Button size="small" aria-label="定位当前节点" onClick={() => focus(focusIds)} icon={<AimOutlined />}>定位当前</Button>
-    <Button size="small" aria-label="查看全图" onClick={() => { void fitView({ minZoom: .1, maxZoom: 1, padding: .15, duration: 250 }); }}>全图</Button>
+    <Button size="small" aria-label="定位当前节点" disabled={!focusIds.length} onClick={() => focus(focusIds)} icon={<AimOutlined />}>定位当前</Button>
+    <Button size="small" aria-label="查看全图" onClick={() => { void fitView({ ...OVERVIEW, duration: 250 }); }}>全图</Button>
     <span className="text-xs text-[var(--color-text-3)]">拖动画布或缩放查看</span>
   </div>;
 }
@@ -128,7 +145,7 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
   const [fullscreen, setFullscreen] = useState(false);
   const prepared = useMemo(() => withPassedGateways(nodes, edges), [nodes, edges]);
   const current = prepared.filter((node) => node.state === 'current' || node.state === 'failed');
-  const focusIds = current.length ? current.map(node => node.id) : prepared.slice(0, 1).map(node => node.id);
+  const focusIds = current.map(node => node.id);
   const flowNodes = useMemo(() => layout(prepared, edges), [prepared, edges]);
   const flowEdges = edges.filter((edge) => edge.from && edge.to).map((edge) => {
     const source = prepared.find((node) => node.id === edge.from);
@@ -141,9 +158,9 @@ export function TicketFlowBoard({ nodes, edges }: { nodes: TicketProgressNode[];
       style: { stroke: taken ? 'var(--color-primary)' : 'var(--color-border)' },
     };
   });
-  const canvas = <ReactFlowProvider><div className="flex h-full flex-col"><FlowNavigation nodes={prepared} focusIds={focusIds} /><div className="min-h-0 flex-1"><ReactFlow key={current.map((node) => node.id).join(',')}
+  const canvas = <ReactFlowProvider><div className="flex h-full flex-col"><FlowNavigation nodes={prepared} focusIds={focusIds} /><div className="min-h-0 flex-1"><ReactFlow key={focusIds.join(',')}
     nodes={flowNodes} edges={flowEdges} nodeTypes={NODE_TYPES}
-    minZoom={0.1} fitView fitViewOptions={{ nodes: focusIds.map(id => ({ id })), minZoom: .75, maxZoom: 1, padding: .3 }}
+    minZoom={OVERVIEW.minZoom} fitView fitViewOptions={focusIds.length ? focusOptions(focusIds) : OVERVIEW}
     nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} proOptions={{ hideAttribution: true }}
   ><Background /><Controls showFitView={false} showInteractive={false} /><MiniMap pannable zoomable nodeColor="var(--color-primary)" maskColor="var(--color-fill-2)" bgColor="var(--color-bg)" /></ReactFlow></div></div></ReactFlowProvider>;
   return (

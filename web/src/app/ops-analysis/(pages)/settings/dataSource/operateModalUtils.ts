@@ -6,7 +6,12 @@ import {
   ParamItem,
   ResponseFieldDefinition,
 } from "@/app/ops-analysis/types/dataSource";
-import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
+import {
+  getDateRangeTimezone,
+  resolveDateRange,
+  validateDateRangeValue,
+  type DateRangeResolutionContext,
+} from "@/app/ops-analysis/utils/dateRange";
 import {
   ensurePrometheusQueryRequired,
   isBindableDataSourceParamType,
@@ -254,7 +259,10 @@ export const createDefaultSchemaField = (): SchemaField => ({
   description: "",
 });
 
-export const validateParams = (currentParams: ParamItem[]) => {
+export const validateParams = (
+  currentParams: ParamItem[],
+  options?: { sourceType?: DataSourceSourceType },
+) => {
   const nameCount: { [key: string]: number } = {};
   const duplicateNames: string[] = [];
   const emptyNames: string[] = [];
@@ -303,12 +311,35 @@ export const validateParams = (currentParams: ParamItem[]) => {
     return value === "" || value === null || value === undefined;
   });
 
+  const sourceType = options?.sourceType;
+  const restrictsDeclaredParams = isRestrictedDeclaredParamSource(sourceType);
+  const requiresIdentifierName = requiresIdentifierParamName(sourceType);
+  const identifierName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  const invalidNameIds: string[] = [];
+  const rangeCount = validParams.filter(
+    (param) => param.type === "timeRange" || param.type === "dateRange",
+  ).length;
+  const hasTooManyRanges = restrictsDeclaredParams && rangeCount > 1;
+  const hasConditionFilter =
+    restrictsDeclaredParams &&
+    validParams.some((param) => param.type === "conditionFilter");
+  if (requiresIdentifierName) {
+    validParams.forEach((param) => {
+      if (param.id && !identifierName.test(param.name)) {
+        invalidNameIds.push(param.id);
+      }
+    });
+  }
+
   return {
     duplicateNames,
     emptyNames,
     emptyAliases,
     invalidDateRangeIds,
     invalidFilterBindingIds,
+    invalidNameIds,
+    hasTooManyRanges,
+    hasConditionFilter,
     hasEmptyFixedValue,
     isValid:
       duplicateNames.length === 0 &&
@@ -316,6 +347,9 @@ export const validateParams = (currentParams: ParamItem[]) => {
       emptyAliases.length === 0 &&
       !hasInvalidDateRange &&
       invalidFilterBindingIds.length === 0 &&
+      invalidNameIds.length === 0 &&
+      !hasTooManyRanges &&
+      !hasConditionFilter &&
       !hasEmptyFixedValue,
   };
 };
@@ -365,6 +399,19 @@ export const normalizeParams = (params: ParamItem[]) =>
       value: param.value,
       required: param.required,
     }));
+
+export const resolvePreviewParams = (
+  params: ParamItem[],
+  context: DateRangeResolutionContext = {
+    referenceNow: Date.now(),
+    timezone: getDateRangeTimezone(),
+  },
+) =>
+  normalizeParams(params).map((param) => {
+    if (param.type !== "dateRange") return param;
+    const resolved = resolveDateRange(param.value, context);
+    return resolved ? { ...param, value: resolved } : param;
+  });
 
 function elasticsearchQueryConfig(
   queryConfig: Record<string, any>,
@@ -443,7 +490,7 @@ export const buildConnectorPayload = (
           response_path: queryConfig.response_path || "",
           params: parseJsonObject(
             queryConfig.paramsText,
-            `${options.t("dataSource.queryParams")}${options.t("dataSource.jsonObjectRequired")}`,
+            `${options.t("dataSource.urlParams")}${options.t("dataSource.jsonObjectRequired")}`,
           ),
           body: parseJsonObject(
             queryConfig.bodyText,
@@ -470,7 +517,7 @@ export const buildConnectorPayload = (
         response_path: queryConfig.response_path || "",
         params: parseJsonObject(
           queryConfig.paramsText,
-          `${options.t("dataSource.queryParams")}${options.t("dataSource.jsonObjectRequired")}`,
+          `${options.t("dataSource.urlParams")}${options.t("dataSource.jsonObjectRequired")}`,
         ),
         body: parseJsonObject(
           queryConfig.bodyText,
@@ -876,6 +923,32 @@ export interface DatasourceSourceFlags {
   isExcelSource: boolean;
   supportsTransform: boolean;
   supportsSharedConnection: boolean;
+}
+
+const RESTRICTED_DECLARED_PARAM_SOURCES = new Set<DataSourceSourceType>([
+  SOURCE_TYPE_MYSQL,
+  SOURCE_TYPE_POSTGRESQL,
+  SOURCE_TYPE_REST_API,
+  SOURCE_TYPE_EXCEL,
+  SOURCE_TYPE_ELASTICSEARCH,
+]);
+
+export function isRestrictedDeclaredParamSource(
+  sourceType?: DataSourceSourceType,
+): boolean {
+  return sourceType != null && RESTRICTED_DECLARED_PARAM_SOURCES.has(sourceType);
+}
+
+export function requiresIdentifierParamName(
+  sourceType?: DataSourceSourceType,
+): boolean {
+  return isRestrictedDeclaredParamSource(sourceType) && sourceType !== SOURCE_TYPE_EXCEL;
+}
+
+export function sourceShowsDeclaredParamTable(
+  sourceType?: DataSourceSourceType,
+): boolean {
+  return sourceType === SOURCE_TYPE_NATS || isRestrictedDeclaredParamSource(sourceType);
 }
 
 export function getDatasourceSourceFlags(

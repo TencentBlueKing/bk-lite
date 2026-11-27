@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -19,7 +18,6 @@ import { isMultipleSelectInputConfig } from '@/app/ops-analysis/utils/stringPara
 import type {
   UnifiedFilterDefinition,
   FilterValue,
-  TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   ConditionFieldSource,
@@ -48,7 +46,7 @@ import {
   useShareOrganization,
   useShareOrganizationSeed,
 } from '@/app/ops-analysis/context/shareOrganization';
-import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
+import { getUnifiedFilterTimeSelectorDefaultValue, timeRangeValueFromSelector } from '@/app/ops-analysis/utils/filterValue';
 
 function CanvasConditionFieldFilter({ source }: { source: ConditionFieldSource }) {
   const [value, setValue] = useState<ConditionFilterValue | undefined>(undefined);
@@ -213,17 +211,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     range: number[],
     originValue: number | null,
   ) => {
-    if (range.length === 2) {
-      const timeRangeValue: TimeRangeValue = {
-        start: dayjs(range[0]).toISOString(),
-        end: dayjs(range[1]).toISOString(),
-        selectValue: originValue ?? 0,
-      };
-      handleLocalValueChange(filterId, timeRangeValue);
-      return;
-    }
-
-    handleLocalValueChange(filterId, null);
+    handleLocalValueChange(filterId, timeRangeValueFromSelector(range, originValue));
   };
 
   const publishValues = (
@@ -340,6 +328,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           <TimeSelector
             key={`${definition.id}-${JSON.stringify(defaultValue)}`}
             onlyTimeSelect
+            clearable
             defaultValue={defaultValue}
             onChange={(range, originValue) =>
               handleTimeRangeChange(definition.id, range, originValue)

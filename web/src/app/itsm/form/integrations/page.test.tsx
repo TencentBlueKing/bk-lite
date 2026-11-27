@@ -6,7 +6,7 @@ import Workspace from './workspace';
 const router=vi.hoisted(()=>({push:vi.fn(),replace:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>router}));
 import type { IntegrationItem } from './helpers';
-const api = vi.hoisted(() => ({ ready: true, listIntegrations: vi.fn(), integrationCatalog: vi.fn(), getIntegration: vi.fn(), saveIntegration: vi.fn(), testIntegration: vi.fn(), retryDelivery: vi.fn(), reconcileDelivery: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, listIntegrations: vi.fn(), integrationJobCatalog: vi.fn(), integrationCatalog: vi.fn(), getIntegration: vi.fn(), saveIntegration: vi.fn(), testIntegration: vi.fn(), retryDelivery: vi.fn(), reconcileDelivery: vi.fn() }));
 vi.mock('../../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('@/app/system-manager/(pages)/settings/openapi-docs/OpenApiDocsDetail', () => ({ default: () => <div>平台参数文档</div> }));
 vi.mock('../../components/itsm-list-table', () => ({ default: ({ dataSource, columns }: { dataSource: IntegrationItem[]; columns: { key: string; dataIndex?: keyof IntegrationItem; render?: (v: unknown, row: IntegrationItem) => React.ReactNode }[] }) => <div>{dataSource.map(row => <div key={row.id}>{columns.map(column => <span key={column.key}>{column.render ? column.render(column.dataIndex ? row[column.dataIndex] : undefined, row) : String(row[column.dataIndex!] || '')}</span>)}</div>)}</div> }));
@@ -88,4 +88,41 @@ it('未知投递必须核对接收结果', async () => {
   api.reconcileDelivery.mockResolvedValue({ status: 'done' });
   fireEvent.click(screen.getByRole('button', { name: '已核对，接收方已收到' }));
   expect(api.reconcileDelivery).toHaveBeenCalledWith(1, 42, 2, true);
+});
+
+it('作业平台按需加载真实目录、参数和目标数量，仅提供原生入口', async () => {
+  api.integrationJobCatalog.mockResolvedValue({
+    can_execute: true, scripts: [{ id: 3, name: '资源只读核验', description: '逐台核对规格', params: [{ name: 'size_id', label: '规格', description: '申请的计算配置', type: 'enum', options: ['2C4G'], is_required: true }] }],
+    targets: [{ id: 4, name: '本地隔离容器' }],
+  });
+  render(<Page />);
+  await screen.findByText('查询工单');
+  expect(api.integrationJobCatalog).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('tab', { name: '作业平台' }));
+  expect(await screen.findByText('资源只读核验')).toBeTruthy();
+  expect(screen.getByText('逐台核对规格')).toBeTruthy();
+  expect(screen.getByText(/可选执行目标.*1/)).toBeTruthy();
+  expect(screen.getByText('本地隔离容器')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /查看参数/ }));
+  expect(screen.getByText('size_id')).toBeTruthy();
+  expect(screen.getByText('申请的计算配置')).toBeTruthy();
+  expect(screen.getByText('枚举')).toBeTruthy();
+  expect(screen.getByText('2C4G')).toBeTruthy();
+  expect(screen.getByRole('link', { name: '测试作业' }).getAttribute('href')).toBe('/job/execution/quick-exec?script_id=3&mode=test');
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(screen.getByRole('link', { name: '脚本库' }).getAttribute('href')).toBe('/job/template/script-library');
+  expect(screen.getByRole('link', { name: '执行记录' }).getAttribute('href')).toBe('/job/execution/job-record');
+  expect(screen.queryByRole('button', { name: '新建' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /调试|执行/ })).toBeNull();
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索作业' }), { target: { value: '不匹配' } });
+  expect(screen.queryByText('资源只读核验')).toBeNull();
+  expect(api.integrationJobCatalog).toHaveBeenCalledTimes(1);
+});
+
+it('查看目录权限不授予测试作业入口', async () => {
+  api.integrationJobCatalog.mockResolvedValue({ can_execute: false, scripts: [{id: 9, name: '只读目录', params: []}], targets: [] });
+  render(<Page />);
+  fireEvent.click(await screen.findByRole('tab', {name: '作业平台'}));
+  await screen.findByText('只读目录');
+  expect(screen.queryByRole('link', {name: '测试作业'})).toBeNull();
 });

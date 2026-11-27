@@ -64,7 +64,7 @@ def prepare(service, ticket, task, action, data, operator, node, *, handover_id=
         payload["handover_id"] = handover_id
     token = uuid4()
     if action in COMPLETIONS | {"claim", "save"}:
-        ticket.form_data = service._validated_form(ticket, node, data, task, action=action)
+        ticket.form_data = service._validated_form(ticket, node, data, task)
         materialize_subforms(service, ticket, ticket_schema(ticket), operator, operation_key=str(token), defer_children=True)
         payload["form"] = ticket.form_data
         if action in COMPLETIONS and not local_parent:

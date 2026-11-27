@@ -4,7 +4,6 @@ from apps.core.utils.current_team_scope import assert_unassigned_catalog_access,
 from apps.core.utils.module_scope import effective_module_privilege
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
-from apps.core.utils.virtual_organizations import authorized_virtual_organization_ids
 
 _REQUEST_VISIBLE_ORGANIZATION_IDS = "_apm_visible_organization_ids"
 
@@ -29,10 +28,7 @@ def visible_organization_ids(request) -> frozenset[int]:
         return cached
 
     current_id = current_organization_id(request)
-    if current_id is None:
-        result = frozenset()
-    else:
-        result = frozenset({current_id} | authorized_virtual_organization_ids(request.user))
+    result = frozenset() if current_id is None else frozenset({current_id})
     setattr(request, _REQUEST_VISIBLE_ORGANIZATION_IDS, result)
     return result
 

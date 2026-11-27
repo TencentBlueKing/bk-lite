@@ -1,11 +1,49 @@
 export const BULK_INSTALL_METHOD = 'bulkInstall';
 export const BULK_SUCCESS_COUNT_OPTIONS = [10, 50, 100, 500, 1000] as const;
 export const BULK_DEFAULT_SUCCESS_COUNT = 100;
-export const BULK_EXPIRE_DAY_OPTIONS = [1, 3, 5, 7] as const;
-export const BULK_DEFAULT_EXPIRE_DAYS = 1;
+export const BULK_EXPIRE_UNITS = ['day', 'month', 'year'] as const;
+export type BulkExpireUnit = (typeof BULK_EXPIRE_UNITS)[number];
+export const BULK_DEFAULT_EXPIRE_COUNT = 1;
+export const BULK_DEFAULT_EXPIRE_UNIT: BulkExpireUnit = 'day';
+export const BULK_EXPIRE_UNIT_DAYS: Record<BulkExpireUnit, number> = {
+  day: 1,
+  month: 30,
+  year: 365
+};
+export const BULK_EXPIRE_UNIT_MAX: Record<BulkExpireUnit, number> = {
+  day: 1095,
+  month: 36,
+  year: 3
+};
+export const BULK_EXPIRE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export function bulkExpireHours(days: number): number {
-  return days * 24;
+export function clampBulkExpireCount(count: number, unit: BulkExpireUnit): number {
+  const max = BULK_EXPIRE_UNIT_MAX[unit];
+  if (!Number.isInteger(count) || count < 1) {
+    return 1;
+  }
+  if (count > max) {
+    return max;
+  }
+  return count;
+}
+
+export function bulkExpireDays(count: number, unit: BulkExpireUnit): number | null {
+  if (!Number.isInteger(count)) {
+    return null;
+  }
+  if (count < 1 || count > BULK_EXPIRE_UNIT_MAX[unit]) {
+    return null;
+  }
+  return count * BULK_EXPIRE_UNIT_DAYS[unit];
+}
+
+export function bulkExpirePreviewTime(count: number, unit: BulkExpireUnit, nowMs: number): number | null {
+  const days = bulkExpireDays(count, unit);
+  if (days == null) {
+    return null;
+  }
+  return nowMs + days * BULK_EXPIRE_DAY_MS;
 }
 
 const ATTEMPT_LABEL_KEYS: Record<string, string> = {

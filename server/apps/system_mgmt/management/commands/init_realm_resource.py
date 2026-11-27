@@ -13,6 +13,7 @@ from apps.system_mgmt.models import App, Group, Menu, Role, User
 from apps.system_mgmt.services.cmdb_asset_export_permission import grant_asset_export_from_view, prepare_asset_export_grant
 from apps.system_mgmt.services.platform_roles import is_view_menu
 from apps.system_mgmt.services.workflow_menu_migration import apply_workflow_menu_permission_split, snapshot_workflow_menu_grants
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class Command(BaseCommand):
@@ -62,7 +63,12 @@ class Command(BaseCommand):
                 if export_grant is not None:
                     grant_asset_export_from_view(export_grant)
                 print(f"create {app_obj['client_id']} roles success")
-            Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
+            if GroupUtils.builtin_root() is None:
+                Group.objects.get_or_create(
+                    name="Default",
+                    parent_id=0,
+                    defaults={"description": "Default group", "is_builtin": True},
+                )
             Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
             from apps.system_mgmt.services.platform_roles import ensure_platform_auditor_role
 

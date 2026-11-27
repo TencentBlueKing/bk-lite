@@ -1,37 +1,14 @@
 # ITSM 应用
 
-Status: ready
+Status: done
 
-## Problem Statement
+业务协作菜单提供知识库、值班、变更和交接。满意度和打印由设置维护，在工单详情使用。[设置规格](../itsm-settings/spec.md)
 
-知识、值班、变更、满意度、打印、交接、业务对象、在线客服和 AI 都是同一层录入壳。没有测试数据时页面是空的，也无法确认列表和新建是否可用。
+| 应用 | 业务行为 | 验收场景 |
+| --- | --- | --- |
+| 知识库 | 文章按分类维护，支持富文本、Markdown、附件和关联工单。草稿、发布和撤回分别受权限控制。 | 保存草稿并发布，按可见权限打开文章和附件。无关联工单查看权的用户不能通过文章取得工单详情。上传存储失败时不留下可下载的虚假附件记录。 |
+| 值班 | 按日期维护值班人员；成员选择限定在当前域的有效用户。 | 建立某一天的排班后再次读取；日期缺失、用户失效或属于其他域时应拒绝保存。 |
+| 变更 | 用时间窗口安排变更，在同一域检查窗口冲突。 | 创建或编辑窗口时，结束时间须晚于开始时间；用不同时区表示同一重叠时段也应识别为冲突。 |
+| 交接 | 将原处理人的选定待办移交给接收人，保留每项结果。适用于离岗、换班或人员调整。 | 两条待办中一条成功、一条引擎响应超时，页面能区分结果。重新处理前复核当前处理人；已成功的待办不能再次转交。 |
 
-## Solution
-
-这些应用页共用现有表格。每页展示该类型已保存的行，并允许新建一行。各应用不再复制一套列表。
-
-## User Stories
-
-1. As a 应用管理员, I want each application page to list its saved rows, so that I can tell the page is showing data.
-2. As a 应用管理员, I want to create one row on 知识, 值班, 变更, 满意度, 打印, 交接, 业务对象, 在线客服 and AI, so that the operation can be checked on the page.
-
-## Implementation Decisions
-
-- 九个页面继续使用各自的资源类型，不合并成一个应用总表。
-- 列表使用项目里已有的表格，列名为中文。
-- 变更窗口仍按现有接口校验时间冲突。交接仍按现有接口转移待办。
-- 不为这些页面新做卡片墙或独立工作台。
-
-## Testing Decisions
-
-- 应用页先只展示和新建。ITSM4 里这些能力多数在应用集市，不套用决策表那套编辑和删除。
-- 页面验收只点产品里存在的按钮。
-
-## Out of Scope
-
-- 知识同步、值班签到、客服会话和 AI 提示词的专有编辑器。
-- 把应用页改成实体网格卡片。
-
-## Further Notes
-
-- 样例数据只用于本地验收，不作为生产种子。
+执行依据见[知识文章及附件测试](../../../server/apps/itsm/tests/test_knowledge_articles.py)、[值班及变更窗口测试](../../../server/apps/itsm/tests/test_work_schedules_views.py)和[交接与重试测试](../../../server/apps/itsm/tests/test_handover_results.py)。

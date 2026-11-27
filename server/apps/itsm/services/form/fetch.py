@@ -19,7 +19,6 @@ from .capabilities import FIELD_CAPABILITIES, validate_binding, validate_result
 
 SALT = "itsm.field.fetch.v1"
 REF = re.compile(r"^\$\{(form|user|query)\.([\w]+)\}$")
-VMWARE_AUTHORITY_COLUMNS = {"flavor_id", "template_id", "network_id", "disk_policy_id", "data_disk_gib"}
 CHOICES = {"select", "multiselect", "radio", "checkbox", "cascade", "multiCascade"}
 
 
@@ -152,9 +151,19 @@ def field_safe(item):
     )
 
 
+def require_field_source(item):
+    if not item.is_enabled:
+        raise ValueError("绑定的集成已停用")
+    if item.kind == "api" and item.config.get("transport") != "external":
+        service, _, path = item.config.get("path", "").partition("/")
+        if default_registry.find(service, path, item.config.get("method", "GET")) is None:
+            raise ValueError("绑定的查询接口已下线，请重新选择字段取数接口")
+    if not field_safe(item):
+        raise ValueError("绑定的接口不允许字段取数")
+
+
 def snapshot(item):
-    if not item.is_enabled or not field_safe(item):
-        raise ValueError("字段只能使用启用的查询 API 或隔离 Python 集成")
+    require_field_source(item)
     return {
         "id": item.id,
         "name": item.name,
@@ -320,12 +329,9 @@ def active_snapshot(cfg, key, identity):
     if not snap:
         raise ValueError("字段取数配置未发布，请重新发布表单")
     live = Integration.objects.get(id=snap["id"], domain=identity.domain)
-    if not live.is_enabled:
-        raise ValueError("绑定的集成已停用")
     frozen = copy.copy(live)
     frozen.kind, frozen.config = snap["kind"], snap["config"]
-    if not field_safe(frozen):
-        raise ValueError("绑定的接口不允许字段取数")
+    require_field_source(frozen)
     return frozen
 
 
@@ -423,9 +429,12 @@ def fetch_field(schema, key, values, identity, *, context, query="", page=1, ins
     refs = cfg.get("dependencies", sorted(dependencies(cfg.get("inputs", {}))))
     if any(values.get(name) in (None, "", []) for name in refs):
         raise ValueError("请先填写依赖字段")
-    params = bind(cfg.get("inputs", {}), values, identity, {"keyword": str(query)[:100], "page": max(1, int(page)), "page_size": 20})
-    if (cfg.get("snapshot") or {}).get("config", {}).get("path") == "itsm/vmware/catalog":
-        params["preview"] = context == "preview"
+    params = bind(
+        cfg.get("inputs", {}),
+        values,
+        identity,
+        {"keyword": str(query)[:100], "page": max(1, int(page)), "page_size": 20, "preview": context == "preview"},
+    )
     dependency_values = {name: values.get(name) for name in refs}
     stamp = {
         "binding": digest([field["type"], cfg]),
@@ -550,7 +559,7 @@ def verify_fields(schema, values, identity, *, context, original=None, allowed=N
     return result
 
 
-def _verify_row_fields(schema, verified, submitted, original, permissions, allowed, identity, context, receipt_context, authority_table):
+def _verify_row_fields(schema, verified, submitted, original, permissions, allowed, identity, context, receipt_context):
     from .rules import match_when
     from .table_columns import ROW_REFERENCE, protected_column, row_signature
 
@@ -560,16 +569,7 @@ def _verify_row_fields(schema, verified, submitted, original, permissions, allow
         table = prefix.rstrip(".")
         if not prefix or table not in allowed or table not in submitted:
             continue
-        dynamic = [
-            col
-            for col in columns.values()
-            if col.get("fetch")
-            and not (
-                table == authority_table
-                and col["key"] in VMWARE_AUTHORITY_COLUMNS
-                and (col["fetch"].get("snapshot") or {}).get("config", {}).get("path") == "itsm/vmware/catalog"
-            )
-        ]
+        dynamic = [col for col in columns.values() if col.get("fetch")]
         if not dynamic:
             continue
         if submitted[table] is not None and not isinstance(submitted[table], list):
@@ -615,7 +615,7 @@ def task_fetch_context(ticket, task):
     return f"ticket:{ticket.id}:task:{task.id}"
 
 
-def validate_submission(schema, values, identity, context, original=None, field_perm=None, *, receipt_context=None, authority_table=None):
+def validate_submission(schema, values, identity, context, original=None, field_perm=None, *, receipt_context=None):
     """先按节点权限过滤，再验证取数凭据；只保存服务端验证过的标签。"""
     from apps.itsm.services.form.schema import LAYOUT_ONLY
     from apps.itsm.services.form.table_columns import TABLE_FIELDS, merge_table_rows
@@ -635,17 +635,24 @@ def validate_submission(schema, values, identity, context, original=None, field_
     allowed = editable.keys() & visible_field_keys(validator.schema, merged)
     merged["_field_receipts"] = values.get("_field_receipts", {})
     verified = verify_fields(schema, merged, identity, context=receipt_context or context, original=original, allowed=allowed)
-    _verify_row_fields(
-        schema, verified, values, original, validator.field_perm, allowed, identity, context, receipt_context or context, authority_table
-    )
+    _verify_row_fields(schema, verified, values, original, validator.field_perm, allowed, identity, context, receipt_context or context)
     # 动态选项由凭据验证，不能再拿旧静态选项二次判断。
     checked_schema = copy.deepcopy(schema)
-    for field in walk(checked_schema.get("fields", [])):
-        if authority_table and field["key"] == authority_table and field.get("type") == "table":
-            # VMware 配置档负责校验这五列，旧设计以单选字段存储整数容量。
-            field["children"] = [c for c in field.get("children", []) if c["key"] not in VMWARE_AUTHORITY_COLUMNS]
-        if field.get("fetch") and field["fetch"].get("mode") == "options":
-            field["source"] = {"type": "static", "options": verified.get("_field_labels", {}).get(field["key"], [])}
+    labels = verified.get("_field_labels", {})
+    for prefix, fields in binding_scopes(checked_schema):
+        for field in fields.values():
+            if not field.get("fetch") or field["fetch"].get("mode") != "options":
+                continue
+            if prefix:
+                options = [
+                    option
+                    for key, row_options in labels.items()
+                    if key.startswith(prefix) and key.rsplit(".", 1)[-1] == field["key"]
+                    for option in row_options
+                ]
+            else:
+                options = labels.get(field["key"], [])
+            field["source"] = {"type": "static", "options": options}
     cleaned, errors = FormValidator(checked_schema, field_perm).merge(original, verified)
     if errors:
         raise ValueError(errors)

@@ -24,7 +24,6 @@ from apps.itsm.services.ticket.returns import resolve_return_target
 from apps.itsm.services.ticket.survey import record_survey_invitation
 from apps.itsm.services.ticket.transfer import require_transfer_target, transfer_users
 from apps.itsm.services.todo_sync import schedule_sync
-from apps.itsm.services.vmware_catalog import provision_profile, request_table, validate_requests
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
 from apps.itsm.signals import itsm_event
 
@@ -38,9 +37,30 @@ class TransferRejected(ValueError):
 
 
 class TicketService:
-    def __init__(self, client: FlowableClient | None = None, identity=None):
+    def __init__(self, client: FlowableClient | None = None, identity=None, current_team=None):
         self.client = client
         self.identity = identity
+        self.current_team = current_team
+
+    def _job_execution_team(self, workflow_version, creator):
+        bindings = [
+            node["auto"].get("binding") or {}
+            for node in workflow_version.design.get("nodes", [])
+            if (node.get("auto") or {}).get("kind") == "job_template"
+        ]
+        if not bindings:
+            return []
+        from apps.system_mgmt.services.credential_scope import is_current_team_authorized
+
+        identity = self.identity
+        if not identity or identity.domain != workflow_version.domain or identity.user != creator:
+            raise PermissionError("作业申请缺少有效的提单身份")
+        if not is_current_team_authorized(self.current_team, identity.team_ids, identity.is_superuser):
+            raise PermissionError("无权在当前组织申请作业")
+        team = int(self.current_team)
+        if any(binding.get("team_id") != team for binding in bindings):
+            raise PermissionError("工单当前组织与流程作业绑定组织不一致")
+        return [team]
 
     def create(
         self,
@@ -60,11 +80,12 @@ class TicketService:
         key = {"domain": workflow_version.domain, "creator": creator, "creation_key": creation_key or uuid4().hex}
         ticket = Ticket.objects.filter(**key).first()
         schema = workflow_schema(workflow_version)
+        test_ticket = is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test"))
+        selected_team = [] if test_ticket else self._job_execution_team(workflow_version, creator)
         if ticket is None:
             if has_legacy_preset_handlers(workflow_version):
                 raise NodeActionValidationError(LEGACY_PRESET_MESSAGE)
             submit_node = _find_node(workflow_version.design, node_type="submit")
-            profile = provision_profile(workflow_version)
             if schema.get("fields"):
                 form_data = validate_submission(
                     schema,
@@ -72,10 +93,7 @@ class TicketService:
                     self.identity,
                     f"version:{workflow_version.id}",
                     field_perm=_normalize_perm(submit_node.get("field_perm")),
-                    authority_table=request_table(workflow_version) if profile else None,
                 )
-            if profile:
-                validate_requests(profile, workflow_version, service, creator, form_data)
             with transaction.atomic():
                 if requires_handler_group(workflow_version.design):
                     service_assignees(workflow_version, service.pk if service else None, starting=True)
@@ -89,7 +107,8 @@ class TicketService:
                         "service": service,
                         "status": TicketStatus.objects.filter(key="new").first(),
                         "form_data": form_data,
-                        "is_test": is_test or bool((workflow_version.design or {}).get("settings", {}).get("is_test")),
+                        "team": selected_team,
+                        "is_test": test_ticket,
                         "created_by": creator,
                         "updated_by": creator,
                         "creation_state": "prepared",
@@ -102,6 +121,10 @@ class TicketService:
                     TicketLog.objects.create(
                         ticket=ticket, domain=ticket.domain, action="create", operator=creator, message="创建工单", created_by=creator, updated_by=creator
                     )
+        if test_ticket and not ticket.is_test:
+            selected_team = self._job_execution_team(workflow_version, creator)
+        if selected_team and ticket.team != selected_team:
+            raise PermissionError("申请标识不属于当前组织")
         if ticket.workflow_version_id != workflow_version.pk or ticket.service_id != (service.pk if service else None):
             raise ValueError("申请标识已用于其他服务或版本")
         if ticket.creation_state == "complete":
@@ -208,11 +231,10 @@ class TicketService:
             raise
         seen = set()
         task_ids = [str(item.get("id") or "") for item in items]
-        known_tasks = set(
-            ticket.tasks.filter(flowable_task_id__in=task_ids, status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).values_list(
-                "flowable_task_id", flat=True
-            )
-        )
+        existing_tasks = {task.flowable_task_id: task for task in ticket.tasks.filter(flowable_task_id__in=task_ids)}
+        known_tasks = {
+            task_id for task_id, task in existing_tasks.items() if task.status in [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
+        }
         active_nodes = {
             (str(item.get("processInstanceId") or ticket.process_instance_id), item.get("taskDefinitionKey") or task_id)
             for item, task_id in zip(items, task_ids)
@@ -223,18 +245,22 @@ class TicketService:
             seen.add(task_id)
             assignee = str(item.get("assignee") or "").strip('"')
             process_id = str(item.get("processInstanceId") or "")
-            task, created = TicketTask.objects.get_or_create(
-                ticket=ticket,
-                flowable_task_id=task_id,
-                defaults={
-                    "node_id": item.get("taskDefinitionKey") or "",
-                    "process_instance_id": process_id,
-                    "node_name": item.get("name") or "",
-                    "assignee": assignee,
-                    "created_by": "system",
-                    "updated_by": "system",
-                },
-            )
+            task = existing_tasks.get(task_id)
+            created = task is None
+            if created:
+                task, created = TicketTask.objects.get_or_create(
+                    ticket=ticket,
+                    flowable_task_id=task_id,
+                    defaults={
+                        "node_id": item.get("taskDefinitionKey") or "",
+                        "process_instance_id": process_id,
+                        "node_name": item.get("name") or "",
+                        "assignee": assignee,
+                        "created_by": "system",
+                        "updated_by": "system",
+                    },
+                )
+                existing_tasks[task_id] = task
             if process_id and task.process_instance_id != process_id:
                 task.process_instance_id = process_id
                 task.save(update_fields=["process_instance_id", "updated_at"])
@@ -382,7 +408,7 @@ class TicketService:
         task.assignee = operator
         task.save(update_fields=["status", "assignee", "updated_at"])
         if saved_form is None:
-            self._save_form(ticket, node, data, task, action=action)
+            self._save_form(ticket, node, data, task)
         else:
             ticket.form_data = saved_form
             ticket.save(update_fields=["form_data", "updated_at"])
@@ -479,13 +505,12 @@ class TicketService:
         elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
             raise PermissionError()
 
-    def _validated_form(self, ticket, node, data, task=None, *, action="save"):
+    def _validated_form(self, ticket, node, data, task=None):
         incoming = data.get("form_data") or {}
         if not isinstance(incoming, dict):
             raise ValueError("表单必须是对象")
         original = dict(ticket.form_data or {})
         schema = ticket_schema(ticket)
-        profile = provision_profile(ticket.workflow_version)
         if schema.get("fields"):
             cleaned = validate_submission(
                 schema,
@@ -495,18 +520,15 @@ class TicketService:
                 original=original,
                 field_perm=_normalize_perm(node.get("field_perm")),
                 receipt_context=task_fetch_context(ticket, task) if task else None,
-                authority_table=request_table(ticket.workflow_version) if profile else None,
             )
             merged = {**original, **cleaned}
         else:
             merged = {**original, **incoming}
-        if profile and (action != "reject" or merged != original):
-            validate_requests(profile, ticket.workflow_version, ticket.service, ticket.creator, merged, ticket.team)
         return merged
 
-    def _save_form(self, ticket, node, data, task=None, *, action="save"):
+    def _save_form(self, ticket, node, data, task=None):
         schema = ticket_schema(ticket)
-        ticket.form_data = self._validated_form(ticket, node, data, task, action=action)
+        ticket.form_data = self._validated_form(ticket, node, data, task)
         from apps.itsm.services.ticket.subforms import materialize_subforms
 
         materialize_subforms(self, ticket, schema, ticket.updated_by or ticket.creator)

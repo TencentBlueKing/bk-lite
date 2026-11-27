@@ -73,9 +73,11 @@ const QuickExecPage = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const testMode = searchParams.get('mode') === 'test' && searchParams.has('script_id');
   const { isLoading: isApiReady } = useApiClient();
   const { getScriptList, getScriptDetail, getPlaybookList, getPlaybookDetail, quickExecute, playbookExecute, getEnabledDangerousRules } = useJobApi();
   const [form] = Form.useForm();
+  const [modal, modalContext] = Modal.useModal();
   const [defaultJobName] = useState(() => createDefaultExecutionName(t('job.quickExec')));
 
   const defaultScriptContent: Record<ScriptLang, string> = {
@@ -203,8 +205,8 @@ const QuickExecPage = () => {
     setInitialized(true);
 
     const init = async () => {
-      const [scripts, playbooks] = await Promise.all([fetchScriptList(), fetchPlaybookList()]);
-      const replayDraftRaw = typeof window !== 'undefined' ? window.sessionStorage.getItem(QUICK_EXEC_REPLAY_STORAGE_KEY) : null;
+      const [scripts, playbooks] = testMode ? [[], []] : await Promise.all([fetchScriptList(), fetchPlaybookList()]);
+      const replayDraftRaw = !testMode && typeof window !== 'undefined' ? window.sessionStorage.getItem(QUICK_EXEC_REPLAY_STORAGE_KEY) : null;
       if (replayDraftRaw) {
         window.sessionStorage.removeItem(QUICK_EXEC_REPLAY_STORAGE_KEY);
         try {
@@ -220,18 +222,17 @@ const QuickExecPage = () => {
       const playbookIdParam = searchParams.get('playbook_id');
       if (scriptIdParam) {
         const scriptId = Number(scriptIdParam);
-        const script = scripts.find((s: Script) => s.id === scriptId);
-        if (script) {
+        if (!Number.isSafeInteger(scriptId) || scriptId < 1) return;
+        const detail = await getScriptDetail(scriptId).catch(() => null);
+        if (detail) {
+          if (!scripts.some((script: Script) => script.id === scriptId)) {
+            setScriptList(current => [...current, detail]);
+          }
           setContentSource('template');
           setTemplateType('scriptLibrary');
           setSelectedTemplate(scriptId);
-          form.setFieldsValue({ jobName: script.name });
-          try {
-            const detail = await getScriptDetail(scriptId);
-            setTemplateParams(detail.params || []);
-          } catch {
-            // ignore
-          }
+          form.setFieldsValue({ jobName: detail.name });
+          setTemplateParams(detail.params || []);
         }
       } else if (playbookIdParam) {
         const playbookId = Number(playbookIdParam);
@@ -350,7 +351,7 @@ const QuickExecPage = () => {
       return {
         name: param.name,
         value: currentValue,
-        is_modified: currentValue !== defaultValue || !!editedTemplateParams[param.name],
+        is_modified: testMode || currentValue !== defaultValue || !!editedTemplateParams[param.name],
       };
     });
     let executionResult: any;
@@ -415,6 +416,10 @@ const QuickExecPage = () => {
         return;
       }
 
+      if (testMode && selectedHosts.length !== 1) {
+        message.error(t('job.singleTestTarget'));
+        return;
+      }
       setExecuteLoading(true);
 
       if (contentSource === 'template') {
@@ -430,6 +435,16 @@ const QuickExecPage = () => {
             setExecuteLoading(false);
             return;
           }
+        }
+        if (testMode) {
+          modal.confirm({
+            title: t('job.confirmTestRun'),
+            content: <>{scriptList.find(script => script.id === selectedTemplate)?.name} · {selectedHosts[0].hostName}（{selectedHosts[0].ipAddress}）</>,
+            okText: t('job.confirmExecute'),
+            cancelText: t('common.cancel'),
+            onOk: () => doExecute(values),
+          });
+          return;
         }
         // Template mode: execute directly without dangerous rule check
         await doExecute(values);
@@ -516,6 +531,7 @@ const QuickExecPage = () => {
 
   return (
     <div className="w-full h-full overflow-auto p-0">
+      {modalContext}
 
       <div
         className="rounded-lg px-6 py-4 mb-4 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
@@ -524,7 +540,7 @@ const QuickExecPage = () => {
           {t('job.quickExec')}
         </h2>
         <p className="text-sm m-0 text-[var(--color-text-3)]">
-          {t('job.quickExecDesc')}
+          {t(testMode ? 'job.testRunHint' : 'job.quickExecDesc')}
         </p>
       </div>
 
@@ -548,12 +564,12 @@ const QuickExecPage = () => {
           </Form.Item>
 
 
-          <Form.Item label={t('job.targetSource')} required>
+          {!testMode && <Form.Item label={t('job.targetSource')} required>
             <TargetSourceSelector
               value={targetSource}
               onChange={handleTargetSourceChange}
             />
-          </Form.Item>
+          </Form.Item>}
 
 
           <Form.Item
@@ -567,7 +583,7 @@ const QuickExecPage = () => {
           </Form.Item>
 
 
-          <Form.Item label={t('job.contentSource')} required>
+          {!testMode && <Form.Item label={t('job.contentSource')} required>
             <Radio.Group
               value={contentSource}
               onChange={(e) => handleContentSourceChange(e.target.value)}
@@ -575,14 +591,14 @@ const QuickExecPage = () => {
               <Radio value="template">{t('job.jobTemplate')}</Radio>
               <Radio value="manual">{t('job.manualInput')}</Radio>
             </Radio.Group>
-          </Form.Item>
+          </Form.Item>}
 
 
           {contentSource === 'template' && (
             <>
               <Form.Item label={t('job.selectTemplate')} required>
                 <div className="flex flex-col gap-3">
-                  <Segmented
+                  {!testMode && <Segmented
                     className="w-fit"
                     value={templateType}
                     onChange={handleTemplateTypeChange}
@@ -612,8 +628,9 @@ const QuickExecPage = () => {
                         value: 'playbook',
                       },
                     ]}
-                  />
+                  />}
                   <Select
+                    disabled={testMode}
                     className="w-full"
                     placeholder={t('job.selectTemplate')}
                     value={selectedTemplate}
@@ -639,9 +656,10 @@ const QuickExecPage = () => {
                     return (
                       <Form.Item
                         key={param.name}
-                        label={param.name}
+                        label={testMode ? param.label || param.name : param.name}
+                        extra={testMode && <span>{param.label && param.label !== param.name && <code className="mr-2">{param.name}</code>}{param.description && <ParamTipText text={param.description} />}</span>}
                         name={`param_${param.name}`}
-                        initialValue={param.default || undefined}
+                        initialValue={testMode ? undefined : param.default || undefined}
                         rules={[
                           {
                             required: !!param.is_required,
@@ -649,7 +667,7 @@ const QuickExecPage = () => {
                           },
                         ]}
                         tooltip={
-                          param.description
+                          !testMode && param.description
                             ? {
                               title: <ParamTipText text={param.description} />,
                               // 稍延长隐藏，便于移入 tip 内点击链接
@@ -744,6 +762,7 @@ const QuickExecPage = () => {
 
       <HostSelectionModal
         open={hostModalOpen}
+        singleSelect={testMode}
         selectedKeys={selectedHostKeys}
         selectedHosts={selectedHosts}
         source={targetSource}

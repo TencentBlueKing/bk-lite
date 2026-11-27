@@ -13,6 +13,9 @@
     "timestamp",
     "collect_timestamp",
     "received_at",
-    "message"
+    "message",
+    "source_ip",
+    "cloud_region_id",
+    "agent_addr"
   ]
 }

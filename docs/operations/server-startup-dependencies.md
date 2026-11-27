@@ -212,6 +212,10 @@ instances/结果快照、Operation snapshot/未成功 Outbox；不迁变更历�
 （指启动硬门禁路径；运行期任务的失败重试不属于启动门禁）。
 
 
+## 节点管理内置采集器预置配置刷新
+
+`node_init` 导入采集器目录时，只比较库中和文件里的 `default_config`。相同则不查节点配置。不同则在本地数据库里按 500 行一批改写该采集器 `is_pre=True` 的预置正文，正文相同不写，然后才写入新的 `default_config`。这是本地 ORM 操作，不依赖 Supervisor 进程，只在模板变化的那次启动付出时间。某个采集器刷新失败只记 ERROR 并保留旧 `default_config`，不阻断启动，下次启动重做。见 `specs/changes/builtin-collector-preset-refresh/spec.md`。不得扩大成每次启动扫描节点。
+
 ## Agent 修改检查清单
 
 OpsPilot 的 `batch_init` 只调用 `init_skill_templates` 播种可移植模板，不再调用 `init_chatflow` 创建成品智能体与工作台。模板目录在数据库事务中同步，仅访问发布文件和本地 ORM，不等待 Supervisor 消费者。升级不删除或改写已有智能体和工作台；历史内置实例的标识、配置、关联和历史数据均原样保留，不以是否使用作为处理条件。旧手动命令 `init_llm`、`init_chatflow` 也统一同步模板，不再恢复旧成品。

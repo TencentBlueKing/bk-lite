@@ -34,11 +34,14 @@ assert.match(source, /onChange\?\.\(null\)/);
 assert.match(source, /validateDateRangeValue/);
 assert.match(source, /value !== undefined/);
 assert.match(source, /customOpen\s*\?\s*customDraft\s*:\s*toDateRangePickerValue\(effectiveValue\)/);
-assert.match(source, /customOpen\s*\|\|\s*effectiveValue\?\.rangeType === 'custom'\s*\?/);
+assert.match(source, /const customVisible = customOpen \|\| effectiveValue\?\.rangeType === 'custom'/);
 assert.match(source, /CalendarOutlined/);
-assert.match(source, /zIndex:\s*customOpen\s*\|\|\s*effectiveValue\?\.rangeType === 'custom'/);
-assert.match(source, /suffixIcon=\{null\}/);
+assert.match(source, /opacity: customVisible \? 1 : 0/);
+assert.match(source, /suffixIcon=\{customVisible \? <CalendarOutlined className="text-\(--color-text-4\)" \/> : null\}/);
+assert.match(source, /\{!customVisible && \(/);
+assert.doesNotMatch(source, /!customVisible \? 'right-8'/);
 assert.match(source, /right-8/);
+assert.match(source, /fillsParent \? 'w-full' : 'w-\[350px\]'/);
 assert.doesNotMatch(source, /TimeSelector|toISOString|valueOf\(\)|unix\(/);
 
 console.log('ops analysis date range selector tests passed');

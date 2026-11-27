@@ -40,7 +40,7 @@ from apps.itsm.models.form import (
     FormViewTemplate,
 )
 from apps.itsm.models.org import HandlerGroup, ItsmSetting, NotifyTemplate, StatusTransition, TicketStatus
-from apps.itsm.models.service import Service, ServiceCatalog, ServiceFavorite, ServiceRecent
+from apps.itsm.models.service import Service, ServiceCatalog, ServiceFavorite, ServiceRecent, TicketFormTemplate
 from apps.itsm.models.sla import ServiceCalendar, SLAPolicy, TicketSLARecord
 from apps.itsm.models.ticket import (
     Ticket,
@@ -75,6 +75,7 @@ __all__ = [
     "ServiceFavorite",
     "ServiceCalendar",
     "ServiceRecent",
+    "TicketFormTemplate",
     "SLAPolicy",
     "StatusTransition",
     "Ticket",

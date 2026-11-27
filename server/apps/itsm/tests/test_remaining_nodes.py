@@ -93,6 +93,13 @@ def test_trigger_requires_action_configuration(kind):
     assert any("执行动作" in error for error in validate_design(design(kind)))
 
 
+def test_auto_node_rejects_retired_action_at_publish():
+    from apps.itsm.flowable.validator import validate_design
+
+    assert any("执行动作已停用" in error for error in validate_design(design("auto", {"kind": "retired_action"})))
+    assert not validate_design(design("auto", {"kind": "job_template"}))
+
+
 @pytest.mark.django_db
 def test_manual_trigger_job_retries_do_not_repeat_action():
     from unittest.mock import Mock

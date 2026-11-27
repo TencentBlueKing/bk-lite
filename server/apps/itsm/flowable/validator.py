@@ -32,6 +32,8 @@ def validate_design(payload: dict) -> list[str]:
                 or (kind == "http" and not config.get("url"))
             ):
                 errors.append(f"节点 {node.name or node.id} 需要配置执行动作")
+        if node.type == "auto" and (node.auto or {}).get("kind") not in {"table", "http", "integration", "job", "workflow", "cmdb", "job_template"}:
+            errors.append(f"节点 {node.name or node.id} 的执行动作已停用，请选择现有动作")
         if node.type in {"auto", "manual_trigger", "rule_trigger"} and (node.auto or {}).get("kind") == "integration":
             if not (node.auto or {}).get("integration_id") or not isinstance((node.auto or {}).get("inputs", {}), dict):
                 errors.append(f"节点 {node.id} 需要选择集成并配置有效 JSON 参数")

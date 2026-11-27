@@ -133,7 +133,11 @@
       "emptyFavorites": "No favorite services",
       "emptyRecents": "No recently used services",
       "noMatch": "No matching services",
-      "loading": "Loading services"
+      "loading": "Loading services",
+      "categories": "Service categories",
+      "results": "{count} available services",
+      "expandAll": "Show all ({count})",
+      "collapse": "Show less"
     },
     "serviceBrowser": {
       "prompt": "Choose a service to start a request",

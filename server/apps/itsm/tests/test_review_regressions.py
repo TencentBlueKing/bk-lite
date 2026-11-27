@@ -5,7 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.db import connection
 from django.test import RequestFactory
+from django.test.utils import CaptureQueriesContext
 
 from apps.itsm.models import FormModel, FormVersion, Ticket, TicketStatus, TicketTask, Workflow, WorkflowVersion
 from apps.itsm.models.extend import TicketProxy, Trigger
@@ -82,6 +84,32 @@ def test_creator_cannot_act_as_another_handler(sample):
         TicketService().operate(ticket, task, "approve", {}, "owner")
     task.refresh_from_db()
     assert task.status == "pending"
+
+
+def test_repeated_engine_sync_does_not_query_each_known_task(sample):
+    ticket, task = sample
+    ticket.process_instance_id = "runtime-process"
+    ticket.save(update_fields=["process_instance_id"])
+    task.flowable_task_id = "runtime-0"
+    task.process_instance_id = "runtime-process"
+    task.save(update_fields=["flowable_task_id", "process_instance_id"])
+    for index in range(1, 9):
+        TicketTask.objects.create(
+            ticket=ticket,
+            node_id="approval_1",
+            assignee="handler",
+            process_instance_id="runtime-process",
+            flowable_task_id=f"runtime-{index}",
+        )
+    items = [
+        {"id": f"runtime-{index}", "taskDefinitionKey": "approval_1", "processInstanceId": "runtime-process", "assignee": "handler"}
+        for index in range(9)
+    ]
+    client = SimpleNamespace(list_tasks_including_children=lambda _: items)
+    with CaptureQueriesContext(connection) as captured:
+        TicketService(client).sync_ticket(ticket)
+    assert len(captured) <= 15
+    assert ticket.tasks.filter(status=TicketTask.TaskStatus.PENDING).count() == 9
 
 
 @pytest.mark.parametrize("action", ["claim", "save", "approve"])
@@ -773,14 +801,14 @@ def test_published_form_reopens_latest_draft_without_changing_runtime():
     from apps.itsm.views import api
 
     perms = ["form-View", "form-Add", "form-Edit", "form-Publish"]
+
     def call(view, method, data, *args):
         response = view(request(method, data, permissions=perms), *args)
         assert response.status_code == 200, response.content
         return json.loads(response.content)["data"]
 
     form = call(api.forms, "post", {"name": "申请", "key": "application"})["id"]
-    schema = {"fields": [{"key": "a", "label": "A", "type": "input"}], "layout": [{"field": "a"}],
-              "rules": [{"type": "required", "field": "a"}]}
+    schema = {"fields": [{"key": "a", "label": "A", "type": "input"}], "layout": [{"field": "a"}], "rules": [{"type": "required", "field": "a"}]}
     original = call(api.form_detail, "put", {"schema": schema}, form)
     published = call(api.publish_form, "post", {"schema": schema}, form)
     schema["fields"][0]["label"] = "B"
@@ -822,6 +850,7 @@ def test_selected_parallel_task_controls_detail_fetch_and_upload(sample):
 
 def test_form_condition_contract():
     from pathlib import Path
+
     from apps.itsm.services.form.rules import match_when
 
     for rule, values, expected in json.loads((Path(__file__).parent / "fixtures/form_conditions.json").read_text()):
@@ -835,6 +864,7 @@ def test_runtime_position_shows_exact_parallel_nodes_until_finished(sample):
     ticket.save()
     with patch("apps.itsm.views.tickets._service") as service:
         service.return_value.client.active_activity_ids.return_value = {"approval_1", "submit", "unknown"}
+
         def detail():
             return json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
 

@@ -1,9 +1,10 @@
 from urllib.parse import unquote
 
-from django.db import migrations, transaction
+from django.db import connections, migrations, transaction
 
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.queryset_lock import list_locked_batch
 
 BATCH_SIZE = 100
 CUSTOM_PULL_TYPES = frozenset({"custom_pull", "bkpull"})
@@ -66,7 +67,11 @@ def urldecode_custom_pull_passwords(apps, schema_editor):
     last_pk = ""
     while True:
         with transaction.atomic(using=database_alias):
-            rows = list(child_config.objects.using(database_alias).select_for_update().filter(pk__gt=last_pk).order_by("pk")[:BATCH_SIZE])
+            rows = list_locked_batch(
+                child_config.objects.using(database_alias).filter(pk__gt=last_pk).order_by("pk"),
+                BATCH_SIZE,
+                connections[database_alias],
+            )
             if not rows:
                 break
             for row in rows:

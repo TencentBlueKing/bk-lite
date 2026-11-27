@@ -221,3 +221,75 @@ def test_reopen_resets_progress_but_preserves_history(sample):
     TicketLog.objects.create(ticket=ticket, task=submit, action="submit", operator="owner")
     detail = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
     assert next(node for node in detail["nodes"] if node["id"] == "submit")["state"] == "done"
+
+
+def test_ticket_history_exposes_only_row_and_job_record_reference(sample):
+    from apps.itsm.models import AutoExecution
+
+    ticket, _ = sample
+    execution = AutoExecution.objects.create(
+        ticket=ticket,
+        kind="external",
+        status="done",
+        detail={
+            "node_id": "inventory",
+            "job_template": {
+                "rows": [
+                    {"row": 1, "job_id": 94, "params": "private"},
+                    {"row": 2, "job_id": 95},
+                ]
+            },
+        },
+    )
+    data = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
+    step = next(item for item in data["history"] if item.get("execution_id") == execution.id)
+    assert step["job_records"] == [{"row": 1, "job_id": 94}, {"row": 2, "job_id": 95}]
+
+
+def test_node_and_history_report_same_batch_without_exposing_parameters(sample):
+    from apps.itsm.models import AutoExecution
+
+    ticket, _ = sample
+    version = ticket.workflow_version
+    version.design["nodes"].append({"id": "job", "type": "auto", "name": "核对资产", "auto": {"kind": "job_template", "mode": "each", "batch_size": 1}})
+    version.save()
+    data = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
+    node = next(node for node in data["nodes"] if node["id"] == "job")
+    assert node["job_progress"] == {"mode": "each", "dispatch_mode": "batch", "batch_size": 1}
+    execution = AutoExecution.objects.create(
+        ticket=ticket,
+        kind="external",
+        status="awaiting_job",
+        detail={
+            "node_id": "job",
+            "process_id": ticket.process_instance_id,
+            "job_template": {
+                "mode": "each",
+                "total": 3,
+                "batch_size": 1,
+                "pending_params": ["private"],
+                "rows": [{"row": 1, "job_id": 94, "status": "success", "params": ["private"]}, {"row": 2, "job_id": 95, "status": "running"}],
+            },
+        },
+    )
+    data = json.loads(ticket_detail(request(username="owner"), ticket.id).content)["data"]
+    step = next(item for item in data["history"] if item.get("execution_id") == execution.id)
+    node = next(node for node in data["nodes"] if node["id"] == "job")
+    assert node["job_progress"] == step["job_progress"] == {"mode": "each", "dispatch_mode": "batch", "batch_size": 1, "total": 3}
+    assert (
+        node["job_records"] == step["job_records"] == [{"row": 1, "job_id": 94, "status": "success"}, {"row": 2, "job_id": 95, "status": "running"}]
+    )
+    assert "private" not in json.dumps(step)
+
+
+def test_node_progress_accepts_preindexed_history_without_changing_result():
+    from apps.itsm.services.ticket.history import index_history_by_node, node_progress
+
+    history = [
+        {"node_id": "a", "state": "done", "action": "approve", "operator": "alice", "started_at": "1", "finished_at": "2"},
+        {"node_id": "b", "state": "current", "action": "auto", "operator": "系统", "started_at": "3", "finished_at": ""},
+        {"node_id": "a", "state": "current", "action": "auto", "operator": "系统", "started_at": "4", "finished_at": ""},
+    ]
+    indexed = index_history_by_node(history)
+    for node in ({"id": "a", "state": "current"}, {"id": "b", "state": "pending"}, {"id": "missing", "state": "pending"}):
+        assert node_progress(node, indexed) == node_progress(node, history)

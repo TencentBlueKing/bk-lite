@@ -11,7 +11,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR
 from apps.operation_analysis.services.datasource_preview.base import PreviewResult
 from apps.operation_analysis.views import datasource_view
-from apps.operation_analysis.views.datasource_view import _resolve_request_params
+from apps.operation_analysis.views.datasource_view import _resolve_request_params, _resolved_declared_params
 
 
 def _build_request(user, data=None):
@@ -689,7 +689,7 @@ def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
     )
     monkeypatch.setattr(
         "apps.operation_analysis.services.excel_materialize.load_excel_runtime",
-        lambda _instance, limit=100: {"items": business_rows, "warnings": []},
+        lambda _instance, limit=100, **_kwargs: {"items": business_rows, "warnings": []},
     )
 
     response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
@@ -840,6 +840,41 @@ def test_resolve_request_params_keeps_fixed_time_range_empty_instead_of_request(
     assert "time" not in resolved
 
 
+def test_declared_string_page_keeps_its_value():
+    instance = SimpleNamespace(
+        rest_api=None,
+        params=[{"name": "page", "type": "string", "value": "cursor-abc", "filterType": "params"}],
+    )
+
+    assert _resolve_request_params(instance, {"page": "cursor-abc"})["page"] == "cursor-abc"
+
+
+def test_undeclared_page_must_still_be_a_positive_integer():
+    instance = SimpleNamespace(rest_api=None, params=[])
+
+    with pytest.raises(ValueError, match="整数"):
+        _resolve_request_params(instance, {"page": "cursor-abc"})
+
+
+def test_row_limit_ignores_a_string_page_size():
+    params = {"page_size": "cursor-abc"}
+    request = SimpleNamespace(data={"limit": 25})
+
+    assert datasource_view._row_limit(params, request) == 25
+    assert datasource_view._row_limit({"page_size": 40}, request) == 40
+
+
+def test_preview_keeps_declared_page_and_drops_undeclared_runtime_keys():
+    resolved = _resolved_declared_params(
+        [
+            {"name": "page", "type": "number", "value": 2, "filterType": "params"},
+            {"name": "city", "type": "string", "value": "shanghai", "filterType": "filter"},
+        ]
+    )
+
+    assert resolved == {"page": 2, "city": "shanghai"}
+
+
 def test_resolve_request_params_allows_organization_param_runtime_marker():
     instance = SimpleNamespace(
         rest_api="monitor/query_latest_active_alerts",
@@ -960,6 +995,7 @@ def test_get_source_data_rolls_unified_select_value_to_rfc3339_range(authenticat
         "2026-08-20T09:45:00.000Z",
         "2026-08-20T10:00:00.000Z",
     ]
+    assert "resolved_time_ranges" not in payload["data"]
 
 
 @pytest.mark.django_db
