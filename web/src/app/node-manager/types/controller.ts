@@ -263,7 +263,7 @@ export interface CreateBulkInstallParams {
   cloud_region_id: number;
   package_id: number;
   max_success_count: number;
-  expires_in_hours: number;
+  expires_in_days: number;
   push_targets?: string[];
 }
 

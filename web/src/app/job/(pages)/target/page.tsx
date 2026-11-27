@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Button,
+  Dropdown,
   Input,
   Select,
   Tag,
@@ -14,14 +15,18 @@ import {
   Upload,
   InputNumber,
 } from 'antd';
-import { PlusOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, InboxOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import useBatchSelection from '@/app/job/components/use-batch-selection';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
-import type { UploadFile } from 'antd';
+import type { TablePaginationConfig, UploadFile } from 'antd';
+import { useUserInfoContext } from '@/context/userInfo';
+import usePermissions from '@/hooks/usePermissions';
+import AdjustOrganizationsModal from '@/app/job/components/adjust-organizations-modal';
 import type { Target, TargetFormData, WinRMScheme } from '@/app/job/types';
 import CredentialPicker from '@/components/credential-picker';
 import { ColumnItem } from '@/types';
@@ -46,13 +51,20 @@ type TargetEditor = Omit<TargetFormData, 'credential_source' | 'credential_id' |
 };
 
 const TargetPage = () => {
+  const { userId, selectedGroup } = useUserInfoContext();
+  return <TargetWorkspace key={JSON.stringify([userId, selectedGroup?.id])} />;
+};
+
+const TargetWorkspace = () => {
   const { t } = useTranslation();
-  const { isLoading: isApiReady } = useApiClient();
+  const { isLoading: isApiLoading } = useApiClient();
   const {
     getTargetList,
+    getTargetSelectionIds,
     createTarget,
     updateTarget,
     deleteTarget,
+    batchDeleteTargets,
     testTargetConnection,
     testSavedTargetConnection,
   } = useJobApi();
@@ -62,11 +74,28 @@ const TargetPage = () => {
   const [data, setData] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKey, setSearchKey] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [batchAction, setBatchAction] = useState<{ kind: 'adjust' | 'confirmDelete' | 'deleting'; ids: number[] } | null>(null);
+  const listVersion = useRef(0);
+  const { hasPermission } = usePermissions();
+  const canEdit = hasPermission(['Edit']);
+  const canDelete = hasPermission(['Delete']);
+  const canSelect = canEdit || canDelete;
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
     pageSize: 20,
   });
+
+  const { selectedIds, selectingAll, selectionVersion, clearSelection, removeFromSelection, rowSelection } = useBatchSelection({
+    resource: 'target',
+    total: pagination.total,
+    pageSize: pagination.pageSize,
+    loading,
+    loadIds: () => getTargetSelectionIds(appliedSearch ? { name: appliedSearch } : {}),
+  });
+  const selectionWidth = rowSelection.columnWidth;
+  const batchDisabled = !canSelect || !selectedIds.length || loading || selectingAll;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'add' | 'edit'>('add');
@@ -147,43 +176,37 @@ const TargetPage = () => {
     }
   }, []);
 
-  const fetchData = useCallback(
-    async (params: { keyword?: string; current?: number; pageSize?: number } = {}) => {
-      setLoading(true);
-      try {
-        const keyword = (params.keyword ?? searchKey).trim();
-        const queryParams: Record<string, unknown> = {
-          page: params.current ?? pagination.current,
-          page_size: params.pageSize ?? pagination.pageSize,
-        };
-        if (keyword) {
-          queryParams.name = keyword;
-        }
-        const res = await getTargetList(queryParams as any);
-        setData(res.items || []);
-        setPagination((prev) => ({
-          ...prev,
-          total: res.count || 0,
-        }));
-      } finally {
-        setLoading(false);
+  const fetchData = useCallback(async () => {
+    const version = ++listVersion.current;
+    setLoading(true);
+    try {
+      const res = await getTargetList({
+        page: pagination.current,
+        page_size: pagination.pageSize,
+        ...(appliedSearch && { name: appliedSearch }),
+      });
+      if (version !== listVersion.current) return;
+      setData(res.items);
+      setPagination(prev => ({ ...prev, total: res.count }));
+    } catch {
+      if (version === listVersion.current) {
+        setData([]);
+        setPagination(prev => ({ ...prev, total: 0 }));
       }
-    },
-    [searchKey, pagination.current, pagination.pageSize]
-  );
+    } finally {
+      if (version === listVersion.current) setLoading(false);
+    }
+  }, [getTargetList, appliedSearch, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-      fetchCloudRegions();
-    }
-  }, [isApiReady]);
+    if (!isApiLoading) void fetchCloudRegions();
+  }, [isApiLoading, fetchCloudRegions]);
 
   useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [pagination.current, pagination.pageSize]);
+    if (!isApiLoading) void fetchData();
+    return () => { listVersion.current += 1; };
+  }, [isApiLoading, fetchData]);
+
 
   useEffect(() => {
     const container = tableContainerRef.current;
@@ -192,7 +215,7 @@ const TargetPage = () => {
     const updateTargetColumnWidth = () => {
       const tableBody = container.querySelector<HTMLElement>('.ant-table-body');
       const scrollbarWidth = tableBody ? tableBody.offsetWidth - tableBody.clientWidth : 0;
-      const availableWidth = container.clientWidth - TARGET_ACTION_COLUMN_WIDTH - scrollbarWidth;
+      const availableWidth = container.clientWidth - TARGET_ACTION_COLUMN_WIDTH - (canSelect ? selectionWidth : 0) - scrollbarWidth;
       const averageWidth = Math.floor(availableWidth / TARGET_DATA_COLUMN_COUNT);
       setTargetDataColumnWidth(Math.max(MIN_TARGET_DATA_COLUMN_WIDTH, averageWidth));
     };
@@ -205,16 +228,24 @@ const TargetPage = () => {
       window.cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
     };
-  }, [data.length, loading]);
+  }, [canSelect, data.length, loading, selectionWidth]);
 
-  const handleSearch = useCallback((value: string) => {
+  const handleSearch = (value: string) => {
+    const name = value.trim();
     setSearchKey(value);
-    setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ keyword: value, current: 1 });
-  }, [fetchData]);
+    if (name === appliedSearch && pagination.current === 1) {
+      void fetchData();
+      return;
+    }
+    clearSelection();
+    setData([]);
+    setLoading(true);
+    setAppliedSearch(name);
+    setPagination(prev => ({ ...prev, current: 1 }));
+  };
 
-  const handleTableChange = (pag: any) => {
-    setPagination(pag);
+  const handleTableChange = (pag: TablePaginationConfig) => {
+    setPagination(prev => ({ ...prev, current: pag.current ?? 1, pageSize: pag.pageSize ?? prev.pageSize }));
   };
 
   const getDriverSelectOptions = () => {
@@ -223,8 +254,34 @@ const TargetPage = () => {
 
   const handleDelete = async (record: Target) => {
     await deleteTarget(record.id);
+    removeFromSelection(record.id);
     message.success(t('job.deleteTarget'));
     fetchData();
+  };
+
+  const finishBatchAction = () => {
+    setBatchAction(null);
+    clearSelection();
+    if (pagination.current === 1) {
+      void fetchData();
+    } else {
+      setPagination(prev => ({ ...prev, current: 1 }));
+    }
+  };
+
+  const confirmBatchDelete = async () => {
+    if (!canDelete || batchAction?.kind !== 'confirmDelete') return;
+    const version = selectionVersion.current;
+    setBatchAction({ kind: 'deleting', ids: batchAction.ids });
+    try {
+      const { deleted_count } = await batchDeleteTargets(batchAction.ids);
+      if (selectionVersion.current !== version) return;
+      message.success(t('job.batchDeleteTargetsSuccess', '', { count: deleted_count }));
+      finishBatchAction();
+    } catch {
+      // The request interceptor reports the error; retain the selection for retry.
+      if (selectionVersion.current === version) setBatchAction(batchAction);
+    }
   };
 
   const openAddModal = () => {
@@ -504,15 +561,36 @@ const TargetPage = () => {
             onSearch: handleSearch,
           }}
           actions={(
-            <Permission requiredPermissions={['Add']}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openAddModal}
+            <>
+              <Dropdown
+                trigger={['click']}
+                disabled={batchDisabled}
+                menu={{ items: [
+                  {
+                    key: 'adjust',
+                    label: t('job.targetOrganizations.title'),
+                    disabled: !canEdit,
+                    onClick: () => setBatchAction({ kind: 'adjust', ids: selectedIds }),
+                  },
+                  {
+                    key: 'delete',
+                    label: t('common.batchDelete'),
+                    disabled: !canDelete,
+                    danger: true,
+                    onClick: () => setBatchAction({ kind: 'confirmDelete', ids: selectedIds }),
+                  },
+                ] }}
               >
-                {t('common.new')}
-              </Button>
-            </Permission>
+                <Button disabled={batchDisabled} aria-label={t('common.batchOperation')}>
+                  {t('common.batchOperation')} <DownOutlined />
+                </Button>
+              </Dropdown>
+              <Permission requiredPermissions={['Add']}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+                  {t('common.new')}
+                </Button>
+              </Permission>
+            </>
           )}
         />
 
@@ -523,11 +601,33 @@ const TargetPage = () => {
             dataSource={data}
             loading={loading}
             rowKey="id"
+            rowSelection={canSelect ? rowSelection : undefined}
             pagination={pagination}
             onChange={handleTableChange}
           />
         </div>
       </div>
+
+      {canEdit && batchAction?.kind === 'adjust' && (
+        <AdjustOrganizationsModal resource="target" ids={batchAction.ids} onCancel={() => setBatchAction(null)} onSuccess={finishBatchAction} />
+      )}
+      {canDelete && batchAction && batchAction.kind !== 'adjust' && (
+        <OperateModal
+          open
+          title={t('common.batchDelete')}
+          onOk={confirmBatchDelete}
+          okText={t('common.delete')}
+          okButtonProps={{ danger: true }}
+          confirmLoading={batchAction.kind === 'deleting'}
+          onCancel={() => setBatchAction(null)}
+          cancelText={t('common.cancel')}
+          cancelButtonProps={{ disabled: batchAction.kind === 'deleting' }}
+          closable={batchAction.kind !== 'deleting'}
+          keyboard={batchAction.kind !== 'deleting'}
+        >
+          {t('job.batchDeleteTargetsConfirm', '', { count: batchAction.ids.length })}
+        </OperateModal>
+      )}
 
       {/* Add/Edit Modal */}
       <OperateModal

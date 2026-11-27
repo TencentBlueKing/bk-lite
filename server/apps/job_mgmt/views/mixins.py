@@ -82,7 +82,7 @@ class BatchDeleteMixin:
     .. code-block:: python
 
         class TargetViewSet(BatchDeleteMixin, AuthViewSet):
-            batch_delete_serializer_class = TargetBatchDeleteSerializer
+            batch_delete_serializer_class = SelectionSerializer
             batch_delete_log_label = "目标"
 
             @action(detail=False, methods=["post"])

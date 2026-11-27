@@ -13,6 +13,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMSkill, SkillPackage, SkillTools
 from apps.opspilot.services.asset_tags import normalize_user_tags
 from apps.opspilot.services.skill_package.importer import SkillPackageImporter
+from apps.opspilot.utils.skill_tool_log import log_skill_tools_replaced
 
 KIND = "opspilot-agent"
 FORMAT_VERSION = 1
@@ -291,6 +292,7 @@ def _create_imported_skill(recipe, *, final_name, skill_params, team_id, domain,
     skill.skill_packages = packages
     skill.tools = tools
     skill.save(update_fields=["skill_packages", "tools"])
+    log_skill_tools_replaced(skill_id=skill.id, actor=username, before=[], after=tools)
     return {"id": skill.id, "name": skill.name, "notes": notes}
 
 

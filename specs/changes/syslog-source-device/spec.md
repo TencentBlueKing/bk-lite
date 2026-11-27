@@ -54,7 +54,7 @@ if raw_hostname == "" {
 - hostname 只去首尾空白。缺失、非字符串、去空白后为空，写成 `""`。不用源 IP 填充，不把 `"-"` 转成空。
 - `server/apps/log/support-files/plugins/Vector/syslog/collect_type.json` 的 `attrs` 增加 `cloud_region_id`。`default_query` 不变。`log_init` 已有的 `update_or_create` 会同步该文件，不另写迁移。
 
-存量节点不新增刷新任务，不进 `batch_init`。升级步骤仍是：`node_init` 之后人工执行 `python manage.py repair_node_config`。实现代码不调用这条命令。
+存量节点的预置正文随目录刷新，见 `specs/changes/builtin-collector-preset-refresh/spec.md`。实现代码不调用 `repair_node_config`，也不在 `batch_init` 里扫描节点。
 
 ### D2. 来源设备表
 
