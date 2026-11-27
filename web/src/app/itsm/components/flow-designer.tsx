@@ -525,10 +525,10 @@ function FlowDesignerBody({ design, fields = [], formFields = [], invalidNodeIds
                     { value: 'table', label: '写入数据表' }, { value: 'http', label: 'HTTP 请求' },
                     { value: 'integration', label: '集成 · API / Python' },
                     ...(selected.data.nodeType === 'auto' ? [{ value: 'job_template', label: '作业平台 · 已有作业' }] : []),
-                    ...(selected.data.auto?.kind === 'vmware_provision' ? [{ value: 'vmware_provision', label: 'VMware 虚拟机交付' }] : []),
+                    ...(!['table', 'http', 'integration', 'job_template'].includes(String(selected.data.auto?.kind || 'table')) ? [{ value: String(selected.data.auto?.kind), label: '未支持的旧动作' }] : []),
                   ]} onChange={kind => patchSelected({ auto: { kind, when: selected.data.auto?.when } })} />
-                  {selected.data.auto?.kind === 'vmware_provision' ? (
-                    <span className="text-xs text-[var(--color-text-3)]">交付环境：{String(selected.data.auto.profile)}</span>
+                  {selected.data.auto?.kind && !['table', 'http', 'integration', 'job_template'].includes(String(selected.data.auto.kind)) ? (
+                    <span className="text-xs text-[var(--color-text-3)]">旧动作已停用，请改选通用作业或集成动作后重新发布。</span>
                   ) : selected.data.auto?.kind === 'job_template' ? (
                     <JobNodeSettings config={selected.data.auto} fields={formFields} outputs={upstreamJobOutputs(selected.id, nodes, edges)} onChange={auto => patchSelected({ auto })} />
                   ) : selected.data.auto?.kind === 'integration' ? (

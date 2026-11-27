@@ -24,7 +24,6 @@ from apps.itsm.services.ticket.returns import resolve_return_target
 from apps.itsm.services.ticket.survey import record_survey_invitation
 from apps.itsm.services.ticket.transfer import require_transfer_target, transfer_users
 from apps.itsm.services.todo_sync import schedule_sync
-from apps.itsm.services.vmware_catalog import provision_profile, request_table, validate_requests
 from apps.itsm.services.workflow.assignee import AssigneeBlocked, AssigneeResolver
 from apps.itsm.signals import itsm_event
 
@@ -87,7 +86,6 @@ class TicketService:
             if has_legacy_preset_handlers(workflow_version):
                 raise NodeActionValidationError(LEGACY_PRESET_MESSAGE)
             submit_node = _find_node(workflow_version.design, node_type="submit")
-            profile = provision_profile(workflow_version)
             if schema.get("fields"):
                 form_data = validate_submission(
                     schema,
@@ -95,10 +93,7 @@ class TicketService:
                     self.identity,
                     f"version:{workflow_version.id}",
                     field_perm=_normalize_perm(submit_node.get("field_perm")),
-                    authority_table=request_table(workflow_version) if profile else None,
                 )
-            if profile:
-                validate_requests(profile, workflow_version, service, creator, form_data)
             with transaction.atomic():
                 if requires_handler_group(workflow_version.design):
                     service_assignees(workflow_version, service.pk if service else None, starting=True)
@@ -410,7 +405,7 @@ class TicketService:
         task.assignee = operator
         task.save(update_fields=["status", "assignee", "updated_at"])
         if saved_form is None:
-            self._save_form(ticket, node, data, task, action=action)
+            self._save_form(ticket, node, data, task)
         else:
             ticket.form_data = saved_form
             ticket.save(update_fields=["form_data", "updated_at"])
@@ -507,13 +502,12 @@ class TicketService:
         elif not ticket.tasks.filter(assignee__in=principals, status__in=["pending", "claimed"]).exists():
             raise PermissionError()
 
-    def _validated_form(self, ticket, node, data, task=None, *, action="save"):
+    def _validated_form(self, ticket, node, data, task=None):
         incoming = data.get("form_data") or {}
         if not isinstance(incoming, dict):
             raise ValueError("表单必须是对象")
         original = dict(ticket.form_data or {})
         schema = ticket_schema(ticket)
-        profile = provision_profile(ticket.workflow_version)
         if schema.get("fields"):
             cleaned = validate_submission(
                 schema,
@@ -523,18 +517,15 @@ class TicketService:
                 original=original,
                 field_perm=_normalize_perm(node.get("field_perm")),
                 receipt_context=task_fetch_context(ticket, task) if task else None,
-                authority_table=request_table(ticket.workflow_version) if profile else None,
             )
             merged = {**original, **cleaned}
         else:
             merged = {**original, **incoming}
-        if profile and (action != "reject" or merged != original):
-            validate_requests(profile, ticket.workflow_version, ticket.service, ticket.creator, merged, ticket.team)
         return merged
 
-    def _save_form(self, ticket, node, data, task=None, *, action="save"):
+    def _save_form(self, ticket, node, data, task=None):
         schema = ticket_schema(ticket)
-        ticket.form_data = self._validated_form(ticket, node, data, task, action=action)
+        ticket.form_data = self._validated_form(ticket, node, data, task)
         from apps.itsm.services.ticket.subforms import materialize_subforms
 
         materialize_subforms(self, ticket, schema, ticket.updated_by or ticket.creator)

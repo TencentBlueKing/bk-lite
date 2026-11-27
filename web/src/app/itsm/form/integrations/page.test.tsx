@@ -92,19 +92,19 @@ it('未知投递必须核对接收结果', async () => {
 
 it('作业平台按需加载真实目录、参数和目标数量，仅提供原生入口', async () => {
   api.integrationJobCatalog.mockResolvedValue({
-    can_execute: true, scripts: [{ id: 3, name: 'VMware 只读核验', description: '逐台核对规格', params: [{ name: 'flavor_id', label: '规格', description: '申请的计算配置', type: 'enum', options: ['2C4G'], is_required: true }] }],
+    can_execute: true, scripts: [{ id: 3, name: '资源只读核验', description: '逐台核对规格', params: [{ name: 'size_id', label: '规格', description: '申请的计算配置', type: 'enum', options: ['2C4G'], is_required: true }] }],
     targets: [{ id: 4, name: '本地隔离容器' }],
   });
   render(<Page />);
   await screen.findByText('查询工单');
   expect(api.integrationJobCatalog).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('tab', { name: '作业平台' }));
-  expect(await screen.findByText('VMware 只读核验')).toBeTruthy();
+  expect(await screen.findByText('资源只读核验')).toBeTruthy();
   expect(screen.getByText('逐台核对规格')).toBeTruthy();
   expect(screen.getByText(/可选执行目标.*1/)).toBeTruthy();
   expect(screen.getByText('本地隔离容器')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /查看参数/ }));
-  expect(screen.getByText('flavor_id')).toBeTruthy();
+  expect(screen.getByText('size_id')).toBeTruthy();
   expect(screen.getByText('申请的计算配置')).toBeTruthy();
   expect(screen.getByText('枚举')).toBeTruthy();
   expect(screen.getByText('2C4G')).toBeTruthy();
@@ -115,7 +115,7 @@ it('作业平台按需加载真实目录、参数和目标数量，仅提供原�
   expect(screen.queryByRole('button', { name: '新建' })).toBeNull();
   expect(screen.queryByRole('button', { name: /调试|执行/ })).toBeNull();
   fireEvent.change(screen.getByRole('searchbox', { name: '搜索作业' }), { target: { value: '不匹配' } });
-  expect(screen.queryByText('VMware 只读核验')).toBeNull();
+  expect(screen.queryByText('资源只读核验')).toBeNull();
   expect(api.integrationJobCatalog).toHaveBeenCalledTimes(1);
 });
 

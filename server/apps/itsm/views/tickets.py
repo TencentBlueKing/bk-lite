@@ -457,7 +457,6 @@ def _ticket_detail(ticket, username="", privileged=False, can_operate=True, can_
         from django.utils.dateparse import parse_datetime
 
         progress_history = [row for row in history if row["started_at"] and parse_datetime(row["started_at"]) >= round_start]
-
     progress_history_by_node = index_history_by_node(progress_history)
 
     task_rows = []
@@ -585,11 +584,6 @@ def ticket_detail(request, ticket_id):
         can_operate and has_permission(request, "workflow-Edit"),
         task_id=request.GET.get("task_id"),
         can_apply=has_permission(request, "ticket-Add"),
-    )
-    permissions = getattr(request.user, "permission", {})
-    cmdb_permissions = permissions.get("cmdb", ()) if isinstance(permissions, dict) else permissions
-    detail["can_view_vmware_assets"] = (bool(getattr(request.user, "is_superuser", False)) or "asset_info-View" in (cmdb_permissions or ())) and any(
-        machine.get("receipt") for item in ticket.auto_executions.all() for machine in item.detail.get("delivery", {}).get("machines", {}).values()
     )
     _mark_executing_nodes(request, ticket, detail)
     return WebUtils.response_success(detail)

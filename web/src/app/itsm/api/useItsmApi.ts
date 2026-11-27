@@ -22,12 +22,6 @@ export interface WorkflowJobOptions {
   targets: { id: number; name: string }[];
 }
 
-export interface VmwareDeliveryAsset {
-  delivery_id: string;
-  hostname: string | null;
-  url: string | null;
-}
-
 export interface TicketTriggerLogPage {
   count: number;
   items: {
@@ -179,9 +173,6 @@ export function useItsmApi() {
   const ticketForm = useCallback((versionId: number, serviceId?: number) => get(`/itsm/api/tickets/form/${versionId}/`, { params: serviceId ? { service_id: serviceId } : {} }), [get]);
   const renameTicket = useCallback((id: number, title: string) => put(`/itsm/api/tickets/${id}/title/`, { title }), [put]);
   const getTicket = useCallback((id: number, taskId?: number) => get(`/itsm/api/tickets/${id}/`, { params: { task_id: taskId }, suppressErrorNotification: true }), [get]);
-  const getTicketVmwareAssets = useCallback((id: number) => get<{ items: VmwareDeliveryAsset[] }>(
-    `/itsm/api/tickets/${id}/vmware-assets/`, { suppressErrorNotification: true },
-  ), [get]);
   const getTicketTriggerLogs = useCallback((id: number, page: number, pageSize: number) => get<TicketTriggerLogPage>(
     `/itsm/api/tickets/${id}/trigger-logs/`, { params: { page, page_size: pageSize }, suppressErrorNotification: true },
   ), [get]);
@@ -346,7 +337,6 @@ export function useItsmApi() {
     getTicket,
     renameTicket,
     getTicketTriggerLogs,
-    getTicketVmwareAssets,
     retryAutoNode,
     reconcileAutoNode,
     listScheduleRuns,

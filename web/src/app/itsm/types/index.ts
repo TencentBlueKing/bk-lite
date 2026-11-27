@@ -317,7 +317,6 @@ export interface ManualRecoveryDecision { decision: 'abandon'; token: string; se
 export type StartRecoveryRequest = { id: number; action: 'check' } | { id: number; action: 'confirmed_not_started'; sent_at: string; reason: string };
 
 export interface TicketDetail {
-  can_view_vmware_assets?: boolean;
   can_rename?: boolean;
   reopen_from?: string | null;
   engine_pending?: boolean;

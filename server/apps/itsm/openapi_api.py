@@ -5,7 +5,6 @@ from apps.itsm.openapi_serializers import (
     TicketCreateRequestSerializer,
     TicketListRequestSerializer,
     TicketOperateRequestSerializer,
-    VmwareCatalogRequestSerializer,
 )
 
 
@@ -120,22 +119,3 @@ def openapi_list_forms(page=1, page_size=20, *, team=None, user_info=None):
     start = (page - 1) * page_size
     items = [{"id": item.id, "key": item.key, "name": item.name} for item in queryset[start : start + page_size]]
     return {"result": True, "data": {"count": queryset.count(), "items": items}}
-
-
-@openapi_expose(
-    path="itsm/vmware/catalog",
-    method="GET",
-    schema=VmwareCatalogRequestSerializer,
-    inject="team_list_with_user",
-    permission="ticket-Add,ticket-Operate,workflow-Edit",
-    permission_app="itsm",
-    summary="按交付环境查询 VMware 申请选项",
-)
-def openapi_vmware_catalog(profile, kind, disk_policy_id=None, keyword="", page=1, preview=False, *, team=None, user_info=None):
-    from apps.itsm.services.vmware_catalog import catalog_options
-
-    try:
-        result = catalog_options(profile, kind, (user_info or {}).get("domain"), team, disk_policy_id, keyword, page, preview=preview)
-    except PermissionError:
-        return {"result": False, "code": "TEAM_OUT_OF_SCOPE", "message": "无权访问该交付环境"}
-    return result

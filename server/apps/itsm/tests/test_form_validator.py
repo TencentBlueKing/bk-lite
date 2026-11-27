@@ -152,6 +152,29 @@ def test_subform_readonly_cells_preserve_originals_while_reordering_rows():
     assert merge_table_rows(field, original, rows, permissions, "ticket:1") == [{**row, "name": "改名"} for row in reversed(original)]
 
 
+def test_static_numeric_select_in_each_table_row():
+    schema = {
+        "fields": [
+            {
+                "key": "items",
+                "type": "table",
+                "children": [
+                    {
+                        "key": "capacity",
+                        "type": "select",
+                        "required": True,
+                        "source": {"type": "static", "options": [{"value": 20, "label": "20 GiB"}, {"value": 80, "label": "80 GiB"}]},
+                    }
+                ],
+            }
+        ]
+    }
+    validator = FormValidator(schema)
+
+    assert validator.validate({"items": [{"capacity": 20}, {"capacity": 80}]}) == {}
+    assert validator.validate({"items": [{"capacity": 20}, {"capacity": 40}]}) == {"items": "第 2 行的capacity：选项不存在"}
+
+
 def test_conditional_subform_cells_are_checked_against_their_own_row_and_preserve_previous_values():
     from apps.itsm.services.form.table_columns import merge_table_rows, visible_table_rows
 

@@ -216,7 +216,7 @@ def _check_type(field: dict[str, Any], value: Any, dictionary_lookup) -> str:
     if (
         kind in STRING_TYPES
         and not isinstance(value, str)
-        and not (field.get("fetch") and kind in {"select", "radio", "cascade"} and isinstance(value, (int, float)) and not isinstance(value, bool))
+        and not (kind in {"select", "radio", "cascade"} and isinstance(value, (int, float)) and not isinstance(value, bool))
     ):
         return "必须是字符串"
     if kind in LIST_TYPES and not isinstance(value, list):
