@@ -11,6 +11,8 @@ from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDE
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.serializers.data_connection_serializers import validate_datasource_connection_binding, validate_rest_headers
+from apps.operation_analysis.services.datasource_params.binding import validate_declared_params
+from apps.operation_analysis.services.datasource_preview.base import ConnectorError
 from apps.operation_analysis.services.user_messages import oa_message
 
 TRANSFORM_ALLOWED_SOURCE_TYPES = {
@@ -234,7 +236,19 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
                         index=index,
                     )
                 )
+        try:
+            validate_declared_params(self._declared_param_source_type(), value)
+        except ConnectorError as exc:
+            raise serializers.ValidationError(exc.message) from exc
         return value
+
+    def _declared_param_source_type(self):
+        initial_data = getattr(self, "initial_data", None)
+        if isinstance(initial_data, dict) and initial_data.get("source_type"):
+            return initial_data.get("source_type")
+        if self.instance is not None:
+            return self.instance.source_type
+        return None
 
     def validate_transform_config(self, value):
         if value in (None, ""):

@@ -45,7 +45,8 @@ def test_linux_vector_templates_write_cloud_region_and_trimmed_hostname():
         assert "transforms.default_enrich" in item["default_config"]["nats"]
         snmp_prefix = add_config.split("# ====================================\n# syslog", 1)[0]
         assert '.collect_type = "snmp_trap"' in snmp_prefix
-        assert "cloud_region_id" not in snmp_prefix
+        assert '.cloud_region_id = "${node.cloud_region}"' in snmp_prefix
+        assert "${node.cloud_region_id}" not in snmp_prefix
         assert "raw_hostname" not in snmp_prefix
 
 

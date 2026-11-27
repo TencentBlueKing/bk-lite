@@ -96,6 +96,9 @@ def test_init_skips_when_preset_address_is_absent(monkeypatch, caplog):
 def test_init_writes_default_org_pair_once_without_minio(monkeypatch, caplog):
     monkeypatch.setenv(PRESET_BASE_URL_ENV, f"{PRESET_URL}/")
     group = Group.objects.get(name="Default", parent_id=0)
+    if not group.is_builtin:
+        group.is_builtin = True
+        group.save(update_fields=["is_builtin"])
 
     def fail_sync(self):
         raise AssertionError("empty hyperopt_config must not upload")
@@ -138,7 +141,7 @@ def test_init_command_writes_pair_after_default_group_returns(monkeypatch):
         call_command("init_builtin_timeseries")
     assert TimeSeriesPredictTrainJob.objects.filter(is_builtin=True).count() == 0
 
-    Group.objects.create(name="Default", parent_id=0)
+    Group.objects.create(name="Default", parent_id=0, is_builtin=True)
     call_command("init_builtin_timeseries")
 
     train_job = TimeSeriesPredictTrainJob.objects.get(is_builtin=True, algorithm="GradientBoosting")
@@ -151,6 +154,9 @@ def test_init_command_writes_pair_after_default_group_returns(monkeypatch):
 def test_init_fills_missing_builtin_serving_without_new_train_job(monkeypatch):
     monkeypatch.setenv(PRESET_BASE_URL_ENV, PRESET_URL)
     group = Group.objects.get(name="Default", parent_id=0)
+    if not group.is_builtin:
+        group.is_builtin = True
+        group.save(update_fields=["is_builtin"])
     train_job = TimeSeriesPredictTrainJob.objects.create(
         name="GradientBoosting",
         description="",
@@ -172,6 +178,9 @@ def test_init_fills_missing_builtin_serving_without_new_train_job(monkeypatch):
 def test_init_keeps_drifted_builtin_train_job_fields(monkeypatch):
     monkeypatch.setenv(PRESET_BASE_URL_ENV, PRESET_URL)
     group = Group.objects.get(name="Default", parent_id=0)
+    if not group.is_builtin:
+        group.is_builtin = True
+        group.save(update_fields=["is_builtin"])
     other = Group.objects.create(name="Other", parent_id=0)
     train_job = TimeSeriesPredictTrainJob.objects.create(
         name="renamed",

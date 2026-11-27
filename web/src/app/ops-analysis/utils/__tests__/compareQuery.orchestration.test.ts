@@ -27,7 +27,10 @@ describe('compare query orchestration validity', () => {
         if (!valid) throw new RuntimeRequestCancelledError();
         startedParams.push(params);
         valid = false;
-        return { data: [{ value: 1 }], warnings: undefined };
+        return {
+          data: [{ value: 1 }],
+          warnings: [],
+        };
       },
     })).rejects.toBeInstanceOf(RuntimeRequestCancelledError);
 

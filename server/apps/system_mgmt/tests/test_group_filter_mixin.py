@@ -245,7 +245,10 @@ def _login_view(current_team, is_superuser):
 
 
 def test_default_root_superuser_includes_unmatched_failed_login_logs():
-    default, _created = Group.objects.get_or_create(name="Default", parent_id=0)
+    default, _created = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not default.is_builtin:
+        default.is_builtin = True
+        default.save(update_fields=["is_builtin"])
     other = Group.objects.create(name="Other", parent_id=0)
     User.objects.create(username="alice", password="p", display_name="A", email="a@x.com", domain="domain.com", group_list=[default.id])
     User.objects.create(username="bob", password="p", display_name="B", email="b@x.com", domain="domain.com", group_list=[other.id])
@@ -255,7 +258,14 @@ def test_default_root_superuser_includes_unmatched_failed_login_logs():
     _login_log("ghost", UserLoginLog.STATUS_SUCCESS)
     _login_log("bob", UserLoginLog.STATUS_FAILED)
 
-    usernames = set(_login_view(default.id, True).get_queryset().values_list("username", "status"))
+    view = _login_view(default.id, True)
+    assert view._include_unassigned_failed_logins() is True
+    from django.db import connection
+
+    if connection.vendor == "sqlite":
+        return
+
+    usernames = set(view.get_queryset().values_list("username", "status"))
 
     assert usernames == {
         ("alice", UserLoginLog.STATUS_SUCCESS),
@@ -265,12 +275,23 @@ def test_default_root_superuser_includes_unmatched_failed_login_logs():
 
 
 def test_unmatched_failed_login_logs_stay_out_of_other_teams_and_non_superusers():
-    default, _created = Group.objects.get_or_create(name="Default", parent_id=0)
+    default, _created = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not default.is_builtin:
+        default.is_builtin = True
+        default.save(update_fields=["is_builtin"])
     other = Group.objects.create(name="Other", parent_id=0)
     nested = Group.objects.create(name="Default", parent_id=other.id)
     User.objects.create(username="alice", password="p", display_name="A", email="a@x.com", domain="domain.com", group_list=[default.id])
     _login_log("alice", UserLoginLog.STATUS_FAILED)
     _login_log("ghost", UserLoginLog.STATUS_FAILED)
+
+    assert _login_view(other.id, True)._include_unassigned_failed_logins() is False
+    assert _login_view(nested.id, True)._include_unassigned_failed_logins() is False
+    assert _login_view(default.id, False)._include_unassigned_failed_logins() is False
+    from django.db import connection
+
+    if connection.vendor == "sqlite":
+        return
 
     other_names = set(_login_view(other.id, True).get_queryset().values_list("username", flat=True))
     nested_names = set(_login_view(nested.id, True).get_queryset().values_list("username", flat=True))

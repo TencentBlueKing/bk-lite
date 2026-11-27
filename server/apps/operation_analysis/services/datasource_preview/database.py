@@ -5,12 +5,17 @@ from urllib.parse import quote_plus
 from sqlalchemy import create_engine, text
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.services.datasource_params.binding import apply_sql_bindings
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 from apps.operation_analysis.services.user_messages import oa_message
 
 SELECT_RE = re.compile(r"^\s*select\b", re.IGNORECASE)
-LIMIT_RE = re.compile(r"\blimit\s+\d+\s*$", re.IGNORECASE)
+_LIMIT_VALUE = r"(?:\d+|:[A-Za-z_][A-Za-z0-9_]*)"
+LIMIT_RE = re.compile(
+    rf"\blimit\s+{_LIMIT_VALUE}(?:\s*,\s*{_LIMIT_VALUE})?(?:\s+offset\s+{_LIMIT_VALUE})?\s*$",
+    re.IGNORECASE,
+)
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -119,11 +124,13 @@ class DatabaseConnectorExecutor(BaseConnectorExecutor):
         safe_limit = min(max(int(limit or 100), 1), 1000)
         database_url = build_database_url(self.source_type, connection_config)
         sql = build_preview_sql(query_config, safe_limit, self.source_type)
+        sql, binds = apply_sql_bindings(sql, kwargs.get("param_specs"), kwargs.get("resolved_params"))
 
         try:
             engine = self.engine_factory(database_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
             with engine.connect() as conn:
-                rows = conn.execute(text(sql)).fetchmany(safe_limit)
+                statement = text(sql)
+                rows = conn.execute(statement, binds).fetchmany(safe_limit) if binds else conn.execute(statement).fetchmany(safe_limit)
         except ConnectorError:
             raise
         except Exception as exc:

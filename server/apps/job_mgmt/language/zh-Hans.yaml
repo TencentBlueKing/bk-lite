@@ -22,6 +22,12 @@ message:
   connection_test_failed: "连接测试失败: {detail}"
   winrm_connection_test_success: "WinRM 连接测试成功"
 error:
+  batch_selection_limit: "单次最多选择 {limit} 条记录，请缩小筛选范围。"
+  batch_operation_denied: "部分所选记录不存在或无权操作。"
+  batch_organization_missing: "所选组织不存在或已停用。"
+  batch_preview_changed: "所选记录的组织归属已变化，请重新预览后确认。"
+  batch_exclude_required: "请先排除将失去最后一个组织的记录，再确认变更。"
+  builtin_script_delete: "内置脚本不可删除。"
   status_changed_retry: "状态已变更，请刷新后重试"
   group_id_invalid: "group_id 参数非法"
   team_required: "team 不能为空"

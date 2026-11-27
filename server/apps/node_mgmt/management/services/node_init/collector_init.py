@@ -3,6 +3,7 @@ from django.db import transaction
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models.sidecar import Collector, CollectorDefaultBackfill
+from apps.node_mgmt.services.collector_preset_refresh import refresh_collector_presets
 from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
 
 COMMUNITY_PLUGIN_DIRECTORY = "apps/node_mgmt/support-files/collectors"
@@ -32,9 +33,31 @@ def _enqueue_new_collector_followup(*, schedule_task):
     enqueue_collector_default_backfill(schedule_task=schedule_task)
 
 
+def _collector_for_catalog_update(item, preserved_default_configs):
+    collector = Collector(**item)
+    if item["id"] in preserved_default_configs:
+        collector.default_config = preserved_default_configs[item["id"]]
+    return collector
+
+
+def _refresh_changed_presets(old_by_id, update_collectors):
+    """先改预置正文。失败的采集器本轮目录继续留着旧 default_config。"""
+    preserved_default_configs = {}
+    for item in update_collectors:
+        current = old_by_id.get(item["id"])
+        if current is None or not item.get("controller_default_run"):
+            continue
+        new_default_config = item.get("default_config")
+        if current.default_config == new_default_config:
+            continue
+        if not refresh_collector_presets(current, new_default_config):
+            preserved_default_configs[item["id"]] = current.default_config
+    return preserved_default_configs
+
+
 def import_collector(collectors):
-    old_collector = Collector.objects.all()
-    old_collector_set = {i.id for i in old_collector}
+    old_collectors = list(Collector.objects.all())
+    old_by_id = {row.id: row for row in old_collectors}
 
     create_collectors, update_collectors = [], []
 
@@ -44,7 +67,7 @@ def import_collector(collectors):
             collector_info.get("node_operating_system"),
             collector_info.get("cpu_architecture"),
         )
-        if collector_info["id"] in old_collector_set:
+        if collector_info["id"] in old_by_id:
             # 更新时确保内置采集器标记为 is_pre=True
             collector_info["is_pre"] = True
             update_collectors.append(collector_info)
@@ -65,6 +88,7 @@ def import_collector(collectors):
             transaction.on_commit(lambda schedule_task=schedule_task: _enqueue_new_collector_followup(schedule_task=schedule_task))
 
     if update_collectors:
+        preserved_default_configs = _refresh_changed_presets(old_by_id, update_collectors)
         imported_ids = set(
             Collector.objects.filter(
                 id__in=[item["id"] for item in update_collectors],
@@ -85,8 +109,8 @@ def import_collector(collectors):
             "cpu_architecture",
             "is_pre",
         ]
-        normal = [Collector(**item) for item in update_collectors if item["id"] not in imported_ids]
-        imported = [Collector(**item) for item in update_collectors if item["id"] in imported_ids]
+        normal = [_collector_for_catalog_update(item, preserved_default_configs) for item in update_collectors if item["id"] not in imported_ids]
+        imported = [_collector_for_catalog_update(item, preserved_default_configs) for item in update_collectors if item["id"] in imported_ids]
         if normal:
             Collector.objects.bulk_update(normal, update_fields)
         if imported:

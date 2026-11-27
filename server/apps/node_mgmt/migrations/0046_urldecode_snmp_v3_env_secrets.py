@@ -1,9 +1,10 @@
 from urllib.parse import unquote
 
-from django.db import migrations, transaction
+from django.db import connections, migrations, transaction
 
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.queryset_lock import list_locked_batch
 
 BATCH_SIZE = 100
 SNMP_V3_SECRET_KEYS = ("AUTH_PASSWORD", "PRIV_PASSWORD")
@@ -68,7 +69,11 @@ def _rewrite_model_env_configs(model, database_alias, cryptor, *, use_plugin_typ
     last_pk = ""
     while True:
         with transaction.atomic(using=database_alias):
-            rows = list(model.objects.using(database_alias).select_for_update().filter(pk__gt=last_pk).order_by("pk")[:BATCH_SIZE])
+            rows = list_locked_batch(
+                model.objects.using(database_alias).filter(pk__gt=last_pk).order_by("pk"),
+                BATCH_SIZE,
+                connections[database_alias],
+            )
             if not rows:
                 break
             for row in rows:

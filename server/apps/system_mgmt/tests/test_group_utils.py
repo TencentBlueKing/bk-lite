@@ -45,9 +45,7 @@ class TestDescendants:
 
 class TestFiltered:
     def test_无过滤等价于全部子孙(self, tree):
-        assert set(GroupUtils.get_group_with_descendants_filtered(tree["root"])) == {
-            tree["root"], tree["a"], tree["b"], tree["g"]
-        }
+        assert set(GroupUtils.get_group_with_descendants_filtered(tree["root"])) == {tree["root"], tree["a"], tree["b"], tree["g"]}
 
     def test_按id列表过滤(self, tree):
         # 只允许 root 与 grandchild：穿过无权限的 a 仍能收集到 g
@@ -129,6 +127,35 @@ class TestBuildGroupTree:
         # b 不在可见树中
         all_ids = {root_node["id"], node_a["id"], node_g["id"]}
         assert tree["b"] not in all_ids
+
+
+class TestBuiltinRoot:
+    def test_finds_flagged_root_and_survives_rename(self):
+        Group.objects.filter(is_builtin=True).delete()
+        Group.objects.filter(name="Default", parent_id=0).delete()
+        root = Group.objects.create(name="Default", parent_id=0, is_builtin=True)
+        found = GroupUtils.builtin_root()
+        assert found is not None
+        assert found.id == root.id
+        root.name = "RenamedCorp"
+        root.save(update_fields=["name"])
+        found = GroupUtils.builtin_root()
+        assert found is not None
+        assert found.id == root.id
+        assert found.name == "RenamedCorp"
+
+    def test_same_name_child_is_not_builtin_root(self):
+        Group.objects.filter(is_builtin=True).delete()
+        Group.objects.filter(name="Default", parent_id=0).delete()
+        parent = Group.objects.create(name="Biz", parent_id=0)
+        Group.objects.create(name="Default", parent_id=parent.id, is_builtin=False)
+        assert GroupUtils.builtin_root() is None
+
+    def test_returns_none_without_flag(self):
+        Group.objects.filter(is_builtin=True).delete()
+        Group.objects.filter(name="Default", parent_id=0).delete()
+        Group.objects.create(name="Default", parent_id=0, is_builtin=False)
+        assert GroupUtils.builtin_root() is None
 
 
 class TestBuildGroupPaths:

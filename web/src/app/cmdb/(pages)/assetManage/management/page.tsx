@@ -113,7 +113,7 @@ const AssetManage = () => {
   const [selectedClassificationId, setSelectedClassificationId] = useState<string>('');
   const originalLayoutRef = useRef<DraftClassification[]>([]);
 
-  const showConfigButtons = isSuperUser && selectedGroup?.name === 'Default';
+  const showConfigButtons = isSuperUser && selectedGroup?.is_builtin;
 
   useEffect(() => {
     tokenRef.current = token;

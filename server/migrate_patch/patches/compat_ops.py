@@ -47,6 +47,12 @@ def install_idempotent_schema_editor():
     from django.db import connection
     from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
+    # 冻结的 batch_init.exists()+select_for_update 会编译 LIMIT 1 FOR UPDATE。
+    # ready() 在 handle() 之前执行，但常驻进程不能装这个编译器补丁。
+    from migrate_patch.patches.lock_compat import install_select_for_update_limit_compat_for_schema_init
+
+    install_select_for_update_limit_compat_for_schema_init()
+
     # 达梦不能回滚 DDL。保持 False 时 Django 会把 RunPython 包进事务并拒绝其中的 DDL，
     # cmdb.0061 在 RunPython 里建备份表会直接失败。
     type(connection.features).can_rollback_ddl = True

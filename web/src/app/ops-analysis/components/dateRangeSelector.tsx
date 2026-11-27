@@ -105,9 +105,13 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
     selectRef.current?.querySelector<HTMLElement>('.ant-select-selector')?.click();
   };
 
+  const customVisible = customOpen || effectiveValue?.rangeType === 'custom';
+  const fillsParent = Boolean(className?.split(/\s+/).includes('w-full'));
+  const widthClass = fillsParent ? 'w-full' : 'w-[350px]';
+
   return (
-    <div className={`relative w-full ${className ?? ''}`}>
-      <div ref={selectRef} className="w-full">
+    <div className={`relative min-w-0 w-full ${className ?? ''}`}>
+      <div ref={selectRef} className="relative w-full">
         <Select<DateRangeType>
           value={customOpen ? 'custom' : effectiveValue?.rangeType}
           options={options}
@@ -119,13 +123,20 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           disabled={disabled}
           status={effectiveStatus}
           placeholder={t('dateRange.placeholder')}
-            className={`w-[350px] ${className ?? ''}`}
+          className={`${widthClass} [&_.ant-select-arrow]:invisible`}
+          style={{
+            opacity: customVisible ? 0 : 1,
+            pointerEvents: customVisible ? 'none' : 'auto',
+          }}
         />
         <RangePicker
           style={{
             position: 'absolute',
             inset: 0,
-            zIndex: customOpen || effectiveValue?.rangeType === 'custom' ? 1 : -1,
+            width: '100%',
+            zIndex: customVisible ? 1 : -1,
+            opacity: customVisible ? 1 : 0,
+            pointerEvents: customVisible ? 'auto' : 'none',
           }}
           value={customOpen ? customDraft : toDateRangePickerValue(effectiveValue)}
           onCalendarChange={(dates) => setCustomDraft(dates as [Dayjs | null, Dayjs | null] | null)}
@@ -138,17 +149,21 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           }}
           open={customOpen}
           format="YYYY-MM-DD"
-          suffixIcon={null}
+          suffixIcon={customVisible ? <CalendarOutlined className="text-(--color-text-4)" /> : null}
           allowClear={allowClear}
           disabled={disabled}
           status={effectiveStatus}
           placeholder={[t('dateRange.startDate'), t('dateRange.endDate')]}
-          className={`w-[350px] ${className ?? ''}`}
+          className={widthClass}
         />
-        <CalendarOutlined
-          className="absolute right-8 top-1/2 z-2 -translate-y-1/2 cursor-pointer text-(--color-text-4)"
-          onClick={handleIconClick}
-        />
+        {!customVisible && (
+          <CalendarOutlined
+            className={`absolute top-1/2 z-2 -translate-y-1/2 cursor-pointer text-(--color-text-4) ${
+              allowClear && effectiveValue ? 'right-8' : 'right-2.5'
+            }`}
+            onClick={handleIconClick}
+          />
+        )}
       </div>
     </div>
   );

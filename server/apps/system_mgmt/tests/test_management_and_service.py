@@ -391,41 +391,38 @@ def test_create_user_migration_targets_default_domain_only():
 # clean_group_data 命令
 # ---------------------------------------------------------------------------
 def test_clean_group_creates_default_when_missing():
-    # 确保 id=1 不存在
-    Group.objects.filter(id=1).delete()
-    User.objects.create(username="g1u", password="x", display_name="u", email="u@x.com", group_list=[])
+    Group.objects.filter(is_builtin=True).delete()
+    Group.objects.filter(name="Default", parent_id=0).delete()
+    User.objects.create(username="g1u", password="x", display_name="u", email="u@x.com", group_list=[99])
     out = StringIO()
-    with patch("apps.system_mgmt.management.commands.clean_group_data.clear_users_permission_cache"):
-        call_command("clean_group_data", stdout=out)
-    g = Group.objects.get(id=1)
-    assert g.name == "Default" and g.parent_id == 0
-    # 所有用户 group_list 被设为 [1]
-    assert User.objects.get(username="g1u").group_list == [1]
+    call_command("clean_group_data", stdout=out)
+    roots = list(Group.objects.filter(parent_id=0, is_builtin=True, is_delete=False))
+    assert len(roots) == 1
+    assert roots[0].name == "Default"
+    assert User.objects.get(username="g1u").group_list == [99]
 
 
 def test_clean_group_noop_when_correct():
+    Group.objects.filter(is_builtin=True).delete()
     Group.objects.filter(id=1).delete()
-    Group.objects.create(id=1, name="Default", parent_id=0)
+    Group.objects.create(id=1, name="NotDefault", parent_id=0, is_builtin=False)
+    Group.objects.create(id=50, name="RenamedRoot", parent_id=0, is_builtin=True)
+    u = User.objects.create(username="keep-list", password="x", display_name="u", email="k@x.com", group_list=[1])
     out = StringIO()
     call_command("clean_group_data", stdout=out)
     assert "默认组数据正确" in out.getvalue()
-
-
-def test_clean_group_migrates_wrong_id1():
-    Group.objects.filter(id=1).delete()
-    # id=1 是个错误的组（非 Default）
-    Group.objects.create(id=1, name="WrongOne", parent_id=0, description="d")
-    u = User.objects.create(username="mig", password="x", display_name="u", email="m@x.com", group_list=[1])
-    out = StringIO()
-    call_command("clean_group_data", stdout=out)
-    # id=1 现在应是 Default
-    assert Group.objects.get(id=1).name == "Default"
-    # 旧组被迁移到新 id，仍存在
-    assert Group.objects.filter(name="WrongOne").exists()
-    new_id = Group.objects.get(name="WrongOne").id
+    assert Group.objects.get(id=1).name == "NotDefault"
+    assert Group.objects.get(id=50).name == "RenamedRoot"
     u.refresh_from_db()
-    assert 1 not in u.group_list
-    assert new_id in u.group_list
+    assert u.group_list == [1]
+
+
+def test_clean_group_idempotent_does_not_create_second():
+    Group.objects.filter(is_builtin=True).delete()
+    Group.objects.filter(name="Default", parent_id=0).delete()
+    call_command("clean_group_data")
+    call_command("clean_group_data")
+    assert Group.objects.filter(parent_id=0, is_builtin=True, is_delete=False).count() == 1
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ body / DB 副作用 / 传给探测函数的实例契约。跳过 execute / execu
 """
 
 import json
+import logging
 
 import pydantic.root_model  # noqa  预热避免 cov 竞态
 import pytest
@@ -182,20 +183,43 @@ class TestLLMViewSet:
         assert skill.usage_team == [1, 2, 3]
         assert skill.tools == bindings
 
-    def test_unrelated_save_preserves_concurrently_bound_tools_and_explicit_empty_removes_them(self, mocker):
+    def test_unrelated_save_preserves_concurrently_bound_tools_and_explicit_empty_removes_them(self, mocker, caplog):
         mocker.patch(f"{LLM_MOD}.log_operation")
         skill = LLMSkill.objects.create(name="assistant", team=[1])
         # Another editor commits tools after this request has read the instance.
-        tools = [{"name": "alerts", "kwargs": []}]
+        tools = [
+            {
+                "id": 7,
+                "name": "alerts\nSENTINEL-NAME",
+                "kwargs": [{"key": "password", "type": "password", "value": "SENTINEL-PASSWORD-9f3a"}],
+            }
+        ]
         LLMSkill.objects.filter(pk=skill.pk).update(tools=tools)
         mocker.patch.object(LLMViewSet, "get_object", return_value=skill)
+        user = _su()
         data = {"name": skill.name, "team": [1], "skill_prompt": "changed"}
-        assert _body(_dispatch(LLMViewSet, "update", "put", data=data, pk=skill.id))["result"]
+        caplog.set_level(logging.INFO, logger="opspilot")
+        assert _body(_dispatch(LLMViewSet, "update", "put", data=data, pk=skill.id, user=user))["result"]
         skill.refresh_from_db()
         assert skill.tools == tools
-        assert _body(_dispatch(LLMViewSet, "update", "put", data={**data, "tools": []}, pk=skill.id))["result"]
+        assert not [rec for rec in caplog.records if rec.msg.startswith("event=skill_tools_replaced")]
+        assert _body(_dispatch(LLMViewSet, "update", "put", data={**data, "tools": []}, pk=skill.id, user=user))["result"]
         skill.refresh_from_db()
         assert skill.tools == []
+        records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg.startswith("event=skill_tools_replaced")]
+        assert len(records) == 1
+        record = records[0]
+        assert record.msg == "event=skill_tools_replaced skill_id=%s actor=%s before_count=%s after_count=%s before=%s after=%s"
+        assert record.args == (skill.id, user.username, 1, 0, "7:alerts SENTINEL-NAME", "-")
+        rendered = record.getMessage()
+        assert rendered == (
+            f"event=skill_tools_replaced skill_id={skill.id} actor={user.username} "
+            "before_count=1 after_count=0 before=7:alerts SENTINEL-NAME after=-"
+        )
+        formatted = logging.Formatter("%(levelname)s %(message)s").format(record)
+        assert "SENTINEL-PASSWORD-9f3a" not in rendered
+        assert "SENTINEL-PASSWORD-9f3a" not in formatted
+        assert "\n" not in rendered
 
     def test_update_重名返回false(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")

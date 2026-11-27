@@ -11,7 +11,7 @@ from apps.operation_analysis.services.excel_materialize.materializer import load
 from apps.operation_analysis.services.user_messages import oa_message
 
 
-def load_excel_runtime(datasource, *, limit: int = 1000) -> dict[str, Any]:
+def load_excel_runtime(datasource, *, limit: int = 1000, param_specs=None, resolved_params=None) -> dict[str, Any]:
     """返回与 preview/get_source_data 兼容的 items/count/fields/warnings。"""
     safe_limit = min(max(int(limit or 100), 1), 1000)
     status = resolve_excel_runtime_status(datasource)
@@ -69,6 +69,11 @@ def load_excel_runtime(datasource, *, limit: int = 1000) -> dict[str, Any]:
             )
     else:
         raise ConnectorError(oa_message("messages.excel_not_ready", "Excel 暂无可运行结果"), code="excel_not_ready", status_code=400)
+
+    if param_specs and resolved_params:
+        from apps.operation_analysis.services.datasource_params.binding import filter_excel_rows
+
+        rows = filter_excel_rows(rows, param_specs, resolved_params)
 
     if not isinstance(fields, list) or not fields:
         fields = infer_fields(rows[:safe_limit])

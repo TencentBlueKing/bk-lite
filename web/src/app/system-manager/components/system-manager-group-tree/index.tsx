@@ -12,6 +12,7 @@ import usePermissions from '@/hooks/usePermissions';
 interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
   isVirtual?: boolean;
+  isBuiltin?: boolean;
   parentIsVirtual?: boolean;
   syncSource?: number | null;
   children?: ExtendedTreeDataNode[];
@@ -76,9 +77,6 @@ const GroupTree: React.FC<GroupTreeProps> = ({
       return null;
     }
 
-    const nodeName = node ? (typeof node.title === 'string' ? node.title : String(node.title)) : '';
-    const isDefaultGroup = nodeName === 'Default';
-
     const isVirtual = node?.isVirtual === true;
     const isSyncedGroup = node?.syncSource != null;
     const hasVirtualParent = isNodeChildOfVirtual(treeData, groupKey);
@@ -105,7 +103,7 @@ const GroupTree: React.FC<GroupTreeProps> = ({
       },
       ...(node?.syncSource == null ? [{
         key: 'delete',
-        disabled: isDefaultGroup || isTopLevelVirtualGroup,
+        disabled: node?.isBuiltin === true || isTopLevelVirtualGroup,
         label: (
           <PermissionWrapper requiredPermissions={['Delete Group']}>
             {t('system.group.archive')}

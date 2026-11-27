@@ -109,7 +109,7 @@ export const RestApiConnectFields: React.FC<RestApiConnectFieldsProps> = ({
         )}
         <Form.Item
           name={["query_config", "paramsText"]}
-          label={t("dataSource.queryParams")}
+          label={t("dataSource.urlParams")}
           className="!mb-2"
         >
           <Input.TextArea rows={3} placeholder='{"page":1}' disabled={definitionReadOnly} />

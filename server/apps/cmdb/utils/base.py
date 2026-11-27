@@ -2,9 +2,9 @@
 # @File: base.py
 # @Time: 2025/7/21 14:00
 # @Author: windyzhao
-from apps.core.logger import cmdb_logger as logger
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_TASK
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.team_utils import get_current_team
 
 
@@ -29,7 +29,7 @@ def format_group_params(group_id):
     :param group_id: 组织ID
     :return: 格式化后的参数
     """
-    return [{'id': int(group_id)}]
+    return [{"id": int(group_id)}]
 
 
 def format_groups_params(teams: list):
@@ -38,7 +38,7 @@ def format_groups_params(teams: list):
     :param teams: 组织ID列表
     :return: 格式化后的参数
     """
-    return [{'id': team} for team in set(teams)]
+    return [{"id": team} for team in set(teams)]
 
 
 def get_default_group_id():
@@ -47,7 +47,11 @@ def get_default_group_id():
     :return: 默认组织ID
     """
     from apps.system_mgmt.models.user import Group
-    default_group = Group.objects.get(name="Default", parent_id=0)
+    from apps.system_mgmt.utils.group_utils import GroupUtils
+
+    default_group = GroupUtils.builtin_root()
+    if default_group is None:
+        raise Group.DoesNotExist("builtin root group does not exist")
     return [default_group.id]
 
 
@@ -103,15 +107,15 @@ def get_organization_and_children_ids(tree_data: list, target_id: int) -> list:
     def find_and_collect_ids(nodes: list, target_id: int) -> list:
         """递归查找目标节点并收集其所有子节点ID"""
         for node in nodes:
-            if node.get('id') == target_id:
+            if node.get("id") == target_id:
                 # 找到目标节点，收集其所有子节点ID
                 result = [target_id]
 
                 def collect_children_ids(current_node: dict) -> None:
                     """递归收集所有子节点ID"""
-                    sub_groups = current_node.get('subGroups', [])
+                    sub_groups = current_node.get("subGroups", [])
                     for child in sub_groups:
-                        child_id = child.get('id')
+                        child_id = child.get("id")
                         if child_id:
                             result.append(child_id)
                             collect_children_ids(child)
@@ -120,7 +124,7 @@ def get_organization_and_children_ids(tree_data: list, target_id: int) -> list:
                 return result
 
             # 在子组织中继续查找
-            sub_groups = node.get('subGroups', [])
+            sub_groups = node.get("subGroups", [])
             if sub_groups:
                 found = find_and_collect_ids(sub_groups, target_id)
                 if found:

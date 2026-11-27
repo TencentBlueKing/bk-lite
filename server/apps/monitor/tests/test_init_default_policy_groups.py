@@ -66,7 +66,11 @@ def _instance(monitor_object, name, organization):
 
 
 def _default_group():
-    return Group.objects.create(name="Default", parent_id=0)
+    group, _ = Group.objects.get_or_create(name="Default", parent_id=0, defaults={"is_builtin": True})
+    if not group.is_builtin:
+        group.is_builtin = True
+        group.save(update_fields=["is_builtin"])
+    return group
 
 
 def test_default_organization_gets_one_group_per_builtin_object():
@@ -143,7 +147,7 @@ def test_empty_default_pointer_is_not_rebuilt():
 
 def test_guest_and_other_organizations_are_not_initialized():
     default = _default_group()
-    guest = Group.objects.create(name="Guest", parent_id=0)
+    guest, _ = Group.objects.get_or_create(name="Guest", parent_id=0)
     business = Group.objects.create(name="业务", parent_id=0)
     host = _object("SharedHost")
     plugin = _plugin(host, "SharedPlugin")
@@ -208,7 +212,9 @@ def test_one_object_failure_continues_and_hides_sentinel(monkeypatch, caplog):
 
 
 def test_missing_default_organization_warns_and_creates_nothing(caplog):
-    Group.objects.create(name="Guest", parent_id=0)
+    Group.objects.filter(is_builtin=True).delete()
+    Group.objects.filter(name="Default", parent_id=0).delete()
+    Group.objects.get_or_create(name="Guest", parent_id=0)
     host = _object("NoDefaultHost")
     plugin = _plugin(host, "NoDefaultPlugin")
     _template(host, plugin, "CPU")

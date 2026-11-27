@@ -16,7 +16,7 @@ Status: implemented
 
 ## Implementation Decisions
 
-- 更新或删除已有采集器不触发补齐，避免升级时重写存量预置配置。
-- 不在 `batch_init` 里扫描节点。
+- 更新或删除已有采集器不触发补齐。`default_config` 变化时由 `import_collector` 同步改写已有预置正文，不经补齐记录，见 `specs/changes/builtin-collector-preset-refresh/spec.md`。
+- 不在 `batch_init` 里扫描节点做补缺失。
 - 不调用 `Sidecar.create_default_config`。那条路径会检查并更新节点上全部默认采集器的预置配置，仍只用于首次纳管和 `repair_node_config`。
 - 手工修复命令保持原样，可作为自动重试停止后的入口。

@@ -11,6 +11,7 @@ import {
 import { readScalarCalc } from '@/app/ops-analysis/utils/scalarReduction';
 import { coerceTopNNumericValue, unwrapTopNData } from '@/app/ops-analysis/utils/topNData';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 
 type RequestParams = Record<string, any>;
@@ -47,8 +48,44 @@ const mergeWarnings = (...groups: Array<string[] | undefined>): string[] | undef
   return merged.length > 0 ? merged : undefined;
 };
 
-const isTimeRangeTuple = (value: unknown): value is [string, string] =>
-  Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+const referenceNowMs = (context?: DateRangeResolutionContext): number => {
+  const parsed = dayjs(context?.referenceNow ?? Date.now());
+  return parsed.isValid() ? parsed.valueOf() : Date.now();
+};
+
+const relativeMinutes = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const selectValue = (value as { selectValue?: unknown }).selectValue;
+  if (typeof selectValue === 'number' && Number.isFinite(selectValue) && selectValue > 0) {
+    return selectValue;
+  }
+  return null;
+};
+
+const absoluteTimeEndpoints = (value: unknown): [string, string] | null => {
+  if (relativeMinutes(value) !== null) {
+    return null;
+  }
+  const pair = Array.isArray(value) && value.length === 2
+    ? value
+    : value && typeof value === 'object'
+      ? [(value as { start?: unknown }).start, (value as { end?: unknown }).end]
+      : null;
+  if (!pair || pair[0] == null || pair[1] == null || pair[0] === '' || pair[1] === '') {
+    return null;
+  }
+  const startAt = dayjs(formatOpsRequestTime(pair[0]));
+  const endAt = dayjs(formatOpsRequestTime(pair[1]));
+  if (!startAt.isValid() || !endAt.isValid() || endAt.valueOf() <= startAt.valueOf()) {
+    return null;
+  }
+  return [startAt.toISOString(), endAt.toISOString()];
+};
 
 const deriveBaselineTimeRange = (timeRange: [string, string]): [string, string] | null => {
   const [start, end] = timeRange;
@@ -123,7 +160,10 @@ export const buildCompareRequestParams = ({
   chartType,
   dataVariableColumns,
   t,
-}: BuildRequestParamsInput): { currentParams: RequestParams | null; baselineParams: RequestParams | null } => {
+}: BuildRequestParamsInput): {
+  currentParams: RequestParams | null;
+  baselineParams: RequestParams | null;
+} => {
   const currentParams = buildWidgetRequestParams({
     config,
     dataSource,
@@ -150,9 +190,23 @@ export const buildCompareRequestParams = ({
   }
 
   const rawRange = currentParams[comparableRangeParam.name];
-  const baselineRange = comparableRangeParam.type === 'dateRange'
-    ? isDateRangeTuple(rawRange) ? deriveBaselineDateRange(rawRange) : null
-    : isTimeRangeTuple(rawRange) ? deriveBaselineTimeRange(rawRange) : null;
+  if (comparableRangeParam.type === 'timeRange') {
+    const minutes = relativeMinutes(rawRange);
+    const nowMs = referenceNowMs(resolutionContext);
+    const currentWindow = minutes === null
+      ? absoluteTimeEndpoints(rawRange)
+      : absoluteTimeEndpoints([nowMs - minutes * 60_000, nowMs]);
+    const baselineWindow = currentWindow ? deriveBaselineTimeRange(currentWindow) : null;
+    if (!currentWindow || !baselineWindow) {
+      return { currentParams, baselineParams: null };
+    }
+    return {
+      currentParams: { ...currentParams, [comparableRangeParam.name]: currentWindow },
+      baselineParams: { ...currentParams, [comparableRangeParam.name]: baselineWindow },
+    };
+  }
+
+  const baselineRange = isDateRangeTuple(rawRange) ? deriveBaselineDateRange(rawRange) : null;
   if (!baselineRange) {
     return { currentParams, baselineParams: null };
   }

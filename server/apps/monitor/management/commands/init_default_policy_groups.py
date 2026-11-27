@@ -11,7 +11,7 @@ class Command(BaseCommand):
     help = "为 Default 组织按监控对象生成默认策略组"
 
     def handle(self, *args, **options):
-        default_group = GroupUtils.active_queryset(name="Default", parent_id=0).order_by("id").first()
+        default_group = GroupUtils.builtin_root()
         if default_group is None:
             logger.warning("event=policy_group_default_init_skipped reason=default_organization_missing failed_stage=resolve_organization")
             self.stdout.write("默认策略组初始化跳过：Default 组织不存在")

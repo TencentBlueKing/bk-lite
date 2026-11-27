@@ -11,7 +11,6 @@ from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 from apps.node_mgmt.serializers.sidecar_env import EnvVariableCreateSerializer, SidecarEnvSerializer
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 
-
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
@@ -214,9 +213,7 @@ def test_installer_password_migration_resumes_across_failed_batches(monkeypatch)
     assert AESCryptor().decode(env.value) == "legacy-plaintext"
     assert second_env.type == EnvVariableConstants.TYPE_TEXT
     assert second_env.value == "second-legacy-plaintext"
-    assert ("node_mgmt", "0044_encrypt_installer_passwords") not in MigrationExecutor(
-        connection
-    ).loader.applied_migrations
+    assert ("node_mgmt", "0044_encrypt_installer_passwords") not in MigrationExecutor(connection).loader.applied_migrations
 
     monkeypatch.setattr(migration, "AESCryptor", real_cryptor)
     MigrationExecutor(connection).migrate(new_target)
@@ -226,3 +223,29 @@ def test_installer_password_migration_resumes_across_failed_batches(monkeypatch)
     assert second_env.type == EnvVariableConstants.TYPE_SECRET
     assert AESCryptor().decode(second_env.value) == "second-legacy-plaintext"
     assert InstallerSessionService._get_cloud_region_env(first_region.id)[env.key] == "legacy-plaintext"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_installer_password_migration_when_select_for_update_limit_unsupported(monkeypatch):
+    """Dameng compile path: select_for_update()[:N] raises NotSupportedError unless we page by pk."""
+    monkeypatch.setattr(connection.features, "supports_select_for_update_with_limit", False)
+    old_target = [("node_mgmt", "0043_alter_controllertasknode_password")]
+    new_target = [("node_mgmt", "0044_encrypt_installer_passwords")]
+    executor = MigrationExecutor(connection)
+    executor.migrate(old_target)
+    old_apps = executor.loader.project_state(old_target).apps
+    old_region_model = old_apps.get_model("node_mgmt", "CloudRegion")
+    old_env_model = old_apps.get_model("node_mgmt", "SidecarEnv")
+    region = old_region_model.objects.create(name="installer-credentials-migration-limit")
+    env = old_env_model.objects.create(
+        key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
+        value="legacy-plaintext",
+        type=EnvVariableConstants.TYPE_TEXT,
+        cloud_region=region,
+    )
+
+    MigrationExecutor(connection).migrate(new_target)
+
+    env.refresh_from_db()
+    assert env.type == EnvVariableConstants.TYPE_SECRET
+    assert AESCryptor().decode(env.value) == "legacy-plaintext"
