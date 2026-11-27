@@ -10,6 +10,7 @@ import { NginxHint } from './nginx-hint';
 import { filterPlotted } from './selection';
 import type { FilterTableRow, NginxDashboardModel, ZoneTableRow } from './model';
 import { NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from './query-phase';
+import { NGINX_LINE } from './series-color';
 import { ProMetricTable, type ProMetricColumn, type ProMetricRow } from '../../../shared/widgets/pro-metric-table';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -270,7 +271,7 @@ export default function SitesPane({
               items={model.requestTimePoints.length ? [{
                 id: 'star',
                 label: '平均处理时间',
-                color: '#2f6bff',
+                color: NGINX_LINE.time,
                 points: model.requestTimePoints,
                 reading: ''
               }] : []}

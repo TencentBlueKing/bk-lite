@@ -10,6 +10,10 @@ vi.mock('../layered/nginx-plot', () => ({
   NginxPlot: () => <div data-nginx-plot="" />
 }));
 
+vi.mock('../../../shared/widgets/useECharts', () => ({
+  useECharts: () => ({ containerRef: () => undefined, getInstance: () => null })
+}));
+
 vi.mock('../layered/nginx-hint', () => ({
   NginxHint: () => null
 }));

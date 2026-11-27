@@ -7,11 +7,12 @@ import { NGINX_SPAN, NginxChartCard, NginxRetryBanner } from './nginx-card';
 import { NginxCompositionCard, type NginxPiePart } from './nginx-composition';
 import type { NginxDashboardModel } from './model';
 import { NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from './query-phase';
+import { NGINX_LINE } from './series-color';
 
 const SHARE_COLORS = [
-  { id: 'reading', label: '读取', color: '#27c274' },
-  { id: 'writing', label: '写入', color: '#ff8a1f' },
-  { id: 'waiting', label: '等待', color: '#8a5cff' }
+  { id: 'reading', label: '读取', color: NGINX_LINE.reading },
+  { id: 'writing', label: '写入', color: NGINX_LINE.writing },
+  { id: 'waiting', label: '等待', color: NGINX_LINE.waiting }
 ] as const;
 
 export default function ConnectionsPane({
@@ -64,8 +65,8 @@ export default function ConnectionsPane({
               hint={NGINX_HINTS.ratioTrend}
               unit="%"
               items={[
-                { id: 'busy', label: '繁忙占比', color: '#ff8a1f', points: model.busyPoints, reading: '' },
-                { id: 'waiting', label: '等待占比', color: '#8a5cff', points: model.waitingPoints, reading: '' }
+                { id: 'busy', label: '繁忙占比', color: NGINX_LINE.busy, points: model.busyPoints, reading: '' },
+                { id: 'waiting', label: '等待占比', color: NGINX_LINE.waiting, points: model.waitingPoints, reading: '' }
               ]}
               floor={1}
               percent
@@ -100,7 +101,7 @@ export default function ConnectionsPane({
               title="丢弃连接速率"
               hint={NGINX_HINTS.dropped}
               unit="连接/秒"
-              items={[{ id: 'dropped', label: '丢弃连接速率', color: '#ff7875', points: model.droppedPoints, reading: '' }]}
+              items={[{ id: 'dropped', label: '丢弃连接速率', color: NGINX_LINE.dropped, points: model.droppedPoints, reading: '' }]}
               floor={1}
               formatReading={(value) => formatPerSecond(value, '连接')}
               phase={dropPhase}

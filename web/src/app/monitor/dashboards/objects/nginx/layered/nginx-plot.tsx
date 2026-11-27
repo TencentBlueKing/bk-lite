@@ -10,7 +10,7 @@ import { flatZeroStrokeSeries } from '../../host/layered/flat-zero-stroke';
 import { useProTimeWindow } from '../../host/layered/pro-time-window';
 import { useThemeColors } from '../../host/layered/theme-color';
 import { formatIntegerTick, integerCountAxis } from '../../../shared/widgets/integer-count-axis';
-import { nonNegativeBounds } from './format';
+import { formatPlainTick, readableAxisBounds } from '../../host/layered/thin-time-series';
 import { chartRows, type NginxSeriesItem } from './model';
 
 echarts.use([BarChart]);
@@ -80,9 +80,11 @@ export function NginxPlot({
       ? plotted.map((point) => keys.reduce((sum, key) => sum + (readValue(point, key) ?? 0), 0))
       : samples;
     const countBounds = countAxis ? integerCountAxis(stacked.length ? stacked : [0]) : null;
+    const seeded = [...(samples.length ? samples : [0]), ...(floor > 0 ? [floor] : [])];
+    const sharedBounds = readableAxisBounds(seeded, 'none', true);
     const bounds = percent
-      ? { min: 0, max: 100 }
-      : countBounds ?? nonNegativeBounds(samples, floor);
+      ? { min: 0, max: 100, interval: 50 }
+      : countBounds ?? sharedBounds ?? { min: 0, max: 1, interval: 1 };
     const mark = plotted.length <= 30;
     return {
       animation: false,
@@ -106,11 +108,14 @@ export function NginxPlot({
         type: 'value' as const,
         min: bounds.min,
         max: bounds.max,
-        ...(countBounds ? { interval: countBounds.interval, minInterval: 1 } : {}),
+        interval: bounds.interval,
+        ...(countBounds ? { minInterval: 1 } : {}),
         axisLabel: {
           color: mutedColor,
           fontSize: 10,
-          ...(countBounds ? { formatter: (value: number) => formatIntegerTick(value) } : {})
+          formatter: (value: number) => (
+            countBounds ? formatIntegerTick(value) : formatPlainTick(value)
+          )
         },
         axisTick: { show: false },
         axisLine: { show: false },
@@ -170,7 +175,7 @@ export function NginxPlot({
           type: 'line' as const,
           name,
           step: kind === 'step' ? 'end' as const : undefined,
-          smooth: 0,
+          smooth: kind === 'step' ? 0 : 0.15,
           connectNulls: false,
           showSymbol: mark,
           symbol: mark ? 'circle' as const : 'none' as const,

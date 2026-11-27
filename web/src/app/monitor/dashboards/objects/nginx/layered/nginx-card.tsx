@@ -2,15 +2,21 @@
 
 import { useState, type ReactNode } from 'react';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
+import type { MetricUnit } from '../../../shared/types';
 import { formatFocusUnitText } from '../../host/layered/focus-axis';
+import { ProFocusCard, proChromeClass } from '../../host/layered/focus-card';
+import FocusShortcutTitle from '../../host/layered/focus-shortcut-title';
+import host from '../../host/layered/layered.module.scss';
+import classic from '../../host/index.module.scss';
 import ProDashLoading from '../../host/layered/pro-dash-loading';
-import { type NginxSeriesItem } from './model';
+import ThinTimeSeries from '../../host/layered/thin-time-series';
+import { chartRows, type NginxSeriesItem } from './model';
 import { NginxHint } from './nginx-hint';
 import type { NginxHintCopy } from './hints';
 import { NginxPlot } from './nginx-plot';
 import type { NginxQueryPhase } from './query-phase';
 
-const CARD = 'flex h-full w-full min-w-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]';
+const CARD = `${classic.panel} flex h-full w-full min-w-0 flex-col overflow-hidden`;
 
 export const NGINX_SPAN = {
   quarter: 'flex w-full min-w-0 min-[1100px]:col-span-3',
@@ -99,8 +105,7 @@ export function NginxCardTitle({
   );
 }
 
-const TILE_FRAME = `${CARD} !h-[104px] h-full w-full px-3 py-2.5`;
-const FOCUS_FRAME = `${CARD} !h-[168px] h-full w-full overflow-hidden px-3 py-3 text-left`;
+const TILE_FRAME = `${host.kpiCard} ${host.kpiCard72} h-[72px] h-full w-full`;
 const CARD_SHELL = 'flex h-full min-h-0 w-full min-w-0 flex-col';
 
 function TileHeading({
@@ -152,7 +157,7 @@ export function NginxTile({
   const quiet = phase !== 'ready' || figure === '暂无数据';
   const figureNode = (
     <div
-      className="text-[24px] font-semibold leading-[26px] tabular-nums text-[var(--color-text-1)]"
+      className={`${host.kpiValue} !mt-0`}
       data-nginx-figure=""
       style={tone ? { color: tone } : undefined}
     >
@@ -160,13 +165,12 @@ export function NginxTile({
     </div>
   );
   const body = !quiet ? (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex w-full flex-col">
       <TileHeading label={label} hint={hint} unit={unit} />
       <div className="mt-1 flex w-full items-baseline gap-2" data-nginx-figure-row="">
         {figureNode}
         {extra}
       </div>
-      {sub ? <div className="mt-1 w-full text-[12px] text-[var(--color-text-3)]">{sub}</div> : null}
     </div>
   ) : (
     <>
@@ -176,9 +180,9 @@ export function NginxTile({
           <CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} />
         </div>
       ) : (
-        <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
+        <div className="mt-1 flex w-full flex-col">
           <div className="text-[14px] text-[var(--color-text-3)]" data-nginx-figure="">{figure}</div>
-          {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]" data-nginx-sub="">{sub}</div> : null}
+          {sub ? <div className="text-[12px] text-[var(--color-text-3)]" data-nginx-sub="">{sub}</div> : null}
         </div>
       )}
     </>
@@ -186,13 +190,20 @@ export function NginxTile({
   const content = <div className={CARD_SHELL}>{body}</div>;
   if (onActivate && phase === 'ready') {
     return (
-      <button id={anchor} type="button" className={`${TILE_FRAME} cursor-pointer text-left`} onClick={onActivate} data-nginx-tile={label}>
+      <button
+        id={anchor}
+        type="button"
+        className={`${TILE_FRAME} cursor-pointer text-left`}
+        onClick={onActivate}
+        data-nginx-tile={label}
+        data-nginx-kpi-height="72"
+      >
         {content}
       </button>
     );
   }
   return (
-    <section id={anchor} className={TILE_FRAME} data-nginx-tile={label}>
+    <section id={anchor} className={TILE_FRAME} data-nginx-tile={label} data-nginx-kpi-height="72">
       {content}
     </section>
   );
@@ -237,74 +248,77 @@ export function NginxFocusTile({
   onRetry?: () => void;
   onOpen?: () => void;
 }) {
-  const title = (
-    <div className="flex w-full min-w-0 items-center" data-nginx-focus-title="">
-      <NginxCardTitle
-        label={label}
-        hint={hint}
-        unit={unit}
-        className="text-[14px] font-semibold text-[var(--color-text-1)]"
-      />
-    </div>
-  );
   const hasLine = series.some((item) => item.points.length > 0);
   const quietFigure = figure === '暂无数据' || figure === '--';
-  const spark = hasLine ? (
-    <div className="min-h-0 w-full flex-1" data-nginx-spark="">
-      <NginxPlot
-        items={series}
-        kind="line"
-        floor={1}
-        percent={false}
-        countAxis={countAxis}
-        formatReading={formatReading ?? ((value) => String(value))}
-        height={72}
+  const metricUnit: MetricUnit = countAxis ? 'counts' : 'cps';
+  const title = (
+    <div data-nginx-focus-title="">
+      <FocusShortcutTitle
+        label={label}
+        unit={unit}
+        hint={hint ? <NginxHint copy={hint} /> : undefined}
       />
     </div>
-  ) : (
-    <div className="min-h-0 w-full flex-1">
-      <CardStatus phase="empty" emptyText={emptyText} emptyDetail={emptyDetail} />
-    </div>
   );
-  const headline = (
+  const headline = phase === 'ready' ? (
     <>
       {quietFigure ? (
         <div className="text-[14px] text-[var(--color-text-3)]" data-nginx-figure="">{figure}</div>
       ) : (
-        <div className="flex w-full items-baseline gap-2" data-nginx-figure-row="">
-          <div className="text-[24px] font-semibold leading-[26px] tabular-nums text-[var(--color-text-1)]" data-nginx-figure="" style={tone ? { color: tone } : undefined}>{figure}</div>
+        <div
+          className={proChromeClass.shortcutValue}
+          data-nginx-figure=""
+          data-nginx-figure-row=""
+          style={tone ? { color: tone } : undefined}
+        >
+          {figure}
         </div>
       )}
-      {sub ? <div className="w-full text-[12px] text-[var(--color-text-3)]" data-nginx-sub="">{sub}</div> : null}
+      {sub ? <div className={proChromeClass.shortcutSub} data-nginx-sub="">{sub}</div> : null}
     </>
-  );
-  const inner = phase !== 'ready' ? (
-    <div className={`${CARD_SHELL} gap-1`}>
-      {title}
-      <div className="min-h-0 w-full flex-1"><CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} /></div>
+  ) : null;
+  const plot = phase !== 'ready' ? (
+    <div className={`${proChromeClass.focusChart} h-full min-h-0`} data-nginx-focus-plot="">
+      <CardStatus phase={phase} emptyText={emptyText} onRetry={onRetry} />
     </div>
-  ) : !hasLine && quietFigure ? (
-    <div className={`${CARD_SHELL} gap-1`}>
-      {title}
-      <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
-        <div className="text-[14px] text-[var(--color-text-3)]" data-nginx-figure="">{figure}</div>
-        {sub ? <div className="mt-1 text-[12px] text-[var(--color-text-3)]" data-nginx-sub="">{sub}</div> : null}
-      </div>
+  ) : hasLine ? (
+    <div className={`${proChromeClass.focusChart} h-full min-h-0`} data-nginx-focus-plot="" data-nginx-spark="">
+      <ThinTimeSeries
+        bare
+        numericAxis
+        padValueAxis
+        axisNumbersOnly
+        hideLegend
+        className="flex h-full min-h-0 w-full flex-col"
+        title=""
+        unit={metricUnit}
+        data={chartRows(series)}
+        legends={series.map((item) => ({ label: item.label, color: item.color }))}
+        formatReading={formatReading}
+      />
     </div>
   ) : (
-    <div className="flex h-full w-full flex-col gap-1">
-      {title}
-      {headline}
-      {spark}
+    <div className={`${proChromeClass.focusChart} h-full min-h-0`} data-nginx-focus-plot="">
+      <CardStatus phase="empty" emptyText={emptyText} emptyDetail={emptyDetail} />
     </div>
   );
-  if (!onOpen || phase !== 'ready') {
-    return <section className={FOCUS_FRAME} data-nginx-focus={label}>{inner}</section>;
-  }
   return (
-    <button type="button" className={`${FOCUS_FRAME} cursor-pointer`} onClick={onOpen} data-nginx-focus={label}>
-      {inner}
-    </button>
+    <ProFocusCard
+      className={`${host.focusCard168} h-[168px] h-full w-full`}
+      data-nginx-focus={label}
+      data-nginx-focus-layout="split"
+      data-nginx-focus-height="168"
+      data-nginx-width="1/3"
+      onClick={phase === 'ready' && onOpen ? onOpen : undefined}
+      role={phase === 'ready' && onOpen ? 'button' : undefined}
+      tabIndex={phase === 'ready' && onOpen ? 0 : undefined}
+    >
+      <div className={proChromeClass.shortcutCopy} data-nginx-focus-copy="">
+        {title}
+        {headline}
+      </div>
+      {plot}
+    </ProFocusCard>
   );
 }
 
@@ -321,7 +335,7 @@ function LegendRow({
   const visible = items.slice(0, 4);
   const rest = items.slice(4);
   return (
-    <div className="flex items-center justify-end gap-2 px-3 text-[12px]" data-nginx-legend="">
+    <div className="flex items-center justify-end gap-2 text-[12px]" data-nginx-legend="">
       {visible.map((item) => (
         <span key={item.id} className="inline-flex min-w-0 items-center gap-1 text-[var(--color-text-1)]">
           <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: item.color }} />
@@ -393,7 +407,7 @@ export function NginxChartCard({
   });
   return (
     <section id={anchor} className={CARD} style={{ height }} data-nginx-chart={title} data-nginx-count-axis={countAxis ? '' : undefined}>
-      <div className="flex items-center px-3 pt-3">
+      <div className="flex items-center">
         <NginxCardTitle
           label={title}
           hint={hint}
@@ -403,7 +417,23 @@ export function NginxChartCard({
       </div>
       <LegendRow items={legendItems} showReadings={showReadings} />
       <div className="min-h-0 flex-1">
-        {chartStatus === 'ready' ? (
+        {chartStatus === 'ready' && kind === 'line' ? (
+          <ThinTimeSeries
+            bare
+            hideLegend
+            axisNumbersOnly
+            pinAxisZero={!percent}
+            floorStrokeLiftPx={8}
+            valueBounds={percent ? { min: 0, max: 100 } : undefined}
+            unit={countAxis ? 'counts' : percent ? 'percent' : 'none'}
+            title=""
+            data={chartRows(items)}
+            legends={items.map((item) => ({ label: item.label, color: item.color }))}
+            formatReading={formatReading}
+            plotHeight={Math.max(120, height - 64)}
+            className="flex h-full min-h-0 w-full flex-col"
+          />
+        ) : chartStatus === 'ready' ? (
           <NginxPlot
             items={items}
             kind={kind}
@@ -450,13 +480,13 @@ export function NginxRankCard({
   const cap = rows.length <= 1 ? 0.6 : 1;
   return (
     <section id={anchor} className={`${CARD} !h-[280px]`} data-nginx-rank={title}>
-      <div className="flex items-center px-3 pt-3">
+      <div className="flex items-center">
         <NginxCardTitle label={title} hint={hint} className="text-[14px] font-semibold text-[var(--color-text-1)]" />
       </div>
       {phase !== 'ready' || !rows.length ? (
         <CardStatus phase={phase !== 'ready' ? phase : 'empty'} emptyText={emptyText} emptyDetail={phase === 'ready' ? emptyDetail : undefined} onRetry={onRetry} />
       ) : (
-        <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto px-3 py-3">
+        <ul className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto pt-3">
           {rows.map((row) => {
             const width = peak > 0 && row.value != null ? Math.max(4, (row.value / peak) * 100 * cap) : 0;
             const on = selected === row.id;

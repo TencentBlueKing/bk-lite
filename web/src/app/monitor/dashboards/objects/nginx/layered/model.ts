@@ -1,4 +1,5 @@
 import { CHART_COLORS } from '@/app/monitor/constants';
+import { NGINX_LINE } from './series-color';
 import type { ChartData } from '@/app/monitor/types';
 import {
   byteScale,
@@ -645,10 +646,10 @@ export const buildNginxDashboard = ({
   ));
 
   const connSeries: NginxSeriesItem[] = [
-    ['active', '活跃连接', '#2f6bff', activePoints, activeNow, '个'],
-    ['reading', '读取连接', '#27c274', readingPoints, readingNow, '个'],
-    ['writing', '写入连接', '#ff8a1f', writingPoints, writingNow, '个'],
-    ['waiting', '等待连接', '#8a5cff', waitingPoints, waitingNow, '个']
+    ['active', '活跃连接', NGINX_LINE.active, activePoints, activeNow, '个'],
+    ['reading', '读取连接', NGINX_LINE.reading, readingPoints, readingNow, '个'],
+    ['writing', '写入连接', NGINX_LINE.writing, writingPoints, writingNow, '个'],
+    ['waiting', '等待连接', NGINX_LINE.waiting, waitingPoints, waitingNow, '个']
   ].map(([id, label, color, points, value, unit]) => seriesItem(
     String(id),
     String(label),
@@ -1101,8 +1102,8 @@ export const buildNginxDashboard = ({
     return seriesItem(direction, label, color, found?.points ?? [], '');
   };
   const trafficSeries = [
-    directionSeries('in', '入站', '#2f6bff'),
-    directionSeries('out', '出站', '#27c274')
+    directionSeries('in', '入站', NGINX_LINE.inbound),
+    directionSeries('out', '出站', NGINX_LINE.outbound)
   ].filter((item) => item.points.length > 0);
   const mergePoints = (rows: readonly { points: readonly Point[] }[]) => {
     const bucket = new Map<number, number>();

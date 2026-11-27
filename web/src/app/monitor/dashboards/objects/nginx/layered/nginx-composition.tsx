@@ -1,5 +1,6 @@
 'use client';
 
+import classic from '../../host/index.module.scss';
 import { formatCount, formatDecimal } from './format';
 import type { NginxHintCopy } from './hints';
 import { NginxCardTitle } from './nginx-card';
@@ -64,7 +65,7 @@ export function NginxCompositionCard({
   return (
     <section
       id={anchor}
-      className="flex !h-[280px] h-full w-full min-w-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-3"
+      className={`${classic.panel} flex !h-[280px] h-full w-full min-w-0 flex-col`}
       data-nginx-pie={title}
       data-nginx-chart-kind="pie"
       data-nginx-pie-layout="stack"

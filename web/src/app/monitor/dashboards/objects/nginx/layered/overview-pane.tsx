@@ -1,13 +1,16 @@
 'use client';
 
 import EventsRail, { type HostAlertRailEvent } from '../../host/layered/events-rail';
+import { proChromeClass } from '../../host/layered/focus-card';
+import host from '../../host/layered/layered.module.scss';
 import { ProSection } from '../../host/layered/section-title';
 import { formatCount, formatPerSecond } from './format';
 import { NGINX_HINTS } from './hints';
-import { NGINX_SPAN, NginxChartCard, NginxFocusTile, NginxRetryBanner, NginxTile } from './nginx-card';
+import { NginxChartCard, NginxFocusTile, NginxRetryBanner, NginxTile } from './nginx-card';
 import { NginxHint } from './nginx-hint';
 import type { NginxDashboardModel, NginxSeriesItem, Point } from './model';
 import { NGINX_CARD_QUERIES, focusCardQueries, phaseOf, type NginxQueryPhase } from './query-phase';
+import { NGINX_LINE } from './series-color';
 
 export type NginxTabKey = 'overview' | 'connections' | 'sites' | 'upstream';
 
@@ -68,18 +71,18 @@ export default function OverviewPane({
   const thirdHint = board.focusThirdTab === 'connections' ? NGINX_HINTS.connStructure : NGINX_HINTS.siteUpstream;
   const thirdUnit = board.focusThirdTab === 'connections' ? '个' : '次';
   const requestSeries = model.requestPoints.length
-    ? [lineOf('requests', '请求速率', '#27c274', model.requestPoints)]
+    ? [lineOf('requests', '请求速率', NGINX_LINE.request, model.requestPoints)]
     : [];
   const dropSeries = model.droppedPoints.length
-    ? [lineOf('dropped', '丢弃连接速率', '#ff7875', model.droppedPoints)]
+    ? [lineOf('dropped', '丢弃连接速率', NGINX_LINE.dropped, model.droppedPoints)]
     : [];
   const readingPoints = model.connSeries.find((item) => item.id === 'reading')?.points ?? [];
   const writingPoints = model.connSeries.find((item) => item.id === 'writing')?.points ?? [];
   const waitingPoints = model.connSeries.find((item) => item.id === 'waiting')?.points ?? [];
   const busyPoints = sumPoints(readingPoints, writingPoints);
   const structureSeries = [
-    ...(busyPoints.length ? [lineOf('busy', '读写', '#ff8a1f', busyPoints)] : []),
-    ...(waitingPoints.length ? [lineOf('waiting', '等待', '#8a5cff', waitingPoints)] : [])
+    ...(busyPoints.length ? [lineOf('busy', '读写', NGINX_LINE.busy, busyPoints)] : []),
+    ...(waitingPoints.length ? [lineOf('waiting', '等待', NGINX_LINE.waiting, waitingPoints)] : [])
   ];
   const fiveSeries = board.statusSteps.find((item) => item.id === '5xx');
   const fiveScaffold = board.statusSteps.find((item) => item.points.length)?.points ?? model.requestPoints;
@@ -95,9 +98,7 @@ export default function OverviewPane({
     ? (value: number) => formatCount(value, '个')
     : countText;
   const requestFocusSub = board.requestFigure === '暂无数据' ? board.requestSub : board.focusRequestSub;
-  const dropFocusSub = board.droppedFigure === '暂无数据'
-    ? board.droppedCountSub
-    : board.handledFigure === '暂无数据' ? '完成率 暂无数据' : `完成率 ${board.handledFigure}`;
+  const dropFocusSub = board.droppedFigure === '暂无数据' ? board.droppedCountSub : '';
   const thirdSub = board.focusThirdFigure === '暂无数据' && !board.focusThirdSub
     ? board.activeSub
     : board.focusThirdSub;
@@ -119,8 +120,8 @@ export default function OverviewPane({
     <div className="flex flex-col gap-6" data-nginx-pane="overview">
       <NginxRetryBanner visible={failures >= 3} onRetry={onRetryFailed} />
       <ProSection id="nginx-health" title="健康概览">
-        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
+        <div className={host.kpiGrid5} data-nginx-health-row="5">
+          <div className="min-w-0" data-nginx-width="1/5">
             <NginxTile
               label="请求速率"
               hint={NGINX_HINTS.request}
@@ -132,7 +133,7 @@ export default function OverviewPane({
               onRetry={() => onRetry(NGINX_CARD_QUERIES.request)}
             />
           </div>
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
+          <div className="min-w-0" data-nginx-width="1/5">
             <NginxTile
               label="活跃连接"
               hint={NGINX_HINTS.active}
@@ -144,19 +145,7 @@ export default function OverviewPane({
               onRetry={() => onRetry(NGINX_CARD_QUERIES.active)}
             />
           </div>
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
-            <NginxTile
-              label="告警数量"
-              hint={NGINX_HINTS.alerts}
-              figure={alertFigure}
-              tone={alertCount != null && alertCount > 0 ? 'var(--color-fail)' : undefined}
-              phase={alertPhase}
-              emptyText={emptyText}
-              onRetry={onRetryAlerts}
-              onActivate={onOpenAlerts}
-            />
-          </div>
-          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+          <div className="min-w-0" data-nginx-width="1/5">
             <NginxTile
               label="等待连接"
               hint={NGINX_HINTS.waiting}
@@ -168,7 +157,7 @@ export default function OverviewPane({
               onRetry={() => onRetry(NGINX_CARD_QUERIES.active)}
             />
           </div>
-          <div className={NGINX_SPAN.half} data-nginx-width="1/2">
+          <div className="min-w-0" data-nginx-width="1/5">
             <NginxTile
               label="丢弃连接"
               hint={NGINX_HINTS.droppedCount}
@@ -179,6 +168,18 @@ export default function OverviewPane({
               phase={droppedPhase}
               emptyText={emptyText}
               onRetry={() => onRetry(NGINX_CARD_QUERIES.droppedCount)}
+            />
+          </div>
+          <div className="min-w-0" data-nginx-width="1/5">
+            <NginxTile
+              label="告警数量"
+              hint={NGINX_HINTS.alerts}
+              figure={alertFigure}
+              tone={alertCount != null && alertCount > 0 ? 'var(--color-fail)' : undefined}
+              phase={alertPhase}
+              emptyText={emptyText}
+              onRetry={onRetryAlerts}
+              onActivate={onOpenAlerts}
             />
           </div>
         </div>
@@ -201,9 +202,8 @@ export default function OverviewPane({
         </div>
       </ProSection>
       <ProSection id="nginx-focus" title="重点关注">
-        <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-12">
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
-            <NginxFocusTile
+        <div className={`${proChromeClass.shortcutGrid} ${host.shortcutGrid3}`} data-nginx-focus-row="">
+          <NginxFocusTile
               label="请求是否骤变"
               hint={NGINX_HINTS.requestJump}
               unit="次/秒"
@@ -217,9 +217,7 @@ export default function OverviewPane({
               onRetry={() => onRetry(NGINX_CARD_QUERIES.request)}
               onOpen={() => onOpen('overview', 'nginx-request-trend')}
             />
-          </div>
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
-            <NginxFocusTile
+          <NginxFocusTile
               label="是否在丢连接"
               hint={NGINX_HINTS.connectionLoss}
               unit="连接/秒"
@@ -234,9 +232,7 @@ export default function OverviewPane({
               onRetry={() => onRetry(NGINX_CARD_QUERIES.accept)}
               onOpen={() => onOpen('connections', 'nginx-dropped')}
             />
-          </div>
-          <div className={NGINX_SPAN.third} data-nginx-width="1/3">
-            <NginxFocusTile
+          <NginxFocusTile
               label={board.focusThirdTitle}
               hint={thirdHint}
               unit={thirdUnit}
@@ -252,7 +248,6 @@ export default function OverviewPane({
               onRetry={() => onRetry(thirdKeys)}
               onOpen={() => onOpen(board.focusThirdTab, board.focusThirdAnchor)}
             />
-          </div>
         </div>
       </ProSection>
       <ProSection id="nginx-trends" title="趋势">
@@ -266,7 +261,7 @@ export default function OverviewPane({
               items={[{
                 id: 'requests',
                 label: '请求速率',
-                color: '#27c274',
+                color: NGINX_LINE.request,
                 points: model.requestPoints,
                 reading: ''
               }]}
@@ -283,8 +278,8 @@ export default function OverviewPane({
               hint={NGINX_HINTS.acceptHandled}
               unit="连接/秒"
               items={[
-                { id: 'accepts', label: '接受速率', color: '#13c2c2', points: model.acceptPoints, reading: '' },
-                { id: 'handled', label: '处理速率', color: '#597ef7', points: model.handledPoints, reading: '' }
+                { id: 'accepts', label: '接受速率', color: NGINX_LINE.accept, points: model.acceptPoints, reading: '' },
+                { id: 'handled', label: '处理速率', color: NGINX_LINE.handled, points: model.handledPoints, reading: '' }
               ]}
               floor={1}
               formatReading={connText}

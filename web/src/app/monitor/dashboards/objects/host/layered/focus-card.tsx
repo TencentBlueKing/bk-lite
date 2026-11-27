@@ -29,13 +29,11 @@ export const proChromeClass = {
 /** 重点关注卡：左文右图。边框与圆角来自 classic.panel，排布来自 shortcutCard。 */
 export function ProFocusCard({
   children,
-  className
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  className,
+  ...rest
+}: React.ComponentProps<'div'>) {
   return (
-    <div className={[classic.panel, host.shortcutCard, className].filter(Boolean).join(' ')}>
+    <div {...rest} className={[classic.panel, host.shortcutCard, className].filter(Boolean).join(' ')}>
       {children}
     </div>
   );

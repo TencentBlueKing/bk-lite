@@ -1560,3 +1560,46 @@ button.kpiCard {
   max-width: none;
   justify-content: flex-start;
 }
+
+/* Nginx 健康概览恰好 5 张：一行五等分。窄于 1024 折成 3+2，仍等宽。主机六卡栅格不动。 */
+.kpiGrid5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 1023px) {
+  .kpiGrid5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kpiCard72 {
+  box-sizing: border-box;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+}
+
+/* 只给显式挂上的重点关注卡。主机 / MySQL 的 shortcutCard 高度不变。 */
+.focusCard168 {
+  box-sizing: border-box;
+  height: 168px;
+  min-height: 168px;
+  max-height: 168px;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.focusCard168 > .focusChart {
+  height: auto;
+  min-height: 0;
+  align-self: stretch;
+}
+
+.focusCard168 .focusChart .chartBody {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}

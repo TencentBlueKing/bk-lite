@@ -13,6 +13,10 @@ vi.mock('../layered/nginx-plot', () => ({
   NginxPlot: () => <div data-nginx-plot="" />
 }));
 
+vi.mock('../../../shared/widgets/useECharts', () => ({
+  useECharts: () => ({ containerRef: () => undefined, getInstance: () => null })
+}));
+
 vi.mock('../layered/nginx-hint', () => ({
   NginxHint: () => null
 }));
@@ -121,17 +125,22 @@ describe('nginx spec v2.1 layout', () => {
     const health = view.container.querySelector('#nginx-health');
     const labels = [...(health?.querySelectorAll('[data-nginx-tile]') ?? [])]
       .map((node) => node.getAttribute('data-nginx-tile'));
-    expect(labels).toEqual(['请求速率', '活跃连接', '告警数量', '等待连接', '丢弃连接']);
-    expect(health?.querySelector('[data-nginx-tile="请求速率"]')?.closest('[data-nginx-width="1/3"]')).toBeTruthy();
-    expect(health?.querySelector('[data-nginx-tile="活跃连接"]')?.closest('[data-nginx-width="1/3"]')).toBeTruthy();
-    expect(health?.querySelector('[data-nginx-tile="告警数量"]')?.closest('[data-nginx-width="1/3"]')).toBeTruthy();
-    expect(health?.querySelector('[data-nginx-tile="等待连接"]')?.closest('[data-nginx-width="1/2"]')).toBeTruthy();
-    expect(health?.querySelector('[data-nginx-tile="丢弃连接"]')?.closest('[data-nginx-width="1/2"]')).toBeTruthy();
+    expect(labels).toEqual(['请求速率', '活跃连接', '等待连接', '丢弃连接', '告警数量']);
+    expect(health?.querySelector('[data-nginx-health-row="5"]') ?? view.container.querySelector('[data-nginx-health-row="5"]')).toBeTruthy();
+    ['请求速率', '活跃连接', '等待连接', '丢弃连接', '告警数量'].forEach((label) => {
+      const card = health?.querySelector(`[data-nginx-tile="${label}"]`);
+      expect(card?.closest('[data-nginx-width="1/5"]')).toBeTruthy();
+      expect(card?.getAttribute('data-nginx-kpi-height')).toBe('72');
+      expect(card?.className).not.toContain('h-[104px]');
+    });
+    expect(health?.querySelector('[data-nginx-width="1/3"], [data-nginx-width="1/2"]')).toBeNull();
     expect(view.container.querySelector('[data-nginx-host]')).toBeNull();
     expect(view.container.querySelector('[data-linked-host]')).toBeNull();
     expect(view.container.querySelector('[data-nginx-tile="采集状态"]')).toBeNull();
     expect(view.container.querySelector('[data-nginx-events]')).toBeTruthy();
     expect(view.container.querySelectorAll('[data-nginx-tile] [data-nginx-spark]')).toHaveLength(0);
+    expect(view.container.querySelectorAll('[data-nginx-focus][data-nginx-focus-layout="split"]')).toHaveLength(3);
+    expect(view.container.querySelector('[data-nginx-focus="是否在丢连接"]')?.textContent).not.toContain('完成率');
     expect(view.container.querySelectorAll('[data-nginx-focus] [data-nginx-spark]')).toHaveLength(3);
     expect(view.container.querySelector('[data-nginx-tile="丢弃连接"]')?.textContent).toContain('2');
     const requestTitle = view.container.querySelector('[data-nginx-tile="请求速率"] [data-nginx-title]');

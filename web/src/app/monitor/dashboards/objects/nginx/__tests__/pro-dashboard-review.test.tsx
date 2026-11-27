@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NginxFocusTile } from '../layered/nginx-card';
 import { buildNginxDashboard, type RangeSeries } from '../layered/model';
 import OverviewPane from '../layered/overview-pane';
-import { focusCardQueries, NGINX_CARD_QUERIES, phaseOf } from '../layered/query-phase';
+import { focusCardQueries, NGINX_CARD_QUERIES, phaseOf, type NginxQueryPhase } from '../layered/query-phase';
 import SitesPane from '../layered/sites-pane';
 import UpstreamPane from '../layered/upstream-pane';
 
@@ -18,6 +18,10 @@ vi.mock('../../../shared/widgets/linked-host-segment', () => ({
 
 vi.mock('../layered/nginx-plot', () => ({
   NginxPlot: () => <div data-nginx-plot="" />
+}));
+
+vi.mock('../../../shared/widgets/useECharts', () => ({
+  useECharts: () => ({ containerRef: () => undefined, getInstance: () => null })
 }));
 
 vi.mock('../layered/nginx-hint', () => ({
@@ -135,7 +139,9 @@ describe('vts probe failure', () => {
       data: { range: {}, instant: {} },
       capabilityPhases: { serverCap: 'error' }
     });
-    const phases = Object.fromEntries(focusCardQueries(model.board.focusThirdTab).map((key) => [key, 'ready' as const]));
+    const phases: Record<string, NginxQueryPhase> = Object.fromEntries(
+      focusCardQueries(model.board.focusThirdTab).map((key) => [key, 'ready' as const])
+    );
     phases.serverCap = 'error';
     expect(phaseOf(focusCardQueries('sites'), phases)).toBe('error');
 
