@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_EXPIRE_COUNT,
+  BULK_DEFAULT_EXPIRE_UNIT,
   BULK_DEFAULT_SUCCESS_COUNT,
-  BULK_EXPIRE_DAY_OPTIONS,
+  BULK_EXPIRE_DAY_MS,
   BULK_INSTALL_METHOD,
   BULK_SUCCESS_COUNT_OPTIONS,
   bulkAttemptDisplay,
   bulkAttemptStatusLabelKey,
   bulkCommandIncludesNodeIp,
-  bulkExpireHours,
+  bulkExpireDays,
+  bulkExpirePreviewTime,
+  clampBulkExpireCount,
   dedupeControllerPackages,
   installWaysForOs
 } from '../bulkInstall';
@@ -110,14 +113,24 @@ describe('bulkCommandIncludesNodeIp', () => {
 });
 
 describe('bulk install presets', () => {
-  it('offers fixed host counts and day choices, with the defaults included', () => {
+  it('keeps the default duration at one day and converts months and years into days', () => {
     expect(BULK_SUCCESS_COUNT_OPTIONS).toContain(BULK_DEFAULT_SUCCESS_COUNT);
-    expect(BULK_EXPIRE_DAY_OPTIONS).toContain(BULK_DEFAULT_EXPIRE_DAYS);
-    expect(BULK_EXPIRE_DAY_OPTIONS).toEqual([1, 3, 5, 7]);
-    expect(BULK_DEFAULT_EXPIRE_DAYS).toBe(1);
-    expect(bulkExpireHours(BULK_DEFAULT_EXPIRE_DAYS)).toBe(24);
-    expect(bulkExpireHours(5)).toBe(120);
-    expect(bulkExpireHours(7)).toBe(168);
+    expect(BULK_DEFAULT_EXPIRE_COUNT).toBe(1);
+    expect(BULK_DEFAULT_EXPIRE_UNIT).toBe('day');
+    expect(bulkExpireDays(1, 'day')).toBe(1);
+    expect(bulkExpireDays(6, 'month')).toBe(180);
+    expect(bulkExpireDays(12, 'month')).toBe(360);
+    expect(bulkExpireDays(1, 'year')).toBe(365);
+    expect(bulkExpireDays(3, 'year')).toBe(1095);
+    expect(bulkExpireDays(37, 'month')).toBeNull();
+    expect(bulkExpireDays(1.5, 'day')).toBeNull();
+    expect(bulkExpirePreviewTime(6, 'month', 1_000)).toBe(1_000 + 180 * BULK_EXPIRE_DAY_MS);
+  });
+
+  it('reinterprets the typed number when the unit changes and clamps only the overflow', () => {
+    expect(clampBulkExpireCount(2, 'day')).toBe(2);
+    expect(clampBulkExpireCount(400, 'year')).toBe(3);
+    expect(clampBulkExpireCount(0, 'month')).toBe(1);
   });
 });
 

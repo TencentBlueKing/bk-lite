@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useMemo
 } from 'react';
-import { Alert, Button, Checkbox, Form, Select, Segmented } from 'antd';
+import { Alert, Button, Checkbox, Form, InputNumber, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
@@ -60,13 +60,18 @@ import {
 } from '@/app/node-manager/utils/winrm';
 import { countAccessAssets } from './installNodeCount';
 import {
-  BULK_DEFAULT_EXPIRE_DAYS,
+  BULK_DEFAULT_EXPIRE_COUNT,
+  BULK_DEFAULT_EXPIRE_UNIT,
   BULK_DEFAULT_SUCCESS_COUNT,
-  BULK_EXPIRE_DAY_OPTIONS,
+  BULK_EXPIRE_UNIT_MAX,
+  BULK_EXPIRE_UNITS,
   BULK_INSTALL_METHOD,
   BULK_SUCCESS_COUNT_OPTIONS,
+  BulkExpireUnit,
   bulkCommandIncludesNodeIp,
-  bulkExpireHours,
+  bulkExpireDays,
+  bulkExpirePreviewTime,
+  clampBulkExpireCount,
   dedupeControllerPackages,
   installWaysForOs
 } from './bulkInstall';
@@ -107,6 +112,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
+  const expiresCount = Form.useWatch('expires_count', form);
+  const expiresUnit = Form.useWatch('expires_unit', form) as BulkExpireUnit | undefined;
+  const expireUnit = expiresUnit ?? BULK_DEFAULT_EXPIRE_UNIT;
+  const expireCount = typeof expiresCount === 'number' ? expiresCount : null;
+  const expireDays = expireCount == null ? null : bulkExpireDays(expireCount, expireUnit);
+  const expirePreviewAt =
+    expireCount == null ? null : bulkExpirePreviewTime(expireCount, expireUnit, Date.now());
+  const expireUnitLabels: Record<BulkExpireUnit, string> = {
+    day: t('node-manager.cloudregion.node.bulkExpireUnitDay', '天'),
+    month: t('node-manager.cloudregion.node.bulkExpireUnitMonth', '月'),
+    year: t('node-manager.cloudregion.node.bulkExpireUnitYear', '年')
+  };
   const installWays = useInstallWays();
   const name = searchParams.get('name') || '';
   const groupList = (hasModulePrivilege(commonContext.roles, pathname)
@@ -708,11 +725,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     setConfirmLoading(true);
     try {
       const values = await form.validateFields();
+      const expiresInDays = bulkExpireDays(
+        values.expires_count ?? BULK_DEFAULT_EXPIRE_COUNT,
+        values.expires_unit ?? BULK_DEFAULT_EXPIRE_UNIT
+      );
+      if (expiresInDays == null) {
+        return;
+      }
       const payload = await createBulkInstall({
         cloud_region_id: cloudId,
         package_id: Number(values.sidecar_package),
         max_success_count: values.max_success_count ?? BULK_DEFAULT_SUCCESS_COUNT,
-        expires_in_hours: bulkExpireHours(values.expires_in_days ?? BULK_DEFAULT_EXPIRE_DAYS),
+        expires_in_days: expiresInDays,
         push_targets: values.push_targets || []
       });
       setBulkBatch(payload);
@@ -839,9 +863,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         name="basic"
         layout="vertical"
         onValuesChange={(changed) => {
+          if ('expires_unit' in changed) {
+            form.setFieldValue(
+              'expires_count',
+              clampBulkExpireCount(form.getFieldValue('expires_count'), changed.expires_unit)
+            );
+          }
           if (
             'max_success_count' in changed ||
-            'expires_in_days' in changed ||
+            'expires_count' in changed ||
+            'expires_unit' in changed ||
             'sidecar_package' in changed ||
             'push_targets' in changed
           ) {
@@ -1035,20 +1066,53 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               required
               label={t('node-manager.cloudregion.node.bulkExpireDays')}
             >
-              <Form.Item
-                name="expires_in_days"
-                noStyle
-                initialValue={BULK_DEFAULT_EXPIRE_DAYS}
-                rules={[{ required: true, message: t('common.required') }]}
-              >
-                <Select
-                  style={{ width: 300 }}
-                  options={BULK_EXPIRE_DAY_OPTIONS.map((count) => ({
-                    value: count,
-                    label: t('node-manager.cloudregion.node.bulkExpireDayOption', '', { count })
-                  }))}
-                />
-              </Form.Item>
+              <div className="flex w-[300px]">
+                <Form.Item
+                  name="expires_count"
+                  noStyle
+                  initialValue={BULK_DEFAULT_EXPIRE_COUNT}
+                  rules={[
+                    {
+                      validator: (_, value) => {
+                        if (bulkExpireDays(value, expireUnit) == null) {
+                          return Promise.reject(new Error(t('node-manager.cloudregion.node.bulkExpireInvalid')));
+                        }
+                        return Promise.resolve();
+                      }
+                    }
+                  ]}
+                >
+                  <InputNumber
+                    min={1}
+                    max={BULK_EXPIRE_UNIT_MAX[expireUnit]}
+                    precision={0}
+                    step={1}
+                    style={{ width: 180 }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="expires_unit"
+                  noStyle
+                  initialValue={BULK_DEFAULT_EXPIRE_UNIT}
+                >
+                  <Select
+                    className="ml-2"
+                    style={{ width: 112 }}
+                    options={BULK_EXPIRE_UNITS.map((unit) => ({
+                      value: unit,
+                      label: expireUnitLabels[unit]
+                    }))}
+                  />
+                </Form.Item>
+              </div>
+              {expireDays != null && expirePreviewAt != null && (
+                <div className={fieldHintClass}>
+                  {t('node-manager.cloudregion.node.bulkExpirePreview', '', {
+                    days: expireDays,
+                    time: new Date(expirePreviewAt).toLocaleString()
+                  })}
+                </div>
+              )}
               <div className={fieldHintClass}>
                 {t('node-manager.cloudregion.node.bulkExpireDaysHint')}
               </div>
