@@ -18,6 +18,8 @@ beforeEach(() => {
 it('服务支持搜索、收藏与申请入口', async () => {
   render(<App><PortalPage /></App>);
   expect((await screen.findByRole('link', { name: /电脑申请/ })).getAttribute('href')).toBe('/itsm/tickets/new?service_id=1');
+  expect(screen.getByText('选择服务，开始你的申请')).toBeTruthy();
+  expect(await screen.findByRole('combobox', { name: '服务目录筛选' })).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox', { name: '搜索服务' }), { target: { value: '电脑' } });
   expect(screen.queryByRole('link', { name: /网络申请/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '收藏电脑申请' }));
@@ -79,10 +81,13 @@ it('不支持的背景图片不会保存', async () => {
 });
 it('工作台展示真实工单、公告与趋势，移除目录后仍能搜索服务', async () => {
   api.portalLayout.mockResolvedValue({ title: '团队服务台', subtitle: '', background: '', widgets: ['stats', 'todo', 'tickets', 'trend', 'announcements', 'quick', 'recents', 'favorites'].map(type => ({ type, width: 6 })) });
-  api.portalDashboard.mockResolvedValue({ stats: { total: 12, todo: 1, active: 3, finished: 9 }, can_view_tickets: true, todo: [{ id: 3, title: '我的审批', sn: 'REQ3', status: '处理中' }], tickets: [{ id: 4, title: '完成的申请', sn: 'REQ4', status: '已完成' }], trend: [{ date: '2026-11-13', created: 2, finished: 1 }], announcements: [{ id: 1, title: '维护公告', content: '请提前保存工作', created_at: '2026-11-13' }] });
+  api.portalDashboard.mockResolvedValue({ stats: { total: 12, todo: 1, active: 3, finished: 9 }, can_view_tickets: true, todo: [{ id: 3, title: '我的审批', sn: 'REQ3', status: '处理中' }], tickets: [{ id: 4, title: '完成的申请', sn: 'REQ4', status: '已完成' }, { id: 5, title: '尚未结束', sn: 'REQ5', status: '未完成' }], trend: [{ date: '2026-11-13', created: 2, finished: 1 }], announcements: [{ id: 1, title: '维护公告', content: '请提前保存工作', created_at: '2026-11-13' }] });
   render(<App><PortalPage /></App>);
   expect((await screen.findByRole('link', { name: /我的审批/ })).getAttribute('href')).toBe('/itsm/tickets/3');
+  expect(screen.getByLabelText('工单统计').parentElement?.className).toContain('lg:col-span-6');
   expect(screen.getByRole('link', { name: /完成的申请/ }).getAttribute('href')).toBe('/itsm/tickets/4');
+  expect(screen.getAllByText('已完成').some(node => node.style.color === '#16A36A')).toBe(true);
+  expect(screen.getByText('未完成').style.color).toBe('#64748B');
   expect(screen.getByRole('img', { name: '近十四天新建与完成工单趋势' })).toBeTruthy();
   fireEvent.click(screen.getByText('维护公告'));
   expect(screen.getByText('请提前保存工作')).toBeTruthy();
