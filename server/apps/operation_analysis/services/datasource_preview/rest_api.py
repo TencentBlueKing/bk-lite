@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 from apps.core.utils.safe_requests import SafeRequestsError, safe_request
 from apps.core.utils.ssrf_validator import SSRFError
+from apps.operation_analysis.services.datasource_params.binding import apply_json_template
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 from apps.operation_analysis.services.transform.errors import TransformError
@@ -178,6 +179,8 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
         *,
         transform_config: dict[str, Any] | None = None,
         org_id: str | int | None = None,
+        param_specs: list | None = None,
+        resolved_params: dict | None = None,
     ) -> PreviewResult:
         url = connection_config.get("url")
         if not url:
@@ -193,6 +196,11 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
         headers = connection_config.get("headers") if isinstance(connection_config.get("headers"), dict) else {}
         params = query_config.get("params") if isinstance(query_config.get("params"), dict) else {}
         body = query_config.get("body") if isinstance(query_config.get("body"), dict) else None
+        # GET 不发送 body。只统计真正发出去的部分，避免请求体里的占位符被当成已生效的筛选。
+        template_input = {"params": params, "body": body} if method == "POST" else {"params": params}
+        rendered = apply_json_template(template_input, param_specs, resolved_params)
+        params = rendered.get("params") if isinstance(rendered, dict) else params
+        body = rendered.get("body") if method == "POST" and isinstance(rendered, dict) else body
 
         try:
             response = self.http_client.request(

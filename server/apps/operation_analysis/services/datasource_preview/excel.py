@@ -3,6 +3,7 @@ from typing import Any
 
 import pandas as pd
 
+from apps.operation_analysis.services.datasource_params.binding import filter_excel_rows
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.rest_api import maybe_apply_transform
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
@@ -114,21 +115,16 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
         imported_items = query_config.get("imported_items")
         imported_fields = query_config.get("imported_fields")
         effective_transform = transform_config if isinstance(transform_config, dict) else {}
-        enabled = bool(effective_transform.get("enabled"))
 
         if isinstance(imported_items, list):
             items = [item for item in imported_items if isinstance(item, dict)]
-        elif enabled and connection_config.get("file"):
-            # Align with materialize: full row set (+ 10001 probe) then transform, then sample.
+        elif connection_config.get("file"):
+            # 先读完整张表再筛选。nrows 截断会把第 1000 行之后的匹配行丢掉。
             from apps.operation_analysis.services.excel_materialize.row_probe import read_excel_rows_for_materialize
 
-            file_obj = connection_config.get("file")
-            file_size = getattr(file_obj, "size", None)
-            if file_size and file_size > MAX_EXCEL_BYTES:
-                raise ConnectorError(oa_message("messages.excel_too_large", "Excel 文件不能超过 2MB"), code="excel_file_too_large", status_code=400)
             try:
                 items = read_excel_rows_for_materialize(
-                    file_obj,
+                    connection_config.get("file"),
                     sheet_name=query_config.get("sheet_name") or None,
                 )
             except ConnectorError:
@@ -146,6 +142,7 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
                 max_rows=MAX_EXCEL_ROWS,
             )
 
+        items = filter_excel_rows(items, kwargs.get("param_specs"), kwargs.get("resolved_params"))
         return _preview_with_optional_transform(
             items,
             limit=limit,
@@ -155,7 +152,15 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
         )
 
 
-def preview_excel_from_saved_source(datasource, *, transform_config: dict | None, limit: int = 100, org_id=None) -> PreviewResult:
+def preview_excel_from_saved_source(
+    datasource,
+    *,
+    transform_config: dict | None,
+    limit: int = 100,
+    org_id=None,
+    param_specs=None,
+    resolved_params=None,
+) -> PreviewResult:
     """已保存 Excel：用原文件 + 请求内脚本做预览，避免静默返回旧成功槽结果。"""
     from apps.operation_analysis.services.excel_materialize.row_probe import read_excel_rows_for_materialize
 
@@ -164,7 +169,12 @@ def preview_excel_from_saved_source(datasource, *, transform_config: dict | None
         # Fall back to legacy imported_items path via runtime only when no source file.
         from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
-        payload = load_excel_runtime(datasource, limit=limit)
+        payload = load_excel_runtime(
+            datasource,
+            limit=limit,
+            param_specs=param_specs,
+            resolved_params=resolved_params,
+        )
         return PreviewResult(
             items=payload.get("items", []),
             count=payload.get("count", 0),
@@ -179,6 +189,7 @@ def preview_excel_from_saved_source(datasource, *, transform_config: dict | None
             handle.name = source_slot.source_filename or "source.xlsx"
         items = read_excel_rows_for_materialize(handle, sheet_name=sheet_name)
 
+    items = filter_excel_rows(items, param_specs, resolved_params)
     return _preview_with_optional_transform(
         items,
         limit=limit,

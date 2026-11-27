@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { useTableServerQuery } from '@/app/ops-analysis/utils/useTableServerQuery';
 
-const sourceParams = [{ name: 'page' }, { name: 'page_size' }];
+const sourceParams = [
+  { name: 'page', type: 'number' },
+  { name: 'page_size', type: 'number' },
+];
 
 const pageOf = (count: number, page: number, pageSize: number) => ({
   items: Array.from({ length: Math.min(pageSize, count) }, (_, index) => ({ id: index })),

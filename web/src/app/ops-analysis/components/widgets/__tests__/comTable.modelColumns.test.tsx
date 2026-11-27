@@ -55,7 +55,11 @@ const simulatedPayload = {
 
 const dataSource = {
   rest_api: 'cmdb/query_cmdb_instances',
-  params: [{ name: 'page' }, { name: 'page_size' }, { name: 'model_id' }],
+  params: [
+    { name: 'page', type: 'number' },
+    { name: 'page_size', type: 'number' },
+    { name: 'model_id' },
+  ],
   field_schema: [
     { key: 'inst_name', title: '实例名称' },
     { key: 'name', title: '名称', table: false },

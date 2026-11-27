@@ -15,6 +15,7 @@ import {
 } from "@/app/ops-analysis/utils/dataSourceParamContract";
 import type {
   DataSourceParamFilterType,
+  DataSourceSourceType,
   ParamItem,
 } from "@/app/ops-analysis/types/dataSource";
 import {
@@ -32,6 +33,8 @@ interface ParamTableProps {
   params: ParamItem[];
   onChange: (params: ParamItem[]) => void;
   readOnly?: boolean;
+  sourceType?: DataSourceSourceType;
+  allowedTypes?: string[];
 }
 
 const FormTimeSelector: React.FC<{
@@ -99,7 +102,7 @@ const FormTimeSelector: React.FC<{
 };
 
 const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
-  ({ params, onChange, readOnly = false }, ref) => {
+  ({ params, onChange, readOnly = false, sourceType, allowedTypes }, ref) => {
     const { t } = useTranslation();
     const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
     const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
@@ -110,6 +113,9 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     const [invalidFilterBindingIds, setInvalidFilterBindingIds] = React.useState<
       string[]
     >([]);
+    const [invalidNameIds, setInvalidNameIds] = React.useState<string[]>([]);
+    const [hasTooManyRanges, setHasTooManyRanges] = React.useState(false);
+    const [hasConditionFilter, setHasConditionFilter] = React.useState(false);
 
     const clearValidation = () => {
       setDuplicateNames([]);
@@ -117,6 +123,9 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       setEmptyAliases([]);
       setInvalidDateRangeIds([]);
       setInvalidFilterBindingIds([]);
+      setInvalidNameIds([]);
+      setHasTooManyRanges(false);
+      setHasConditionFilter(false);
     };
 
     const paramTypeOptions = [
@@ -127,7 +136,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       { label: t("dataSource.paramTypes.date"), value: "date" },
       { label: t("dataSource.paramTypes.timeRange"), value: "timeRange" },
       { label: t("dataSource.paramTypes.dateRange"), value: "dateRange" },
-    ];
+    ].filter((option) => !allowedTypes || allowedTypes.includes(option.value));
 
     const filterTypeOptions: Array<{
       label: string;
@@ -139,12 +148,15 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     ];
 
     const applyValidation = (nextParams: ParamItem[]) => {
-      const result = validateParams(nextParams);
+      const result = validateParams(nextParams, { sourceType });
       setDuplicateNames(result.duplicateNames);
       setEmptyNames(result.emptyNames);
       setEmptyAliases(result.emptyAliases);
       setInvalidDateRangeIds(result.invalidDateRangeIds);
       setInvalidFilterBindingIds(result.invalidFilterBindingIds);
+      setInvalidNameIds(result.invalidNameIds);
+      setHasTooManyRanges(result.hasTooManyRanges);
+      setHasConditionFilter(result.hasConditionFilter);
       return result.isValid;
     };
 
@@ -546,6 +558,21 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         {invalidFilterBindingIds.length > 0 && (
           <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
             {t("dataSource.invalidFilterParamType")}
+          </div>
+        )}
+        {invalidNameIds.length > 0 && (
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
+            {t("dataSource.paramNameIdentifier")}
+          </div>
+        )}
+        {hasTooManyRanges && (
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
+            {t("dataSource.paramSingleRange")}
+          </div>
+        )}
+        {hasConditionFilter && (
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
+            {t("dataSource.paramConditionUnsupported")}
           </div>
         )}
       </div>

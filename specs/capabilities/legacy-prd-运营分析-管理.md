@@ -24,10 +24,15 @@
 - 运行时取数规则：取数入口仅接受数据源已声明的查询参数，以及运行时保留参数（命名空间、分页、查询条件），出现未声明参数则报错；时间范围参数支持分钟数、区间、起止三种形态并统一归一；标记为固定的参数强制使用配置默认值，不接受调用方覆盖。
 - 数据源配置页支持测试连接 / 数据预览：数据库预览仅允许单条 `SELECT` 查询或按表限量取数；Excel 仅支持 `.xlsx` 文件并受文件大小限制。预览成功后可将识别出的返回字段一键回填为数据源默认字段定义，并支持手工增删、排序与校验唯一字段名。
 - 系统随包提供内置数据源模板。内置项由系统稳定识别，用户可使用；定义内容（名称、接口、参数、字段）仍不能在常规界面编辑或删除；超管可改所属组织（空名单=全员可见，非空=白名单）。管理员执行明确的强制初始化时，才会将随包配置覆盖到已认领的内置项。相同接口地址的自定义数据源不因初始化而被转为内置。
-- 数据源参数只有字符串、时间范围、日期范围三类可标记为画布筛选项；其他类型仍可作为查询参数，但不参与统一筛选绑定。
+- 数据源参数只有字符串、时间范围、日期范围、数字可标记为画布筛选项；其他类型仍可作为查询参数，但不参与统一筛选绑定。
+- MySQL、PostgreSQL、REST API、Excel、Elasticsearch 使用与 NATS 相同的参数表。这五种数据源不提供条件过滤，并且只能保存一个 `timeRange` 或 `dateRange`。
+- SQL、REST API、Elasticsearch 的参数名必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`。SQL 用 `:name`，范围用 `:name_start` 与 `:name_end`。SQL 结尾已有 `LIMIT`（数字或 `:参数名`，可带逗号形式或 `OFFSET`）时不再追加第二条。没有 `LIMIT` 时仍追加数字上限。REST API 和 Elasticsearch 用整段 `{{name}}`，范围用 `{{name_start}}` 与 `{{name_end}}`。REST 不替换 URL。GET 只替换查询参数，POST 同时替换请求体。`dateRange` 写入查询的结束日是最后一天的下一天，比较为大于等于开始并且小于结束。配置页预览先按用户时区把相对 `dateRange` 展开成绝对日期。
+- Excel 的参数名是列名，可以是中文。取数和未保存文件的预览都先按已解析参数筛选全部已导入行，再按条数截断。已填值的列名在表头中不存在时返回 400，错误码 `param_placeholder_missing`。没填值的参数不参与筛选。
+- 查询写了该数据源认识的占位符但该参数没有值时，取数返回 400，错误码 `param_value_missing`。请求里有已解析参数但查询没有对应占位符或列名时，取数返回 400，错误码 `param_placeholder_missing`。参数名用了另一种写法，而本数据源认识的占位符不在时，同样返回 400，错误码 `param_placeholder_missing`，那种写法不会被替换。字符串多选不展开成 `IN`，数组返回 400，错误码 `param_multiple_unsupported`。配置页预览保留参数表里声明的名字，包括 `page` 和 `page_size`。正式取数时，已声明的这些名字按参数自身类型取值，不再被页码规则盖掉。未声明时仍是分页和表格筛选的保留键。返回条数只在 `page_size` 为正整数时使用它。
+- Prometheus 仍只保存 `query`、`query_type`、`time_range`、`step`、`max_series`。配置页不能增删或改名这些参数。
 
 相关架构：[[legacy-ard-modules-operation-analysis#2. 数据模型与存储【已实现/已存在 / PostgreSQL】]]；对应功能清单：[[legacy-fuctionlist-09-运营分析-功能清单#5. 数据源管理]]
-> 证据来源：server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/serializers/datasource_serializers.py:65-83,127-139，server/apps/operation_analysis/views/datasource_view.py:590-604　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/serializers/datasource_serializers.py:65-83,221-243，server/apps/operation_analysis/services/datasource_params/binding.py，server/apps/operation_analysis/views/datasource_view.py:590-604，web/src/app/ops-analysis/(pages)/settings/dataSource/operateModalUtils.ts　|　同步基线：d2769559　|　【已实现】
 
 ### 3.2 命名空间
 

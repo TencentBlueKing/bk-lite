@@ -10,11 +10,14 @@ import {
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
   TABULAR_CHART_TYPES,
+  buildConnectorPayload,
   buildHydratedDatasourceFormState,
   canSaveExcelWithoutNewFile,
   getDatasourceSourceFlags,
   getPreviewFieldNames,
   normalizeTabularChartTypes,
+  resolvePreviewParams,
+  validateParams,
 } from '../operateModalUtils';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { resolveDatasourceChartTypes } from '@/app/ops-analysis/components/widgetConfig/utils/tableSettingsBehavior';
@@ -313,6 +316,79 @@ describe('canSaveExcelWithoutNewFile', () => {
         excelStatus: 'needs_upload',
       }),
       false,
+    );
+  });
+});
+
+describe('validateParams for declared datasources', () => {
+  const param = (name: string, type: string) => ({
+    id: name,
+    name,
+    alias_name: name,
+    type,
+    filterType: 'params' as const,
+    value:
+      type === 'timeRange'
+        ? 60
+        : type === 'dateRange'
+          ? { rangeType: 'last_7_days' }
+          : 'x',
+  });
+
+  it('allows one english range on mysql and rejects a second range or a chinese name', () => {
+    assert.equal(
+      validateParams([param('bill_date', 'dateRange')], { sourceType: SOURCE_TYPE_MYSQL }).isValid,
+      true,
+    );
+    assert.equal(
+      validateParams(
+        [param('bill_date', 'dateRange'), param('created_at', 'timeRange')],
+        { sourceType: SOURCE_TYPE_MYSQL },
+      ).hasTooManyRanges,
+      true,
+    );
+    assert.equal(
+      validateParams([param('账单日期', 'string')], { sourceType: SOURCE_TYPE_POSTGRESQL }).isValid,
+      false,
+    );
+  });
+
+  it('names invalid URL params after the URL params field', () => {
+    const labels: Record<string, string> = {
+      'dataSource.urlParams': 'URL 参数',
+      'dataSource.queryParams': '查询参数',
+      'dataSource.jsonObjectRequired': '请输入合法的 JSON 对象',
+    };
+    assert.throws(
+      () => buildConnectorPayload(
+        {
+          source_type: SOURCE_TYPE_REST_API,
+          connection_mode: 'inline',
+          connection_config: { url: 'http://127.0.0.1', method: 'GET' },
+          query_config: { paramsText: 'not-json', bodyText: '' },
+        },
+        { t: (key: string) => labels[key] ?? key },
+      ),
+      (error: unknown) => (error as Error).message === 'URL 参数请输入合法的 JSON 对象',
+    );
+  });
+
+  it('resolves a relative date range in the supplied timezone before preview', () => {
+    const [resolved] = resolvePreviewParams(
+      [param('bill', 'dateRange')],
+      { referenceNow: '2026-11-26T16:30:00Z', timezone: 'Asia/Shanghai' },
+    );
+    assert.deepEqual(resolved.value, ['2026-11-21', '2026-11-27']);
+  });
+
+  it('allows a chinese excel column and still rejects condition filters', () => {
+    assert.equal(
+      validateParams([param('账单日期', 'dateRange')], { sourceType: SOURCE_TYPE_EXCEL }).isValid,
+      true,
+    );
+    assert.equal(
+      validateParams([param('账单日期', 'conditionFilter')], { sourceType: SOURCE_TYPE_EXCEL }).hasConditionFilter,
+      true,
     );
   });
 });

@@ -129,6 +129,81 @@ def test_rest_preview_accepts_small_chunked_response_without_content_length():
     assert result.items == [{"name": "ok"}]
 
 
+def _json_response(body: bytes):
+    class FakeResponse:
+        headers = {"content-length": str(len(body))}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            assert chunk_size > 0
+            yield body
+
+        def close(self):
+            return None
+
+    return FakeResponse()
+
+
+def test_rest_get_rejects_a_value_that_is_only_in_the_body():
+    calls = []
+
+    class FakeClient:
+        def request(self, **kwargs):
+            calls.append(kwargs)
+            return _json_response(b'{"data":{"items":[]}}')
+
+    with pytest.raises(ConnectorError) as exc:
+        RestApiConnectorExecutor(http_client=FakeClient()).preview(
+            {"url": "https://example.com/orders", "method": "GET"},
+            {"params": {}, "body": {"city": "{{city}}"}},
+            param_specs=[{"name": "city", "type": "string"}],
+            resolved_params={"city": "shanghai"},
+        )
+
+    assert exc.value.code == "param_placeholder_missing"
+    assert calls == []
+
+
+def test_rest_get_replaces_query_param_and_does_not_send_body():
+    calls = []
+
+    class FakeClient:
+        def request(self, **kwargs):
+            calls.append(kwargs)
+            return _json_response(b'[{"city":"shanghai"}]')
+
+    result = RestApiConnectorExecutor(http_client=FakeClient()).preview(
+        {"url": "https://example.com/orders", "method": "GET"},
+        {"params": {"city": "{{city}}"}, "body": {"city": "{{city}}"}},
+        param_specs=[{"name": "city", "type": "string"}],
+        resolved_params={"city": "shanghai"},
+    )
+
+    assert calls[0]["params"] == {"city": "shanghai"}
+    assert calls[0]["json"] is None
+    assert result.items == [{"city": "shanghai"}]
+
+
+def test_rest_post_replaces_body_placeholder():
+    calls = []
+
+    class FakeClient:
+        def request(self, **kwargs):
+            calls.append(kwargs)
+            return _json_response(b'[{"city":"shanghai"}]')
+
+    RestApiConnectorExecutor(http_client=FakeClient()).preview(
+        {"url": "https://example.com/orders", "method": "POST"},
+        {"params": {}, "body": {"city": "{{city}}"}},
+        param_specs=[{"name": "city", "type": "string"}],
+        resolved_params={"city": "shanghai"},
+    )
+
+    assert calls[0]["json"] == {"city": "shanghai"}
+
+
 def test_rest_test_connection_accepts_non_json_http_ok():
     """测连只校验 HTTP 可达，不要求 JSON 行集（连接库 base_url 常见为站点根）。"""
     calls = []
@@ -151,9 +226,7 @@ def test_rest_test_connection_accepts_non_json_http_ok():
             calls.append(kwargs)
             return FakeResponse()
 
-    RestApiConnectorExecutor(http_client=FakeClient()).test_connection(
-        {"url": "https://baidu.com", "method": "GET", "timeout": 3}
-    )
+    RestApiConnectorExecutor(http_client=FakeClient()).test_connection({"url": "https://baidu.com", "method": "GET", "timeout": 3})
 
     assert calls[0]["method"] == "GET"
     assert calls[0]["url"] == "https://baidu.com"
