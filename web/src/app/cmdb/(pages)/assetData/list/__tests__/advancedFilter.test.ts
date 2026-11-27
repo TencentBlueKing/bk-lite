@@ -6,6 +6,7 @@ import {
   cascaderValueToPath,
   choiceForDepth,
   conditionValueText,
+  displayFieldCondition,
   exportFilterPayload,
   operatorNeedsValue,
   operatorsFor,
@@ -81,6 +82,77 @@ describe('高级筛选路径和摘要', () => {
     expect(exportFilterPayload('all', [], null)).toEqual({});
     expect(conditionValueText({ type: 'time', start: '2026-01-01 00:00', end: '2026-01-02 00:00' })).toBe('2026-01-01 00:00~2026-01-02 00:00');
     expect(conditionValueText({ type: 'empty' })).toBe('');
+  });
+
+  it('映射字段显示选项名，原始 id 只在没有映射时保留', () => {
+    const labels = { boolYes: '是', boolNo: '否' };
+    expect(displayFieldCondition(
+      { type: 'list_any[]', value: ['1'] },
+      { attr_id: 'os_type', attr_type: 'enum', option: [{ id: 1, name: 'Linux' }, { id: '2', name: 'Windows' }] },
+    )).toBe('Linux');
+    expect(displayFieldCondition(
+      { type: 'list_any[]', value: [1, '2'] },
+      { attr_id: 'os_type', attr_type: 'enum', option: [{ id: '1', name: 'Linux' }, { id: 2, name: 'Windows' }] },
+    )).toBe('Linux, Windows');
+    expect(displayFieldCondition(
+      { type: 'str=', value: 'linux' },
+      { attr_id: 'os_type', attr_type: 'enum', option: [{ id: 'linux', name: 'Linux' }] },
+    )).toBe('Linux');
+    expect(displayFieldCondition(
+      { type: 'list_any[]', value: ['9'] },
+      { attr_id: 'os_type', attr_type: 'enum', option: [{ id: '1', name: 'Linux' }] },
+    )).toBe('9');
+    expect(displayFieldCondition(
+      { type: 'list[]', value: ['9'] },
+      { attr_id: 'owner', attr_type: 'user' },
+      { users: [{ id: 9, username: 'ada', display_name: 'Ada' }] },
+    )).toBe('Ada(ada)');
+    expect(displayFieldCondition(
+      { type: 'list[]', value: ['404'] },
+      { attr_id: 'owner', attr_type: 'user' },
+      { users: [] },
+    )).toBe('404');
+    expect(displayFieldCondition(
+      { type: 'list[]', value: [1, 2] },
+      { attr_id: 'org', attr_type: 'organization' },
+      { groups: [{ id: '1', name: '总部', subGroups: [{ id: 2, name: '研发' }] }] },
+    )).toBe('总部, 总部 / 研发');
+    expect(displayFieldCondition(
+      { type: 'bool', value: false },
+      { attr_id: 'active', attr_type: 'bool' },
+      labels,
+    )).toBe('否');
+    expect(displayFieldCondition(
+      { type: 'list_any[]', value: ['a%3Ab:c'] },
+      { attr_id: 'tag', attr_type: 'tag', option: { mode: 'free', options: [{ key: 'a:b', value: 'c' }] } },
+    )).toBe('a:b:c');
+    expect(displayFieldCondition(
+      { type: 'list_any[]', value: ['env%3Aname:prod'] },
+      { attr_id: 'tag', attr_type: 'tag', option: { mode: 'free', options: [] } },
+    )).toBe('env:name:prod');
+    expect(displayFieldCondition(
+      { type: 'int=', value: 0 },
+      { attr_id: 'cloud', attr_type: 'int' },
+      { clouds: [{ proxy_id: '0', proxy_name: 'default' }] },
+    )).toBe('default');
+    expect(displayFieldCondition(
+      { type: 'int=', value: 0 },
+      { attr_id: 'cloud_id', attr_type: 'int' },
+      { clouds: [{ proxy_id: 0, proxy_name: 'default' }] },
+    )).toBe('default');
+    expect(displayFieldCondition(
+      { type: 'str=', value: '100%' },
+      { attr_id: 'name', attr_type: 'str' },
+    )).toBe('100%');
+    expect(displayFieldCondition(
+      { type: 'str*', value: '8.0' },
+      { attr_id: 'version', attr_type: 'str' },
+    )).toBe('8.0');
+    expect(displayFieldCondition({ type: 'empty' }, { attr_type: 'enum' })).toBe('');
+    expect(displayFieldCondition(
+      { type: 'time', start: '2026-01-01 00:00', end: '2026-01-02 00:00' },
+      { attr_type: 'time' },
+    )).toBe('2026-01-01 00:00~2026-01-02 00:00');
   });
 
   it('按字段类型给出运算符', () => {

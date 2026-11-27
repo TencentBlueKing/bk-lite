@@ -1,3 +1,8 @@
+import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
+import { isCloudRegionAttr } from '@/app/cmdb/utils/cloudRegion';
+import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
+import { displayCollectedTag } from '@/utils/collectedTag';
+
 export type AdvancedLogic = 'AND' | 'OR';
 
 export interface AdvancedCondition {
@@ -183,6 +188,160 @@ export function conditionValueText(condition: Pick<AdvancedCondition, 'type' | '
   if (condition.type === 'time') return `${condition.start || ''}~${condition.end || ''}`;
   if (Array.isArray(condition.value)) return condition.value.join(',');
   return condition.value == null ? '' : String(condition.value);
+}
+
+export interface ValueLabel {
+  key: string;
+  label: string;
+}
+
+export interface FilterUserRef {
+  id: string | number;
+  username?: string;
+  display_name?: string;
+}
+
+export interface FilterGroupNode {
+  id: string | number;
+  name?: string;
+  subGroups?: FilterGroupNode[];
+  children?: FilterGroupNode[];
+}
+
+export interface FilterCloudOption {
+  proxy_id: string | number;
+  proxy_name?: string;
+}
+
+export interface FilterLabelContext {
+  users?: FilterUserRef[];
+  groups?: FilterGroupNode[];
+  clouds?: FilterCloudOption[];
+  boolYes?: string;
+  boolNo?: string;
+}
+
+export interface MappedValueOptions {
+  decodeTags?: boolean;
+  separator?: string;
+}
+
+export interface LabelField {
+  attr_id?: string;
+  attr_type?: string;
+  option?: unknown;
+}
+
+export function userFilterLabel(user: FilterUserRef): string {
+  const account = user.username || '';
+  const name = user.display_name || account;
+  if (!account) return name || String(user.id ?? '');
+  return `${name}(${account})`;
+}
+
+export function optionItems(option: unknown): Array<{ label: string; value: string }> {
+  if (!Array.isArray(option)) return [];
+  return option.flatMap((item) => {
+    if (typeof item === 'string' || typeof item === 'number') {
+      const value = String(item);
+      return value ? [{ label: value, value }] : [];
+    }
+    if (!item || typeof item !== 'object') return [];
+    const record = item as { id?: string | number; name?: string; value?: string | number; label?: string };
+    const value = String(record.id ?? record.value ?? '');
+    if (!value) return [];
+    return [{ label: String(record.name ?? record.label ?? value), value }];
+  });
+}
+
+function organizationLabels(nodes: FilterGroupNode[] | undefined): ValueLabel[] {
+  const labels: ValueLabel[] = [];
+  const walk = (list: FilterGroupNode[] | undefined, prefix: string[]) => {
+    for (const node of list || []) {
+      if (!node || typeof node !== 'object') continue;
+      const name = typeof node.name === 'string' ? node.name : '';
+      const path = name ? [...prefix, name] : prefix;
+      const key = node.id == null || node.id === '' ? '' : String(node.id);
+      if (key && path.length) labels.push({ key, label: path.join(' / ') });
+      walk(node.subGroups?.length ? node.subGroups : node.children, path);
+    }
+  };
+  walk(nodes, []);
+  return labels;
+}
+
+export function labelsForField(field: LabelField | undefined, context: FilterLabelContext = {}): ValueLabel[] {
+  if (!field) return [];
+  if (isCloudRegionAttr(field.attr_id)) {
+    return (context.clouds || []).flatMap((item) => {
+      const key = item?.proxy_id == null || item.proxy_id === '' ? '' : String(item.proxy_id);
+      if (!key) return [];
+      return [{ key, label: item.proxy_name || key }];
+    });
+  }
+  switch (field.attr_type) {
+    case 'enum':
+      return optionItems(field.option).map((item) => ({ key: item.value, label: item.label }));
+    case 'tag':
+      return getTagOptions({ option: field.option } as AttrFieldType).flatMap((group) =>
+        group.options.map((item) => ({ key: String(item.value), label: item.label })),
+      );
+    case 'user':
+      return (context.users || []).map((user) => ({ key: String(user.id), label: userFilterLabel(user) }));
+    case 'organization':
+      return organizationLabels(context.groups);
+    case 'bool':
+      return [
+        { key: 'true', label: context.boolYes || 'Yes' },
+        { key: 'false', label: context.boolNo || 'No' },
+      ];
+    default:
+      return [];
+  }
+}
+
+function renderMappedToken(
+  token: string | number | boolean,
+  labels: Map<string, string>,
+  decodeTags: boolean,
+) {
+  const key = String(token);
+  return labels.get(key) || (decodeTags ? displayCollectedTag(key) : key);
+}
+
+export function displayMappedValue(
+  value: AdvancedCondition['value'],
+  labels: ValueLabel[] = [],
+  options: MappedValueOptions = {},
+): string {
+  const lookup = new Map(labels.map((item) => [item.key, item.label]));
+  const separator = options.separator ?? ', ';
+  const render = (token: string | number | boolean) => renderMappedToken(token, lookup, Boolean(options.decodeTags));
+  if (Array.isArray(value)) return value.map(render).filter((item) => item !== '').join(separator);
+  if (value == null || value === '') return '';
+  return render(value);
+}
+
+export function displayConditionValue(
+  condition: Pick<AdvancedCondition, 'type' | 'value' | 'start' | 'end'>,
+  labels: ValueLabel[] = [],
+  options: MappedValueOptions = {},
+): string {
+  if (!operatorNeedsValue(condition.type)) return '';
+  if (condition.type === 'time') return conditionValueText(condition);
+  return displayMappedValue(condition.value, labels, options);
+}
+
+export function displayFieldCondition(
+  condition: Pick<AdvancedCondition, 'type' | 'value' | 'start' | 'end'>,
+  field: LabelField | undefined,
+  context: FilterLabelContext = {},
+  options: MappedValueOptions = {},
+): string {
+  return displayConditionValue(condition, labelsForField(field, context), {
+    ...options,
+    decodeTags: options.decodeTags ?? field?.attr_type === 'tag',
+  });
 }
 
 export function exportFilterPayload(
