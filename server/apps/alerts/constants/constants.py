@@ -37,6 +37,9 @@ class AlertsSourceTypes:
     CLOUD = "cloud"
     NATS = "nats"
     RESTFUL = "restful"
+    ALIYUN_EVENTBRIDGE = "aliyun_eventbridge"
+    TENCENT_EVENTBUS = "tencent_eventbus"
+    CLOUD_WEBHOOK = (ALIYUN_EVENTBRIDGE, TENCENT_EVENTBUS)
     CHOICES = (
         (PROMETHEUS, "Prometheus"),
         (ZABBIX, "Zabbix"),
@@ -46,6 +49,8 @@ class AlertsSourceTypes:
         (CLOUD, "云监控"),
         (NATS, "NATS"),
         (RESTFUL, "RESTFul"),
+        (ALIYUN_EVENTBRIDGE, "阿里云 EventBridge"),
+        (TENCENT_EVENTBUS, "腾讯云事件总线"),
     )
 
 
@@ -86,11 +91,13 @@ class EventAction:
     CREATED = "created"
     CLOSED = "closed"
     RECOVERY = "recovery"
+    RECORD = "record"
 
     CHOICES = (
         (CREATED, "产生"),
         (CLOSED, "关闭"),
         (RECOVERY, "恢复"),
+        (RECORD, "记录"),
     )
 
 

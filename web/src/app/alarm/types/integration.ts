@@ -102,12 +102,62 @@ export interface IntegrationGuideTroubleshootingItem {
   resolutions?: string[];
 }
 
+export interface CloudFieldLanding {
+  name: string;
+  source: string;
+  target: string;
+}
+
+export interface CloudFieldMappingRow {
+  field: string;
+  from: string;
+  detail: string;
+}
+
+export interface CloudGuideSection {
+  title: string;
+  paragraphs: string[];
+}
+
+export interface CloudGuideExample {
+  title: string;
+  explain: string;
+  lands: string[];
+  curl: string;
+}
+
+export interface CloudGuideBaseInfo {
+  id: string;
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  params?: Record<string, string>;
+  content_type?: string;
+  description?: string;
+}
+
 export interface AlertSourceIntegrationGuide {
   source_type: string;
   source_id: string;
   webhook_url?: string;
+  webhook_url_with_secret?: string;
   headers?: Record<string, string>;
   description?: string;
+  examples?: { CURL?: string; Python?: string };
+  field_landing?: CloudFieldLanding[];
+  field_mapping?: CloudFieldMappingRow[];
+  field_mapping_note?: string;
+  sections?: CloudGuideSection[];
+  example_items?: CloudGuideExample[];
+  base_info?: CloudGuideBaseInfo;
+  catalog_text?: string;
+  report_fields?: Array<{
+    event: string;
+    title: string;
+    level: string;
+    resource: string;
+    stateless?: boolean;
+  }>;
   media_type_parameters?: string[];
   setup_steps?: IntegrationGuideSetupStep[];
   parameter_guidance?: IntegrationGuideParameterMappingItem[];

@@ -5,6 +5,8 @@
 
 from copy import deepcopy
 
+from apps.alerts.common.source_adapter.cloud_guide import cloud_request_examples, stored_webhook_url
+
 DEFAULT_SOURCE_CONFIG = {
     "url": "/api/v1/alerts/api/receiver_data/",
     "headers": {"SECRET": "your_source_secret"},
@@ -299,4 +301,29 @@ def build_zabbix_source_config(source_id):
             "recovery_policy": "problem_id_match",
         }
     )
+    return config
+
+
+def build_cloud_source_config(source_id, report_catalog, query_secret=False):
+    """云事件源沿用同名字段映射。示例是云厂商原始 JSON，不是通用 REST 包裹。"""
+    config = deepcopy(DEFAULT_SOURCE_CONFIG)
+    config["url"] = f"/api/v1/alerts/api/source/{source_id}/webhook/"
+    placeholder = "{{TEAM_SECRET}}"
+    webhook_url = stored_webhook_url(source_id)
+    query_url = f"{webhook_url}?secret={placeholder}" if query_secret else None
+    config["headers"] = {"SECRET": placeholder}
+    config["method"] = "POST"
+    config["content_type"] = "application/json"
+    config["params"] = {}
+    built = cloud_request_examples(source_id, webhook_url, placeholder, query_url)
+    config["examples"] = {"CURL": built["CURL"], "Python": built["Python"]}
+    config["description"] = "云资源变化事件。正文是云厂商原始 JSON，一个对象是一条事件。不要包成 source_id 和 events。"
+    mapping = dict(config["event_fields_mapping"])
+    mapping["cmdb_id"] = "cmdb_id"
+    config["event_fields_mapping"] = mapping
+    desc = dict(config["event_fields_desc_mapping"])
+    desc["action"] = "事件动作 | created-发生, recovery-恢复, record-记录。record 是无状态，不建告警"
+    desc["cmdb_id"] = "CMDB 实例 UUID | 组织内 resource_id 恰好一台时写入，否则留空"
+    desc["report_catalog"] = report_catalog
+    config["event_fields_desc_mapping"] = desc
     return config

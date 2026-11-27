@@ -10,6 +10,7 @@ import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
 import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
 import ExampleCopyBlock from '@/app/alarm/components/exampleCopyBlock';
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
+import CloudEventGuide, { isCloudEventGuideSource } from '@/app/alarm/components/cloudEventGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -96,6 +97,7 @@ const IntegrationDetail: FC = () => {
   const isK8sSource = source?.source_id === 'k8s';
   const isSnmpTrapSource = source?.source_id === 'snmp_trap';
   const isZabbixSource = source?.source_type === 'zabbix' || source?.source_id === 'zabbix';
+  const isCloudEventSource = isCloudEventGuideSource(source?.source_id);
 
   const sourceItemId = searchParams.get('sourceItemId');
 
@@ -206,9 +208,9 @@ const IntegrationDetail: FC = () => {
   };
 
   const guideUsesDefaultRenderer =
-    !!source && !isK8sSource && !isSnmpTrapSource && !isZabbixSource;
+    !!source && !isK8sSource && !isSnmpTrapSource && !isZabbixSource && !isCloudEventSource;
   const guideHasTeamSecretSupport =
-    !!source && (guideUsesDefaultRenderer || isZabbixSource || isK8sSource);
+    !!source && (guideUsesDefaultRenderer || isZabbixSource || isK8sSource || isCloudEventSource);
 
   useEffect(() => {
     setSelectedGuideTeamId(undefined);
@@ -355,12 +357,12 @@ const IntegrationDetail: FC = () => {
   }, [isK8sSource, k8sMeta, k8sMetaLoading, k8sMetaFailed]);
 
   useEffect(() => {
-    if (sourceItemId && isZabbixSource) {
+    if (sourceItemId && (isZabbixSource || isCloudEventSource)) {
       getIntegrationGuide(sourceItemId);
-    } else if (!isZabbixSource) {
+    } else if (!isZabbixSource && !isCloudEventSource) {
       setIntegrationGuide(undefined);
     }
-  }, [sourceItemId, isZabbixSource]);
+  }, [sourceItemId, isZabbixSource, isCloudEventSource]);
 
   const onFilterSearch = (condition: SearchFilterCondition) => {
     setSearchCondition(condition);
@@ -1117,6 +1119,14 @@ const IntegrationDetail: FC = () => {
                       ) : isZabbixSource ? (
                         <Spin spinning={integrationGuideLoading}>
                           <ZabbixGuide
+                            guide={integrationGuide}
+                            selectedTeamSecret={selectedGuideSecret}
+                            credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
+                          />
+                        </Spin>
+                      ) : isCloudEventSource ? (
+                        <Spin spinning={integrationGuideLoading}>
+                          <CloudEventGuide
                             guide={integrationGuide}
                             selectedTeamSecret={selectedGuideSecret}
                             credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
