@@ -194,6 +194,7 @@ export function useItsmApi() {
     [post],
   );
   const portal = useCallback((serviceId?: number) => get<PortalData>(`/itsm/api/services/portal/?${serviceId ? `service_id=${serviceId}` : 'summary=1'}`), [get]);
+  const portalAll = useCallback(() => get<PortalData>('/itsm/api/services/portal/'), [get]);
   const directoryPage = useCallback((query: Record<string, string>) => get<{items: PortalData['services']; total: number; page: number}>(`/itsm/api/services/portal/?directory=1&${new URLSearchParams(query)}`), [get]);
   const portalLayout = useCallback(() => get('/itsm/api/services/layout/'), [get]);
   const savePortalLayout = useCallback((value: PortalLayout) => put('/itsm/api/services/layout/', value), [put]);
@@ -353,6 +354,7 @@ export function useItsmApi() {
     listTicketWorkflows,
     submitSurvey,
     directoryPage, portal,
+    portalAll,
     portalLayout,
     savePortalLayout,
     portalDashboard,

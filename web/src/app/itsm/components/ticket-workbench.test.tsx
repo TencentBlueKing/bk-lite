@@ -4,7 +4,7 @@ import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@te
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TicketWorkbench } from './ticket-workbench';
 const tableProps = vi.hoisted(() => ({ current: {} as { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void } } }));
-const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn(), portal: vi.fn(), toggleFavorite: vi.fn() }));
+const api = vi.hoisted(() => ({ ready: true, searchUsers: vi.fn(), searchTicketTags: vi.fn(), ticketFilterWorkflows: vi.fn(), ticketFilterFields: vi.fn(), ticketExportFields: vi.fn(), exportTickets: vi.fn(), listTicketExports: vi.fn(), downloadTicketExport: vi.fn(), retryTicketExport: vi.fn(), listTickets: vi.fn(), centerSettings: vi.fn(), saveTicketColumns: vi.fn(), saveTicketGroup: vi.fn(), deleteTicketGroup: vi.fn(), batchOptions: vi.fn(), batchTickets: vi.fn(), portal: vi.fn(), portalAll: vi.fn(), toggleFavorite: vi.fn() }));
 vi.mock('../api/useItsmApi', () => ({ useItsmApi: () => api }));
 vi.mock('next/link', () => ({ default: ({ children, href, onNavigate }: { children: React.ReactNode; href: string; onNavigate?: () => void }) => <a href={href} onClick={event => { event.preventDefault(); onNavigate?.(); }}>{children}</a> }));
 vi.mock('@/components/custom-table', () => ({ default: (props: { columns: { key: string }[]; pagination: { pageSizeOptions: number[]; onChange: (page: number, size: number) => void }; rowSelection?: { onChange: (keys: number[]) => void }; dataSource: { id: number; title: string }[] }) => { const { rowSelection, dataSource } = props; if (!rowSelection) return <div>{dataSource.length} 条记录</div>; tableProps.current = props; return <div className="ant-table-body">{dataSource.map(item => <button key={item.id} onClick={() => rowSelection.onChange([item.id])}>{item.title}</button>)}</div>; } }));
@@ -204,7 +204,7 @@ it('仅向具备导出权限的账号显示导出入口', async () => {
 it('快速提单按权限显示，打开后可筛选目录、搜索、收藏和重用服务', async () => {
   const computer = { id: 21, name: '电脑申请', description: '办公电脑', catalog_id: 2, version_id: 15 };
   const network = { id: 22, name: '网络申请', workflow_name: '网络接入审核', catalog_id: null, version_id: 17 };
-  api.portal.mockResolvedValue({
+  api.portalAll.mockResolvedValue({
     can_apply: true,
     catalogs: [{ id: 1, name: '办公服务', parent_id: null }, { id: 2, name: '设备服务', parent_id: 1 }],
     services: [computer, network],
@@ -220,15 +220,20 @@ it('快速提单按权限显示，打开后可筛选目录、搜索、收藏和�
   api.listTickets.mockResolvedValue({ items: [{ id: 1, title: '测试工单' }], count: 1, can_apply: true });
   fireEvent.click(screen.getByRole('button', { name: '刷新列表' }));
   const quickSubmit = await screen.findByRole('button', { name: '快速提单' });
-  expect(api.portal).not.toHaveBeenCalled();
+  expect(api.portalAll).not.toHaveBeenCalled();
   fireEvent.click(quickSubmit);
+  expect(api.portalAll).toHaveBeenCalledOnce();
+  expect(api.portal).not.toHaveBeenCalled();
 
   const drawer = within(await screen.findByRole('dialog'));
   expect(drawer.getByText('快速提单')).toBeTruthy();
   await drawer.findByRole('link', { name: '电脑申请' });
-  fireEvent.mouseDown(drawer.getByRole('combobox', { name: '服务目录筛选' }));
-  fireEvent.click(await screen.findByText('办公服务', { selector: '.ant-select-tree-title' }));
+  fireEvent.click(drawer.getByRole('button', { name: /办公服务/ }));
   expect(drawer.getByRole('link', { name: '电脑申请' }).getAttribute('href')).toBe('/itsm/tickets/new?service_id=21&from=tickets');
+  expect(drawer.queryByRole('link', { name: '网络申请' })).toBeNull();
+  fireEvent.change(drawer.getByRole('textbox', { name: '搜索服务' }), { target: { value: '网络申请' } });
+  expect(drawer.getByRole('link', { name: '网络申请' })).toBeTruthy();
+  fireEvent.click(drawer.getByRole('button', { name: /办公服务/ }));
   expect(drawer.queryByRole('link', { name: '网络申请' })).toBeNull();
 
   fireEvent.click(drawer.getByRole('button', { name: '收藏电脑申请' }));
@@ -248,9 +253,38 @@ it('快速提单按权限显示，打开后可筛选目录、搜索、收藏和�
   expect(drawer.getByRole('link', { name: '网络申请' }).getAttribute('href')).toBe('/itsm/tickets/new?service_id=22&from=tickets');
 });
 
+it('快速提单弹窗不分页，分类中可展开全部服务并从搜索直接找到末尾服务', async () => {
+  const services = Array.from({ length: 15 }, (_, index) => ({
+    id: index + 1, name: `设备申请 ${index + 1}`, catalog_id: 2, version_id: 15, description: `设备 ${index + 1}`,
+  }));
+  api.listTickets.mockResolvedValue({ items: [], count: 0, can_apply: true });
+  api.portal.mockResolvedValue({ can_apply: true, catalogs: [], services: services.slice(0, 10), favorites: [], recents: [], hots: [] });
+  api.portalAll.mockResolvedValue({
+    can_apply: true,
+    catalogs: [{ id: 2, name: '设备服务', parent_id: null }],
+    services: [...services, { id: 16, name: '旧目录服务', catalog_id: 99, version_id: 15, description: '旧目录' }],
+    favorites: [], recents: [], hots: [],
+  });
+  render(<TicketWorkbench />);
+  fireEvent.click(await screen.findByRole('button', { name: '快速提单' }));
+  expect(api.portal).not.toHaveBeenCalled();
+  expect(api.portalAll).toHaveBeenCalledOnce();
+  const dialog = within(await screen.findByRole('dialog'));
+  await dialog.findByRole('link', { name: '设备申请 1' });
+  expect(dialog.getByRole('link', { name: '旧目录服务' })).toBeTruthy();
+  expect(dialog.queryByRole('link', { name: '设备申请 15' })).toBeNull();
+  expect(dialog.queryByRole('navigation', { name: '服务分页' })).toBeNull();
+  fireEvent.click(dialog.getByRole('button', { name: /展开全部.*15/ }));
+  expect(dialog.getByRole('link', { name: '设备申请 15' })).toBeTruthy();
+  fireEvent.click(dialog.getByRole('button', { name: /收起/ }));
+  expect(dialog.queryByRole('link', { name: '设备申请 15' })).toBeNull();
+  fireEvent.change(dialog.getByRole('textbox', { name: '搜索服务' }), { target: { value: '设备申请 15' } });
+  expect(dialog.getByRole('link', { name: '设备申请 15' }).getAttribute('href')).toBe('/itsm/tickets/new?service_id=15&from=tickets');
+});
+
 it('快速提单的服务加载失败后可以重试，并遵循当前提单权限', async () => {
   api.listTickets.mockResolvedValue({ items: [], count: 0, can_apply: true });
-  api.portal.mockRejectedValueOnce(new Error('服务暂时不可用')).mockResolvedValue({
+  api.portalAll.mockRejectedValueOnce(new Error('服务暂时不可用')).mockResolvedValue({
     can_apply: false, services: [{ id: 21, name: '电脑申请' }], catalogs: [], favorites: [], recents: [], hots: [],
   });
   render(<TicketWorkbench />);
@@ -310,7 +344,7 @@ it('提供批量审批所需的意见后才允许执行', async () => {
 
 it('从快速提单返回工单中心时还原筛选、分组、分页与表格滚动', async () => {
   api.listTickets.mockResolvedValue({ items: [{ id: 1, sn: 'REQ1', title: '测试工单' }], count: 100, can_apply: true });
-  api.portal.mockResolvedValue({
+  api.portalAll.mockResolvedValue({
     can_apply: true, services: [{ id: 21, name: '电脑申请' }], catalogs: [], favorites: [], recents: [], hots: [],
   });
   const list = render(<TicketWorkbench />);
@@ -337,7 +371,7 @@ it('英文快速提单先显示与目录同结构的加载状态再显示搜索'
   api.listTickets.mockResolvedValue({ items: [], count: 0, can_apply: true });
   const portal = { can_apply: true, services: [], catalogs: [], favorites: [], recents: [], hots: [] };
   let complete: (value: typeof portal) => void;
-  api.portal.mockImplementation(() => new Promise<typeof portal>(resolve => { complete = resolve; }));
+  api.portalAll.mockImplementation(() => new Promise<typeof portal>(resolve => { complete = resolve; }));
   render(<TicketWorkbench />, { locale: 'en' });
   fireEvent.click(await screen.findByRole('button', { name: 'Quick request' }));
   const dialog = within(await screen.findByRole('dialog'));
@@ -346,6 +380,6 @@ it('英文快速提单先显示与目录同结构的加载状态再显示搜索'
   await act(async () => complete(portal));
   await dialog.findByRole('textbox', { name: 'Search services' });
   expect(dialog.getByRole('tab', { name: 'All services' })).toBeTruthy();
-  expect(dialog.getByRole('combobox', { name: 'Filter by service catalog' })).toBeTruthy();
+  expect(dialog.getByRole('button', { name: /All catalogs/ })).toBeTruthy();
   expect(dialog.queryByRole('status', { name: 'Loading services' })).toBeNull();
 });

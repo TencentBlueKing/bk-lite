@@ -133,7 +133,11 @@
       "emptyFavorites": "暂无收藏的服务",
       "emptyRecents": "暂无最近使用的服务",
       "noMatch": "未找到匹配的服务",
-      "loading": "正在加载服务"
+      "loading": "正在加载服务",
+      "categories": "服务分类",
+      "results": "共 {count} 项可申请服务",
+      "expandAll": "展开全部（{count}）",
+      "collapse": "收起"
     },
     "serviceBrowser": {
       "prompt": "选择服务，开始你的申请",
