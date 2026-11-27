@@ -285,7 +285,7 @@ class InstallerViewSet(ViewSet):
                 cloud_region_id=data["cloud_region_id"],
                 package_id=data["package_id"],
                 max_success_count=data["max_success_count"],
-                expires_in_hours=data["expires_in_hours"],
+                expires_in_days=data["expires_in_days"],
                 push_targets=data.get("push_targets") or [],
                 organization_id=scope.current_team,
                 username=scope.username or getattr(request.user, "username", ""),
