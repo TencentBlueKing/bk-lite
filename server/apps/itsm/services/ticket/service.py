@@ -231,11 +231,10 @@ class TicketService:
             raise
         seen = set()
         task_ids = [str(item.get("id") or "") for item in items]
-        known_tasks = set(
-            ticket.tasks.filter(flowable_task_id__in=task_ids, status__in=[TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]).values_list(
-                "flowable_task_id", flat=True
-            )
-        )
+        existing_tasks = {task.flowable_task_id: task for task in ticket.tasks.filter(flowable_task_id__in=task_ids)}
+        known_tasks = {
+            task_id for task_id, task in existing_tasks.items() if task.status in [TicketTask.TaskStatus.PENDING, TicketTask.TaskStatus.CLAIMED]
+        }
         active_nodes = {
             (str(item.get("processInstanceId") or ticket.process_instance_id), item.get("taskDefinitionKey") or task_id)
             for item, task_id in zip(items, task_ids)
@@ -246,18 +245,22 @@ class TicketService:
             seen.add(task_id)
             assignee = str(item.get("assignee") or "").strip('"')
             process_id = str(item.get("processInstanceId") or "")
-            task, created = TicketTask.objects.get_or_create(
-                ticket=ticket,
-                flowable_task_id=task_id,
-                defaults={
-                    "node_id": item.get("taskDefinitionKey") or "",
-                    "process_instance_id": process_id,
-                    "node_name": item.get("name") or "",
-                    "assignee": assignee,
-                    "created_by": "system",
-                    "updated_by": "system",
-                },
-            )
+            task = existing_tasks.get(task_id)
+            created = task is None
+            if created:
+                task, created = TicketTask.objects.get_or_create(
+                    ticket=ticket,
+                    flowable_task_id=task_id,
+                    defaults={
+                        "node_id": item.get("taskDefinitionKey") or "",
+                        "process_instance_id": process_id,
+                        "node_name": item.get("name") or "",
+                        "assignee": assignee,
+                        "created_by": "system",
+                        "updated_by": "system",
+                    },
+                )
+                existing_tasks[task_id] = task
             if process_id and task.process_instance_id != process_id:
                 task.process_instance_id = process_id
                 task.save(update_fields=["process_instance_id", "updated_at"])
