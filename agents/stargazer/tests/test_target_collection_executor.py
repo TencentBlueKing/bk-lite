@@ -128,7 +128,7 @@ async def test_network_failure_logs_include_every_failed_ip_without_success_or_s
 async def test_empty_successful_snapshot_does_not_publish_completion_marker(monkeypatch):
     marker_calls = []
 
-    async def record_marker(request, round_ts):
+    async def record_marker(request, round_ts, **_kwargs):
         marker_calls.append((request.task_id, round_ts))
         return True
 
@@ -162,6 +162,129 @@ async def test_empty_successful_snapshot_does_not_publish_completion_marker(monk
 
 
 @pytest.mark.asyncio
+async def test_topology_timeout_publishes_marker_without_snapshot_contract(monkeypatch):
+    marker_calls = []
+
+    async def record_marker(_request, _round_ts, snapshot_complete=True):
+        marker_calls.append(snapshot_complete)
+        return True
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        record_marker,
+    )
+
+    class Plugin:
+        async def collect(self, target, credential, context):
+            if target.endswith(".1"):
+                return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
+            return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="plugin_timeout")
+
+    request = CollectionRequest(
+        task_id="topo-partial",
+        plugin_ref="network_topo.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        credentials=({"credential_id": "c1"},),
+        params={
+            "model_id": "network_topo",
+            "collect_task_id": 7,
+            "collection_role": "topology",
+        },
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    summary = await TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=Plugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    ).execute(request, lease)
+
+    assert summary.collection_succeeded == 1
+    assert summary.collection_failed == 1
+    assert summary.publish_succeeded == 1
+    assert marker_calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_topology_full_success_publishes_snapshot_contract(monkeypatch):
+    marker_calls = []
+
+    async def record_marker(_request, _round_ts, snapshot_complete=True):
+        marker_calls.append(snapshot_complete)
+        return True
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        record_marker,
+    )
+
+    class Plugin:
+        async def collect(self, target, credential, context):
+            return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
+
+    request = CollectionRequest(
+        task_id="topo-complete",
+        plugin_ref="network_topo.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        credentials=({"credential_id": "c1"},),
+        params={
+            "model_id": "network_topo",
+            "collect_task_id": 7,
+            "collection_role": "topology",
+        },
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    summary = await TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=Plugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    ).execute(request, lease)
+
+    assert summary.collection_succeeded == 2
+    assert summary.publish_succeeded == 2
+    assert marker_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_device_timeout_does_not_publish_completion_marker(monkeypatch):
+    marker_calls = []
+
+    async def record_marker(_request, _round_ts, snapshot_complete=True):
+        marker_calls.append(snapshot_complete)
+        return True
+
+    monkeypatch.setattr(
+        "core.collection.round_complete.publish_round_complete_marker",
+        record_marker,
+    )
+
+    class Plugin:
+        async def collect(self, target, credential, context):
+            if target.endswith(".1"):
+                return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
+            return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="plugin_timeout")
+
+    request = CollectionRequest(
+        task_id="device-partial",
+        plugin_ref="network.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        credentials=({"credential_id": "c1"},),
+        params={"model_id": "network", "collect_task_id": 7, "collection_role": "device"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    summary = await TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=Plugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    ).execute(request, lease)
+
+    assert summary.collection_failed == 1
+    assert marker_calls == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("marker_result", "published", "failed"), ((True, 1, 0), (False, 0, 1)))
 async def test_cmdb_round_marker_terminal_is_reflected_in_run_summary(
     monkeypatch,
@@ -169,7 +292,7 @@ async def test_cmdb_round_marker_terminal_is_reflected_in_run_summary(
     published,
     failed,
 ):
-    async def publish_marker(_request, _round_ts):
+    async def publish_marker(_request, _round_ts, **_kwargs):
         return marker_result
 
     monkeypatch.setattr(

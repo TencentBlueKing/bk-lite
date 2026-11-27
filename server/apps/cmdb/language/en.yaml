@@ -1313,6 +1313,9 @@ ATTR:
     description: Interface Description
     status: Status
     self_device: Self Device
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
   k8s_cluster:
     inst_name: Name
     organization: Organization

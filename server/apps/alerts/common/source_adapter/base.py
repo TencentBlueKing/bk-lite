@@ -730,7 +730,7 @@ class AlertSourceAdapter(ABC):
 class AlertSourceAdapterFactory:
     """告警源适配器工厂"""
 
-    _default_adapter_types = ("restful", "nats", "prometheus", "zabbix")
+    _default_adapter_types = ("restful", "nats", "prometheus", "zabbix", "aliyun_eventbridge", "tencent_eventbus")
     _adapters = {}
 
     @classmethod
@@ -739,6 +739,7 @@ class AlertSourceAdapterFactory:
         if all(source_type in cls._adapters for source_type in cls._default_adapter_types):
             return
 
+        from apps.alerts.common.source_adapter.cloud_events import AliyunEventBridgeAdapter, TencentEventBusAdapter
         from apps.alerts.common.source_adapter.nats import NatsAdapter
         from apps.alerts.common.source_adapter.prometheus import PrometheusAdapter
         from apps.alerts.common.source_adapter.restful import RestFulAdapter
@@ -749,6 +750,8 @@ class AlertSourceAdapterFactory:
             "nats": NatsAdapter,
             "prometheus": PrometheusAdapter,
             "zabbix": ZabbixAdapter,
+            "aliyun_eventbridge": AliyunEventBridgeAdapter,
+            "tencent_eventbus": TencentEventBusAdapter,
         }
         for source_type, adapter_class in default_adapters.items():
             cls.register_adapter(source_type, adapter_class)

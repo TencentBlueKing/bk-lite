@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { Tag, Button, Popover, Form, Input, InputNumber, Select, DatePicker, Checkbox, Space, Modal, message } from 'antd';
 import { FunnelPlotFilled, CloseOutlined, StarOutlined, BellOutlined } from '@ant-design/icons';
-import type { AttrFieldType, EnumList } from '@/app/cmdb/types/assetManage';
+import type { AttrFieldType } from '@/app/cmdb/types/assetManage';
+import { displayMappedValue, labelsForField, type FilterGroupNode } from './advancedFilter';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import styles from './filterBar.module.scss';
@@ -29,6 +30,7 @@ export interface FilterBarProps {
   attrList?: AttrFieldType[];
   userList?: Array<{ id: string; username: string; display_name?: string }>;
   proxyOptions?: Array<{ proxy_id: string; proxy_name: string }>;
+  groups?: FilterGroupNode[];
   modelId?: string;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;
@@ -39,6 +41,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   attrList = [],
   userList = [],
   proxyOptions = [],
+  groups = [],
   modelId = '',
   onChange,
   onFilterChange,
@@ -135,40 +138,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
     if (filter.start && filter.end) {
       return `${filter.start} ~ ${filter.end}`;
     }
-    if (Array.isArray(filter.value)) {
-      // 处理 user 类型（type 为 list 且字段类型是 user）
-      const fieldInfo = getFieldInfo(filter.field);
-      if ((filter.type === 'list[]' && fieldInfo?.attr_type === 'user') || filter.type === 'user[]') {
-        const userNames = filter.value
-          .map((userId) => {
-            const user = userList.find((u) => String(u.id) === String(userId));
-            // 筛选条件的user值显示，显示用户名和显示名
-            return `${user?.display_name}(${user?.username})` || String(userId);
-          })
-          .filter(Boolean);
-        return userNames.join(', ');
-      }
-      if (fieldInfo?.attr_type === 'enum' && Array.isArray(fieldInfo?.option)) {
-        const enumOptions = fieldInfo.option as EnumList[];
-        const enumNames = filter.value
-          .map((id) => {
-            const opt = enumOptions.find((o) => o.id === id);
-            return opt?.name || String(id);
-          });
-        return enumNames.join(', ');
-      }
-      return filter.value.join(', ');
-    }
-    if (typeof filter.value === 'boolean') {
+    const fieldInfo = getFieldInfo(filter.field);
+    const field = fieldInfo || (filter.type === 'user[]' ? { attr_id: filter.field, attr_type: 'user' } : undefined);
+    if (typeof filter.value === 'boolean' && field?.attr_type !== 'bool') {
       return filter.value ? t('yes') : t('no');
     }
-    const fieldInfo = getFieldInfo(filter.field);
-    if (fieldInfo?.attr_type === 'enum' && Array.isArray(fieldInfo?.option)) {
-      const enumOptions = fieldInfo.option as EnumList[];
-      const opt = enumOptions.find((o) => o.id === filter.value);
-      return opt?.name || String(filter.value || '');
-    }
-    return String(filter.value || '');
+    return displayMappedValue(filter.value, labelsForField(field, {
+      users: userList,
+      groups,
+      clouds: proxyOptions,
+      boolYes: t('yes'),
+      boolNo: t('no'),
+    }), { decodeTags: field?.attr_type === 'tag' });
   };
 
   // 处理删除单个标签

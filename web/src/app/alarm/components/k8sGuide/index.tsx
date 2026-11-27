@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Descriptions, Input, Spin, Tag } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Checkbox, Descriptions, Input, Select, Spin, Tag } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '../../../../utils/i18n';
 import { useCopy } from '../../../../hooks/useCopy';
-import { K8sMeta, K8sRenderParams, SourceItem } from '../../types/integration';
+import { useSourceApi } from '../../api/integration';
+import { K8sCloudRegion, K8sMeta, K8sRenderParams, SourceItem } from '../../types/integration';
 
 interface K8sGuideProps {
   source?: SourceItem;
@@ -33,24 +34,101 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
 }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
-  const [serverUrl, setServerUrl] = useState('');
+  const { getK8sCloudRegions, getK8sReceiverEndpoint } = useSourceApi();
+  const regionApiRef = useRef({ getK8sCloudRegions, getK8sReceiverEndpoint });
+  regionApiRef.current = { getK8sCloudRegions, getK8sReceiverEndpoint };
+  const endpointRequestId = useRef(0);
+  const [cloudRegions, setCloudRegions] = useState<K8sCloudRegion[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(false);
+  const [regionsFailed, setRegionsFailed] = useState(false);
+  const [cloudRegionId, setCloudRegionId] = useState<number>();
+  const [receiverUrl, setReceiverUrl] = useState('');
+  const [receiverError, setReceiverError] = useState('');
+  const [receiverLoading, setReceiverLoading] = useState(false);
   const [clusterName, setClusterName] = useState('k8s_cluster');
   const [pushSourceId, setPushSourceId] = useState(meta?.push_source_id_default || 'k8s');
   const [insecureSkipVerify, setInsecureSkipVerify] = useState(true);
 
+  const loadCloudRegions = () => {
+    setRegionsLoading(true);
+    setRegionsFailed(false);
+    return regionApiRef.current.getK8sCloudRegions()
+      .then((regions) => {
+        setCloudRegions(Array.isArray(regions) ? regions : []);
+      })
+      .catch(() => {
+        setCloudRegions([]);
+        setRegionsFailed(true);
+      })
+      .finally(() => {
+        setRegionsLoading(false);
+      });
+  };
+
   useEffect(() => {
-    if (!serverUrl && typeof window !== 'undefined') {
-      setServerUrl(window.location.origin);
-    }
-  }, [serverUrl]);
+    let cancelled = false;
+    setRegionsLoading(true);
+    setRegionsFailed(false);
+    regionApiRef.current.getK8sCloudRegions()
+      .then((regions) => {
+        if (!cancelled) {
+          setCloudRegions(Array.isArray(regions) ? regions : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCloudRegions([]);
+          setRegionsFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRegionsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCloudRegionChange = (regionId: number) => {
+    const requestId = endpointRequestId.current + 1;
+    endpointRequestId.current = requestId;
+    setCloudRegionId(regionId);
+    setReceiverUrl('');
+    setReceiverError('');
+    setReceiverLoading(true);
+    regionApiRef.current.getK8sReceiverEndpoint(regionId)
+      .then((result) => {
+        if (endpointRequestId.current !== requestId) {
+          return;
+        }
+        setReceiverUrl(result?.receiver_url || '');
+        if (!result?.receiver_url) {
+          setReceiverError(t('integration.reportAddressPending'));
+        }
+      })
+      .catch((error: { message?: string }) => {
+        if (endpointRequestId.current !== requestId) {
+          return;
+        }
+        setReceiverUrl('');
+        setReceiverError(error?.message || t('integration.reportAddressPending'));
+      })
+      .finally(() => {
+        if (endpointRequestId.current === requestId) {
+          setReceiverLoading(false);
+        }
+      });
+  };
 
   const renderParams = useMemo<K8sRenderParams>(() => ({
-    server_url: serverUrl,
+    cloud_region_id: cloudRegionId,
     cluster_name: clusterName,
     push_source_id: pushSourceId,
     team_id: selectedTeamId,
     insecure_skip_verify: insecureSkipVerify,
-  }), [serverUrl, clusterName, pushSourceId, selectedTeamId, insecureSkipVerify]);
+  }), [cloudRegionId, clusterName, pushSourceId, selectedTeamId, insecureSkipVerify]);
 
   useEffect(() => {
     if (meta?.push_source_id_default) {
@@ -98,13 +176,46 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
         <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="lg:col-span-2">
             <div className={fieldLabelClassName}>
-              {t('integration.serverUrlLabel')}
+              {t('integration.cloudRegionLabel')}
             </div>
-            <Input
-              value={serverUrl}
-              onChange={(event) => setServerUrl(event.target.value)}
-              placeholder="https://10.11.27.147:443"
+            <Select
+              aria-label={t('integration.cloudRegionLabel')}
+              className="w-full"
+              value={cloudRegionId}
+              placeholder={t('integration.cloudRegionPlaceholder')}
+              loading={regionsLoading}
+              options={cloudRegions.map((region) => ({ value: region.id, label: region.name }))}
+              onChange={handleCloudRegionChange}
+              notFoundContent={regionsFailed ? t('integration.cloudRegionLoadFailed') : t('integration.cloudRegionEmpty')}
             />
+            {!regionsLoading && cloudRegions.length === 0 ? (
+              <div className="mt-1 text-[12px] leading-5 text-[var(--color-text-3)]">
+                {regionsFailed ? t('integration.cloudRegionLoadFailed') : t('integration.cloudRegionEmpty')}
+              </div>
+            ) : null}
+            {regionsFailed ? (
+              <Button className="mt-2 px-0" type="link" size="small" onClick={loadCloudRegions}>
+                {t('common.retry')}
+              </Button>
+            ) : null}
+          </div>
+          <div className="lg:col-span-2">
+            <div className={fieldLabelClassName}>
+              {t('integration.reportAddressLabel')}
+            </div>
+            <div
+              aria-label={t('integration.reportAddressLabel')}
+              className="break-all rounded-[8px] border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-[13px] leading-6 text-[var(--color-text-1)]"
+            >
+              {receiverLoading
+                ? t('integration.reportAddressLoading')
+                : (receiverUrl || t('integration.reportAddressPending'))}
+            </div>
+            {receiverError ? (
+              <div role="alert" className="mt-1 text-[12px] leading-5 text-[var(--color-danger)]">
+                {receiverError}
+              </div>
+            ) : null}
           </div>
           <div>
             <div className={fieldLabelClassName}>
@@ -152,7 +263,7 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
               <Button
                 icon={<DownloadOutlined />}
                 onClick={() => onDownload(deployFile.key, deployFile.file_name, renderParams)}
-                disabled={!serverUrl || !clusterName || !selectedTeamSecret}
+                disabled={!receiverUrl || receiverLoading || !clusterName || !pushSourceId || !selectedTeamSecret}
               >
                 {deployFile.display_name}
               </Button>
@@ -162,8 +273,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
           </div>
           <div className="max-w-[680px] text-[13px] leading-6 text-[var(--color-text-2)]">
             {selectedTeamSecret
-              ? '下载前请确认接入地址与集群名正确，避免后续重复改 YAML。'
-              : '请先在顶部选择上报组织（或新建组织密钥）后再下载部署文件。'}
+              ? t('integration.k8sDownloadConfirm')
+              : t('integration.k8sDownloadNeedTeam')}
           </div>
         </div>
       ),
@@ -212,12 +323,14 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
         <div className="overflow-hidden rounded-[16px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)]">
           <Descriptions bordered size="small" column={1} labelStyle={{ width: 220, fontSize: 12, color: 'var(--color-text-3)' }}>
           <Descriptions.Item label="CLUSTER_NAME">
-            {t('integration.clusterNameHelp')}
+            {clusterName || t('integration.clusterNameHelp')}
           </Descriptions.Item>
           <Descriptions.Item label="BK_LITE_RECEIVER_URL">
             <div className="flex items-center gap-2 break-all">
-              <span>{meta.receiver_url}</span>
-              <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(meta.receiver_url)} />
+              <span>{receiverUrl || t('integration.reportAddressPending')}</span>
+              {receiverUrl ? (
+                <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(receiverUrl)} />
+              ) : null}
             </div>
           </Descriptions.Item>
           <Descriptions.Item label="BK_LITE_SECRET">
@@ -236,7 +349,7 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
           </Descriptions.Item>
           <Descriptions.Item label="BK_LITE_PUSH_SOURCE_ID">
             <div className="flex items-center gap-2">
-              <Tag color="gold">{meta.push_source_id_default}</Tag>
+              <Tag color="gold">{pushSourceId || meta.push_source_id_default}</Tag>
               {meta.push_source_id_configurable && (
                 <span className="text-[var(--color-text-3)]">{t('integration.pushSourceConfigurable')}</span>
               )}

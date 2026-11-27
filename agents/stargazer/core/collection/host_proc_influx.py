@@ -1,11 +1,12 @@
 """把主机进程采集编码成严格的 Influx 行协议。
 
-influxdb_client.Point 的 tag 转义不处理反斜杠，值以 \\ 结尾时还会补一个未转义空格。
-进程命令行、Windows 路径里这两种情况都很常见，写进 VictoriaMetrics 后会把同一
-instance 的主机监控查询打坏。这里只接受合法 tag，非法进程行直接丢掉。
+进程行比普通指标多两条业务规则：pid 必须是数字，name 不能空。
+转义和拼行交给 influx_line，避免再维护一套 tag 转义。
 """
 
 import re
+
+from core.collection.influx_line import encode_influx_line, log_dropped_influx_line, normalize_tag_text, parse_influx_line
 
 _TAG_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 _TEXT_LIMITS = {
@@ -18,7 +19,6 @@ _TEXT_LIMITS = {
 }
 _DEFAULT_TEXT_LIMIT = 255
 _MEASUREMENT = "host_proc_usage_info"
-_VALID_ESCAPES = {" ", ",", "=", "\\"}
 
 
 def cleaned_host_proc_labels(labels):
@@ -32,7 +32,7 @@ def cleaned_host_proc_labels(labels):
             continue
         if value is None or isinstance(value, (list, dict)):
             continue
-        text = _normalize_text(value, _TEXT_LIMITS.get(tag_key, _DEFAULT_TEXT_LIMIT))
+        text = normalize_tag_text(value, _TEXT_LIMITS.get(tag_key, _DEFAULT_TEXT_LIMIT))
         if text:
             cleaned[tag_key] = text
     if not cleaned.get("pid", "").isdigit() or not cleaned.get("name"):
@@ -41,67 +41,21 @@ def cleaned_host_proc_labels(labels):
 
 
 def host_proc_line(labels, timestamp_ns):
-    """返回一条进程指标；pid 或 name 不合法时返回 None。"""
+    """返回一条进程指标。pid、name 或时间戳不合法时返回 None。"""
     cleaned = cleaned_host_proc_labels(labels)
     if cleaned is None:
+        source = labels if isinstance(labels, dict) else {}
+        log_dropped_influx_line(_MEASUREMENT, source, "invalid_process", level="debug")
+        return None
+    if timestamp_ns is None:
+        log_dropped_influx_line(_MEASUREMENT, cleaned, "missing_timestamp", level="debug")
         return None
     cleaned["model_id"] = "host_proc_usage"
-    tag_set = ",".join(f"{key}={_escape_tag(cleaned[key])}" for key in sorted(cleaned))
-    if timestamp_ns is None:
-        line = f"{_MEASUREMENT},{tag_set} gauge=1i"
-    else:
-        line = f"{_MEASUREMENT},{tag_set} gauge=1i {int(timestamp_ns)}"
-    if not _is_strict_line(line):
+    line = encode_influx_line(_MEASUREMENT, cleaned, "gauge", 1, int(timestamp_ns))
+    if line is None:
+        return None
+    parsed = parse_influx_line(line)
+    if parsed is None or parsed[2] != "gauge=1i" or parsed[3] is None:
+        log_dropped_influx_line(_MEASUREMENT, cleaned, "invalid_line")
         return None
     return line
-
-
-def _normalize_text(value, limit):
-    text = str(value).encode("utf-8", errors="replace").decode("utf-8")
-    for char in ("\r", "\n", "\t", "\u2028", "\u2029", "\u0085"):
-        text = text.replace(char, " ")
-    text = "".join(char for char in text if ord(char) >= 32 and char != "\x7f")
-    return text.strip()[:limit]
-
-
-def _escape_tag(value):
-    return value.replace("\\", "\\\\").replace(" ", r"\ ").replace(",", r"\,").replace("=", r"\=")
-
-
-def _is_strict_line(line):
-    if not line or any(char in line for char in ("\n", "\r", "\x00")):
-        return False
-    try:
-        index = _skip_escaped(line, 0, {",", " "})
-        if index >= len(line) or line[index] != ",":
-            return False
-        index += 1
-        while index < len(line) and line[index] != " ":
-            index = _skip_escaped(line, index, {"=", ",", " "})
-            if index >= len(line) or line[index] != "=":
-                return False
-            index = _skip_escaped(line, index + 1, {",", " "})
-            if index < len(line) and line[index] == ",":
-                index += 1
-        if index >= len(line) or line[index] != " ":
-            return False
-        fields, separator, timestamp = line[index + 1 :].rpartition(" ")
-        return separator == " " and fields == "gauge=1i" and timestamp.isdigit()
-    except ValueError:
-        return False
-
-
-def _skip_escaped(line, index, stops):
-    while index < len(line):
-        char = line[index]
-        if char == "\\":
-            if index + 1 >= len(line) or line[index + 1] not in _VALID_ESCAPES:
-                raise ValueError("invalid escape")
-            index += 2
-            continue
-        if char in stops:
-            return index
-        if ord(char) < 32 or char == "\x7f":
-            raise ValueError("control char")
-        index += 1
-    return index

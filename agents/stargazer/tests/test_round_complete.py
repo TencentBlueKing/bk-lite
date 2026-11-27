@@ -181,8 +181,135 @@ async def test_publish_round_complete_marker_after_success():
     assert task_id == "run-1"
     assert params["tags"]["instance_id"] == "cmdb_42"
     assert params["tags"]["collection_role"] == "topology"
+    assert params["tags"][SNAPSHOT_CONTRACT_LABEL] == SNAPSHOT_CONTRACT_VERSION
     assert "cmdb_round_complete" in metrics_data
     assert "1700000111" in metrics_data
+    assert f'{SNAPSHOT_CONTRACT_LABEL}="{SNAPSHOT_CONTRACT_VERSION}"' in metrics_data
+
+
+def _five_published_one_failed_summary():
+    return RunSummary(
+        total=6,
+        collection_succeeded=5,
+        collection_failed=1,
+        unreachable=0,
+        deferred=0,
+        skipped=0,
+        publish_succeeded=5,
+        publish_not_applicable=1,
+    )
+
+
+def _topology_request(**params):
+    payload = {"model_id": "network_topo", "collect_task_id": 7, "collection_role": "topology"}
+    payload.update(params)
+    return CollectionRequest(
+        task_id="topo-partial",
+        plugin_ref="network_topo.config",
+        targets=tuple(f"10.0.0.{index}" for index in range(1, 7)),
+        params=payload,
+    )
+
+
+@pytest.mark.asyncio
+async def test_topology_round_complete_publishes_when_one_target_fails():
+    summary = _five_published_one_failed_summary()
+    request = _topology_request()
+    published = []
+
+    async def fake_publish(_ctx, metrics_data, params, _task_id):
+        published.append((metrics_data, params))
+        return 1
+
+    assert is_complete_round(summary) is False
+    assert round_complete_skip_reason(request, summary) is None
+    ok = await publish_round_complete_marker(
+        request,
+        1_700_000_111,
+        metrics_publish=fake_publish,
+        snapshot_complete=is_complete_round(summary),
+    )
+
+    assert ok is True
+    metrics_data, params = published[0]
+    assert SNAPSHOT_CONTRACT_LABEL not in params["tags"]
+    assert SNAPSHOT_CONTRACT_LABEL not in metrics_data
+
+
+def test_device_round_complete_still_blocks_when_one_target_fails():
+    summary = _five_published_one_failed_summary()
+    request = CollectionRequest(
+        task_id="device-partial",
+        plugin_ref="network.config",
+        targets=("10.0.0.1",),
+        params={"model_id": "network", "collect_task_id": 7, "collection_role": "device"},
+    )
+
+    assert round_complete_skip_reason(request, summary) == "collection_incomplete"
+
+
+def test_topology_round_complete_skips_when_nothing_was_published():
+    summary = RunSummary(
+        total=6,
+        collection_succeeded=0,
+        collection_failed=6,
+        unreachable=0,
+        deferred=0,
+        skipped=0,
+        publish_succeeded=0,
+        publish_not_applicable=6,
+    )
+
+    assert round_complete_skip_reason(_topology_request(), summary) == "no_publishable_metrics"
+
+
+def test_topology_round_complete_still_blocks_unknown_delivery():
+    summary = _five_published_one_failed_summary()
+    summary = RunSummary(
+        total=summary.total,
+        collection_succeeded=summary.collection_succeeded,
+        collection_failed=summary.collection_failed,
+        unreachable=0,
+        deferred=0,
+        skipped=0,
+        publish_succeeded=4,
+        publish_not_applicable=1,
+        publish_unknown=1,
+    )
+
+    assert round_complete_skip_reason(_topology_request(), summary) == "delivery_unknown"
+
+
+@pytest.mark.asyncio
+async def test_partial_topology_marker_omits_snapshot_contract():
+    published = []
+
+    async def fake_publish(ctx, metrics_data, params, task_id):
+        published.append((metrics_data, params, task_id))
+        return 1
+
+    request = CollectionRequest(
+        task_id="run-partial",
+        plugin_ref="network_topo.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        params={
+            "model_id": "network_topo",
+            "collection_role": "topology",
+            "collect_task_id": 7,
+        },
+    )
+
+    ok = await publish_round_complete_marker(
+        request,
+        1_700_000_111,
+        metrics_publish=fake_publish,
+        snapshot_complete=False,
+    )
+
+    assert ok is True
+    metrics_data, params, _task_id = published[0]
+    assert SNAPSHOT_CONTRACT_LABEL not in params["tags"]
+    assert SNAPSHOT_CONTRACT_LABEL not in metrics_data
 
 
 @pytest.mark.asyncio

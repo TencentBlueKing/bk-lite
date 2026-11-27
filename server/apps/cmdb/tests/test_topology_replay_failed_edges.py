@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
+from apps.cmdb.collection.round_sync import SNAPSHOT_CONTRACT_LABEL, SNAPSHOT_CONTRACT_VERSION
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.services import topology_replay_service as replay
 from apps.cmdb.services.topology_replay_service import LAST_SYNCED_TOPOLOGY_ROUND_KEY, PENDING_TOPOLOGY_REPLAY_KEY
@@ -147,6 +148,38 @@ def _assert_pending(task, round_ts):
     pending = (task.params or {}).get(PENDING_TOPOLOGY_REPLAY_KEY)
     assert pending["round_ts"] == round_ts
     assert pending["channel_config_version"] == "1"
+
+
+def _capture_plugin_kwargs(monkeypatch, task):
+    seen = {}
+
+    class CaptureCannula:
+        def __init__(self, *args, **kwargs):
+            seen.update(kwargs.get("plugin_kwargs") or {})
+
+        def collect_controller(self):
+            return {}
+
+    _bind(monkeypatch, task, CaptureCannula)
+    return seen
+
+
+def test_replay_without_snapshot_contract_does_not_arm_cleanup(monkeypatch):
+    task = _task()
+    seen = _capture_plugin_kwargs(monkeypatch, task)
+
+    assert replay.replay_topology_for_task(task.id, marker=_marker()) == "played"
+    assert seen["snapshot_complete"] is False
+
+
+def test_replay_with_snapshot_contract_arms_cleanup(monkeypatch):
+    task = _task()
+    seen = _capture_plugin_kwargs(monkeypatch, task)
+    marker = _marker()
+    marker[SNAPSHOT_CONTRACT_LABEL] = SNAPSHOT_CONTRACT_VERSION
+
+    assert replay.replay_topology_for_task(task.id, marker=marker) == "played"
+    assert seen["snapshot_complete"] is True
 
 
 def test_failed_edges_keep_round_pending_and_gate_does_not_skip(monkeypatch):

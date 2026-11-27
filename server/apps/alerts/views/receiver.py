@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
+from apps.alerts.constants.constants import AlertsSourceTypes
 from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.notification_templates.timefmt import format_template_datetime
@@ -25,12 +26,18 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
     logger.info("==receive_events source_id={}===".format(source_id))
     try:
         data = json.loads(request.body.decode("utf-8"))
-        if not isinstance(data, dict):
+        batch = None
+        if isinstance(data, list):
+            if not path_source_id or not data or any(not isinstance(item, dict) for item in data):
+                return JsonResponse({"status": "error", "message": "Invalid request payload."}, status=400)
+            batch = data
+            data = {"_batch": data}
+        elif not isinstance(data, dict):
             return JsonResponse({"status": "error", "message": "Invalid request payload."}, status=400)
 
-        payload_source_id = data.get("source_id")
+        payload_source_id = None if batch is not None else data.get("source_id")
         source_id = source_id or payload_source_id
-        secret = request.META.get("HTTP_SECRET") or data.get("secret")
+        secret = request.META.get("HTTP_SECRET") or (None if batch is not None else data.get("secret"))
 
         if source_id and payload_source_id and payload_source_id != source_id:
             return JsonResponse({"status": "error", "message": "source_id mismatch."}, status=400)
@@ -49,25 +56,53 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         if expected_source_type and event_source.source_type != expected_source_type:
             return JsonResponse({"status": "error", "message": "Invalid source type for endpoint."}, status=400)
 
+        is_cloud = event_source.source_type in AlertsSourceTypes.CLOUD_WEBHOOK
+        if batch is not None and not is_cloud:
+            return JsonResponse({"status": "error", "message": "Invalid request payload."}, status=400)
+        if is_cloud and not secret:
+            secret = request.GET.get("secret") or ""
+
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 仅构造一次适配器：__init__ 会查询 Level / SystemSetting，重复构造是浪费。
         adapter = adapter_class(alert_source=event_source, secret=secret)
 
-        events = adapter.normalize_payload(data)
+        if is_cloud:
+            # 先认证。目录跳过也要是合法组织密钥，缺密钥或源级总密钥都是 403。
+            if not adapter.authenticate():
+                return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
+            events = adapter.normalize_payload(data)
+        else:
+            events = adapter.normalize_payload(data)
 
         data.pop("source_id", None)
         data.pop("secret", None)
 
         if not isinstance(events, list) or not events:
+            if is_cloud and getattr(adapter, "catalog_skipped", 0):
+                return JsonResponse(
+                    {
+                        "status": "success",
+                        "time": format_template_datetime(timezone.now()),
+                        "message": "Data received successfully.",
+                        "ingestion": {
+                            "received": adapter.catalog_skipped,
+                            "accepted": 0,
+                            "skipped": adapter.catalog_skipped,
+                            "errored": 0,
+                            "catalog_skipped": adapter.catalog_skipped,
+                        },
+                    }
+                )
             return JsonResponse({"status": "error", "message": "Missing events."}, status=400)
 
-        if not secret:
-            return JsonResponse({"status": "error", "message": "Missing secret."}, status=400)
-
-        adapter.events = events
-
-        if not adapter.authenticate():
-            return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
+        if not is_cloud:
+            if not secret:
+                return JsonResponse({"status": "error", "message": "Missing secret."}, status=400)
+            adapter.events = events
+            if not adapter.authenticate():
+                return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
+        else:
+            adapter.events = events
 
         ingestion = adapter.main() or {
             "received": len(events),
@@ -75,6 +110,27 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             "skipped": 0,
             "errored": 0,
         }
+        if is_cloud:
+            ingestion = dict(ingestion)
+            ingestion["catalog_skipped"] = getattr(adapter, "catalog_skipped", 0)
+            if ingestion.get("errored") and not ingestion.get("accepted"):
+                return JsonResponse(
+                    {
+                        "status": "error",
+                        "time": format_template_datetime(timezone.now()),
+                        "message": "Internal server error.",
+                        "ingestion": ingestion,
+                    },
+                    status=500,
+                )
+            return JsonResponse(
+                {
+                    "status": "success",
+                    "time": format_template_datetime(timezone.now()),
+                    "message": "Data received successfully.",
+                    "ingestion": ingestion,
+                }
+            )
         has_rejected = ingestion.get("skipped", 0) > 0 or ingestion.get("errored", 0) > 0
         if has_rejected:
             response_status = "partial" if ingestion.get("accepted", 0) > 0 else "error"

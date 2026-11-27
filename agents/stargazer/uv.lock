@@ -3602,7 +3602,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0.0" },
     { name = "sanic", specifier = "==24.6.0" },
     { name = "sanic-ext", specifier = "==23.12.0" },
-    { name = "scrapli", extras = ["asyncssh"], specifier = ">=2025.1.30" },
+    { name = "scrapli", extras = ["asyncssh"], specifier = "==2026.2.20" },
     { name = "scrapli-community", specifier = ">=2025.1.30" },
     { name = "six", marker = "extra == 'aliyun'", specifier = "==1.17.0" },
     { name = "tencentcloud-sdk-python", marker = "extra == 'qcloud'", specifier = "==3.0.948" },

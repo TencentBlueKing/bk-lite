@@ -14,6 +14,7 @@ from .alert_source import (
     AlertSourceModelSerializer,
     AlertSourceOptionSerializer,
     AlertSourceOverviewSerializer,
+    K8sCloudRegionSerializer,
     K8sRenderRequestSerializer,
     TeamSecretRequestSerializer,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "AlertSourceModelSerializer",
     "AlertSourceOptionSerializer",
     "AlertSourceOverviewSerializer",
+    "K8sCloudRegionSerializer",
     "K8sRenderRequestSerializer",
     "TeamSecretRequestSerializer",
     # 事件

@@ -23,10 +23,10 @@ from urllib.parse import quote
 
 from core.collection.contracts import StructuredMetricsPayload
 from core.collection.host_proc_influx import host_proc_line
+from core.collection.influx_line import encode_influx_line
 from core.infra.control_transport import get_control_transport
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish_lines
 from core.logger import safe_exception_info, safe_log_value
-from influxdb_client import Point, WritePrecision
 from sanic.log import logger
 
 MAX_NATS_LINES_PER_FLUSH = 1000
@@ -751,24 +751,17 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
                 if proc_line:
                     yield proc_line
                 continue
-            point = Point(f"{model_id}_info")
-            for key, value in labels.items():
-                text = str(value).replace("\r", " ").replace("\n", " ").strip()
-                if text:
-                    point.tag(key, text)
-            point.field("gauge", 1)
-            point.time(timestamp_ns, WritePrecision.NS)
-            yield point.to_line_protocol()
+            line = encode_influx_line(f"{model_id}_info", labels, "gauge", 1, timestamp_ns)
+            if line:
+                yield line
 
 
 def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:  # noqa: C901
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
-    使用 influxdb_client.Point 类来构建 Line Protocol，提供：
-    - 自动类型处理（整数、浮点数、字符串）
-    - 自动转义特殊字符（空格、逗号、等号等）
-    - 更清晰的对象化 API
+    指标名、tag、field 和时间戳交给 influx_line.encode_influx_line。
+    整数 field 带 i 后缀，浮点保持小数。tag 里的控制字符和反斜杠在这一层处理。
 
     Prometheus 格式:
         # TYPE metric_name gauge
@@ -887,7 +880,6 @@ def _prometheus_line_to_influx(
         logger.debug(f"[NATS Helper] Skipping special value: {value_str}")
         return None
 
-    point = Point(metric_name)
     all_tags = {}
     if labels_part:
         for key, raw_val in _parse_prometheus_labels(labels_part).items():
@@ -902,24 +894,19 @@ def _prometheus_line_to_influx(
         except ValueError:
             return None
         return host_proc_line(all_tags, timestamp_ns)
-    for tag_key, tag_value in all_tags.items():
-        point.tag(tag_key, tag_value)
 
     field_name = metric_types.get(metric_name, current_type if current_type else "value")
     try:
-        point.field(
-            field_name,
-            float(value_str) if "." in value_str or "e" in value_str.lower() else int(value_str),
-        )
+        field_value = float(value_str) if "." in value_str or "e" in value_str.lower() else int(value_str)
     except ValueError:
-        point.field(field_name, value_str)
-
+        field_value = value_str
+    timestamp_ns = None
     if timestamp_str:
         try:
-            point.time(_influx_timestamp_ns(timestamp_str), WritePrecision.NS)
+            timestamp_ns = _influx_timestamp_ns(timestamp_str)
         except ValueError as error:
             raise MetricFormatError("metric timestamp must be an integer") from error
-    return point.to_line_protocol()
+    return encode_influx_line(metric_name, all_tags, field_name, field_value, timestamp_ns)
 
 
 def _influx_timestamp_ns(timestamp_str: str) -> int | None:

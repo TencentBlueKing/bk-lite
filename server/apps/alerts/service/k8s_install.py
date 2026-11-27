@@ -196,9 +196,13 @@ class K8sInstallService:
             "cluster_name": cluster,
             "push_source_id": push_source,
             "source_id": source_id,
-            "receiver_url": urljoin(f"{base_url}/", receiver_path.lstrip("/")),
+            "receiver_url": cls.join_receiver_url(base_url, receiver_path),
             "secret": source_secret,
         }
+
+    @staticmethod
+    def join_receiver_url(server_url: str, receiver_path: str) -> str:
+        return urljoin(f"{server_url.rstrip('/')}/", (receiver_path or "").lstrip("/"))
 
     @classmethod
     def generate_install_token(cls, payload: dict) -> str:

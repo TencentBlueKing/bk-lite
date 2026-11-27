@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Input, Spin } from 'antd';
+import { Button, Checkbox, Input, Select, Spin } from 'antd';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import AlarmIntegrationGuideCredentialsPanel from '@/app/alarm/components/integration-guide/CredentialsPanel';
@@ -22,6 +22,8 @@ interface K8sGuideProps {
   credentialsSlot?: React.ReactNode;
   selectedTeamId?: string;
   selectedTeamSecret?: string;
+  cloudRegions?: { id: number; name: string }[];
+  receiverUrlByRegion?: Record<number, string>;
 }
 
 const K8sGuide: React.FC<K8sGuideProps> = ({
@@ -32,27 +34,24 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
   credentialsSlot,
   selectedTeamId,
   selectedTeamSecret,
+  cloudRegions = [],
+  receiverUrlByRegion = {},
 }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
-  const [serverUrl, setServerUrl] = useState('');
+  const [cloudRegionId, setCloudRegionId] = useState<number>();
   const [clusterName, setClusterName] = useState('k8s_cluster');
   const [pushSourceId, setPushSourceId] = useState(meta?.push_source_id_default || 'k8s');
   const [insecureSkipVerify, setInsecureSkipVerify] = useState(true);
-
-  useEffect(() => {
-    if (!serverUrl && typeof window !== 'undefined') {
-      setServerUrl(window.location.origin);
-    }
-  }, [serverUrl]);
+  const receiverUrl = cloudRegionId ? (receiverUrlByRegion[cloudRegionId] || '') : '';
 
   const renderParams = useMemo<K8sRenderParams>(() => ({
-    server_url: serverUrl,
+    cloud_region_id: cloudRegionId,
     cluster_name: clusterName,
     push_source_id: pushSourceId,
     team_id: selectedTeamId,
     insecure_skip_verify: insecureSkipVerify,
-  }), [serverUrl, clusterName, pushSourceId, selectedTeamId, insecureSkipVerify]);
+  }), [cloudRegionId, clusterName, pushSourceId, selectedTeamId, insecureSkipVerify]);
 
   useEffect(() => {
     if (meta?.push_source_id_default) {
@@ -85,13 +84,28 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
         <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="lg:col-span-2">
             <div className={fieldLabelClassName}>
-              {t('integration.serverUrlLabel')}
+              {t('integration.cloudRegionLabel')}
             </div>
-            <Input
-              value={serverUrl}
-              onChange={(event) => setServerUrl(event.target.value)}
-              placeholder="https://10.11.27.147:443"
+            <Select
+              aria-label={t('integration.cloudRegionLabel')}
+              className="w-full"
+              value={cloudRegionId}
+              placeholder={t('integration.cloudRegionPlaceholder')}
+              options={cloudRegions.map((region) => ({ value: region.id, label: region.name }))}
+              onChange={setCloudRegionId}
+              notFoundContent={t('integration.cloudRegionEmpty')}
             />
+          </div>
+          <div className="lg:col-span-2">
+            <div className={fieldLabelClassName}>
+              {t('integration.reportAddressLabel')}
+            </div>
+            <div
+              aria-label={t('integration.reportAddressLabel')}
+              className="break-all rounded-[8px] border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-[13px] leading-6 text-[var(--color-text-1)]"
+            >
+              {receiverUrl || t('integration.reportAddressPending')}
+            </div>
           </div>
           <div>
             <div className={fieldLabelClassName}>
@@ -139,7 +153,7 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
               <Button
                 icon={<DownloadOutlined />}
                 onClick={() => onDownload(deployFile.key, deployFile.file_name, renderParams)}
-                disabled={!serverUrl || !clusterName || !selectedTeamSecret}
+                disabled={!receiverUrl || !clusterName || !pushSourceId || !selectedTeamSecret}
               >
                 {deployFile.display_name}
               </Button>
@@ -149,8 +163,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
           </div>
           <div className="max-w-[680px] text-[13px] leading-6 text-[var(--color-text-2)]">
             {selectedTeamSecret
-              ? '下载前请确认接入地址与集群名正确，避免后续重复改 YAML。'
-              : '请先在顶部选择上报组织（或新建组织密钥）后再下载部署文件。'}
+              ? t('integration.k8sDownloadConfirm')
+              : t('integration.k8sDownloadNeedTeam')}
           </div>
         </div>
       ),
@@ -192,14 +206,14 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
           items={[
             {
               label: 'CLUSTER_NAME',
-              value: t('integration.clusterNameHelp'),
+              value: clusterName || t('integration.clusterNameHelp'),
               copyable: false,
             },
             {
               label: 'BK_LITE_RECEIVER_URL',
-              value: meta.receiver_url,
-              copyValue: meta.receiver_url,
-              copyable: true,
+              value: receiverUrl || t('integration.reportAddressPending'),
+              copyValue: receiverUrl,
+              copyable: Boolean(receiverUrl),
             },
             {
               label: 'BK_LITE_SECRET',
@@ -224,16 +238,16 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
             },
             {
               label: 'BK_LITE_PUSH_SOURCE_ID',
-              value: meta.push_source_id_default,
+              value: pushSourceId || meta.push_source_id_default,
               displayValue: (
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[13px]">{meta.push_source_id_default}</span>
+                  <span className="font-mono text-[13px]">{pushSourceId || meta.push_source_id_default}</span>
                   {meta.push_source_id_configurable ? (
                     <span className="text-[var(--color-text-3)]">{t('integration.pushSourceConfigurable')}</span>
                   ) : null}
                 </div>
               ),
-              copyValue: meta.push_source_id_default,
+              copyValue: pushSourceId || meta.push_source_id_default,
               copyable: true,
             },
           ]}

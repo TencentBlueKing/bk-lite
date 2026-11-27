@@ -133,7 +133,7 @@ def _install_edges(monkeypatch, nodes, *, refuse_hosts=()):
             return object(), _Writer()
         return await real_open_connection(host, port, **kwargs)
 
-    async def publish_marker(_request, _round_ts):
+    async def publish_marker(_request, _round_ts, **_kwargs):
         return True
 
     monkeypatch.setattr("plugins.script_executor.nats_request", nats_request)

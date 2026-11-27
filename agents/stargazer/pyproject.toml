@@ -34,7 +34,8 @@ dependencies = [
     "aioodbc>=0.5.0",
     "paramiko==3.5.0",
     "confluent-kafka[avro]==2.15.0",
-    "scrapli[asyncssh]>=2025.1.30",
+    # 2026.10.3 起 scrapli 2.0 删除 AsyncScrapli。网络配置采集仍调用 1.x 接口，不能随 >= 浮到新版本。
+    "scrapli[asyncssh]==2026.2.20",
     "scrapli-community>=2025.1.30",
     "pyghmi>=1.6.5",
     "impacket>=0.12.0",

@@ -257,7 +257,7 @@ const AssetDataContent = () => {
   const { t } = useTranslation();
   const { hasPermission } = useBtnPermissions();
   const canExportAssets = hasPermission(['Export']);
-  const { selectedGroup, userId } = useUserInfoContext();
+  const { selectedGroup, userId, groupTree } = useUserInfoContext();
   const { clientData, loading: clientLoading } = useClientData();
   const { getModelAssociationTypes, getModelAssociations, getModelAttrList, getModelAttrGroupsFullInfo } = useModelApi();
   const { getClassificationList } = useClassificationApi();
@@ -1728,6 +1728,9 @@ const AssetDataContent = () => {
               modelId={modelId}
               filter={storeAdvancedFilter}
               attrList={propertyList}
+              userList={userList}
+              groups={groupTree}
+              clouds={proxyOptions}
               assoTypes={assoTypes}
               models={originModels}
               onChange={(filter) => useAssetDataStore.getState().setAdvancedFilter(filter)}
@@ -1736,6 +1739,7 @@ const AssetDataContent = () => {
               attrList={[...propertyList, instanceUuidFilterAttr(t('Model.instanceUuid'))]}
               userList={userList}
               proxyOptions={proxyOptions}
+              groups={groupTree}
               modelId={modelId}
               onChange={handleFilterBarChange}
               onFilterChange={handleFilterBarChange}
@@ -1811,6 +1815,8 @@ const AssetDataContent = () => {
             applied={storeAdvancedFilter}
             attrList={propertyList}
             userList={userList}
+            groups={groupTree}
+            clouds={proxyOptions}
             assoTypes={assoTypes}
             models={originModels}
             onClose={() => setAdvancedOpen(false)}

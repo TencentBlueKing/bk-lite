@@ -13,13 +13,18 @@ import { getTagOptions } from '@/app/cmdb/utils/fieldUtils';
 import { isSearchableFilterAttr } from '../searchFilterAttrs';
 import {
   buildPathChoices,
-  conditionValueText,
+  displayFieldCondition,
   operatorNeedsValue,
   operatorsFor,
+  optionItems,
   summarizeCondition,
+  userFilterLabel,
   type AdvancedCondition,
   type AdvancedLogic,
   type AssocEdge,
+  type FilterCloudOption,
+  type FilterGroupNode,
+  type FilterLabelContext,
   type PathChoice,
 } from './advancedFilter';
 
@@ -35,6 +40,8 @@ interface AdvancedFilterDrawerProps {
   applied: AdvancedFilterValue | null;
   attrList: AttrFieldType[];
   userList: UserItem[];
+  groups?: FilterGroupNode[];
+  clouds?: FilterCloudOption[];
   assoTypes: AssoTypeItem[];
   models: ModelItem[];
   onClose: () => void;
@@ -56,26 +63,27 @@ function missingConditionValue(condition: DraftCondition) {
   return condition.value === '' || condition.value == null;
 }
 
-function optionItems(option: AttrFieldType['option']) {
-  if (!Array.isArray(option)) return [];
-  return option.map((item) => {
-    if (typeof item === 'string' || typeof item === 'number') {
-      return { label: String(item), value: String(item) };
-    }
-    const record = item as { id?: string; name?: string; value?: string; label?: string };
-    const value = String(record.id ?? record.value ?? '');
-    return { label: String(record.name ?? record.label ?? value), value };
-  }).filter((item) => item.value);
-}
-
 function searchableAttrs(attrs: AttrFieldType[]) {
   return attrs.filter((attr) => isSearchableFilterAttr(attr.attr_type) && !attr.is_display_field);
+}
+
+function labelContext(
+  userList: UserItem[],
+  groups: FilterGroupNode[],
+  clouds: FilterCloudOption[],
+  boolYes: string,
+  boolNo: string,
+): FilterLabelContext {
+  return { users: userList, groups, clouds, boolYes, boolNo };
 }
 
 export function AdvancedFilterChips({
   modelId,
   filter,
   attrList,
+  userList = [],
+  groups = [],
+  clouds = [],
   assoTypes,
   models,
   onChange,
@@ -83,6 +91,9 @@ export function AdvancedFilterChips({
   modelId: string;
   filter: AdvancedFilterValue | null;
   attrList: AttrFieldType[];
+  userList?: UserItem[];
+  groups?: FilterGroupNode[];
+  clouds?: FilterCloudOption[];
   assoTypes: AssoTypeItem[];
   models: ModelItem[];
   onChange: (filter: AdvancedFilterValue | null) => void;
@@ -127,7 +138,7 @@ export function AdvancedFilterChips({
           choice?.label || t('AdvancedFilter.currentModel'),
           field?.attr_name || condition.field,
           operator?.label || condition.type,
-          conditionValueText(condition),
+          displayFieldCondition(condition, field, labelContext(userList, groups, clouds, t('yes'), t('no'))),
         );
         return (
           <Tag key={`${condition.field}-${index}`} closable onClose={() => remove(index)}>
@@ -148,6 +159,8 @@ export default function AdvancedFilterDrawer({
   applied,
   attrList,
   userList,
+  groups = [],
+  clouds = [],
   assoTypes,
   models,
   onClose,
@@ -297,6 +310,7 @@ export default function AdvancedFilterDrawer({
                 attrs={attrsByModel[endModelId || modelId] || []}
                 endModelName={endModelId && endModelId !== modelId ? modelName(models)(endModelId) : ''}
                 userList={userList}
+                labelContext={labelContext(userList, groups, clouds, t('yes'), t('no'))}
                 onChange={(patch) => updateDraft(condition.key, patch)}
                 onRemove={() => setDrafts((current) => current.filter((item) => item.key !== condition.key))}
               />
@@ -361,6 +375,7 @@ function ConditionCard({
   attrs,
   endModelName,
   userList,
+  labelContext: valueLabels,
   onChange,
   onRemove,
 }: {
@@ -370,6 +385,7 @@ function ConditionCard({
   attrs: AttrFieldType[];
   endModelName: string;
   userList: UserItem[];
+  labelContext: FilterLabelContext;
   onChange: (patch: Partial<DraftCondition>) => void;
   onRemove: () => void;
 }) {
@@ -392,7 +408,7 @@ function ConditionCard({
     choice?.label || t('AdvancedFilter.currentModel'),
     attr?.attr_name || condition.field || t('AdvancedFilter.field'),
     operator?.label || condition.type,
-    conditionValueText(condition),
+    displayFieldCondition(condition, attr, valueLabels),
   );
   return (
     <div className="rounded border border-[var(--color-border-2)] p-3">
@@ -525,7 +541,7 @@ function ValueEditor({
         mode="multiple"
         className="w-full"
         options={attr?.attr_type === 'user'
-          ? userList.map((user) => ({ label: user.username, value: user.id }))
+          ? userList.map((user) => ({ label: userFilterLabel(user), value: user.id }))
           : optionItems(attr?.option || [])}
         value={Array.isArray(condition.value) ? condition.value : []}
         onChange={(value) => onChange({ value })}
@@ -544,7 +560,7 @@ function ValueEditor({
   if (attr?.attr_type === 'bool') {
     return (
       <Select
-        options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]}
+        options={[{ label: t('yes'), value: true }, { label: t('no'), value: false }]}
         value={typeof condition.value === 'boolean' ? condition.value : undefined}
         onChange={(value) => onChange({ value })}
       />

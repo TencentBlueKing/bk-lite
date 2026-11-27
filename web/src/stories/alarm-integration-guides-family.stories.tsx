@@ -191,6 +191,8 @@ const FamilyOverview = () => {
               <K8sGuide
                 source={k8sSource}
                 meta={k8sMeta}
+                cloudRegions={[{ id: 9, name: 'edge' }]}
+                receiverUrlByRegion={{ 9: 'https://9.9.9.9:443/api/v1/alerts/api/receiver_data/' }}
                 selectedTeamSecret="team-secret-value"
                 credentialsSlot={(
                   <Alert
@@ -208,6 +210,8 @@ const FamilyOverview = () => {
               <K8sGuide
                 source={k8sSource}
                 meta={k8sMeta}
+                cloudRegions={[{ id: 9, name: 'edge' }]}
+                receiverUrlByRegion={{ 9: 'https://9.9.9.9:443/api/v1/alerts/api/receiver_data/' }}
                 selectedTeamSecret={undefined}
                 credentialsSlot={(
                   <Alert

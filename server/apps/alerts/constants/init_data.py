@@ -4,8 +4,10 @@
 # @Author: windyzhao
 from copy import deepcopy
 
+from apps.alerts.common.source_adapter.cloud_catalog import catalog_text
 from apps.alerts.common.source_adapter.constants import (
     DEFAULT_SOURCE_CONFIG,
+    build_cloud_source_config,
     build_nats_source_config,
     build_prometheus_source_config,
     build_zabbix_source_config,
@@ -346,5 +348,27 @@ BUILTIN_ALERT_SOURCES = [
         "is_effective": True,
         "description": "内置 SNMP Trap 集成源, 独立 bridge 可通过 source webhook 推送规范化事件",
         "logo": "/assets/icons/mm-monitor_integrations_SNMP.svg",
+    },
+    {
+        "name": "阿里云 EventBridge",
+        "source_id": "aliyun_eventbridge",
+        "source_type": AlertsSourceTypes.ALIYUN_EVENTBRIDGE,
+        "config": build_cloud_source_config("aliyun_eventbridge", catalog_text("aliyun")),
+        "access_type": AlertAccessType.BUILT_IN,
+        "is_active": True,
+        "is_effective": True,
+        "description": "内置阿里云 EventBridge 集成源。默认只收影响连续性的 ECS 事件，目录见接入说明。",
+        "logo": "/assets/icons/mm-aliyun_阿里云.svg",
+    },
+    {
+        "name": "腾讯云事件总线",
+        "source_id": "tencent_eventbus",
+        "source_type": AlertsSourceTypes.TENCENT_EVENTBUS,
+        "config": build_cloud_source_config("tencent_eventbus", catalog_text("tencent"), query_secret=True),
+        "access_type": AlertAccessType.BUILT_IN,
+        "is_active": True,
+        "is_effective": True,
+        "description": "内置腾讯云事件总线集成源。默认只收 CVM。不能加请求头时，把组织密钥放在查询参数 secret。",
+        "logo": "/assets/icons/cc-cloud-server_云服务器.svg",
     },
 ]
