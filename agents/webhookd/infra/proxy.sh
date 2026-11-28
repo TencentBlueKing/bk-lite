@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_DIR="${PROXY_TEMPLATE_DIR:-${SCRIPT_DIR}/proxy}"
@@ -19,13 +20,18 @@ JSON="${1:-$(cat)}"
 [ -n "$JSON" ] || die "no input"
 echo "$JSON" | jq empty 2>/dev/null || die "invalid json"
 
-get() { echo "$JSON" | jq -r ".$1 // empty"; }
+get() { printf '%s\n' "$JSON" | jq -r ".$1 // empty"; }
+PACKAGE_VERSION=$(jq -er '
+    if type != "object" then error("invalid payload")
+    elif has("proxy_package_version") then
+        if .proxy_package_version == 2 then 2 else error("unsupported version") end
+    else 1 end
+' <<< "$JSON" 2>/dev/null) || die "unsupported proxy_package_version"
 
 NODE_ID=$(get node_id)
 ZONE_ID=$(get zone_id)
 ZONE_NAME=$(get zone_name)
 SERVER_URL=$(get server_url)
-NATS_URL=$(get nats_url)
 NATS_USER=$(get nats_username)
 NATS_PASS=$(get nats_password)
 API_TOKEN=$(get api_token)
@@ -39,7 +45,7 @@ APM_NATS_USER=$(get apm_nats_username)
 APM_NATS_PASS=$(get apm_nats_password)
 TRAEFIK_WEB_PORT=$(get traefik_web_port)
 
-for p in node_id zone_id zone_name server_url nats_url nats_username nats_password api_token redis_password proxy_ip nats_monitor_username nats_monitor_password apm_nats_username apm_nats_password traefik_web_port; do
+for p in node_id zone_id zone_name server_url nats_username nats_password api_token redis_password proxy_ip nats_monitor_username nats_monitor_password apm_nats_username apm_nats_password traefik_web_port; do
     [ -n "$(get $p)" ] || die "missing $p"
 done
 
@@ -51,22 +57,49 @@ else
     PROXY_SAN="DNS:${PROXY_SAN_VALUE}"
 fi
 
-NATS_ENDPOINT="${NATS_URL#*://}"
-if [[ "$NATS_ENDPOINT" == \[* ]]; then
-    NATS_HOST="${NATS_ENDPOINT%%]*}]"
-    NATS_REMAINDER="${NATS_ENDPOINT#*]}"
-    NATS_PORT="${NATS_REMAINDER#:}"
+[[ "$INSTALL_PATH" =~ ^/([A-Za-z0-9_-][A-Za-z0-9_.-]*/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] || die "invalid install_path"
+uri_component() { printf '%s' "$1" | jq -sRr @uri; }
+nats_string() { printf '%s' "$1" | jq -sRr @json; }
+
+NATS_HOST_PATTERN='([[:alnum:].-]+|\[[[:xdigit:]:.]+\])'
+if [ "$PACKAGE_VERSION" = 2 ]; then
+    for p in nats_leaf_url nats_leaf_username nats_leaf_password nats_source_domain nats_bucket nats_installer_username nats_installer_password; do
+        [ -n "$(get "$p")" ] || die "missing $p"
+    done
+    NATS_LEAF_URL=$(get nats_leaf_url)
+    NATS_SOURCE_DOMAIN=$(get nats_source_domain)
+    NATS_BUCKET=$(get nats_bucket)
+    INSTALLER_USER=$(get nats_installer_username)
+    if [[ ! "$NATS_LEAF_URL" =~ ^tls://$NATS_HOST_PATTERN:([0-9]{1,5})$ ]]; then
+        die "invalid nats_leaf_url"
+    fi
+    leaf_port=${BASH_REMATCH[2]}
+    (( 10#$leaf_port > 0 && 10#$leaf_port <= 65535 )) || die "invalid nats_leaf_url"
+    [[ "$NATS_SOURCE_DOMAIN" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid nats_source_domain"
+    [[ "$NATS_BUCKET" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid nats_bucket"
+    if [[ "$INSTALLER_USER" == "$NATS_USER" || "$INSTALLER_USER" == "$MONITOR_USER" || "$INSTALLER_USER" == "$APM_NATS_USER" ]]; then
+        die "conflicting nats_installer_username"
+    fi
+    REMOTE_NATS_URL="tls://$(uri_component "$(get nats_leaf_username)"):$(uri_component "$(get nats_leaf_password)")@${NATS_LEAF_URL#tls://}"
 else
-    NATS_HOST="${NATS_ENDPOINT%%:*}"
-    NATS_PORT="${NATS_ENDPOINT#*:}"
-    [ "$NATS_PORT" = "$NATS_ENDPOINT" ] && NATS_PORT=""
+    # Old Server sends a TLS client endpoint and uses certificate-only Leafnode auth.
+    # Preserve its endpoint and namespace while the hub is still on the legacy deployment.
+    NATS_ENDPOINT=$(get nats_url)
+    if [[ ! "${NATS_ENDPOINT#*://}" =~ ^$NATS_HOST_PATTERN(:([0-9]{1,5}))?$ ]]; then
+        die "invalid nats_url"
+    fi
+    leaf_port=${BASH_REMATCH[3]:-4222}
+    (( 10#$leaf_port > 0 && 10#$leaf_port <= 65535 )) || die "invalid nats_url"
+    REMOTE_NATS_URL="tls://${BASH_REMATCH[1]}:$leaf_port"
+    NATS_SOURCE_DOMAIN=bklite
+    NATS_BUCKET=bklite
 fi
-NATS_PORT="${NATS_PORT:-4222}"
 
 WORK=$(mktemp -d)
 trap "rm -rf $WORK" EXIT
 
 cp -r "$PROXY_DIR"/* "$WORK/"
+mkdir -p "$WORK/conf/certs" "$WORK/conf/traefik/certs"
 
 openssl genrsa -out "$WORK/conf/certs/proxy.key" 2048 2>/dev/null
 
@@ -106,32 +139,38 @@ export TRAEFIK_WEB_PORT
 
 envsubst < "$WORK/env.template" > "$WORK/.env"
 
-export REMOTE_HOST="${NATS_HOST}"
-export REMOTE_NATS_PORT="${NATS_PORT}"
-export NATS_MONITOR_USERNAME="${MONITOR_USER}"
-export NATS_MONITOR_PASSWORD="${MONITOR_PASS}"
-export APM_NATS_USERNAME APM_NATS_PASSWORD
+export REMOTE_NATS_URL
+export NATS_MONITOR_USERNAME_JSON=$(nats_string "$MONITOR_USER")
+export NATS_MONITOR_PASSWORD_JSON=$(nats_string "$MONITOR_PASS")
+export NATS_ADMIN_USERNAME_JSON=$(nats_string "$NATS_USER")
+export NATS_ADMIN_PASSWORD_JSON=$(nats_string "$NATS_PASS")
+export NATS_APM_USERNAME_JSON=$(nats_string "$APM_NATS_USER")
+export NATS_APM_PASSWORD_JSON=$(nats_string "$APM_NATS_PASS")
+export NATS_OBJECT_STREAM="OBJ_${NATS_BUCKET}"
+NATS_INSTALLER_USER_BLOCK=
+if [ "$PACKAGE_VERSION" = 2 ]; then
+    export NATS_INSTALLER_USERNAME_JSON=$(nats_string "$INSTALLER_USER")
+    export NATS_INSTALLER_PASSWORD_JSON=$(nats_string "$(get nats_installer_password)")
+    NATS_INSTALLER_USER_BLOCK=$(envsubst '${NATS_INSTALLER_USERNAME_JSON} ${NATS_INSTALLER_PASSWORD_JSON} ${NATS_OBJECT_STREAM}' \
+        < "$WORK/conf/nats/installer-user.conf.template")
+fi
+export NATS_INSTALLER_USER_BLOCK
+envsubst '${ZONE_ID} ${REMOTE_NATS_URL} ${NATS_ADMIN_USERNAME_JSON} ${NATS_ADMIN_PASSWORD_JSON} ${NATS_MONITOR_USERNAME_JSON} ${NATS_MONITOR_PASSWORD_JSON} ${NATS_APM_USERNAME_JSON} ${NATS_APM_PASSWORD_JSON} ${NATS_INSTALLER_USER_BLOCK}' \
+    < "$WORK/conf/nats/nats.conf.template" > "$WORK/conf/nats/nats.conf"
+jq --arg stream "$NATS_OBJECT_STREAM" --arg api "\$JS.$NATS_SOURCE_DOMAIN.API" \
+    '.name = $stream | .mirror.name = $stream | .mirror.external.api = $api' \
+    "$PROXY_DIR/conf/nats/jetstream.json" > "$WORK/conf/nats/jetstream.json"
 
-envsubst < "$WORK/conf/nats/nats.conf.template" > "$WORK/conf/nats/nats.conf"
-
-rm -f "$WORK/proxy.cnf" "$WORK/proxy.csr" "$WORK/env.template" "$WORK/conf/nats/nats.conf.template"
+rm -f "$WORK/proxy.cnf" "$WORK/proxy.csr" "$WORK/env.template" "$WORK/conf/nats/nats.conf.template" "$WORK/conf/nats/installer-user.conf.template"
 
 ARCHIVE=$(tar -czf - -C "$WORK" . | base64 | tr -d '\n')
 
-INSTALL_SCRIPT=$(cat << 'SCRIPT'
-#!/bin/bash
-set -euo pipefail
-INSTALL_PATH="__INSTALL_PATH__"
-ARCHIVE="__ARCHIVE__"
-mkdir -p "$INSTALL_PATH"
-echo "$ARCHIVE" | base64 -d | tar -xzf - -C "$INSTALL_PATH"
-chmod 600 "$INSTALL_PATH/.env" "$INSTALL_PATH/conf/certs/proxy.key" "$INSTALL_PATH/conf/traefik/certs/proxy.key"
-cd "$INSTALL_PATH" && ./bootstrap.sh
-SCRIPT
+INSTALL_SCRIPT=$(
+    printf '#!/bin/bash\nset -euo pipefail\numask 077\nINSTALL_PATH="%s"\nARCHIVE="%s"\n' "$INSTALL_PATH" "$ARCHIVE"
+    cat "$SCRIPT_DIR/install-proxy-payload.sh"
 )
 
-INSTALL_SCRIPT="${INSTALL_SCRIPT/__INSTALL_PATH__/$INSTALL_PATH}"
-INSTALL_SCRIPT="${INSTALL_SCRIPT/__ARCHIVE__/$ARCHIVE}"
-
-jq -n --arg id "$NODE_ID" --arg script "$INSTALL_SCRIPT" \
-    '{status:"success",id:$id,message:"ok",install_script:$script}'
+# The script contains a private key and credentials. Pass it on stdin, not as
+# a process argument, and let webhookd return it to the authorized caller.
+printf '%s' "$INSTALL_SCRIPT" | jq -Rs --arg id "$NODE_ID" --argjson version "$PACKAGE_VERSION" \
+    '{status:"success",id:$id,message:"ok",install_script:.} | if $version == 2 then .proxy_package_version = $version else . end'

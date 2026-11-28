@@ -3,6 +3,8 @@
 仅 mock 真实外部边界（requests.post webhook、AESCryptor 解密、cache）。
 其余断言真实 DB 副作用与返回值。
 """
+import logging
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -339,6 +341,13 @@ def test_get_deploy_script_region_not_found_raises():
 
 HUB_NODE_SERVER_URL = "https://hub.example:8443"
 HUB_NATS_SERVERS = "tls://hub.example:4222"
+PROXY_ENV = {
+    "PROXY_NATS_LEAF_URL": "tls://hub.example:17422",
+    "PROXY_NATS_LEAF_USERNAME": "proxy-leaf",
+    "PROXY_NATS_LEAF_PASSWORD": "leaf-secret",
+    "PROXY_NATS_SOURCE_DOMAIN": "bklite_primary",
+}
+
 
 
 def _ensure_hub_env():
@@ -350,6 +359,8 @@ def _ensure_hub_env():
     for key, value in (
         (NodeConstants.SERVER_URL_KEY, HUB_NODE_SERVER_URL),
         (NodeConstants.NATS_SERVERS_KEY, HUB_NATS_SERVERS),
+        (NodeConstants.NATS_INSTALLER_USERNAME_KEY, "installer"),
+        (NodeConstants.NATS_INSTALLER_PASSWORD_KEY, "installer-secret"),
     ):
         SidecarEnv.objects.update_or_create(
             cloud_region=region,
@@ -371,6 +382,8 @@ def _build_complete_env(region_id):
         "NATS_SERVERS": "nats://nats.local:4222",
         "NATS_USERNAME": "admin",
         NodeConstants.NATS_PASSWORD_KEY: "natspass",
+        NodeConstants.NATS_INSTALLER_USERNAME_KEY: "installer",
+        NodeConstants.NATS_INSTALLER_PASSWORD_KEY: "installer-secret",
     }
     for k, v in base.items():
         SidecarEnv.objects.create(cloud_region_id=region_id, key=k, value=v, type="str")
@@ -378,7 +391,7 @@ def _build_complete_env(region_id):
 
 @pytest.mark.django_db
 def test_get_deploy_script_missing_webhook_url_raises():
-    region = CloudRegion.objects.create(name="cr-deploy-nowebhook", proxy_address="5.5.5.5")
+    region = _create_custom_region(name="cr-deploy-nowebhook", proxy_address="5.5.5.5")
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", return_value=None):
         with pytest.raises(BaseAppException) as exc:
             RegionService.get_deploy_script({"cloud_region_id": region.id})
@@ -387,13 +400,13 @@ def test_get_deploy_script_missing_webhook_url_raises():
 
 @pytest.mark.django_db
 def test_get_deploy_script_missing_required_vars_raises():
-    region = CloudRegion.objects.create(name="cr-deploy-incomplete", proxy_address="5.5.5.5")
+    region = _create_custom_region(name="cr-deploy-incomplete", proxy_address="5.5.5.5")
     SidecarEnv.objects.create(
         cloud_region=region, key="WEBHOOK_SERVER_URL", value="https://wh", type="str"
     )
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv):
         with pytest.raises(BaseAppException) as exc:
@@ -408,11 +421,11 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
     _build_complete_env(region.id)
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     response = MagicMock()
     response.status_code = 200
-    response.json.return_value = {"install_script": "echo hello"}
+    response.json.return_value = {"status": "success", "proxy_package_version": 2, "install_script": "echo hello"}
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
@@ -426,7 +439,11 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
     assert called_url == "https://webhook.local/infra/proxy"
     webhook_payload = post_mock.call_args.kwargs["json"]
     assert webhook_payload["server_url"] == HUB_NODE_SERVER_URL
-    assert webhook_payload["nats_url"] == HUB_NATS_SERVERS
+    assert webhook_payload["nats_leaf_url"] == PROXY_ENV["PROXY_NATS_LEAF_URL"]
+    assert webhook_payload["proxy_package_version"] == 2
+    assert webhook_payload["nats_source_domain"] == "bklite_primary"
+    assert webhook_payload["nats_installer_username"] == "installer"
+    assert webhook_payload["nats_installer_password"] == "installer-secret"
     assert webhook_payload["apm_nats_username"] == f"apm_region_{region.id}"
     assert len(webhook_payload["apm_nats_password"]) == 32
 
@@ -450,10 +467,10 @@ def test_get_deploy_script_maps_admin_and_monitor_nats_accounts():
 
     def fake_getenv(key, default=None):
         # 进程环境提供不同的值，验证区域变量优先。
-        return {"NATS_ADMIN_USERNAME": "env-admin", "NATS_ADMIN_PASSWORD": "env-adminpass"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "env-admin", "NATS_ADMIN_PASSWORD": "env-adminpass"}.get(key, default)
 
     response = MagicMock(status_code=200)
-    response.json.return_value = {"install_script": "echo ok"}
+    response.json.return_value = {"status": "success", "proxy_package_version": 2, "install_script": "echo ok"}
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
@@ -477,7 +494,7 @@ def test_get_deploy_script_rejects_identical_admin_and_monitor_username():
     _build_complete_env(region.id)  # NATS_USERNAME = "admin"
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "admin", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "admin", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post"
@@ -498,6 +515,7 @@ def test_get_deploy_script_prefers_runtime_webhook_url():
 
     def fake_getenv(key, default=None):
         return {
+            **PROXY_ENV,
             "WEBHOOK_SERVER_URL": "http://127.0.0.1:18080",
             "NATS_ADMIN_USERNAME": "u",
             "NATS_ADMIN_PASSWORD": "p",
@@ -505,7 +523,7 @@ def test_get_deploy_script_prefers_runtime_webhook_url():
 
     response = MagicMock()
     response.status_code = 200
-    response.json.return_value = {"install_script": "echo hello"}
+    response.json.return_value = {"status": "success", "proxy_package_version": 2, "install_script": "echo hello"}
 
     with patch(
         "apps.node_mgmt.services.cloudregion.os.getenv",
@@ -555,10 +573,10 @@ def test_get_deploy_script_uses_pending_address_without_mutating_current_config(
     ).update(value="nats://old.proxy.local:4222")
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     response = MagicMock(status_code=200)
-    response.json.return_value = {"install_script": "echo pending"}
+    response.json.return_value = {"status": "success", "proxy_package_version": 2, "install_script": "echo pending"}
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
@@ -570,7 +588,7 @@ def test_get_deploy_script_uses_pending_address_without_mutating_current_config(
     webhook_payload = post_mock.call_args.kwargs["json"]
     assert webhook_payload["proxy_ip"] == "new.proxy.local"
     assert webhook_payload["server_url"] == HUB_NODE_SERVER_URL
-    assert webhook_payload["nats_url"] == HUB_NATS_SERVERS
+    assert webhook_payload["nats_leaf_url"] == PROXY_ENV["PROXY_NATS_LEAF_URL"]
     region.refresh_from_db()
     assert region.proxy_address == "old.proxy.local"
     assert SidecarEnv.objects.get(cloud_region=region, key="NODE_SERVER_URL").value == "https://old.proxy.local:443"
@@ -619,10 +637,10 @@ def test_get_deploy_script_keeps_hub_upstreams_after_custom_region_address_rewri
     assert rewritten_nats == "tls://10.0.0.9:4222"
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     response = MagicMock(status_code=200)
-    response.json.return_value = {"install_script": "echo ok"}
+    response.json.return_value = {"status": "success", "proxy_package_version": 2, "install_script": "echo ok"}
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
@@ -634,14 +652,14 @@ def test_get_deploy_script_keeps_hub_upstreams_after_custom_region_address_rewri
     webhook_payload = post_mock.call_args.kwargs["json"]
     assert webhook_payload["proxy_ip"] == "10.0.0.9"
     assert webhook_payload["server_url"] == HUB_NODE_SERVER_URL
-    assert webhook_payload["nats_url"] == HUB_NATS_SERVERS
+    assert webhook_payload["nats_leaf_url"] == PROXY_ENV["PROXY_NATS_LEAF_URL"]
     assert webhook_payload["server_url"] != rewritten_server
-    assert webhook_payload["nats_url"] != rewritten_nats
+    assert webhook_payload["nats_leaf_url"] != rewritten_nats
 
 
 @pytest.mark.django_db
 def test_pending_deploy_script_rejects_proxy_environment_drift():
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-pending-drift",
         proxy_address="old.proxy.local",
         pending_proxy_address="new.proxy.local",
@@ -666,7 +684,7 @@ def test_pending_deploy_script_rejects_proxy_environment_drift():
 
 @pytest.mark.django_db
 def test_stage_and_cancel_proxy_address_do_not_change_current_address():
-    region = CloudRegion.objects.create(name="cr-stage", proxy_address="old.proxy.local")
+    region = _create_custom_region(name="cr-stage", proxy_address="old.proxy.local")
 
     RegionService.stage_proxy_address(region.id, "new.proxy.local")
     region.refresh_from_db()
@@ -683,7 +701,7 @@ def test_stage_and_cancel_proxy_address_do_not_change_current_address():
 
 @pytest.mark.django_db
 def test_stage_proxy_address_normalizes_ipv6_for_url_substitution():
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-stage-ipv6",
         proxy_address="old.proxy.local",
     )
@@ -696,7 +714,7 @@ def test_stage_proxy_address_normalizes_ipv6_for_url_substitution():
 
 @pytest.mark.django_db
 def test_activate_pending_proxy_address_requires_confirmation_and_healthy_services():
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-activate-guard",
         proxy_address="old.proxy.local",
         pending_proxy_address="new.proxy.local",
@@ -732,7 +750,7 @@ def test_activate_pending_proxy_address_requires_confirmation_and_healthy_servic
 
 @pytest.mark.django_db
 def test_activate_rechecks_live_health_instead_of_trusting_stored_status():
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-live-health",
         proxy_address="old.proxy.local",
         pending_proxy_address="new.proxy.local",
@@ -781,7 +799,7 @@ def test_activate_rechecks_live_health_instead_of_trusting_stored_status():
 
 @pytest.mark.django_db
 def test_activate_rolls_back_when_proxy_related_environment_has_drifted():
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-env-drift",
         proxy_address="old.proxy.local",
         pending_proxy_address="new.proxy.local",
@@ -833,7 +851,7 @@ def test_activate_rolls_back_when_proxy_related_environment_has_drifted():
 def test_activate_pending_proxy_address_updates_current_address_and_env_vars(
     django_capture_on_commit_callbacks,
 ):
-    region = CloudRegion.objects.create(
+    region = _create_custom_region(
         name="cr-activate",
         proxy_address="old.proxy.local",
         pending_proxy_address="new.proxy.local",
@@ -889,31 +907,68 @@ def test_activate_pending_proxy_address_updates_current_address_and_env_vars(
 
 @pytest.mark.django_db
 def test_get_deploy_script_webhook_non_200_raises(caplog):
-    import logging
-
     _ensure_hub_env()
     region = _create_custom_region(name="cr-deploy-500", proxy_address="6.6.6.6")
     _build_complete_env(region.id)
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
-    sentinel = "SENTINEL_WH_5953_ZzQ9mK2p"
     response = MagicMock()
     response.status_code = 500
-    response.text = ("Y" * 200) + f"\n{sentinel}\nmore"
+    response.text = "secret-sentinel-full-response"
 
-    with caplog.at_level(logging.ERROR, logger="node"), patch(
-        "apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv
-    ), patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response), patch(
-        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
-    ):
+    with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
+    ), patch("apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"):
         with pytest.raises(BaseAppException) as exc:
             RegionService.get_deploy_script({"cloud_region_id": region.id})
     assert "Failed to generate deploy script" in str(exc.value)
+    assert "secret-sentinel-full-response" not in str(exc.value)
+    assert "secret-sentinel-full-response" not in caplog.text
+    record = next(record for record in caplog.records if record.funcName == "get_deploy_script" and record.levelname == "ERROR")
+    assert record.msg == "proxy_package_failed region=%s failed_stage=webhook_response error_type=UnexpectedHTTPStatus status=%s"
+    assert record.args == (region.id, 500)
+    assert record.getMessage() == f"proxy_package_failed region={region.id} failed_stage=webhook_response error_type=UnexpectedHTTPStatus status=500"
+    assert response.text not in str(record.args)
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_unexpected_error_keeps_one_sanitized_traceback(monkeypatch, caplog):
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-deploy-exception", proxy_address="6.6.6.6")
+    _build_complete_env(region.id)
+    for key, value in {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.items():
+        monkeypatch.setenv(key, value)
+
+    sentinel = "fixture-sensitive-webhook-exception"
+    original = ValueError(sentinel)
+
+    def read_response():
+        raise original
+
+    response = MagicMock(status_code=200)
+    response.json.side_effect = read_response
+    with patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response), patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ), pytest.raises(BaseAppException, match="^Failed to generate deploy script$"):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    errors = [record for record in caplog.records if record.levelno == logging.ERROR and record.exc_info]
+    (record,) = errors
+    assert record.msg == "proxy_package_failed region=%s failed_stage=webhook_response error_type=%s"
+    assert record.args == (region.id, "ValueError")
+    assert record.getMessage() == f"proxy_package_failed region={region.id} failed_stage=webhook_response error_type=ValueError"
+    assert record.exc_info[2] is original.__traceback__
+    assert record.exc_info[1] is not original
+    assert str(original) == sentinel
+    formatted = logging.Formatter().format(record)
+    assert "in read_response" in formatted
+    assert "RuntimeError: Unexpected Proxy package generation failure" in formatted
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.args)
+    assert sentinel not in formatted
     assert sentinel not in caplog.text
-    assert "\n" not in "".join(record.getMessage() for record in caplog.records if "Webhook API error" in record.getMessage())
-    assert "body_len=" in caplog.text
 
 
 @pytest.mark.django_db
@@ -923,7 +978,7 @@ def test_get_deploy_script_webhook_timeout_raises():
     _build_complete_env(region.id)
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", side_effect=requests.Timeout()
@@ -940,15 +995,70 @@ def test_get_deploy_script_webhook_error_status_in_body_raises():
     _build_complete_env(region.id)
 
     def fake_getenv(key, default=None):
-        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+        return {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
     response = MagicMock()
     response.status_code = 200
-    response.json.return_value = {"status": "error", "message": "bad config"}
+    response.json.return_value = {"status": "error", "proxy_package_version": 2, "message": "secret-sentinel"}
 
     with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
         "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
     ), patch("apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"):
         with pytest.raises(BaseAppException) as exc:
             RegionService.get_deploy_script({"cloud_region_id": region.id})
-    assert "bad config" in str(exc.value)
+    assert "Webhook failed to generate the Proxy package" in str(exc.value)
+    assert "secret-sentinel" not in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_new_server_uses_legacy_webhook_contract_before_hub_cutover(monkeypatch):
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-legacy-hub", proxy_address="6.6.6.6")
+    _build_complete_env(region.id)
+    SidecarEnv.objects.filter(cloud_region=region, key__startswith="NATS_INSTALLER_").delete()
+    for key in PROXY_ENV:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("NATS_ADMIN_USERNAME", "legacy-admin")
+    monkeypatch.setenv("NATS_ADMIN_PASSWORD", "legacy-secret")
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"status": "success", "install_script": "old-install-script"}
+    with patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response) as post, patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ):
+        assert RegionService.get_deploy_script({"cloud_region_id": region.id}) == "old-install-script"
+
+    payload = post.call_args.kwargs["json"]
+    assert payload["nats_url"] == HUB_NATS_SERVERS
+    assert payload["server_url"] == HUB_NODE_SERVER_URL
+    assert "proxy_package_version" not in payload
+    assert not any(key.startswith(("nats_leaf_", "nats_installer_")) for key in payload)
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_rejects_old_webhook_even_when_it_returns_a_script(monkeypatch):
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-old-webhook", proxy_address="6.6.6.6")
+    _build_complete_env(region.id)
+    for key, value in {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.items():
+        monkeypatch.setenv(key, value)
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"status": "success", "install_script": "old-install-script"}
+    with patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response), patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ), pytest.raises(BaseAppException, match="Incompatible webhookd Proxy package version"):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_rejects_missing_dedicated_leaf_credentials(monkeypatch):
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-missing-leaf", proxy_address="6.6.6.6")
+    _build_complete_env(region.id)
+    for key, value in {**PROXY_ENV, "NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("PROXY_NATS_LEAF_PASSWORD")
+    with patch("apps.node_mgmt.services.cloudregion.requests.post") as post, pytest.raises(
+        BaseAppException, match="PROXY_NATS_LEAF_PASSWORD"
+    ):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+    post.assert_not_called()
